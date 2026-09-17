@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — A restated number needs a producer, not a rule
+
+- A document restated a count something else computes, and it drifted. The obvious response is a gate — *"a number in the mirror must match its census"* — and it loses, because it has to tell a FROZEN historical measurement from a LIVE claim about the current tree, and only the second can be wrong. That separation is a judgement over prose.
+- **Measured rather than argued**, over the 103 numerals in this project's own doctrine registry: a sentence-level citation rule fires on **66%**, minus four structural exclusions **50%**, and scoped to the staged diff it blocks **10 of the 14 commits in 200 that add a numeral (71%)**. Against `.11.9`'s rejected 87%, `.11.15`'s 93% and `POSITIONAL-REF`'s accepted 9.5%.
+- ⭐ **The redirect is the lesson.** Asking *which* numbers actually drifted, instead of *how do I gate all of them*, found that the four stale ones share one property: each is a POPULATION SIZE the named instrument enumerates on every run and never printed — and each was stale in that instrument's own header too, a mirror of a mirror. Two `--census` flags fixed all four with no rule at all.
+- ⚠️ **An instrument's own banner is prose.** A self-test printed a hardcoded `9/9 arms` beside nine arms: correct, and one added arm from publishing a false total. Deriving it is two lines and is falsifiable — inject a tenth arm, read `10/10`, restore byte-identical, read `9/9`.
+- ⛔ **And the cheap fix was the wrong one once.** One row's numbers had drifted and then become true again by accident. Correcting them to today's values would have taught the next reader it never drifted; deleting them in favour of the command is what keeps the evidence.
+- **Promoted:** `docs/knowledge/a-restated-number-needs-a-producer.md`.
+
 ## 2026-09-18 — A restore can go back further than you injected
 
 - A gate falsification injected one defect into `LIVE_STATUS.md`, confirmed the gate fired, then ran `git checkout -- LIVE_STATUS.md`. That restored the file to **HEAD** — taking three unrelated, uncommitted repairs in the same file with it. ⛔ Nothing failed and nothing warned.

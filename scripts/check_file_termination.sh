@@ -13,9 +13,16 @@
 # claimed the check it never ran.
 #
 # Whole-tree rather than staged-diff, so the CI backstop (E4) is real: a file
-# that drifted while nothing was staged is still caught. The population is
-# small enough to check on every commit — 642 tracked text files scanned in
-# well under a second.
+# that drifted while nothing was staged is still caught. The population is small
+# enough to check on every commit, in well under a second.
+#
+# ⛔ The size of that population is NOT written here. It was — as "642 tracked
+# text files" — and `SIGNOFF-REPAIR.11.16` measured it at 773 with nothing in the
+# repository deriving it. A restated number is a mirror, and a mirror nothing
+# derives drifts (`BOOK-FRONTIER`, `INDEX-FRONTIER`, and this). It is printed on
+# demand instead:
+#
+#     scripts/check_file_termination.sh --census
 #
 # Exceptions live in .doctrine/file_termination_exceptions.txt, verbatim with a
 # reason, in the same reviewed-allowlist idiom as VISIBILITY-POLICY. A listed
@@ -26,6 +33,7 @@ set -uo pipefail
 ROOT="$(git rev-parse --show-toplevel)"; cd "$ROOT"
 
 ALLOWLIST=".doctrine/file_termination_exceptions.txt"
+MODE="${1:-}"
 
 if [ "${1:-}" = "--self-test" ]; then
   python3 -B - "$ALLOWLIST" <<'PY'
@@ -69,10 +77,11 @@ PY
   exit $?
 fi
 
-python3 -B - "$ALLOWLIST" <<'PY'
+python3 -B - "$ALLOWLIST" "$MODE" <<'PY'
 import subprocess, sys, pathlib
 
 allowlist = pathlib.Path(sys.argv[1])
+census = sys.argv[2] == "--census"
 allowed = {}
 if allowlist.is_file():
     for line in allowlist.read_text().splitlines():
@@ -95,6 +104,7 @@ def classify(b: bytes):
 
 names = subprocess.run(["git", "ls-files", "-z"], capture_output=True).stdout.split(b"\0")
 breaches, seen = [], set()
+scanned = governed = 0
 for raw in names:
     if not raw:
         continue
@@ -104,6 +114,9 @@ for raw in names:
         data = path.read_bytes()
     except (FileNotFoundError, IsADirectoryError, PermissionError):
         continue                          # a submodule or a removed-but-staged path
+    scanned += 1
+    if b"\0" not in data[:8192] and data:
+        governed += 1                     # has a text-termination contract
     verdict = classify(data)
     if verdict is None:
         continue
@@ -113,6 +126,15 @@ for raw in names:
     breaches.append((name, verdict))
 
 stale = [name for name in allowed if name not in seen]
+
+if census:
+    # The two numbers a reader might otherwise copy into prose. `governed` is the
+    # subset that HAS a text-termination contract: `classify` returns None for a
+    # binary or empty file, which is why the two differ.
+    print(f"FILE-TERMINATION census: {scanned} tracked files read, {governed} of them"
+          f" text with a termination contract, {len(breaches)} breaching,"
+          f" {len(allowed)} allowed")
+    sys.exit(0)
 
 if breaches:
     print("FILE-TERMINATION: a tracked text file must end with exactly one newline.", file=sys.stderr)

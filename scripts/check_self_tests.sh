@@ -14,17 +14,27 @@
 # Nobody noticed for thirty-odd commits, because nobody ran it.
 #
 # Measured before this gate was proposed (`SIGNOFF-REPAIR.11.4.3.1.7.2`):
-# 17 scripts carry a `--self-test`, they cost 1.01 s in total, and the enforcer
-# itself costs about 3.15 s. One second on a three-second gate is affordable;
+# 17 scripts carried a `--self-test`, they cost 1.01 s in total, and the enforcer
+# itself cost about 3.15 s. One second on a three-second gate is affordable;
 # `SIGNOFF-REPAIR.11.5`'s constraint is that a gate people route around is a
 # gate that lies, and nobody routes around one second.
 #
-# ⛔ This gate catches NOTHING today: all 17 pass. Its value is preventing the
-# class above — a control that silently stops working — not finding a present
-# defect. Said plainly so a green run is not mistaken for evidence of one.
+# ⛔ This gate catches NOTHING today: every discovered self-test passes. Its value
+# is preventing the class above — a control that silently stops working — not
+# finding a present defect. Said plainly so a green run is not mistaken for
+# evidence of one.
 #
-# ⚠️ 11 of the 28 check/census scripts have no `--self-test` at all. Running the
-# 17 does not reach them, and this gate does not claim to.
+# ⚠️ Some check/census scripts have no `--self-test` at all. Running the
+# discovered ones does not reach them, and this gate does not claim to.
+#
+# ⛔ NEITHER POPULATION IS WRITTEN HERE, and that is the repair rather than an
+# omission. The two counts above used to be restated as live facts — "all 17
+# pass", "11 of the 28" — and `SIGNOFF-REPAIR.11.16` measured them at 29 and
+# 9-of-38 with nothing in the repository deriving either. The `17` survives
+# because it is ANCHORED to the leaf that measured it; a number with no moment
+# attached is a mirror, and a mirror nothing derives drifts. Ask for them:
+#
+#     scripts/check_self_tests.sh --census
 #
 # ⚠️ THE SELF-REFERENCE TRAP — and I walked into a variant of it while building
 # this, which is why the defence is now belt AND braces rather than a careful
@@ -72,6 +82,24 @@ discover() {
   git grep -l -- "$FLAG" -- scripts knowledge-map .githooks 2>/dev/null \
     | grep -vFx "$SELF" | grep -vFx "$ENFORCER" | sort
 }
+
+# The two populations this gate is about, printed rather than restated in prose.
+# ⛔ DISCOVERED ⊄ INSTRUMENTS: discovery also reaches `knowledge-map/` and
+# `.githooks/`, so a script may be run here and not be a `scripts/check_*` or
+# `scripts/census_*` file. The third number is the gap WITHIN the instruments,
+# which is the one the registry row is about.
+if [ "${1:-}" = "--census" ]; then
+  discovered="$(discover | grep -c . || true)"
+  instruments="$(git ls-files 'scripts/check_*' 'scripts/census_*' | sort)"
+  total="$(printf '%s\n' "$instruments" | grep -c . || true)"
+  without="$(comm -23 <(printf '%s\n' "$instruments") \
+                      <(git grep -l -- "$FLAG" -- scripts | sort) | grep -c . || true)"
+  echo "SELF-TEST census: $discovered scripts carry a --self-test and are run by this gate;"
+  echo "  of $total tracked check/census instruments, $without carry none:"
+  comm -23 <(printf '%s\n' "$instruments") <(git grep -l -- "$FLAG" -- scripts | sort) \
+    | sed 's/^/    /'
+  exit 0
+fi
 
 # Run one script's self-test; print "path" on failure.
 probe() {

@@ -64,8 +64,12 @@ arity_defects() { # stdin = markdown; stdout = "lineno<TAB>have<TAB>want<TAB>tex
 count_defects() { arity_defects | grep -c . || true; }
 
 if [ "${1:-}" = "--self-test" ]; then
-  fails=0
-  t() { local want="$1" name="$2"; local got; got="$(printf '%b' "$3" | count_defects)"; [ "$got" = "$want" ] && echo "  arm ok  $name ($got)" || { echo "TABLE-ARITY self-test: MISS $name want=$want got=$got" >&2; fails=1; }; }
+  fails=0; arms=0; passed=0
+  # ⛔ The banner COUNTS the arms rather than restating a literal. It said "9/9"
+  # while nine were written, so an arm added without touching the string would
+  # have published a false total — the shape `SIGNOFF-REPAIR.11.16` measured in
+  # the human mirror, in the instrument itself.
+  t() { local want="$1" name="$2"; local got; arms=$((arms+1)); got="$(printf '%b' "$3" | count_defects)"; [ "$got" = "$want" ] && { passed=$((passed+1)); echo "  arm ok  $name ($got)"; } || { echo "TABLE-ARITY self-test: MISS $name want=$want got=$got" >&2; fails=1; }; }
   t 0 "a well-formed 3-column table" '| a | b | c |\n|---|---|---|\n| 1 | 2 | 3 |\n| x | y | z |\n'
   t 1 "a row with one cell too many" '| a | b |\n|---|---|\n| 1 | 2 | 3 |\n'
   t 1 "a row with one cell too few" '| a | b | c |\n|---|---|---|\n| 1 | 2 |\n'
@@ -77,7 +81,7 @@ if [ "${1:-}" = "--self-test" ]; then
   t 1 "a raw pipe inside a DOUBLE-backtick span is a separator too" '| a | b |\n|---|---|\n| `` x | y `` | 2 |\n'
   t 0 "an unpaired backtick run is not an arity defect (mdbook: 2 cells)" '| a | b |\n|---|---|\n| `` | 2 |\n'
   t 0 "a table inside a code fence is not judged" '```\n| a | b |\n|---|---|\n| 1 |\n```\n'
-  [ "$fails" = 0 ] && echo "TABLE-ARITY-RATCHET --self-test: 9/9 arms" || exit 1
+  [ "$fails" = 0 ] && echo "TABLE-ARITY-RATCHET --self-test: $passed/$arms arms" || exit 1
   exit 0
 fi
 

@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-18 — A restated number needs a PRODUCER, not a rule (`SIGNOFF-REPAIR.11.16`)
+
+🔴 **The file that documents this project's gates calls itself "the human-readable mirror of the registry", and four of the numbers it mirrored had gone stale with nothing deriving them.**
+
+- **The defect.** `DOCTRINE_ENFORCEMENT.md`'s `SELF-TEST` row said *"all 17 pass"* and *"11 of the 28 check/census scripts"*; measured, **29** and **9 of 38**. Its `FILE-TERMINATION` row said *"642 files scan"*; measured, **773**. ⛔ Every one was ALSO stale in the instrument's own header comment, so the registry was a mirror of a mirror and neither copy had a producer. Third instance of the shape `BOOK-FRONTIER` and `INDEX-FRONTIER` already gate.
+- ⚠️ **The leaf's own first pass was off by a factor of seventeen** — it reported *"6 bolded numerals"* because it keyed on **bold**, and the file's numbers are mostly unbolded. The real population is **103 numerals across 19 rows**, by `scripts/census_mirror_numbers.py` (tracked, `--json`, `--calibrate`, `--self-test` with 12 arms).
+- ⛔ **ALL THREE CANDIDATE GATES ARE MEASURED UNSOUND AND DECLINED**, each priced before it was proposed (`.11.6`): a sentence-level citation requirement fires on **68 of 103 (66%)**; minus four mechanical structural exclusions, **51 of 103 (50%)**; scoped to the staged diff — the `GAP-CLAIM-CENSUS` precedent — it would have blocked **10 of the 14 commits in 200 that add a numeral (71%)**. `.11.9`'s gate was rejected at 87% and `.11.15`'s at 93%; `POSITIONAL-REF` shipped at 9.5%.
+- ⛔ **And a per-numeral allowlist is refused by this project's own sentence**, in the registry row two lines from the defect: `VISIBILITY-POLICY`'s *"an allowlist thirty entries long teaches bypass"*, against a population of **103**.
+- ⭐ **THE MEASUREMENT REDIRECTED THE WORK.** The four stale numerals share a property the other 99 do not: each is a POPULATION SIZE the named instrument enumerates on every run and simply never printed. So `scripts/check_self_tests.sh --census` and `scripts/check_file_termination.sh --census` ship, the rows cite the command, and **no gate is registered**. A number derived on every run cannot go stale.
+- ✅ **`REASON-CODE-DOC` is discharged by DELETION, not correction.** Its numbers had drifted since `.9.2.1.1` and became true again BY ACCIDENT when `.11.14.3.2` retired a code. Correcting them to today's was the cheap fix and the wrong one — a mirror that happens to agree teaches a reader it never drifted.
+- **Also discharged:** `HEADING-DEPTH`'s founding measurement, which read as a present-tense claim and is false today (0 violations), re-anchored to the commit that measured it; and `TABLE-ARITY-RATCHET`'s self-test banner, which printed a hardcoded `9/9 arms` beside nine arms and now COUNTS them — falsified by injecting a tenth arm (`10/10`), restoring byte-identical, and reading `9/9` again.
+- **ADDRESSED:** `bare` numerals **51 → 37**, all five repaired rows clear. ⚠️ The remaining 37 are unreviewed by any instrument — read once by hand and judged frozen. That is the declined gate's cost, named rather than hidden.
+- Promoted: `docs/knowledge/a-restated-number-needs-a-producer.md` + a `TOOLBOX.md` statement. 🔴 Routed: **a blank line ENDS a Markdown table, and one sits inside this tree's own Current Frontier** — 45 rows render as literal pipe-text, 51 across 3 files once the key is widened from "after the delimiter row" to "anywhere in the body". `.11.19`.
+
 ## 2026-09-18 — A positional reference is exact only if a reader can resolve it (`SIGNOFF-REPAIR.11.17`)
 
 🔴 **29 published source citations named two files each, and `DOCPATH` could not see any of them.**

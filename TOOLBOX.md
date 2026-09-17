@@ -224,6 +224,34 @@ fixtures were written by the same author in the same idiom as the bug, so they w
 single-line. **A self-test written alongside the code shares its blind spots.** The
 disagreeing second number is what has no such loyalty.
 
+### A restated number needs a PRODUCER, not a rule
+
+When a document restates a number something else computes and it goes stale, the obvious
+response is a gate: *"a number in the mirror must match its census."* Ask a smaller
+question first — **can the thing that owns this number print it?** If it can, delete the
+number and cite the command; if it cannot, the number is history, and it needs a citation
+in its own SENTENCE so a reader can see it is not a claim about now.
+
+The reason the gate loses is that it has to tell a FROZEN historical measurement from a
+LIVE claim about the current tree, and only the second can be wrong. That is a judgement
+over prose — the failure mode above — and `SIGNOFF-REPAIR.11.16` priced three mechanical
+approximations of it against the 103 numerals in this project's own doctrine registry:
+**66%**, **50%**, and, scoped to the staged diff, **10 of the 14 commits in 200 that add
+one (71%)**. `.11.9`'s gate was rejected at 87% and `.11.15`'s at 93%; `POSITIONAL-REF`
+shipped at 9.5%. ⛔ A per-numeral allowlist loses to this file's own neighbour — the
+`VISIBILITY-POLICY` row's *"an allowlist thirty entries long teaches bypass"*, against 103.
+
+⭐ **And the measurement redirected the work instead of only blocking it.** Verifying the
+numbers one at a time found that the four that had actually gone stale share a property
+the other 99 do not: each is a POPULATION SIZE the named instrument enumerates on every
+run and never printed — and each was ALSO stale in that instrument's own header comment,
+so the mirror was a mirror of a mirror. Two `--census` flags fixed all four with no rule
+at all. Full method and the four failure shapes:
+[`docs/knowledge/a-restated-number-needs-a-producer.md`](docs/knowledge/a-restated-number-needs-a-producer.md).
+
+⚠️ An instrument's own banner is prose too. One self-test printed a hardcoded `9/9 arms`
+beside nine arms — correct, and one added arm away from publishing a false total.
+
 ### Ask the renderer, not the specification
 
 When a rule is about a DOCUMENT FORMAT, the authority is the tool that publishes the
@@ -453,12 +481,14 @@ agent should be able to reach for the right tool without reading the source. -->
 | cold-tree probe | whether a failure needs a REMOTE or merely a clean one — a fixture whose setup branch only runs on a fresh checkout is dead code on a warm `target/` | `rm -rf target/<control-dir> && cargo test …`, repeated, since the race is probabilistic |
 | clean-machine git probe | whether a test depends on the developer's ambient git identity — the `AuthorMissing` class that passes locally and fails on any clean runner | `env GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_CONFIG_NOSYSTEM=1 cargo test …` |
 | `scripts/check_book_links.sh` | which intra-book links do not resolve, with the page and target named; `--self-test` proves anchor stripping, external-scheme skipping and inline-code immunity | `bash scripts/check_book_links.sh [--self-test]` |
-| `scripts/check_file_termination.sh` | which tracked text files do not end with exactly one newline, and whether each is a reviewed generated/digest-bound exception; `--self-test` proves the classifier | `bash scripts/check_file_termination.sh [--self-test]` |
+| `scripts/check_file_termination.sh` | which tracked text files do not end with exactly one newline, and whether each is a reviewed generated/digest-bound exception; `--census` prints the population size, which used to be restated in prose and had drifted from 642 to 773 (`SIGNOFF-REPAIR.11.16`); `--self-test` proves the classifier | `bash scripts/check_file_termination.sh [--census] [--self-test]` |
+| `scripts/check_self_tests.sh` | which tracked scripts carry a `--self-test` and are therefore RUN by the `SELF-TEST` gate, and which check/census instruments carry none and are reached by nothing. ⛔ Ask it rather than restating either number: both were written into prose as 17 and 11-of-28 and were 29 and 9-of-38 when `SIGNOFF-REPAIR.11.16` measured them | `bash scripts/check_self_tests.sh [--census] [--self-test]` |
 | `scripts/check_visibility_policy.sh` | every tracked-Markdown sentence that states a private visibility for this repository, and whether it is a reviewed exception; `--self-test` proves the matcher fires and does not over-match | `bash scripts/check_visibility_policy.sh [--self-test]` |
 | `scripts/check_book_frontier.sh` | whether a book page names a frontier leaf the task tree no longer has; `--self-test` proves row-1 extraction and the claim matcher | `bash scripts/check_book_frontier.sh [--self-test]` |
 | `python3 -B scripts/project_env.py cargo test -p reasonbraid-node` | the WP3 journal kill-point sweep + CLI integration tests (file-based SQLite, no service) | `python3 -B scripts/project_env.py cargo test -p reasonbraid-node` |
 | `scripts/census_reason_codes.py` | which reason codes the server emits, which the §9.8 registry publishes, and which the book documents — the three sets and their differences, with client-side sentinels excluded; `--check` is the `REASON-CODE-DOC` gate and `--self-test` proves the client/server split both ways plus the book-row matcher | `python3 -B scripts/census_reason_codes.py [--check] [--json] [--self-test]` |
 | `scripts/census_split_coverage.py` | which leaves DECLARE a split, how many children each really has, and whether the leaf carries a mechanism-to-child mapping or only a prose count. ⛔ A BACKLOG instrument, never a gate: `SIGNOFF-REPAIR.11.15` measured the gate firing on **13 of 14** and rejected it as `.11.9`'s shape, and measured the count-comparison rule producing false positives by construction. It counts the ACT of enumerating, never the mechanisms in a goal line, which is not mechanizable. `--self-test`'s 6 controls prove the tree id is not hardcoded, that a grandchild is not a child, that a table is not inherited across sections, and — the blind spot this instrument shipped with — that an INDENTED mapping table is seen, which a `grep -c` disagreeing with its first number is what caught | `python3 -B scripts/census_split_coverage.py [--self-test]` |
 | `scripts/census_record_reconciliation.py` | which source-census records are cited by the leaves they route to, which are not, and how far the clause ledger has classified them. `--rank` orders the backlog by each record's NARROWEST candidate leaf — ⭐ the OPPOSITE of ordering by the record's own fan-out, which `SIGNOFF-REPAIR.11.9.1` measured and rejected. `--classified` re-reads `docs/tasks/artifacts/signoff_review/RECONCILIATION.md` and refuses an unknown record, a state outside the closed six, an owner that is no leaf, a `none` row with an owner, a non-`none` row without one, a duplicated clause, or — the `ATTACH-LANDED` gate — an `attach` clause whose owning leaf's own section does not NAME its record, which is the one property a row cannot carry about itself. Never a defect count; `--self-test`'s 42 controls prove both record-id shapes, that a parent's section excludes its children, line-RANGE citation matching, the elided `` `:N` `` form and — the fifth defect this instrument had — that a SOURCE path's line number after a census citation is not one; seven more fire the `attach` rule in BOTH directions, including that a longer record id does not satisfy a shorter one | `python3 -B scripts/census_record_reconciliation.py [--uncited] [--rank] [--classified] [--json] [--self-test]` |
+| `scripts/census_mirror_numbers.py` | every numeral `DOCTRINE_ENFORCEMENT.md`'s registry restates, classified `anchored` (its sentence cites a leaf, a commit or upstream), `structural` (a section number, an ordinal, a compound noun, a code span) or `bare`. ⛔ A REVIEW instrument, never a gate, and the rejection is MEASURED rather than remembered: `SIGNOFF-REPAIR.11.16` priced three candidate rules at 66%, 50% and — `--calibrate`, the staged-diff-scoped one — **10 of the 14 commits in 200 that add a numeral (71%)**, against `.11.9`'s rejected 87%, `.11.15`'s 93% and `POSITIONAL-REF`'s accepted 9.5%. ⚠️ `bare` is a candidate for REVIEW, not a defect: frozen-historical versus current-population is a judgement over prose (`.11.6`), and this partition only approximates it. `--self-test`'s 12 arms prove citation and sha anchoring AND its negative, all four structural exclusions, that an identifier like `REPAIR-0062` is not a restated measurement, and that an escaped `\|` does not tear a row into phantom cells | `python3 -B scripts/census_mirror_numbers.py [--json] [--calibrate N] [--self-test]` |
 | `scripts/census_memory_warnings.py` | which of `MEMORY.md`'s standing warnings are anchored in a durable layer and which name no leaf — run it BEFORE evicting one at the byte cap, so the choice is derived rather than "whatever looks least costly"; `--self-test` proves the segmentation both ways (a marker after a sentence terminator opens a warning, one after `;`/`:` continues it, and a terminator inside `**`/`*`/`` ` `` still opens) | `python3 -B scripts/census_memory_warnings.py [--json] [--self-test]` |
 | `scripts/census_pg_test_clusters.py` | which disposable PostgreSQL clusters the runner retained after a failure, how big and how old each is, and which are safe to retire — the §8 periodic review, with the judgement in the tool instead of in a habit; `--self-test` fires all six refusals plus the citation guard's two directions | `python3 -B scripts/project_env.py python3 -B scripts/census_pg_test_clusters.py [--retire --confirm]` |

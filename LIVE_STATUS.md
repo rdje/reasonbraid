@@ -5,6 +5,18 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **A RESTATED NUMBER NEEDS A PRODUCER, NOT A RULE (`.11.16`, REPAIR-0237).**
+
+🔴 **The file that documents this project's gates calls itself the registry's human mirror, and four of the numbers it mirrored had gone stale with nothing deriving them.**
+
+- **The defect.** The `SELF-TEST` row said *"all 17 pass"* and *"11 of the 28 check/census scripts"* — measured, **29** and **9 of 38**. The `FILE-TERMINATION` row said *"642 files scan"* — measured, **773**. ⛔ Each was stale in the instrument's OWN header too, so the registry mirrored a mirror and neither copy had a producer.
+- ⚠️ **The leaf's own first pass was off by a factor of seventeen** — 6 numerals, because it keyed on **bold**. The real population is **103 across 19 rows** (`scripts/census_mirror_numbers.py`, 12 self-test arms).
+- ⛔ **All three candidate gates DECLINED, each priced before it was proposed** (`.11.6`): **66%**, **50%**, and staged-diff-scoped **10 of the 14 commits in 200 that add a numeral (71%)** — against `.11.9`'s rejected 87%, `.11.15`'s 93% and `POSITIONAL-REF`'s accepted 9.5%. A per-numeral allowlist is refused by `VISIBILITY-POLICY`'s own *"thirty entries teaches bypass"* against 103.
+- ⭐ **The measurement redirected the work:** the four stale numerals all name a POPULATION SIZE the instrument enumerates on every run and never printed. `--census` on two scripts fixed them; a number derived on every run cannot drift.
+- ✅ **`REASON-CODE-DOC` discharged by DELETION, not correction** — it had drifted and become true again BY ACCIDENT, and correcting it would have taught the next reader it never drifted.
+- **ADDRESSED:** `bare` numerals **51 → 37**. ⚠️ The remaining 37 are unreviewed by any instrument — read once by hand and judged frozen. That is the declined gate's cost, named rather than hidden.
+- 🔴 **Routed — a blank line ENDS a Markdown table, and one sits inside the tree's own Current Frontier**: 45 rows render as literal pipe-text, **51 across 3 files** once the key widens from "after the delimiter row" to "anywhere in the body". ⛔ `TABLE-ARITY-RATCHET` governs these files and cannot see it. `.11.19`.
+
 ✅ **A POSITIONAL REFERENCE IS EXACT ONLY IF A READER CAN RESOLVE IT (`.11.17`, REPAIR-0236).**
 
 🔴 **29 published source citations named two files each, and `DOCPATH` could not see any of them.**

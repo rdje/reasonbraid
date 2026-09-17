@@ -542,7 +542,20 @@ The full pre-push checkpoint now passes on source `7233122` — the first comple
 run recorded. All eight commands return 0, 40 of 40 database suites run with 291
 tests and no failures, the two-host demonstration reports all acceptance checks
 passed, the browser controls render against the pinned runtime, and both
-supply-chain scanners pass as real gates. This is a local qualification only:
-remote CI has never run, G6/G7 Internet exposure, name clearance and the license
-decision remain open, and the historical phase closures remain under corrective
-review. See `docs/tasks/artifacts/signoff_review/checkpoint-7233122.md`.
+supply-chain scanners pass as real gates. This is a **local** qualification: the
+remote gate has not observed this source.
+
+⚠️ **Two clauses of that sentence were stale, and are corrected here rather than
+deleted.** It read *"remote CI has never run … name clearance and the license
+decision remain open"*. Both halves stopped being true while this paragraph
+stood:
+
+| The clause | What is true |
+| --- | --- |
+| *remote CI has never run* | **False, and was never true.** 41 runs, 29 success / 12 failure, all three workflows green at `c17841c` — which is `origin/main`. The real limit is the commits sitting beyond the last remotely-gated one, inside the documented push cadence. [Blockers](blockers.md) carries the measurement |
+| *the license decision remains open* | **Cleared 2026-09-15.** `LICENSE-MIT` and `LICENSE-APACHE` ship at the repository root, carrying the texts the 13 manifests already declared |
+
+What genuinely remains open is **G6/G7 Internet exposure**, **name clearance**
+(ADR-001), and the historical phase closures under corrective review. See
+`docs/tasks/artifacts/signoff_review/checkpoint-7233122.md` — the dated artifact
+is left byte-unchanged, because it records what was measured on its date.

@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-17 — A corrected claim was corrected in the register and left standing in the corpus (`SIGNOFF-REPAIR.13.4`)
+
+🔴 **Two blockers were measured false on 2026-09-15 and 2026-09-17. The book kept asserting both.**
+
+- `.13.3` (REPAIR-0220) measured *"remote CI has never run"* FALSE — 41 runs, green at `origin/main` — and corrected the register, the blockers chapter, the decision record and the one downstream conclusion inside the task tree. `.13.2` (REPAIR-0195) cleared **B5**, the licence. **Neither swept the live-document corpus**, so both superseded claims stayed readable in the two documents the director actually reads.
+- **The census, over live documents only** (`README.md`, `LIVE_STATUS.md`, `MEMORY.md`, `docs/book/src/*.md` — the set `COMMIT.md` holds to CURRENT truth; `CHANGELOG.md`, `DEV_NOTES.md`, `docs/decisions/` and the dated artifacts are ledgers and correct as history): **11 hits, 4 stale, 7 sound.** ⭐ Publishing the raw 11 would have been wrong in 7 cases — three unrelated uses of "never runs", the two passages that STATE the correction, and `MEMORY.md`'s already-corrected line.
+- **The four:** `LIVE_STATUS.md:356` gave the false claim as the CAUSE of two invisibly-red supply-chain gates; `:382` described the register's own C1 row; `:1541`/`:1543` and `docs/book/src/qualification-review.md:546` carried the same checkpoint sentence, with BOTH stale claims in it.
+- **ROOT CAUSE.** `.13.3`'s acceptance reads *"every place **this tree** calls a gate 'passed'"*. Its scope was the register and the task tree, and it reached both. ⛔ Nothing asked what else in the corpus RESTATED the claim — the defect class `.11.16` owns. A claim corrected in its owner and left in its copies is the same failure as a number corrected in its source and left in its mirrors.
+- **FIX.** All four corrected **in place, not deleted**, each naming what it used to say and what measured it false, so a reader who remembers the old sentence finds out what happened to it. `checkpoint-7233122.md` is left **byte-unchanged** — a dated artifact records what was measured on its date — and the book now says so.
+- **ADDRESSED.** The narrow probe `git grep -nI -E "remote CI has never run|licen[cs]e decision remain open"` over the same four live documents returns **7** lines, every one a QUOTED correction, with no bare assertion left.
+- ⚠️ **What this does NOT do:** it sweeps two corrected claims, not every claim. Whether the sweep should be MECHANICAL is routed to `.11.16`, deliberately unanswered — the population must be classified before a rule is proposed, which is why this leaf publishes 4-of-11 rather than 11.
+- **Verification:** `make gate` 18/18; `make book` rc=0.
+
 ## 2026-09-17 — The standalone assessment route is bound to the citing tenant (`SIGNOFF-REPAIR.11.14.3.8`)
 
 ✅ **The leaf predicted a two-answer existence oracle. The control measured THREE answers, and the third is a content probe.**

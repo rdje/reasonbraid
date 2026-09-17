@@ -6245,10 +6245,54 @@ async fn the_two_assessment_writers_are_two_namespaces() {
         "the stranger must be a DIFFERENT tenant for this to measure anything"
     );
 
-    // Every field is the first tenant's, `author` included. ⛔ The stranger
-    // never cited this snapshot, and reaches the excerpt check anyway because
-    // `POST /v1/assessments` has no citation gate (`SIGNOFF-REPAIR.11.14.3.8`) —
-    // so this arm also demonstrates that leaf's gap concretely.
+    // ⭐ The stranger ACQUIRES the same bytes first, which records its own
+    // citation on the replay. Until `SIGNOFF-REPAIR.11.14.3.8` this arm reached
+    // the excerpt check without it, because the standalone route applied no
+    // citation gate — so the aliasing below was measurable over evidence the
+    // stranger had never touched. The gate does not close the aliasing question:
+    // two tenants that BOTH cite one shared row still both reach it, which is
+    // exactly what makes `authored_by_tenant` load-bearing rather than redundant.
+    let (status, stranger_reference) = post(
+        &client,
+        &base,
+        "/v1/resources",
+        &stranger_id,
+        &json!({ "original_locator": "https://example.org/ns-evidence", "scheme": "https" }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the stranger's reference replays: {stranger_reference}"
+    );
+    let (status, stranger_snapshot) = post(
+        &client,
+        &base,
+        "/v1/snapshots",
+        &stranger_id,
+        &json!({
+            "reference_id": stranger_reference["resource_id"].as_str().unwrap(),
+            "original_locator": "https://example.org/ns-evidence",
+            "final_locator": "https://example.org/ns-evidence",
+            "resolver_id": "r0-https-fetcher",
+            "resolver_version": "0.1.0",
+            "raw_digest": reasonbraid_server::fetcher::digest_sha256_hex(payload),
+            "byte_length": payload.len(),
+            "media_type": "text/plain",
+            "bytes_base64": util::base64(payload),
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the stranger's snapshot replays: {stranger_snapshot}"
+    );
+    assert_eq!(
+        stranger_snapshot["snapshot_id"].as_str().unwrap(),
+        snapshot_id,
+        "the same locator and digest replay to ONE shared snapshot"
+    );
+
+    // Every field is the first tenant's, `author` included.
     let (status, forged) = post(
         &client,
         &base,
@@ -6297,6 +6341,258 @@ async fn the_two_assessment_writers_are_two_namespaces() {
     assert_eq!(total, 3, "the replay wrote no extra row");
     eprintln!(
         "assessment namespaces: the deliberation's row and the standalone row share a claim digest, a snapshot, a kind and an author and are TWO rows in two namespaces; a SECOND TENANT presenting the first's author label gets its own row rather than the first's assessment_id; the standalone replay still returns its own id; {total} rows"
+    );
+}
+
+/// `SIGNOFF-REPAIR.11.14.3.8`: `POST /v1/assessments` is bound to the CITING
+/// tenant, so it stops answering three distinguishable things about a snapshot
+/// the caller never acquired.
+///
+/// The finding is the product's own asymmetry. `threads.rs`'s `assess` step
+/// gates on `snapshots::is_cited_by` with the stated reason that *"without
+/// this, an assessment would be a way to learn that a snapshot exists"*, and
+/// both writers call the SAME `claims::submit` — which selected
+/// `snapshot_objects.bytes` on `snapshot_id` alone, with no tenant predicate.
+/// A census of every surface that names a `snapshot_id` found seven, six
+/// citation-bound and exactly one not:
+///
+/// ```text
+/// grep -n "cited_snapshot\|is_cited_by" crates/reasonbraid-server/src/*.rs
+/// ```
+///
+/// The three answers a stranger could separate were the oracle, and the third
+/// is the strongest: a 200 says a chosen substring APPEARS in bytes the caller
+/// was never allowed to read.
+///
+/// ⭐ The compatibility objection — *"a principal legitimately assessing
+/// evidence another team acquired starts being refused"* — was measured rather
+/// than accepted. Every read of that snapshot (`GET /v1/snapshots/{id}`, its
+/// `/derivations`, its `/assessments`, `/v1/snapshots/stale`, and the `DELETE`)
+/// already answers a non-citing tenant `404`, so that workflow cannot function
+/// today: the excerpt check was over bytes the caller cannot see. The arm below
+/// where a SECOND tenant acquires the same bytes and then assesses them is the
+/// supported path, and it is the bound that keeps this from being a blackout.
+#[tokio::test]
+async fn the_standalone_assessment_route_is_bound_to_the_citing_tenant() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, owner) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "citation-gate-owner" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the owning tenant enrols: {owner}");
+    let owner_id = owner["principal_id"].as_str().unwrap().to_string();
+    let owner_tenant = owner["tenant_id"].as_str().unwrap().to_string();
+
+    let (status, stranger) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "citation-gate-stranger" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the second tenant enrols: {stranger}");
+    let stranger_id = stranger["principal_id"].as_str().unwrap().to_string();
+    assert_ne!(
+        stranger["tenant_id"].as_str().unwrap(),
+        owner_tenant,
+        "the stranger must be a DIFFERENT tenant for this to measure anything"
+    );
+
+    // The evidence, acquired by the owner alone. `POST /v1/snapshots` records
+    // the citation, which is the fact every other snapshot surface reads.
+    let payload = b"the acquired report states the reserve was drawn down in March";
+    let locator = "https://example.org/citation-gate-evidence";
+    let acquire = |principal: String| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            let (status, reference) = post(
+                &client,
+                &base,
+                "/v1/resources",
+                &principal,
+                &json!({ "original_locator": locator, "scheme": "https" }),
+            )
+            .await;
+            assert_eq!(status, 200, "the reference submits: {reference}");
+            let (status, snapshot) = post(
+                &client,
+                &base,
+                "/v1/snapshots",
+                &principal,
+                &json!({
+                    "reference_id": reference["resource_id"].as_str().unwrap(),
+                    "original_locator": locator,
+                    "final_locator": locator,
+                    "resolver_id": "r0-https-fetcher",
+                    "resolver_version": "0.1.0",
+                    "raw_digest": reasonbraid_server::fetcher::digest_sha256_hex(payload),
+                    "byte_length": payload.len(),
+                    "media_type": "text/plain",
+                    "bytes_base64": util::base64(payload),
+                }),
+            )
+            .await;
+            assert_eq!(status, 200, "the snapshot submits: {snapshot}");
+            snapshot["snapshot_id"].as_str().unwrap().to_string()
+        }
+    };
+    let snapshot_id = acquire(owner_id.clone()).await;
+
+    // The three probes. Each is what a caller holding an `snp_` id can ask,
+    // and before this repair each answered differently.
+    let probe = |principal: String, snapshot: String, excerpt: &'static str| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            let (status, body) = post(
+                &client,
+                &base,
+                "/v1/assessments",
+                &principal,
+                &json!({
+                    "claim_id": "clm_citation_gate",
+                    "snapshot_id": snapshot,
+                    "assessment": "supports",
+                    "author": principal,
+                    "excerpt": excerpt,
+                    "rationale": "the probe",
+                }),
+            )
+            .await;
+            (status, body)
+        }
+    };
+
+    // (1) an identifier that names nothing;
+    let absent = probe(
+        stranger_id.clone(),
+        "snp_00000000-0000-7000-8000-00000000dead".to_string(),
+        "the reserve was drawn down",
+    )
+    .await;
+    // (2) the owner's real snapshot, with an excerpt that is NOT in its bytes;
+    let wrong_excerpt = probe(
+        stranger_id.clone(),
+        snapshot_id.clone(),
+        "the reserve was REPLENISHED",
+    )
+    .await;
+    // (3) the owner's real snapshot, with an excerpt that IS in its bytes —
+    //     the content probe, which used to answer 200.
+    let true_excerpt = probe(
+        stranger_id.clone(),
+        snapshot_id.clone(),
+        "the reserve was drawn down",
+    )
+    .await;
+
+    let answer = |(status, body): &(u16, Value)| {
+        (
+            *status,
+            body["message"].as_str().unwrap_or_default().to_string(),
+        )
+    };
+    let (absent_status, absent_message) = answer(&absent);
+    let (wrong_status, wrong_message) = answer(&wrong_excerpt);
+    let (true_status, true_message) = answer(&true_excerpt);
+
+    assert_eq!(
+        (absent_status, wrong_status, true_status),
+        (400, 400, 400),
+        "all three probes are refused identically: {absent:?} / {wrong_excerpt:?} / {true_excerpt:?}"
+    );
+    assert_eq!(
+        absent_message, wrong_message,
+        "a snapshot that does not exist and one the caller never cited must be \
+         the SAME answer — separating them confirms the identifier exists"
+    );
+    assert_eq!(
+        wrong_message, true_message,
+        "a wrong excerpt and a TRUE one must be the same answer — a 200 here \
+         says a chosen substring appears in bytes the caller never acquired"
+    );
+    assert!(
+        !absent_message.contains("does not exist")
+            && !absent_message.contains("excerpt")
+            && absent_message.contains("not cited"),
+        "the refusal names the caller's own missing citation and nothing about \
+         the snapshot: {absent_message}"
+    );
+
+    // Nothing was written. A refusal that recorded a row would leave the
+    // stranger's assertion in the store under a different name.
+    let stranger_rows: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM claim_assessments WHERE authored_by_tenant = $1")
+            .bind(stranger["tenant_id"].as_str().unwrap())
+            .fetch_one(&pool)
+            .await
+            .expect("count the stranger's rows");
+    assert_eq!(stranger_rows, 0, "the refused probes wrote nothing");
+
+    // ── The bound: this is a binding, not a blackout ─────────────────────────
+    //
+    // The owner, which cited the snapshot, still assesses it.
+    let (status, accepted) = probe(
+        owner_id.clone(),
+        snapshot_id.clone(),
+        "the reserve was drawn down",
+    )
+    .await;
+    assert_eq!(status, 200, "the citing tenant still assesses: {accepted}");
+    let owner_assessment = accepted["assessment_id"].as_str().unwrap().to_string();
+
+    // And the excerpt check still refuses the citing tenant by NAME, so the
+    // gate did not swallow the §12.7 validation it sits in front of.
+    let (status, fake) = probe(
+        owner_id.clone(),
+        snapshot_id.clone(),
+        "the reserve was REPLENISHED",
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "the citing tenant's fake excerpt refuses: {fake}"
+    );
+    assert!(
+        fake["message"].as_str().unwrap().contains("excerpt"),
+        "the citing tenant keeps the diagnosis: {fake}"
+    );
+
+    // ── The supported cross-team path ────────────────────────────────────────
+    //
+    // A second tenant that ACQUIRES the same bytes records its own citation on
+    // the replay (the book's "re-acquiring such a snapshot records the citation
+    // and restores the read"), and then assesses the shared row normally.
+    let replayed = acquire(stranger_id.clone()).await;
+    assert_eq!(
+        replayed, snapshot_id,
+        "the same locator and digest replay to ONE shared snapshot"
+    );
+    let (status, shared) = probe(
+        stranger_id.clone(),
+        snapshot_id.clone(),
+        "the reserve was drawn down",
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the second tenant assesses evidence it has now cited: {shared}"
+    );
+    assert_ne!(
+        shared["assessment_id"].as_str().unwrap(),
+        owner_assessment,
+        "two tenants asserting the same thing hold SEPARATE rows"
+    );
+
+    eprintln!(
+        "standalone assessment citation gate: an absent id, a wrong excerpt and a TRUE excerpt over a snapshot the caller never cited are now ONE answer ({absent_status} `{absent_message}`) and wrote 0 rows; the citing tenant still assesses (200) and still gets the excerpt diagnosis (400); a second tenant that acquires the shared bytes assesses them normally"
     );
 }
 

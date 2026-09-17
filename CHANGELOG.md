@@ -1,5 +1,28 @@
 # CHANGELOG.md
 
+## 2026-09-17 — The standalone assessment route is bound to the citing tenant (`SIGNOFF-REPAIR.11.14.3.8`)
+
+✅ **The leaf predicted a two-answer existence oracle. The control measured THREE answers, and the third is a content probe.**
+
+- 🔴 **REPRODUCE, RED first.** A second tenant holding an `snp_` id it had never cited, driven through `POST /v1/assessments`:
+
+```text
+(400, "the cited snapshot does not exist")
+(400, "the excerpt does not appear in the snapshot's bytes — the citation is refused")
+(200, {"assessment_id": "asn_01a0ae3c81f57622ab8ce416cc1f4099"})
+```
+
+  The first two separate *exists* from *does not exist*. ⭐ The third says a **chosen substring appears in bytes the caller was never allowed to read** — and it stored a row. `44 passed; 1 failed`.
+- **ROOT CAUSE.** `claims::submit` selects `snapshot_objects.bytes` joined to `evidence_snapshots` on `snapshot_id` alone. ⛔ It cannot carry a tenant predicate: `evidence_snapshots` has no tenant column BY DESIGN — one row serves every tenant that acquired the same bytes — so the binding has to be the separate `evidence_citations` question. `threads.rs`'s `assess` step asked it, with the comment *"without this, an assessment would be a way to learn that a snapshot exists"*. The route did not, and both call the same function.
+- **The census, in BOTH directions:** every surface naming a `snapshot_id` — the snapshot read, its delete, its derivations, its assessments, the staleness list, the `assess` step, and `POST /v1/assessments`. **Seven, six citation-bound, exactly one not.**
+- ⭐ **The compatibility objection was MEASURED, not accepted.** *"A principal legitimately assessing evidence another team acquired would start being refused"* is what made this a decision rather than a fix — and the census refutes it: every READ of that snapshot already answers a non-citing tenant `404`, so that workflow **cannot function today**. The excerpt check was running over bytes the caller can neither see, list nor delete. The gate removes no working path.
+- **DECIDED: the route takes the citation gate** (`docs/decisions/2026-09-17_the-standalone-assessment-is-citation-bound.md`, three alternatives rejected — a uniform refusal leaves the content probe, which is the stronger leg; leaving it loses to the six prior rulings of the same shape unless the difference is named; a tenant predicate in the select is impossible by construction).
+- **FIX: the gate is `claims::submit`'s, not the handler's**, because the store is what both writers reach and the finding located the defect in its SQL. New `AssessmentError::SnapshotNotCited`, checked **before anything about the snapshot is read**, with a message carrying no identifier and no fact about the snapshot — so an absent id and an uncited one are the same bytes. ⭐ The `assess` step keeps its own check: that one is the NAMED refusal, this one is the INVARIANT, and for the deliberation path it should never fire.
+- **ADDRESSED.** All three probes → `400`, one identical message, **0 rows written**. The citing tenant still assesses (`200`) and still receives the excerpt diagnosis by name. A second tenant that acquires the same bytes replays to the SAME `snapshot_id`, records its citation, assesses it and holds a **separate** row — the bound that makes this a binding rather than a blackout.
+- **NO REGRESSION.** One existing control changed and is corrected rather than relaxed: `the_two_assessment_writers_are_two_namespaces`'s stranger arm reached the excerpt check over a snapshot it had never cited, which **was** this gap. The stranger now acquires the bytes first, and every original assertion is intact. ⭐ The gate does not subsume `.11.14.3.3`: two tenants that both cite one shared row still both reach it, which is what keeps `authored_by_tenant` load-bearing.
+- ⚠️ **Open and stated:** two principals inside ONE tenant still alias on this route (`.7.4`); `SnapshotMissing` and `ExcerptAbsent` are deliberately kept distinguishable for a caller that HAS cited the snapshot, because the diagnosis is owed to a caller entitled to the bytes.
+- **Verification:** `RB_DEMO=0 bash scripts/run_pg_tests.sh profiles` → **45 passed / 0 failed** (RED baseline 44/1); `cargo clippy -p reasonbraid-server --all-targets --locked -- -D warnings` clean; `cargo fmt --all -- --check` clean.
+
 ## 2026-09-17 — The adapter ladder is ahead of its caller, and the ceiling permitted what nothing declares (`SIGNOFF-REPAIR.13.1.1`)
 
 ✅ **A security control measured crate-wide rather than at the two items already suspected — and the census found a third.**

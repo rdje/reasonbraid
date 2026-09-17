@@ -834,10 +834,53 @@ standalone route write-only, which is a worse outcome than removing it. What a
 reader gets instead is the ability to tell an assessment a deliberation's gates
 admitted from one asserted beside it.
 
-⚠️ One limit is published rather than implied. `POST /v1/assessments` applies
-**no citation gate**: it reports whether an excerpt appears in the bytes of any
-`snapshot_id` a caller names, while the `assess` step refuses a snapshot the
-tenant did not cite. Closing that is open under `SIGNOFF-REPAIR.11.14.3.8`.
+### Both writers assess evidence their tenant acquired
+
+⛔ **`POST /v1/assessments` used to apply no citation gate**, while the `assess`
+step refused a snapshot the tenant did not cite. Both writers call the same
+store function, and that function selected the snapshot's bytes on
+`snapshot_id` alone. Measured against the unrepaired route, a second tenant
+holding an `snp_` id it had never cited received three distinguishable answers:
+
+| The request | The answer, before `SIGNOFF-REPAIR.11.14.3.8` |
+| --- | --- |
+| an identifier that names nothing | `400` `the cited snapshot does not exist` |
+| a real snapshot, excerpt NOT in its bytes | `400` `the excerpt does not appear in the snapshot's bytes` |
+| a real snapshot, excerpt IS in its bytes | **`200`**, and the row was stored |
+
+The first two separate *exists* from *does not exist*. ⭐ The third is stronger:
+a `200` says a **chosen substring appears in bytes the caller was never allowed
+to read**.
+
+Both writers now ask the same question, in the store rather than at each route,
+so no future writer can be built around it:
+
+| Caller | Answer |
+| --- | --- |
+| a tenant that cited the snapshot | the §12.7 checks as before — the five kinds, the excerpt against the acquired bytes, the replay |
+| a tenant that did not | `400`, **one message**, naming neither the snapshot nor any fact about it: `the snapshot is not cited by this tenant — assess evidence this tenant acquired` |
+
+⚠️ **This is a change to a shipped route** — a caller that assessed evidence its
+tenant never cited used to receive `200`. The objection that it breaks a team
+legitimately assessing another team's evidence was *measured* rather than
+accepted: every read of that snapshot — [the five surfaces
+above](#who-may-read-an-evidence-snapshot) — already answers a non-citing tenant
+`404`, so that workflow could not function. The excerpt check was running over
+bytes the caller could not see, list or delete.
+
+The supported cross-team path is the one this chapter already describes:
+**re-acquiring the snapshot records the second citation on the replay**, and the
+second tenant then assesses the shared row normally, holding its own separate
+assessment. The rejected alternatives — a uniform refusal that leaves the
+content probe, and leaving the oracle published — are in
+`docs/decisions/2026-09-17_the-standalone-assessment-is-citation-bound.md`.
+
+⚠️ Two limits stay open and are stated rather than implied. A caller that HAS
+cited the snapshot still gets `the cited snapshot does not exist` and `the
+excerpt does not appear …` as separate answers, which is deliberate: the
+diagnosis is owed to a caller entitled to the bytes. And **two principals inside
+one tenant can still alias each other** on this route, which the citation gate
+does not touch — `SIGNOFF-REPAIR.7.4` owns making `author` trustworthy.
 
 Run the control in the owned disposable PostgreSQL environment:
 

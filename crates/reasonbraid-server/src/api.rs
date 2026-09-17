@@ -3730,9 +3730,10 @@ async fn mark_policy_review_done(
 
 // ── The claim-evidence graph (PHASE-4.6.3; backlog 35) ──────────────────────────────
 
-/// `POST /v1/assessments` — submit the assessment (any enrolled principal;
-/// the citation is VALIDATED: the excerpt must appear in the snapshot's
-/// raw bytes — citation existence alone never satisfies an evidence gate).
+/// `POST /v1/assessments` — submit the assessment (a tenant that CITED the
+/// snapshot; the citation is VALIDATED: the excerpt must appear in the
+/// snapshot's raw bytes — citation existence alone never satisfies an evidence
+/// gate).
 ///
 /// This is the NON-DELIBERATION path, and its rows are recorded in the
 /// `external` namespace (`SIGNOFF-REPAIR.11.14.3.3`): `claim_id` here is a
@@ -3740,6 +3741,12 @@ async fn mark_policy_review_done(
 /// membership-checks against a thread. The namespace is part of the row's
 /// identity, so a caller naming a real thread's claim digest writes its own
 /// row and reads its own id back instead of aliasing the deliberation's.
+///
+/// ⛔ The route used to admit any enrolled principal, which made it the one
+/// surface naming a `snapshot_id` that was not citation-bound
+/// (`SIGNOFF-REPAIR.11.14.3.8`). The gate is `claims::submit`'s, so it cannot
+/// be reached around; the compatibility break is recorded in
+/// `docs/decisions/2026-09-17_the-standalone-assessment-is-citation-bound.md`.
 async fn submit_assessment(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,

@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-17 — A compatibility objection is a claim, and claims get measured
+
+- A repair was held back by a stated cost: *"a principal legitimately assessing evidence another team acquired would start being refused."* It reads like a fact about users. It is a **claim about the product**, and it had never been checked against the product.
+- ⭐ **The check is one census.** If the workflow the objection protects is real, the caller must be able to *see* the thing it assesses. Every read of that snapshot — the row, its derivations, its assessments, the staleness list, the delete — already answered a non-citing tenant `404`. So the protected workflow could not run: the only thing the un-gated write bought was the ability to assert about bytes the caller cannot read, and to probe them one substring at a time.
+- **The rule:** *before paying for a compatibility break, enumerate what the "broken" caller can currently do OTHER than the thing you are removing. If the answer is nothing, the break is a correction, not a cost.*
+- ⚠️ **The mirror is the real risk and it is why the rule is written this way.** The same census could have gone the other way — if one read had been open, the objection would have been sound and the disposition would have had to change. The rule is not "objections are excuses"; it is that an objection stated in terms of the product is checkable against the product, and leaving it unchecked is what lets a leaf sit.
+- 🔎 **A second finding the reproduction produced, which prose had not.** The leaf described the oracle as two distinguishable refusals. Driving it found **three** answers, and the third — a `200` confirming a chosen substring appears in unread bytes — is a *content* probe rather than an *existence* one, and it also wrote a row. ⛔ That is a different severity class from the one the leaf was filed under. **A defect's class is a measurement, not an inheritance from the leaf that opened it.**
+- **Promoted:** `docs/knowledge/a-compatibility-objection-is-a-claim.md`.
+- **Where the gate went, and why it is not the obvious place.** The handler is where the caller arrives; the STORE is where both writers meet. The finding named the store's own SQL ("selects on `snapshot_id` alone, no tenant predicate"), so the gate belongs there — a third writer added later inherits it rather than the hole. The existing check at the deliberation step is kept as the **named** refusal, with the store's as the invariant that should never fire: the same two-layer shape the profile writer uses, where a `UNIQUE` constraint stands behind a lock that is supposed to make it unreachable.
+
 ## 2026-09-17 — `dead_code` proves public reachability, not that anything runs
 
 - A five-rung adapter-verification ladder is implemented, tested and `pub`. The compiler is silent about it. It has **no production caller**: six call sites, all inside its own file's `#[cfg(test)]` module, plus one `pub use` in `lib.rs`.

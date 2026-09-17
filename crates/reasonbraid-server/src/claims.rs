@@ -3,6 +3,12 @@
 //! the citation is VALIDATED — the excerpt must actually appear in the
 //! snapshot's raw bytes (the claim must point at a REAL snapshot; citation
 //! existence alone never satisfies an evidence gate).
+//!
+//! The evidence a tenant may assess is the evidence it ACQUIRED
+//! (`SIGNOFF-REPAIR.11.14.3.8`): [`submit`] refuses a snapshot this tenant's
+//! `evidence_citations` row does not cover, before it reads anything about that
+//! snapshot, so the write surface answers the same question the five read
+//! surfaces answer.
 
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -104,6 +110,10 @@ pub struct StoredAssessment {
 #[non_exhaustive]
 pub enum AssessmentError {
     UnknownKind(String),
+    /// The authoring tenant has no citation for the snapshot, so nothing about
+    /// that snapshot — its existence included — may be reported to it
+    /// (`SIGNOFF-REPAIR.11.14.3.8`).
+    SnapshotNotCited,
     SnapshotMissing,
     ExcerptAbsent,
     /// The store itself failed. A database fault does not prove anything
@@ -118,6 +128,14 @@ impl std::fmt::Display for AssessmentError {
             Self::UnknownKind(kind) => {
                 write!(f, "the assessment `{kind}` is outside the §12.7 vocabulary")
             }
+            // ⛔ Deliberately carries NO identifier and no fact about the
+            // snapshot. An identifier that names nothing and one that names a
+            // snapshot this tenant never cited must be the SAME bytes, or the
+            // refusal is the existence oracle this gate closes.
+            Self::SnapshotNotCited => write!(
+                f,
+                "the snapshot is not cited by this tenant — assess evidence this tenant acquired"
+            ),
             Self::SnapshotMissing => write!(f, "the cited snapshot does not exist"),
             Self::ExcerptAbsent => write!(
                 f,
@@ -129,9 +147,17 @@ impl std::fmt::Display for AssessmentError {
 
 impl std::error::Error for AssessmentError {}
 
-/// Submit an assessment: the kind must be one of the five; the citation is
-/// VALIDATED — the excerpt must appear in the snapshot's raw bytes. The
-/// same claim + snapshot + kind + author IN THE SAME NAMESPACE is the REPLAY.
+/// Submit an assessment: the tenant must have CITED the snapshot; the kind must
+/// be one of the five; the citation is VALIDATED — the excerpt must appear in
+/// the snapshot's raw bytes. The same claim + snapshot + kind + author IN THE
+/// SAME NAMESPACE is the REPLAY.
+///
+/// ⛔ The citation gate is this function's (`SIGNOFF-REPAIR.11.14.3.8`), because
+/// this function is what both writers reach. Without it the standalone route
+/// answered three distinguishable things about a snapshot the caller never
+/// acquired — `SnapshotMissing`, `ExcerptAbsent`, or a 200 saying a chosen
+/// substring appears in bytes it was never allowed to read — while every one of
+/// the five snapshot READ surfaces already answered such a caller `404`.
 ///
 /// The AUTHORING tenant is recorded by the server and is what the read
 /// surfaces are bound to (`SIGNOFF-REPAIR.11.14.2`). ⛔ It is not
@@ -170,6 +196,23 @@ where
 {
     if !ASSESSMENT_KINDS.contains(&submission.assessment.as_str()) {
         return Err(AssessmentError::UnknownKind(submission.assessment.clone()));
+    }
+    // ⛔ The citation gate, BEFORE anything is read about the snapshot
+    // (`SIGNOFF-REPAIR.11.14.3.8`). The select below joins on `snapshot_id`
+    // alone — it has no tenant predicate and cannot have one, because a
+    // snapshot row is shared by every tenant that acquired the same bytes —
+    // so the binding has to be this separate question, asked first.
+    //
+    // It lives in the STORE rather than at each writer because the store is
+    // what both writers reach: the `assess` step asks the same question
+    // itself, one gate earlier, so that a deliberation's refusal can name the
+    // step and the snapshot. That check is the named refusal; this one is the
+    // invariant, and for the deliberation path it should never fire.
+    if !crate::snapshots::is_cited_by(&mut *executor, &submission.snapshot_id, authored_by_tenant)
+        .await
+        .map_err(AssessmentError::Storage)?
+    {
+        return Err(AssessmentError::SnapshotNotCited);
     }
     let bytes: Option<Vec<u8>> = sqlx::query_scalar(
         "SELECT o.bytes FROM snapshot_objects o \

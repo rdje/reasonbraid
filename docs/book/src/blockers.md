@@ -65,8 +65,39 @@ public deliberately.
 
 | # | Item | Status |
 | --- | --- | --- |
-| **C1** | **Remote CI has never run.** Every gate result recorded anywhere in this project — including the one full checkpoint pass — is a **local** qualification. The project's own doctrine names the *remote* run as the authoritative pre-push gate | The push cadence is roughly 300 commits and the branch is inside it, so this is not a schedule failure. It is a limit on what may be claimed |
+| **C1** | **The remote gate is green, and 167 commits sit beyond it.** All three workflows last ran **successfully** at `c17841c`, which is exactly `origin/main`. 🔴 This row previously read *"remote CI has never run"* and that was **false** — see below | The push cadence is roughly 300 commits and the branch is inside it, so this is not a schedule failure. What may not be claimed is that the *current* head has been remotely gated |
 | **C2** | **Gate records counted their shipped lines before the full source review.** Five records exist and four count lines as shipped. The first has now been re-derived: of G6–G7's seven, **three must be re-earned, two are narrowed, two stand** | The records are not dishonest — each claims the evidence its suites then carried. What was never measured is those suites' **coverage**. Four records remain to re-derive |
+
+## C1 was wrong, and how it was wrong is the useful part
+
+Until 2026-09-17 this page stated that **remote CI had never run**. Measured
+against the remote rather than against this project's own documents:
+
+| Measurement | Value |
+| --- | --- |
+| Workflow runs, total | **41** |
+| Conclusions | **29 success, 12 failure** |
+| Latest `doctrines` / `rust` / `supply-chain` | **success**, all at `c17841c` |
+| `origin/main` | **`c17841c`** — the last commit CI observed *is* the remote head |
+
+So the remote gate is **green**, and the honest limit is narrower: 167 local
+commits sit beyond the last remotely-gated commit, which the ~300-commit cadence
+explicitly permits.
+
+⭐ **The row was written from `COMMIT.md`'s cadence note rather than from the
+remote — and that same page contradicted it four lines further down**, where its
+provenance reads *"director instruction 2026-09-11, during the first remote-CI
+repair sequence."* The twelve measured failures are largely that sequence: the
+`rust` workflow failed across six consecutive pushes and then went green, which is
+exactly the one-repair-per-push pattern `COMMIT.md` describes as its own standing
+exception.
+
+⛔ **Pushing early is still not the fix.** That exception applies *while a remote
+gate is red*. It is green, so the cadence governs — the same conclusion the
+register reached before, now resting on a true premise instead of a false one.
+
+Full measurement and the corrected downstream reasoning:
+`docs/decisions/2026-09-17_remote-ci-has-run-and-is-green.md`.
 
 ## What C2 means for the Internet gate
 

@@ -47,6 +47,21 @@ environment refuses, so the restore never ran and the file was left injected.
 > **`git checkout -- <path>` is the restore that needs no backup.** It cannot
 > half-succeed, and its result is checkable with one `git status`.
 
+🔴 **CORRECTED 2026-09-18, by the failure it caused.** That rule is right about
+what it claims and silent about what it costs: `git checkout --` restores the file
+to **HEAD**, so it discards every *other* uncommitted change in that file too. In
+the instance that corrected it, a gate falsification injected one defect into
+`LIVE_STATUS.md`, and the restore took three unrelated, uncommitted repairs in the
+same file with it. Nothing failed and nothing warned — the file simply went back
+further than intended.
+
+> **Inject into a file you have nothing uncommitted in — or stash rather than
+> checkout.** `git stash push -- <paths>` / `git stash pop` round-trips the whole
+> working state, which is what you actually want back. And the check is the same
+> one this note is about, aimed at the restore instead of the injection: after
+> restoring, `git diff --stat` must show what you expect to *still* be there, not
+> just the absence of the injection.
+
 ## The same shape, one layer in and one layer out
 
 This is a family, and recognising it is worth more than any one rule:

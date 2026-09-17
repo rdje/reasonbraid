@@ -245,7 +245,7 @@ former site naming the leaf that retired it.
 A case-insensitive authority-table/epoch reference scan covered all tracked
 non-Markdown files, not just the 101 Rust sources. Its literal-name mutation scan
 (excluding tests for the production summary) found api.rs:821 tenant bootstrap
-and authority.rs:170,242,737,812,845,885 boundary/grant/audit/epoch/revocation writes.
+and crates/reasonbraid-server/src/authority.rs:170,242,737,812,845,885 boundary/grant/audit/epoch/revocation writes.
 Node journal writes its local cache separately. The MCP source's table-name
 inventory is in its cfg(test) fixture, not a hidden production authority writer.
 Migrations 0004, 0013 and 0055 define the original authority/epoch/provenance schema;

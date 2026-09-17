@@ -53,7 +53,7 @@ unimplemented.
 
 The product already encodes §13.2's steps, and ships profiles that use them.
 
-`workflows.rs:17` — `STEP_KINDS` carries thirteen steps including
+`crates/reasonbraid-server/src/workflows.rs:17` — `STEP_KINDS` carries thirteen steps including
 `evidence_request` **and** `assess`. `migrations/0032_workflow_profiles.sql`
 seeds eight built-in profiles, and **two of them declare `assess`**:
 

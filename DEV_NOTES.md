@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — A restore can go back further than you injected
+
+- A gate falsification injected one defect into `LIVE_STATUS.md`, confirmed the gate fired, then ran `git checkout -- LIVE_STATUS.md`. That restored the file to **HEAD** — taking three unrelated, uncommitted repairs in the same file with it. ⛔ Nothing failed and nothing warned.
+- ⚠️ **The rule I promoted the day before said `git checkout --` "cannot half-succeed", and that is true and incomplete.** It is right about the restore and silent about its BLAST RADIUS: the unit is the whole file at HEAD, not the injection.
+- ⭐ **Two fixes, and the second is the general one.** Inject into a file you have nothing uncommitted in, or use `git stash push -- <paths>` / `git stash pop`, which round-trips the working state rather than discarding it. And check the restore the same way the injection is checked: `git diff --stat` must show what should STILL be there, not merely the absence of the defect.
+- 🔎 **It was caught by the restored run's own output**, which still listed three breaches — an instrument that names its findings rather than counting them, one more time.
+- **Corrected in place:** `docs/knowledge/an-injection-must-be-shown-to-land.md`.
+
 ## 2026-09-17 — Which way a scoping bug fails is a measurement, not a symmetry
 
 - A parser computed section boundaries wrongly. The leaf reporting it assumed the dangerous case was the silent one — a claim discharging against evidence that is not its own. ⭐ **One sentence settles it instead:** the wrong scope was a strict SUBSET of the right one, and a subset can only withhold a discharge, never invent one. False positives only.

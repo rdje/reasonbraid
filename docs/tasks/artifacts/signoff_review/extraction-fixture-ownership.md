@@ -9,7 +9,7 @@ Owner: `SIGNOFF-REPAIR.11.4.3.1.2.12`; REPAIR-0057. Predecessor:
 
 The workspace command returns 101 after 669.997550 seconds. The extractor unit
 suite passes five and fails two: the text PDF returns zero chunks instead of one
-(main.rs:598), and the JavaScript-bearing PDF returns success instead of its named
+(crates/reasonbraid-extract/src/main.rs:598), and the JavaScript-bearing PDF returns success instead of its named
 refusal (line 646). This is not a zero-character observation. Twenty-three result
 blocks complete, with 177 nominal passes, two failures, one ignore and five
 DATABASE_URL early returns; PostgreSQL and demo commands never start. Eight other

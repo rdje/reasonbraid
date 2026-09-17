@@ -21,7 +21,7 @@ references**, asserted by a live control.
 grep -rn "quota::check_in_tx" crates/ --include=*.rs   # -> 2
 ```
 
-`threads.rs:1201` (`OP_INVITE`, tenant scope) and `mcp_write.rs:104` (the MCP
+`threads.rs:1201` (`OP_INVITE`, tenant scope) and `crates/reasonbraid-server/src/mcp_write.rs:104` (the MCP
 write gate, principal scope). The machinery reaches **two** verbs across **two**
 of its four scope kinds, not one verb.
 

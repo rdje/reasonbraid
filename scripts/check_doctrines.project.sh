@@ -180,4 +180,21 @@ if ! python3 -B scripts/check_fixture_plan_children.py >/dev/null 2>&1; then
     exit 1
 fi
 
+# A positional source reference must name a file a reader can find
+# (`SIGNOFF-REPAIR.11.17`). `CLAIM_VERIFICATION.md` §4.1 grades a NAMED INSTANCE
+# as exact with no tolerance band, and a BARE BASENAME is exact only when it
+# names one tracked file: `profiles.rs:5696` names a 606-line source and an
+# 11,154-line suite, and the prose does not say which. ⭐ `DOCPATH` already wants
+# repo-root-relative references and does not reach this — a bare basename
+# satisfies it while naming nothing, which is `BOOK-LINKS`' founding shape.
+# Calibrated across 200 commits before it was proposed (`.11.6`): of 415
+# positional references ADDED, 48 were ambiguous (11.6%) and the gate would have
+# blocked 19 commits (9.5%) — far below the 87% and 93% that got `.11.9`'s and
+# `.11.15`'s candidate gates rejected for teaching bypass. The standing
+# population was discharged to 0 first, so it fires only on the next one.
+if ! python3 -B scripts/census_positional_refs.py --check >/dev/null 2>&1; then
+    python3 -B scripts/census_positional_refs.py --check >&2
+    exit 1
+fi
+
 exit 0

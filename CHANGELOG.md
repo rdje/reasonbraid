@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-18 — A positional reference is exact only if a reader can resolve it (`SIGNOFF-REPAIR.11.17`)
+
+🔴 **29 published source citations named two files each, and `DOCPATH` could not see any of them.**
+
+- **The defect.** `docs/CLAIM_VERIFICATION.md` §4.1 grades a NAMED INSTANCE as exact with no tolerance band. A bare `profiles.rs` with a five-digit line names a 606-line source AND an 11,154-line suite, and the prose does not say which. ⭐ `DOCPATH` already wants repo-root-relative references — a bare basename SATISFIES it while naming nothing, which is `BOOK-LINKS`' founding shape exactly.
+- ✅ **Leg 3 closed first:** `scripts/census_positional_refs.py` is the tracked producer (`--check`, `--json`, `--self-test`, 9 controls) and the ad-hoc pipeline is retired. **494 → 499 occurrences, 321 distinct, pathed 250, unique 240, ambiguous 0, unresolved 9.**
+- ⭐ **The leaf's 29 reconciled EXACTLY once the unit was named:** 29 DISTINCT references, 47 OCCURRENCES. Recorded rather than quietly reconciled — a number that moves between two honest measurements is what leg 1 exists to catch, and the answer was a definition, not a defect.
+- ⭐ **DECIDED: a positional reference carries a repo-root-relative PATH, and the gate ships — calibrated across 200 commits BEFORE it was proposed** (`.11.6`, which this leaf owed): of **415** references added, **48 were ambiguous (11.6%)**, blocking **19 commits (9.5%)**. Against **87%** (`.11.9`) and **93%** (`.11.15`), both rejected for teaching bypass.
+- ✅ **All 47 discharged, population 0** — 17 by line count alone, 30 by reading the prose and CONFIRMING against the file. Several confirmations were exact: `crates/reasonbraid-server/src/policy.rs:151` is literally `fn is_semver(...)`.
+- ⛔ **It gates AMBIGUITY, not DRIFT, and the discharge proved the distinction:** five references had already drifted and were confirmed by grepping the SYMBOL the prose names. Which FILE is fixable and stays fixed; which LINE moves with every insertion above it. The line numbers were not silently rewritten — they were exact when written.
+- 🔴 **The gate flagged its own registry row, then its own leaf prose.** Fixed by RE-WORDING both times rather than by an exclusion, so the doctrine polices its own description — the `STORAGE-LOCALITY` founding incident, twice.
+- 🔴 **And the falsification destroyed three of my own discharges.** The injection went into `LIVE_STATUS.md`; `git checkout --` then restored it to HEAD, taking three unrelated uncommitted repairs with it. Nothing failed and nothing warned. **`docs/knowledge/an-injection-must-be-shown-to-land.md` recommended that restore and is CORRECTED by the failure it caused**: stash rather than checkout, and check the restore for what should STILL be there.
+- Routed: **9 references name no tracked file at all** — 8 `init.rs`, plus the registry row's own illustrative placeholder. 🔎 That placeholder is the finding: a gate on this class would have to tell an EXAMPLE from a CITATION, which the ambiguity gate never has to do. `.11.17.1`.
+
 ## 2026-09-17 — The section scanner did not know what Markdown is (`SIGNOFF-REPAIR.11.18`)
 
 🔴 **A doctrine gate's parser called every `#` line a heading, including shell comments inside the fenced censuses it exists to require — and the leaf's own claim about which way that failed was wrong.**

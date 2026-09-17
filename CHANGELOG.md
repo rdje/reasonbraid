@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-18 — A table SWALLOWS the block that abuts it (`SIGNOFF-REPAIR.11.19.2`)
+
+🔴 **`PHASE-3`'s eleven-line closing statement was rendering as eleven table rows, under a table header that had no rows of its own — and the gate that now catches it would have blocked every one of the nineteen commits in this project's history that introduced a table defect.**
+
+- **The defect, and it is the MIRROR of the previous entry.** That one was a blank line where none belonged, SPLITTING a table. This is no blank line where one belongs, so the following block is ABSORBED: a GFM table body continues across any non-blank line, and each line becomes a row padded to the header's width. The renderer put *"**Tree complete.** Phase 3 is CLOSED…"* inside `<td>`.
+- ⭐ **The repair is the corpus's own convention, not a judgement.** The table was a header and a delimiter with **no data rows at all**; `docs/tasks/PHASE-1.md` and `docs/tasks/PHASE-2.md` already close the same way — `## Current Frontier` then prose, no table. So the rowless pair is removed rather than a blank line inserted, which would have left a stray empty table no other tree has.
+- ✅ **Verified by the RENDERER:** data rows **59 → 48** (−11, exactly the absorbed lines), tables **3 → 2**, and the paragraph moves from `<td>` to `<p>`.
+- ⭐ **CALIBRATED OVER THE FULL HISTORY, AND THE WINDOW IS WHY.** Over the last 200 commits the rule blocks **1 (0.5%)** — but the `PHASE-3` instance is older than that, so the usual window cannot see the arm being added at all. Over all **551** commits it would have blocked **19 (3.4%)** — and every one of the nineteen introduced a defect this work has since repaired. ⛔ Not "3.4% looks acceptable": **the blocked set and the defect set are the same set.**
+- ⛔ **The population was over-counted by a third on the first pass.** Keyed on "any non-blank body line not starting with a pipe" it reports **15**; four of those are a bullet list, and a list item ENDS a table. The answer is **11**. ⭐ Which constructs terminate a table without a blank line is NOT uniform and cannot be read off a specification — a list item, heading, blockquote and HTML block do; plain prose and indented continuation do not. Each was rendered separately; each is an arm.
+- ⭐ **`BROKEN-TABLE` gains it as a SECOND ARM rather than a second doctrine** — both halves are the same subject, where the author put the table's boundary, measured over the same corpus by the same instrument. **23 arms, ten of them negatives.** Falsified against the real historical defect rather than a fixture.
+- ⚠️ **What this does not do:** `TABLE-ARITY-RATCHET` still cannot see an absorbed line — one cell in a four-column table, and GFM PADS a short row, the silent direction that gate already declares. Not repaired, and it need not be: the cause is now caught, so widening the arity gate would be a second instrument reporting the same defect.
+
 ## 2026-09-18 — Twelve verification-log rows had lost their first two cells (`SIGNOFF-REPAIR.11.19.1`)
 
 🔴 **An insert-at-top edit re-emitted the row it displaced without its date and leaf id — twelve times, over twelve commits — and asking the renderer why found two defects in the gate shipped one commit earlier.**

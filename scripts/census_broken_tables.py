@@ -236,6 +236,48 @@ def scan(text: str, path: str = "<text>") -> list[dict]:
     return out
 
 
+def absorbed(text: str, path: str = "<text>") -> list[dict]:
+    """Every line a table SWALLOWS: prose abutting a table with no blank line.
+
+    The MIRROR of `scan`. That one finds a blank line where none belongs, which
+    SPLITS a table; this finds no blank line where one belongs, so the following
+    block is absorbed and every line of it becomes a row padded to the header's
+    width (`SIGNOFF-REPAIR.11.19.2`).
+
+    ⛔ Which constructs end a table without a blank line is NOT uniform and was
+    established against the renderer, not read off a specification — see
+    `ENDS_TABLE`. Getting it wrong here over-counts: a bullet list abutting a
+    table is fine, and reading it as absorbed inflated this population from 11
+    to 15 on the first pass.
+    """
+    lines = text.splitlines()
+    fence: str | None = None
+    out: list[dict] = []
+    in_table = False
+    for i, raw in enumerate(lines):
+        stripped, indent = _dedent(raw)
+        m = FENCE.match(stripped)
+        if m and indent < 4:
+            fence = None if (fence and stripped.startswith(fence)) else (fence or m.group(1))
+            in_table = False
+            continue
+        if fence is not None:
+            continue
+        if indent >= 4:
+            in_table = False
+            continue
+        if not in_table:
+            if i > 0 and _starts_table(lines, i - 1):
+                in_table = True
+            continue
+        if stripped == "" or ENDS_TABLE.match(stripped):
+            in_table = False
+            continue
+        if not stripped.startswith("|"):
+            out.append({"file": path, "line": i + 1, "text": stripped[:90]})
+    return out
+
+
 def tracked_markdown() -> list[str]:
     return subprocess.run(
         ["git", "ls-files", "*.md"], capture_output=True, text=True, cwd=ROOT
@@ -255,16 +297,24 @@ def census() -> dict:
             }
             blanks += len(hits)
             rows += per_file[f]["orphaned_rows"]
+    swallowed: dict[str, list[dict]] = {}
+    for f in tracked_markdown():
+        hits = absorbed((ROOT / f).read_text(encoding="utf-8"), f)
+        if hits:
+            swallowed[f] = hits
     return {
         "files_scanned": len(tracked_markdown()),
         "files_affected": len(per_file),
         "blank_lines_in_a_table": blanks,
         "rows_rendered_as_literal_text": rows,
         "by_file": per_file,
+        "absorbed_lines": sum(len(v) for v in swallowed.values()),
+        "absorbed_by_file": {k: len(v) for k, v in swallowed.items()},
+        "absorbed_detail": swallowed,
     }
 
 
-def calibrate(depth: int) -> dict:
+def calibrate(depth: int, absorbed_too: bool = False) -> dict:
     """What the gate would have fired on, commit by commit.
 
     `SIGNOFF-REPAIR.11.6`'s standing requirement: measure a rule against its
@@ -284,7 +334,10 @@ def calibrate(depth: int) -> dict:
         if blob.returncode != 0:
             return 0                      # the file does not exist at that commit
         try:
-            return len(scan(blob.stdout, f))
+            n = len(scan(blob.stdout, f))
+            if absorbed_too:
+                n += len(absorbed(blob.stdout, f))
+            return n
         except ValueError:
             return 0                      # an unbalanced fence at that commit
 
@@ -469,7 +522,44 @@ def self_test() -> int:
         0,
     )
 
-    # ── arm 18: the real corpus is reachable ─────────────────────────────────
+    # ── arms 18–22: the MIRROR — a block a table SWALLOWS ───────────────────
+    def a(text):
+        return len(absorbed(text))
+
+    # 18 — prose abutting a table is absorbed, one row per LINE.
+    check(
+        "prose abutting a table is swallowed",
+        a("| A | B |\n| --- | --- |\n| 1 | 2 |\nTree complete. It is closed\nand wrapped.\n"),
+        2,
+    )
+    # 19 — THE NEGATIVE: a blank line is exactly what makes it prose again.
+    check(
+        "a blank line before the block is the fix",
+        a("| A | B |\n| --- | --- |\n| 1 | 2 |\n\nTree complete.\n"),
+        0,
+    )
+    # 20 — a list item abutting is NOT absorbed. ⛔ Reading it as absorbed
+    #      inflated this population from 11 to 15 on the first pass.
+    check(
+        "a list abutting a table is not swallowed",
+        a("| A | B |\n| --- | --- |\n| 1 | 2 |\n- an item\n- another\n"),
+        0,
+    )
+    # 21 — nor a heading.
+    check(
+        "a heading abutting a table is not swallowed",
+        a("| A | B |\n| --- | --- |\n| 1 | 2 |\n## Changelog\n"),
+        0,
+    )
+    # 22 — and a rowless table swallows the block that follows it, which is the
+    #      corpus instance: a header and delimiter with no rows under them.
+    check(
+        "a ROWLESS table still swallows what abuts it",
+        a("| A | B |\n| --- | --- |\nTree complete.\n"),
+        1,
+    )
+
+    # ── arm 23: the real corpus is reachable ─────────────────────────────────
     real = census()
     if real["files_scanned"] < 50:
         print(
@@ -482,10 +572,10 @@ def self_test() -> int:
     if fails:
         return 1
     print(
-        "BROKEN-TABLE self-test: 18 arms — the defect in four positions, SEVEN negatives"
-        " (a blank that ends a table, EOF, a fence, two adjacent tables, a list, a"
-        " heading, a blockquote), the renderer's answers about what a table, a body row"
-        " and a terminator are, an escaped pipe, an unbalanced fence refused, and"
+        "BROKEN-TABLE self-test: 23 arms — BOTH directions of the table boundary"
+        " (a blank line where none belongs, and none where one belongs), TEN negatives,"
+        " the renderer's answers about what a table, a body row and a terminator are,"
+        " an escaped pipe, an unbalanced fence refused, and"
         f" {real['files_scanned']} tracked files reachable"
     )
     return 0
@@ -515,36 +605,57 @@ def main(argv: list[str]) -> int:
         return 0
 
     if "--check" in argv:
-        if not c["by_file"]:
+        if not c["by_file"] and not c["absorbed_detail"]:
             print(
-                f"BROKEN-TABLE: OK — no blank line inside a table body"
-                f" ({c['files_scanned']} tracked .md scanned)"
+                f"BROKEN-TABLE: OK — {c['files_scanned']} tracked .md scanned, no blank"
+                " line inside a table body and no block absorbed by one"
             )
             return 0
-        print(
-            "BROKEN-TABLE: a blank line ENDS a Markdown table — every row after it"
-            " renders as literal text, not as a row.",
-            file=sys.stderr,
-        )
-        for f, d in c["by_file"].items():
-            for h in d["detail"]:
+        if c["by_file"]:
+            print(
+                "BROKEN-TABLE: a blank line ENDS a Markdown table — every row after it"
+                " renders as literal text, not as a row.",
+                file=sys.stderr,
+            )
+            for f, d in c["by_file"].items():
+                for h in d["detail"]:
+                    print(
+                        f"    {f}:{h['blank_line']} blank line ends the table;"
+                        f" {h['orphaned_rows']} row(s) from line {h['first_orphan']}"
+                        " render as a paragraph",
+                        file=sys.stderr,
+                    )
+            print(
+                "  Delete the blank line, or — if two distinct tables were intended —"
+                " give the second one its own header and delimiter row.",
+                file=sys.stderr,
+            )
+        if c["absorbed_detail"]:
+            print(
+                "BROKEN-TABLE: a block ABUTS a table with no blank line, so the table"
+                " SWALLOWS it — each line renders as a row padded to the header's width.",
+                file=sys.stderr,
+            )
+            for f, hits in c["absorbed_detail"].items():
                 print(
-                    f"    {f}:{h['blank_line']} blank line ends the table;"
-                    f" {h['orphaned_rows']} row(s) from line {h['first_orphan']}"
-                    " render as a paragraph",
+                    f"    {f}:{hits[0]['line']} and {len(hits) - 1} further line(s):"
+                    f" {hits[0]['text']}",
                     file=sys.stderr,
                 )
-        print(
-            "  Delete the blank line, or — if two distinct tables were intended —"
-            " give the second one its own header and delimiter row.",
-            file=sys.stderr,
-        )
+            print(
+                "  Put a blank line between the table and the block — or, if the table"
+                " has no rows at all, remove its header and delimiter pair.",
+                file=sys.stderr,
+            )
         return 1
 
     print(f"tracked .md scanned              : {c['files_scanned']}")
     print(f"files with a blank inside a table: {c['files_affected']}")
     print(f"blank lines inside a table body  : {c['blank_lines_in_a_table']}")
     print(f"ROWS rendered as literal text    : {c['rows_rendered_as_literal_text']}")
+    print(f"lines a table SWALLOWS (no blank) : {c['absorbed_lines']}")
+    for f, n in c["absorbed_by_file"].items():
+        print(f"  {f}: {n} absorbed line(s)")
     for f, d in c["by_file"].items():
         print(f"  {f}")
         for h in d["detail"]:

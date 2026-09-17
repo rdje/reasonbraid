@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — Calibrate over the history that CONTAINS the instance, not a fixed window
+
+- The project's habit is to price a candidate gate across the last 200 commits. ⭐ That habit has a blind spot worth naming: **if the defect the rule is for is older than the window, the window reports the rule catching nothing** — 1 commit blocked, entirely from a different arm — and the calibration looks like evidence the arm is unnecessary.
+- Re-run over all **551** commits, the same rule blocks **19 (3.4%)**, and every one of the nineteen introduced a real defect. The window was not wrong; it was answering a narrower question than the one asked.
+- ⛔ **The number to report is not the percentage, it is the overlap.** "3.4% of commits" invites an argument about whether 3.4 is acceptable. "The blocked set and the defect set are the same set" ends it. A rule with zero false positives over a whole history is a different object from a rule that merely fires rarely.
+- ⚠️ The cost is real and should be stated rather than hidden: the full sweep took 73 s against 45 s for the window, because it re-scans every commit's changed Markdown. That is a per-proposal cost paid once, not a per-commit one.
+- 🔎 The rule of thumb: **window for a rule about how people write TODAY; full history for a rule about a defect you found in something old.** The `PHASE-3` instance was from the project's third phase; no window short enough to be cheap would have contained it.
+
 ## 2026-09-18 — A key too loose fails the opposite way to a key too narrow
 
 - A probe located "the damaged row" with `str.find(phrase)`. The phrase occurred **7 times** in the file and `find` returned the first — ordinary prose **1,889 lines** away from the row it was meant to locate. The conclusion drawn from it ("one row renders outside the table entirely") was published in five documents before it was checked.

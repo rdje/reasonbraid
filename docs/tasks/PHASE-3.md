@@ -749,8 +749,6 @@ eligibility before ranking. Dependence indicators, never an independence score.
 
 ## Current Frontier
 
-| Order | Leaf | Status | Why next |
-| --- | --- | --- | --- |
 **Tree complete.** Phase 3 is CLOSED — the directory profile lane
 (ADR-014, the typed + content-addressed profiles, the per-reader
 visibility), the presence lane (the six-state derivation, the

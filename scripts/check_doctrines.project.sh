@@ -205,11 +205,16 @@ fi
 # police. ⛔ `TABLE-ARITY-RATCHET` governs these same files and cannot see it:
 # it compares a row's cell count against its header's, and an ORPHANED ROW HAS
 # NO HEADER to disagree with — `BOOK-LINKS`' founding shape a third time.
-# Calibrated across 200 commits before it was proposed (`.11.6`): it would have
-# blocked exactly 1 commit (0.5%), and that commit is the one that INTRODUCED
-# the defect. Zero false positives over the window; the standing population of
-# 5 blanks / 52 rows across 3 files was discharged to 0 first, so it ships
-# green and fires only on the next one.
+# BOTH DIRECTIONS of that boundary are gated (`.11.19.2`): a blank line where
+# none belongs SPLITS a table, and no blank line where one belongs means the
+# table SWALLOWS the block after it — `PHASE-3`'s eleven-line closing paragraph
+# was rendering as eleven padded table rows.
+# Calibrated over the FULL history before the second arm was proposed (`.11.6`):
+# 19 of 551 commits (3.4%) would have been blocked, and every one of the 19
+# introduced a defect this work has since repaired — zero false positives across
+# the project's whole life. Over the last 200 commits it is 1 (0.5%). The
+# standing population was discharged to 0 first, so it ships green and fires
+# only on the next one.
 if ! python3 -B scripts/census_broken_tables.py --check >/dev/null 2>&1; then
     python3 -B scripts/census_broken_tables.py --check >&2
     exit 1

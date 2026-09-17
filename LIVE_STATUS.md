@@ -5,6 +5,17 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **A TABLE SWALLOWS THE BLOCK THAT ABUTS IT (`.11.19.2`, REPAIR-0240).**
+
+🔴 **`PHASE-3`'s eleven-line closing statement rendered as eleven table rows, under a header that had no rows of its own.**
+
+- **The defect — the MIRROR of `.11.19`.** A GFM table body continues across any non-blank line, so a block abutting a table with no blank line is ABSORBED, one row per line, each padded to the header's width.
+- ⭐ **The repair is the corpus's own convention:** the table had no data rows at all, and `PHASE-1` and `PHASE-2` already close with prose and no table. The rowless header/delimiter pair is removed rather than a blank line inserted.
+- ✅ **Verified by the RENDERER:** data rows **59 → 48** (−11 exactly), tables **3 → 2**, the paragraph now a `<p>`.
+- ⭐ **Calibrated over the FULL 551-commit history, because the 200-commit window could not see the arm at all** (the instance is older): **19 blocked (3.4%), and all 19 introduced a defect this work has repaired.** ⛔ The blocked set and the defect set are the SAME set.
+- ⛔ **The first key over-counted by a third** — 15 against 11 — because it read a bullet list as absorbed. A list, heading, blockquote and HTML block END a table; plain prose does not. Not uniform, not in any specification, established one construct at a time against the renderer.
+- ⭐ `BROKEN-TABLE` now gates BOTH directions of the boundary: **23 arms, ten of them negatives.**
+
 ✅ **TWELVE VERIFICATION-LOG ROWS HAD LOST THEIR FIRST TWO CELLS (`.11.19.1`, REPAIR-0239).**
 
 🔴 **An insert-at-top edit re-emitted the row it displaced without its date and leaf id — twelve times, over twelve commits.**

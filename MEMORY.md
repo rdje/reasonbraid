@@ -9,7 +9,7 @@
 
 ## Current state (OVERWRITE this block each update — do not append)
 
-- latest_commit: `REPAIR-0219` — "REASONBRAID-REPAIR-0219 (leaf SIGNOFF-REPAIR.11.14.3.3): a replay key is an addressing scheme" (ahead of origin: 167; push at ~300). Preceded by `665c8f4` DOC-0038, the twentieth changelog rotation.
+- latest_commit: `REPAIR-0219` — "REASONBRAID-REPAIR-0219 (leaf SIGNOFF-REPAIR.11.14.3.3): a replay key is an addressing scheme" (ahead of origin: **166**, measured by `git rev-list --count origin/main..HEAD` rather than incremented; push at ~300). Preceded by `665c8f4` DOC-0038, the twentieth changelog rotation.
 - active_work_unit: `SIGNOFF-REPAIR` → frontier leaf: `SIGNOFF-REPAIR.11.14.3.8` (`pending`)
 - next_action: reproduce the `POST /v1/assessments` citation-gate oracle by command — a second tenant distinguishing `SnapshotMissing` from `ExcerptAbsent` over a snapshot it never cited — then decide: the citation gate, a uniform refusal, or neither. ⛔ The obvious repair (`is_cited_by` on the route) is a COMPATIBILITY break on a shipped route and must be decided, not assumed. ⭐ `.11.14.3.3`'s cross-tenant control arm already reaches the excerpt check through this gap, so the reproduction is half-written.
 - in_flight_uncommitted: none — working tree clean, no background job.

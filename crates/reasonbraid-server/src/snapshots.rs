@@ -5,6 +5,11 @@
 //! (the deletion records the reason and the time — never a silent
 //! disappearance).
 //!
+//! A snapshot names the SAME `original_locator` as the reference it is filed
+//! against (`SIGNOFF-REPAIR.11.14.3.13`) — it is an acquisition OF that
+//! reference, so the two cannot disagree. `final_locator` stays free, because a
+//! redirect legitimately ends somewhere else.
+//!
 //! A snapshot is filed against a reference THIS TENANT REGISTERED
 //! (`SIGNOFF-REPAIR.11.14.3.11`). A reference it did not register answers the
 //! same `ReferenceMissing` an absent id gets, so the write surface stops being
@@ -162,6 +167,17 @@ pub enum SnapshotError {
         declared: String,
         actual: String,
     },
+    /// The submission names a different `original_locator` from the reference
+    /// it is filed against (`SIGNOFF-REPAIR.11.14.3.13`).
+    ///
+    /// Both values are carried: this check runs AFTER the registration
+    /// predicate, so the caller has already proved it registered the reference
+    /// and may read that locator — quoting it discloses nothing it does not
+    /// hold, and the diagnosis is worth more than the symmetry.
+    LocatorMismatch {
+        submitted: String,
+        reference: String,
+    },
     /// The reference declares an `expected_digest` and these bytes are not it
     /// (`SIGNOFF-REPAIR.11.14.3.6`).
     ///
@@ -191,6 +207,16 @@ impl std::fmt::Display for SnapshotError {
             Self::DigestMismatch { declared, actual } => write!(
                 f,
                 "the bytes hash to `{actual}`, not the declared `{declared}`"
+            ),
+            Self::LocatorMismatch {
+                submitted,
+                reference,
+            } => write!(
+                f,
+                "this snapshot names `{submitted}` and its reference names \
+                 `{reference}` — a snapshot is an acquisition OF its reference, \
+                 so the two cannot disagree (`final_locator` is where a redirect \
+                 ended and is free)"
             ),
             Self::PinMismatch => write!(
                 f,
@@ -250,8 +276,8 @@ pub async fn submit(
     // `EXISTS` and the §12.1 field a caller supplied to say "these are the bytes
     // I expect" constrained nothing — a reference pinned to one digest accepted
     // a snapshot of entirely different bytes.
-    let pin: Option<Option<String>> = sqlx::query_scalar(
-        "SELECT r.expected_digest FROM resource_references r \
+    let pin: Option<(Option<String>, String)> = sqlx::query_as(
+        "SELECT r.expected_digest, r.original_locator FROM resource_references r \
          JOIN reference_registrations g \
            ON g.resource_id = r.resource_id AND g.tenant_id = $2 \
          WHERE r.resource_id = $1",
@@ -261,9 +287,24 @@ pub async fn submit(
     .fetch_optional(pool)
     .await
     .map_err(SnapshotError::Storage)?;
-    let Some(pin) = pin else {
+    let Some((pin, reference_locator)) = pin else {
         return Err(SnapshotError::ReferenceMissing);
     };
+    // ⛔ A snapshot is an acquisition OF its reference, so it cannot name a
+    // different document (`SIGNOFF-REPAIR.11.14.3.13`). The comparison is BYTE
+    // equality on purpose: §12.1 keeps the original locator immutable and
+    // canonicalization separate and scheme-specific, so normalising either side
+    // here would BE a canonicalization decision rather than a check. Refusing a
+    // disagreement erases nothing.
+    //
+    // ⚠️ `final_locator` is deliberately untouched — a redirect legitimately
+    // ends somewhere else, which is why the receipt records both.
+    if submission.original_locator != reference_locator {
+        return Err(SnapshotError::LocatorMismatch {
+            submitted: submission.original_locator.clone(),
+            reference: reference_locator,
+        });
+    }
     // ⭐ An UNPINNED reference is unaffected, and that is the whole shape of the
     // rule rather than an exemption. `evidence_snapshots` replays on
     // `(reference_id, raw_digest)`, so one reference is designed to hold many

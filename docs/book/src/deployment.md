@@ -787,6 +787,32 @@ so a client already handling it from R2 handles it from R0 and R5 unchanged.
 (`acquisition_evidence_unstored`, with the resource id and the reason). What the
 caller no longer receives is a receipt implying evidence that is not there.
 
+#### A snapshot names its reference's locator
+
+A snapshot is an acquisition **of** the reference it is filed against, so its
+`original_locator` must be the one the reference carries — byte for byte. A
+submission that names a different document is refused:
+
+```text
+400 this snapshot names `https://example.org/other` and its reference names
+    `https://example.org/report` — a snapshot is an acquisition OF its
+    reference, so the two cannot disagree (`final_locator` is where a redirect
+    ended and is free)
+```
+
+⛔ Until `SIGNOFF-REPAIR.11.14.3.13` the two were never compared: the field went
+straight into the row, so a snapshot could say it was an acquisition of one
+document while its reference named another, and §12.6's *"original reference and
+resolved final locator"* were two facts that need not agree.
+
+⚠️ **`final_locator` is deliberately free.** It is where the acquisition *ended*,
+and a redirect legitimately moves it — that is why the snapshot records both.
+
+⚠️ **The comparison is strict, not normalising.** §12.1 keeps the original
+locator immutable and canonicalization separate and scheme-specific, so deciding
+that two spellings mean the same document is a decision this product has not
+taken. Refusing a disagreement takes none of it.
+
 #### Who may file a snapshot against a reference
 
 `POST /v1/snapshots` names a `reference_id`, and the reference must be one **this

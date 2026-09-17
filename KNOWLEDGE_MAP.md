@@ -173,6 +173,7 @@
 - [`2026-09-16_rb-server-bind-exposure.md`](docs/decisions/2026-09-16_rb-server-bind-exposure.md)
 - [`2026-09-16_the-deliberation-flow-owns-the-evidence-chain.md`](docs/decisions/2026-09-16_the-deliberation-flow-owns-the-evidence-chain.md)
 - [`2026-09-17_a-pin-names-its-bytes.md`](docs/decisions/2026-09-17_a-pin-names-its-bytes.md)
+- [`2026-09-17_a-snapshot-names-the-locator-its-reference-names.md`](docs/decisions/2026-09-17_a-snapshot-names-the-locator-its-reference-names.md)
 - [`2026-09-17_remote-ci-has-run-and-is-green.md`](docs/decisions/2026-09-17_remote-ci-has-run-and-is-green.md)
 - [`2026-09-17_the-assessment-namespace-is-part-of-the-row.md`](docs/decisions/2026-09-17_the-assessment-namespace-is-part-of-the-row.md)
 - [`2026-09-17_the-reference-read-is-bound-to-its-registrants.md`](docs/decisions/2026-09-17_the-reference-read-is-bound-to-its-registrants.md)

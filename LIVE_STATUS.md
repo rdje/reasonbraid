@@ -5,6 +5,18 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **A SNAPSHOT NAMES THE LOCATOR ITS REFERENCE NAMES (`.11.14.3.13`, REPAIR-0227).**
+
+⭐ **The census decided the disposition, and the new check found a defect in this session's own test data on its first run.**
+
+- **The census, first because the leaf asked for it.** `grep -rn "original_locator" crates/reasonbraid-server/src/*.rs`: every hit outside `resources.rs` is either `reference.original_locator` — the REFERENCE's field, which the resolvers read to fetch — or the snapshot column being written, mapped and listed. ⭐ **Nothing reads `evidence_snapshots.original_locator` to make a decision**: no resolver, no gate, no routing rule. So this is an evidence-integrity defect rather than a routing one, and a refusal is the whole repair — there is no downstream behaviour to correct, only a record that could be false.
+- 🔴 **RED, falsified against the exact unrepaired store.** A submission naming `https://example.org/some-other-document`, filed against a reference registered as `https://example.org/the-registered-report`, was **stored**: `200 {"replay":false,"snapshot_id":"snp_01a0af0ef6fe7f028d0e2014a444655b"}`; `49 passed; 1 failed`.
+- ⭐ **DECIDED: byte equality with the reference's locator; `final_locator` untouched** (`docs/decisions/2026-09-17_a-snapshot-names-the-locator-its-reference-names.md`, three alternatives rejected).
+- ⛔ **The leaf's warning is ANSWERED rather than obeyed.** *"An equality check is a canonicalization decision wearing a different name"* is true of a **normalising** check — one that lower-cases a host or strips a trailing slash to decide two spellings are the same — and false of a **strict** one, which normalises nothing and decides nothing. §12.1's immutable locator is exactly what makes the reference's stored string the identity to compare against.
+- ⭐ **`final_locator` stays free, and the control asserts it.** A redirect legitimately ends somewhere else, which is why §12.6 records both. A repair that compared them too would have been WRONG, not merely stricter.
+- **The refusal names BOTH values.** It runs after `.11.14.3.11`'s registration predicate, so the caller has proved it registered the reference and may read that locator — quoting it discloses nothing it does not hold, and the diagnosis is worth more than the symmetry.
+- ⚠️ **NO REGRESSION, and it corrected a control of my own.** `.11.14.3.6`'s pin control passed the pinned report's locator for BOTH of its references — simply wrong about which document the unpinned snapshot was of, and nothing checked it. It now passes each reference's own locator, with every original assertion intact.
+
 ✅ **A SNAPSHOT IS FILED AGAINST A REFERENCE ITS OWN TENANT REGISTERED (`.11.14.3.11`, REPAIR-0226).**
 
 🔴 **Not merely an oracle — a WRITE. And it was missed by my own census one commit earlier.**

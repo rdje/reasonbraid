@@ -9481,6 +9481,8 @@ async fn the_reference_read_is_bound_to_the_registering_tenant() {
 /// two compose.
 #[tokio::test]
 async fn a_pinned_reference_accepts_only_the_bytes_it_names() {
+    const PINNED_REPORT: &str = "https://example.org/pinned-report";
+    const LIVING_REPORT: &str = "https://example.org/living-report";
     let _guard = guard().await;
     let Some(pool) = pool().await else { return };
     let server = TestServer::start(&pool).await;
@@ -9516,7 +9518,12 @@ async fn a_pinned_reference_accepts_only_the_bytes_it_names() {
             reference["resource_id"].as_str().unwrap().to_string()
         }
     };
-    let snapshot = |reference_id: String, bytes: &'static [u8]| {
+    // ⚠️ The locator rides the call because a snapshot must name the SAME
+    // `original_locator` as the reference it is filed against
+    // (`SIGNOFF-REPAIR.11.14.3.13`). The first version of this control passed the
+    // pinned report's locator for BOTH references, which was simply wrong about
+    // which document the unpinned snapshot was of, and nothing checked it.
+    let snapshot = |reference_id: String, locator: &'static str, bytes: &'static [u8]| {
         let client = client.clone();
         let base = base.clone();
         let human_id = human_id.clone();
@@ -9528,8 +9535,8 @@ async fn a_pinned_reference_accepts_only_the_bytes_it_names() {
                 &human_id,
                 &json!({
                     "reference_id": reference_id,
-                    "original_locator": "https://example.org/pinned-report",
-                    "final_locator": "https://example.org/pinned-report",
+                    "original_locator": locator,
+                    "final_locator": locator,
                     "resolver_id": "r0-https-fetcher",
                     "resolver_version": "0.1.0",
                     "raw_digest": reasonbraid_server::fetcher::digest_sha256_hex(bytes),
@@ -9543,12 +9550,8 @@ async fn a_pinned_reference_accepts_only_the_bytes_it_names() {
     };
 
     // ── The finding: a pinned reference accepted bytes it does not name ──────
-    let pinned_ref = register(
-        "https://example.org/pinned-report",
-        Some(pinned_digest.clone()),
-    )
-    .await;
-    let (status, refused) = snapshot(pinned_ref.clone(), other_bytes).await;
+    let pinned_ref = register(PINNED_REPORT, Some(pinned_digest.clone())).await;
+    let (status, refused) = snapshot(pinned_ref.clone(), PINNED_REPORT, other_bytes).await;
     assert_eq!(
         status, 400,
         "a snapshot of other bytes is refused against a pinned reference: {refused}"
@@ -9574,7 +9577,7 @@ async fn a_pinned_reference_accepts_only_the_bytes_it_names() {
     assert_eq!(stored, 0, "the refused snapshot wrote nothing");
 
     // ── The bound: the pinned bytes themselves are accepted ─────────────────
-    let (status, accepted) = snapshot(pinned_ref.clone(), pinned_bytes).await;
+    let (status, accepted) = snapshot(pinned_ref.clone(), PINNED_REPORT, pinned_bytes).await;
     assert_eq!(
         status, 200,
         "the reference's OWN bytes are accepted: {accepted}"
@@ -9585,9 +9588,9 @@ async fn a_pinned_reference_accepts_only_the_bytes_it_names() {
     //
     // An UNPINNED reference still holds every version §12.6's changing page
     // produces. A repair that enforced a pin nobody declared would fail here.
-    let unpinned_ref = register("https://example.org/living-report", None).await;
+    let unpinned_ref = register(LIVING_REPORT, None).await;
     for bytes in [pinned_bytes.as_slice(), other_bytes.as_slice()] {
-        let (status, stored) = snapshot(unpinned_ref.clone(), bytes).await;
+        let (status, stored) = snapshot(unpinned_ref.clone(), LIVING_REPORT, bytes).await;
         assert_eq!(
             status, 200,
             "an unpinned reference holds this version too: {stored}"
@@ -9608,16 +9611,12 @@ async fn a_pinned_reference_accepts_only_the_bytes_it_names() {
     //
     // This is what makes the refusal above a redirection rather than a dead end,
     // and it is `.11.14.3.2`'s key doing the work it was created for.
-    let second_ref = register(
-        "https://example.org/pinned-report",
-        Some(other_digest.clone()),
-    )
-    .await;
+    let second_ref = register(PINNED_REPORT, Some(other_digest.clone())).await;
     assert_ne!(
         second_ref, pinned_ref,
         "the same locator at a DIFFERENT digest is a second reference"
     );
-    let (status, moved) = snapshot(second_ref.clone(), other_bytes).await;
+    let (status, moved) = snapshot(second_ref.clone(), PINNED_REPORT, other_bytes).await;
     assert_eq!(
         status, 200,
         "the changed page's bytes are acquired against the reference that names them: {moved}"
@@ -9977,5 +9976,127 @@ async fn a_snapshot_is_filed_against_a_reference_this_tenant_registered() {
 
     eprintln!(
         "snapshot write binding: a foreign reference and an absent one are ONE answer and attach nothing; the registering tenant files normally; the second tenant registers the same locator, replays to the same reference and then files — one shared snapshot row with {citations} citations"
+    );
+}
+
+/// `SIGNOFF-REPAIR.11.14.3.13`: a snapshot names the SAME `original_locator` as
+/// the reference it is filed against, and `final_locator` stays free.
+///
+/// `snapshots::submit` bound the submission's value straight into the insert and
+/// never compared it with the reference's, so a snapshot could say it was an
+/// acquisition of one document while its reference named another. §12.6 asks the
+/// snapshot to carry "original reference and resolved final locator"; those were
+/// two facts that need not agree.
+///
+/// ⚠️ **The comparison is byte equality on purpose.** §12.1 keeps the original
+/// locator immutable and canonicalization separate and scheme-specific, so
+/// normalising either side here would BE a canonicalization decision rather than
+/// a check. Refusing a disagreement erases nothing.
+///
+/// ⭐ **Nothing in the product reads this column to make a decision** — it is
+/// written, mapped and returned on the read surfaces, and no resolver or gate
+/// consults it. That is what makes the defect an evidence-integrity one rather
+/// than a routing one, and it is why the refusal is the whole repair.
+#[tokio::test]
+async fn a_snapshot_names_the_locator_its_reference_names() {
+    const REGISTERED: &str = "https://example.org/the-registered-report";
+    const CLAIMED: &str = "https://example.org/some-other-document";
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "locator-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrols: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+
+    let payload = b"the acquired report states the locator was never compared";
+    let (status, reference) = post(
+        &client,
+        &base,
+        "/v1/resources",
+        &human_id,
+        &json!({ "original_locator": REGISTERED, "scheme": "https" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the reference registers: {reference}");
+    let resource_id = reference["resource_id"].as_str().unwrap().to_string();
+
+    let file = |original: &'static str, final_locator: &'static str| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let resource_id = resource_id.clone();
+        async move {
+            post(
+                &client,
+                &base,
+                "/v1/snapshots",
+                &human_id,
+                &json!({
+                    "reference_id": resource_id,
+                    "original_locator": original,
+                    "final_locator": final_locator,
+                    "resolver_id": "r0-https-fetcher",
+                    "resolver_version": "0.1.0",
+                    "raw_digest": reasonbraid_server::fetcher::digest_sha256_hex(payload),
+                    "byte_length": payload.len(),
+                    "media_type": "text/plain",
+                    "bytes_base64": util::base64(payload),
+                }),
+            )
+            .await
+        }
+    };
+
+    // ── The finding: a snapshot that names a different document ─────────────
+    let (status, refused) = file(CLAIMED, CLAIMED).await;
+    assert_eq!(
+        status, 400,
+        "a snapshot cannot name a document its reference does not: {refused}"
+    );
+    let message = refused["message"].as_str().unwrap();
+    assert!(
+        message.contains(CLAIMED) && message.contains(REGISTERED),
+        "the refusal names BOTH, because the caller registered the reference and \
+         may read its locator: {refused}"
+    );
+    let stored: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM evidence_snapshots WHERE reference_id = $1")
+            .bind(&resource_id)
+            .fetch_one(&pool)
+            .await
+            .expect("count the reference's snapshots");
+    assert_eq!(stored, 0, "the refused submission wrote nothing");
+
+    // ── The bound: the agreeing submission, with a redirect ─────────────────
+    //
+    // `final_locator` is where the acquisition ENDED and is deliberately free —
+    // a repair that compared it too would fail here, and it would be wrong:
+    // §12.6 records both precisely because a redirect moves one of them.
+    let (status, accepted) = file(REGISTERED, "https://cdn.example.net/the-report").await;
+    assert_eq!(
+        status, 200,
+        "the agreeing submission is accepted, redirect and all: {accepted}"
+    );
+    let snapshot_id = accepted["snapshot_id"].as_str().unwrap().to_string();
+    let (recorded_original, recorded_final): (String, String) = sqlx::query_as(
+        "SELECT original_locator, final_locator FROM evidence_snapshots WHERE snapshot_id = $1",
+    )
+    .bind(&snapshot_id)
+    .fetch_one(&pool)
+    .await
+    .expect("read the stored locators");
+    assert_eq!(recorded_original, REGISTERED);
+    assert_eq!(recorded_final, "https://cdn.example.net/the-report");
+
+    eprintln!(
+        "snapshot locator: a snapshot naming a document its reference does not is refused (400, naming both, 0 rows written); the agreeing submission is accepted and keeps a DIFFERENT final_locator, which a redirect legitimately moves"
     );
 }

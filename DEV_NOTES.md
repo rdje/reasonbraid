@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — A classifier with two branches, and only one of them consults the corpus
+
+- An instrument decided a class from the shape of a string. `kind = "pathed" if "/" in ref` — a source citation was called resolvable because it *looked* like a path, while the very same instrument resolved every reference *without* a slash against the tracked file list. ⭐ The check existed, was correct, and was wired to one branch.
+- ⛔ **The tell is cheap to look for and worth keeping:** a classifier with two branches where only one consults the corpus. The branch that does not is trusting a shape, and it will be the branch nobody tests, because its answer looks obviously right.
+- ⭐ **The repair is not a new rule — it is the old question asked of both branches.** *How many tracked files can a reader reach from what is written?* Asked of a path, that produces the classes by itself: one file resolves, several is the ambiguity the gate already refuses, none is unresolvable. Deriving the taxonomy from the question beats inventing it, because each class then arrives with its own justification attached.
+- ⚠️ **Widening a matcher can resurrect an old bug wearing the other sign.** This instrument's founding defect was a character class that truncated `crates/reasonbraid-core/…` to `core/…` — 93 false positives. Matching suffixes by `str.endswith` would have *resolved* that truncation to a real file and passed it: the same defect converted into a false NEGATIVE, which nobody notices. Suffixes fall on segment boundaries for that reason, and the arm that pins it names the old bug.
+- 🔎 **An approximation inside a measurement instrument deserves the same scrutiny as the thing measured.** `--calibrate` re-scanned only when a source *basename* entered or left the tree — exactly right for the gate it was written for, silently wrong for the one being proposed. Separating the expensive step (parsing, which changes when a file changes) from the cheap one (resolving, which changes when the tree changes) made an exact pass cost **10.8 s** where an approximation had been bought to avoid nine minutes. ⭐ The speed was a by-product; correctness was the point.
+- promotion: promoted → `docs/knowledge/trust-comes-from-the-check-not-the-shape.md` as a SECOND INSTANCE, not a new note. The rule was already written for a different domain, and a second domain is what proves the rule is not being carried by its example (`docs/CLAIM_VERIFICATION.md` §0).
+
 ## 2026-09-18 — The commit that reshapes a file is the commit that blinds its guard
 
 - A census keyed on a literal heading in the file it guards. The commit that RESTRUCTURED that file renamed the heading — correctly, to match the template that governs it — and did not touch the reader. From that moment the census refused on every run, and nothing noticed for dozens of commits.

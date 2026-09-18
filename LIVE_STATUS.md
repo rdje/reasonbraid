@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **A SLASH IS NOT A RESOLUTION (`.11.17.2`, REPAIR-0243).**
+
+🔴 **`POSITIONAL-REF` decided a citation was resolvable from the SHAPE of the string. Of 251 such occurrences, 39 named no tracked file and one was a suffix of THREE — the ambiguity the gate exists to refuse, passed by it.**
+
+- **The defect.** `classify` read `kind = "pathed" if "/" in ref`. The branch for a reference WITHOUT a slash consulted the tracked tree; the branch WITH one did not. ⭐ The check existed and was wired to one branch — `docs/knowledge/trust-comes-from-the-check-not-the-shape.md`, extended with this as a second instance.
+- **The population, pinned:** `python3 -B scripts/census_positional_refs.py --at 6f91897`. ⚠️ The leaf's own opening table said 28 partial / 5 unresolved where the tracked instrument says 27/6 — totals and the headline 251/212/39 reproduce exactly; the split came from an unrecorded pipeline.
+- ✅ **The repair is the OLD question asked of both branches**, which produced the classes rather than arguing them, and `dependency` gains `Cargo.lock` as an oracle — earning `dependency-stale`, a failure mode nothing had before. ⛔ A suffix must fall on a SEGMENT boundary or the founding 93-false-positive hyphen bug returns as a false NEGATIVE.
+- ✅ **Calibrated at 21 of 200 commits (10.5%)** against the 9.5% that argued this gate in. Refusing `partial` too was priced at **4.5%** and DECLINED on SHAPE rather than cost. Standing population **8 → 0**; 11 of 12 new arms falsified by name in situ, the two passing both ways LABELLED, and the gate itself fired red three times in the real enforcer.
+- ⛔ **Verifying a dependency's IN-CRATE path is declined** — it needs the vendored registry a cold clone lacks, so the check would be green here and red there.
+
 ✅ **THE INSTRUMENT GUARDING `MEMORY.md` HAD BEEN DEAD SINCE THE COMMIT THAT RESHAPED `MEMORY.md` (`.11.20`, REPAIR-0242).**
 
 🔴 **A census refused on every run for dozens of commits while its own `--self-test` reported 16 controls passing — and the defect it prevents recurred in the meantime.**

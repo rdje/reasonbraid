@@ -1,5 +1,20 @@
 # CHANGELOG.md
 
+## 2026-09-18 — A slash is not a resolution (`SIGNOFF-REPAIR.11.17.2`)
+
+🔴 **`POSITIONAL-REF` decided a reference was resolvable from the SHAPE of the string. Of 251 such occurrences, 39 named no tracked file and one was a suffix of THREE — the exact ambiguity the gate exists to refuse, passed by it.**
+
+- **The defect, at the source.** `classify` in `scripts/census_positional_refs.py` read `kind = "pathed" if "/" in ref`. The branch for a reference WITHOUT a slash consulted the tracked-file index; the branch WITH one did not. ⭐ The instrument had the check in hand and applied it to one branch only — `docs/knowledge/trust-comes-from-the-check-not-the-shape.md`, which now carries this as a second instance.
+- **The population, pinned so it stays re-derivable.** `python3 -B scripts/census_positional_refs.py --at 6f91897`: of **251** occurrences containing a slash, **212** name a tracked file, **27** are a path-suffix of exactly one, **1** of three, **5** are dependency citations and **6** name nothing. ⚠️ The leaf's own opening table said 28/5 where the instrument says 27/6 — the totals and the headline 251/212/39 reproduce exactly, but the split came from an unrecorded pipeline and is reproducible by neither obvious suffix rule (segment-boundary gives 27/6, plain-string gives 31/2).
+- **The repair is the OLD question asked of both branches**, which produced the classes rather than arguing them: `pathed` (exact), `partial` (a segment-boundary path-suffix of exactly one — accepted, as `unique` already is), `ambiguous` (several), `unresolved` (none), and `dependency` for a `<crate>-<version>` segment `Cargo.lock` pins.
+- ⛔ **A suffix must fall on a SEGMENT boundary.** `crates/reasonbraid-core/src/authority.rs` ends with the *string* `core/src/authority.rs` and does not contain it as a *path*; a plain `endswith` would have turned this instrument's founding 93-false-positive hyphen bug into a false NEGATIVE. Pinned as self-test arm 17.
+- ⭐ **The dependency class earns a failure mode, not an exemption.** `Cargo.lock` is the oracle, so `dependency-stale` — a citation into a version the project no longer builds — is now refused. 0 standing instances; both directions in the self-test.
+- ⛔ **Two declines, on different grounds.** The in-crate path is NOT verified (it needs the vendored registry a cold clone lacks — green here, red there). Refusing `partial` is DECLINED on SHAPE rather than cost: priced at **4.5%** of 200 commits and affordable, but a partial path naming one tracked file resolves, and refusing it would gate tidiness where the doctrine gates ambiguity.
+- ✅ **Calibrated before proposing** (`.11.6`): the three refused classes would have blocked **21 of 200 commits (10.5%)**, against the **9.5%** that argued this gate in and the 87%/93% that got two candidates rejected. Standing population **8 → 0**.
+- ⭐ **And `--calibrate` stopped approximating.** It re-scanned only when a source BASENAME entered or left the tree — sound for a basename gate, wrong for a path one. Caching the PARSE and redoing the RESOLVE re-classifies every commit exactly for **1,713 blob reads** instead of ~70,000: **10.8 s for 200 commits**, where the approximation existed because an exact pass was thought to cost nine minutes.
+- **Falsified in situ:** restoring the pre-fix classifier makes **11 of the 12 new arms fail by name** (13/24), the state the repository was actually in. The two that pass both ways are LABELLED in the source. The gate itself was fired red three times in the real enforcer, rc 0 → 1 per class.
+- Routed: none. Next is `.11.20.1`.
+
 ## 2026-09-18 — The instrument guarding `MEMORY.md` had been dead since the commit that reshaped `MEMORY.md` (`SIGNOFF-REPAIR.11.20`)
 
 🔴 **A census refused on every run for dozens of commits while its own `--self-test` reported 16 controls passing — and the defect it exists to prevent recurred in the meantime.**

@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-18 — Three ref clauses, and a fourth defect that made all three unreachable (`SIGNOFF-REPAIR.7.2.8`)
+
+🔴 **`acquire_into` passed the URL's fragment to `remote_at`, so every selector-bearing acquisition failed at the remote. The three clauses this leaf was opened for all sit downstream of a path nothing could reach.**
+
+- **Why it survived:** nothing ever drove the feature. **13** `acquire_local` call sites, none with a fragment; the only `#refs/tags/v1.0` in the suite is a `fetch_refspec` *unit* test that never reaches a transport. 🔎 A careful reading found three real defects in unreachable code, and the FIRST control found the reason it was unreachable — `TOOLBOX.md`'s tools-first argument arriving from the other side.
+- ✅ **An annotated tag resolves, and that was decided rather than defaulted.** It advertises as `Ref::Peeled`; the match covered only `Symbolic`/`Direct`, so it reported `NoHeadRef` for a ref the remote had advertised. Refusing by name was weighed and loses on the contract: the acquisition exists to produce an immutable commit, a tag is the commonest way to name one, and `Peeled` hands over exactly that commit.
+- ✅ **An ambiguous short name is refused BY NAME**, listing both full refs — and only when the two point at **different** commits, so a repository that merely tags its own branch tip still resolves. ⛔ Refusal rather than `gitrevisions`' precedence order, deliberately: this is not a CLI, and a silent pick between two commits is the shape this project refuses everywhere else.
+- ✅ **`refs/heads/..` is refused.** The `refs/` arm returned early, so the `..` guard below it never saw a `refs/` selector while the charset admits `.`.
+- ✅ **Two falsification passes, because one could not separate the defects.** Neutralising the three resolution repairs together reds three arms by name — the ambiguity one reporting the arbitrary winner as an observation. The fragment repair needed its own pass: with it neutralised, all three selector controls fail at the remote and would have masked whether the others fired for their own reasons.
+- ⭐ **`ACQUISITION-KIND-DOC`, registered one leaf earlier, refused this commit** until the new `ambiguous_ref_selector` kind was documented. A gate catching its own author within the hour is better evidence than its calibration was.
+- ⭐ `.7.2`'s mechanism table is now fully discharged: consumption bounds by `.7.2.7` and `.7.2.9`, supported refs here.
+
 ## 2026-09-18 — A safety default disabled by our own correctness (`SIGNOFF-REPAIR.7.2.9`)
 
 🔴 **`gix` ships a 16 MiB per-object allocation brake. This project had it switched off — by the very property that makes its acquisition repositories safe in every other respect.**

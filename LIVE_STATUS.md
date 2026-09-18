@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THREE REF CLAUSES, AND A FOURTH DEFECT THAT MADE ALL THREE UNREACHABLE (`.7.2.8`, REPAIR-0252).**
+
+🔴 **`acquire_into` passed the URL's fragment to `remote_at`, so every selector-bearing acquisition failed at the remote.** It survived because nothing ever drove the feature: 13 `acquire_local` call sites, none with a fragment.
+
+- 🔎 A careful reading found three real defects in unreachable code; the FIRST control found why it was unreachable.
+- ✅ An annotated tag resolves via `Ref::Peeled` (decided, not defaulted); an ambiguous short name is refused BY NAME listing both refs, and only when the commits differ; `refs/heads/..` is refused.
+- ✅ Two falsification passes, because the fragment neutralization would have masked the other three. 21 tests pass, clippy rc=0.
+- ⭐ **`ACQUISITION-KIND-DOC`, shipped one leaf earlier, refused this commit** until its new kind was documented. `.7.2`'s mechanism table is now fully discharged.
+
 ✅ **A SAFETY DEFAULT DISABLED BY OUR OWN CORRECTNESS (`.7.2.9`, REPAIR-0251).**
 
 🔴 **`gix` ships a 16 MiB per-object allocation brake; this project had it switched off.** The default applies only at `Trust::Reduced`, and `init_opts` hardcodes `Trust::Full` — so every acquisition repository, fully trusted BECAUSE the server created it, let a remote-supplied pack entry declare any size.

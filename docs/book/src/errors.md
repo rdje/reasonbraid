@@ -78,6 +78,7 @@ the table above is held.
 | `kind` | surface | what it means |
 | --- | --- | --- |
 | `acquisition_failed` | R1 git | the transfer failed |
+| `ambiguous_ref_selector` | R1 git | the short ref selector names both a branch and a tag, at different commits — write the full ref name |
 | `ambiguous_numeric_host` | R0 fetch · R1 git | the host is a numeric form that could resolve more than one way |
 | `browser_spawn_failed` | browser | the browser worker failed to spawn |
 | `browser_worker_missing` | browser | the browser worker binary is absent |

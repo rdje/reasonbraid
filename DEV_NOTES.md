@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — A reading can find real defects in code no control reaches
+
+- Three defects had been found by reading the resolution logic, recorded precisely, and left for a later leaf. All three were real. All three were also **unreachable**: an earlier line handed the URL's fragment to the remote, so every acquisition that named a ref failed before the resolution ran at all.
+- ⭐ **The first control found in minutes what the reading could not find at all**, and the reason is structural rather than a lapse: reading a function tells you what it does *given that it runs*. Nothing in the function says whether anything calls it with the input that matters.
+- 🔎 **The tell was there to be counted, and counting it is the cheap habit:** `grep -c` the helper every control uses, then grep those call sites for the input under discussion. Thirteen call sites, zero passing a fragment — a feature with no end-to-end control, visible in one command, and worth running BEFORE trusting any reading of the code it drives.
+- ⛔ **Two falsification passes, because one would have lied.** Neutralising all four repairs together makes the selector controls fail at the remote, which masks whether the three resolution arms would have fired for their own reasons. When repairs are in SERIES, the upstream one must be falsified separately or the downstream reds prove nothing.
+- ⚠️ **A defect found by reading is not less real for being unreachable** — it is a defect waiting for the day someone fixes the thing in front of it. The repair order is what changes: fix the reachability first, then the three become testable rather than arguable.
+- promotion: DECLINED — this is `TOOLBOX.md`'s tools-first rule stated from the other direction, and `.11.20.2`'s criterion makes it absorb-or-decline rather than a fork.
+
 ## 2026-09-18 — A dependency's safety default can be disabled by your own correct choice
 
 - A library shipped a bound for exactly the risk being investigated — a per-object allocation limit against a hostile pack — and it was not in force. Not because it was overridden, and not because the library is careless: it is conditioned on the repository being *reduced trust*, and this project's repositories are *fully* trusted because the server creates them itself.

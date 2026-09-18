@@ -2640,6 +2640,9 @@ async fn resolve_resource(
                             }
                             crate::git::GitError::Refused { .. } => "refused".to_owned(),
                             crate::git::GitError::NoHeadRef => "no_head_ref".to_owned(),
+                            crate::git::GitError::AmbiguousRefSelector { .. } => {
+                                "ambiguous_ref_selector".to_owned()
+                            }
                             crate::git::GitError::ResolvedCommitMissing => {
                                 "resolved_commit_missing".to_owned()
                             }

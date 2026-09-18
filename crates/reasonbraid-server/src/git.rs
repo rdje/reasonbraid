@@ -96,6 +96,12 @@ pub enum GitError {
         detail: String,
     },
     NoHeadRef,
+    /// A short selector that names a branch AND a tag pointing at DIFFERENT
+    /// commits. Refused rather than resolved arbitrarily (`SIGNOFF-REPAIR.7.2.8`).
+    AmbiguousRefSelector {
+        selector: String,
+        names: Vec<String>,
+    },
     ResolvedCommitMissing,
     TimedOut,
     TransferFailed(String),
@@ -155,6 +161,13 @@ impl fmt::Display for GitError {
             Self::ResolvedCommitMissing => {
                 write!(f, "the resolved commit is not present after the fetch")
             }
+            Self::AmbiguousRefSelector { selector, names } => write!(
+                f,
+                "the ref selector `{selector}` names {} advertised refs at different commits ({}) — \
+                 write the full ref name",
+                names.len(),
+                names.join(", ")
+            ),
             Self::TimedOut => write!(f, "the acquisition exceeded the time ceiling"),
             Self::TransferFailed(detail) => write!(f, "the transfer failed: {detail}"),
         }
@@ -422,9 +435,14 @@ fn valid_ref_selector(selector: &str) -> bool {
         return false;
     }
     if selector.starts_with("refs/") {
-        return selector
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || "/._-".contains(c));
+        // ⛔ THE `..` GUARD BELONGS HERE TOO (`SIGNOFF-REPAIR.7.2.8`). This arm
+        // RETURNED EARLY, so the guard eleven lines down never saw a `refs/`
+        // selector at all and `refs/heads/..` was accepted — the charset admits
+        // `.`, so nothing else stopped it.
+        return !selector.contains("..")
+            && selector
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "/._-".contains(c));
     }
     if selector.len() == 40 && selector.chars().all(|c| c.is_ascii_hexdigit()) {
         return true;
@@ -940,8 +958,20 @@ fn acquire_into(
     let target_dir = workspace.path();
     let repo = init_acquisition_repository(target_dir, limits)?;
     deadline.check()?;
+    // ⛔⛔ THE FRAGMENT IS THE REF SELECTOR, NOT PART OF THE REMOTE URL
+    // (`SIGNOFF-REPAIR.7.2.8`). `harden_git_url` validates it and returns the
+    // URL with it intact, and this handed `url.as_str()` — fragment and all —
+    // to `remote_at`, so gix tried to open `…/repo.git#v1.0` as the remote.
+    // ⭐ Every ref-selector acquisition therefore failed at the REMOTE, with
+    // `TransferFailed("the remote url failed: Could not verify that … is a
+    // valid git directory")`, and the three resolution clauses `.7.2.8` was
+    // opened for were all downstream of a path nothing could reach. No test
+    // drove an acquisition with a selector — 13 `acquire_local` call sites,
+    // none with a fragment — which is why it survived.
+    let mut remote_url = url.clone();
+    remote_url.set_fragment(None);
     let remote = repo
-        .remote_at(url.as_str())
+        .remote_at(remote_url.as_str())
         .map_err(|e| GitError::TransferFailed(format!("the remote failed: {e}")))?;
     let (gix_url, version) = remote
         .sanitized_url_and_version(gix::remote::Direction::Fetch)
@@ -991,33 +1021,71 @@ fn acquire_into(
     // advertised refs (the HEAD entry, the exact ref name, or the requested
     // sha verified present).
     let requested = url.fragment().unwrap_or("HEAD");
-    let head_id = fetch_outcome
-        .ref_map
-        .remote_refs
-        .iter()
-        .find_map(|r| {
-            let (name, object) = match r {
-                gix::protocol::handshake::Ref::Symbolic {
-                    full_ref_name,
-                    object,
-                    ..
-                }
-                | gix::protocol::handshake::Ref::Direct {
-                    full_ref_name,
-                    object,
-                } => (full_ref_name, *object),
-                _ => return None,
-            };
-            if requested == "HEAD" {
-                (name == "HEAD").then_some(object)
-            } else if requested.starts_with("refs/") {
-                (name == requested).then_some(object)
-            } else {
-                (name == &gix::bstr::BString::from(format!("refs/heads/{requested}"))
-                    || name == &gix::bstr::BString::from(format!("refs/tags/{requested}")))
-                    .then_some(object)
+    // ⭐ EVERY advertised ref that matches is collected, not the FIRST
+    // (`SIGNOFF-REPAIR.7.2.8`). A `find_map` returned whichever the remote
+    // advertised first, so a short name that is both a branch and a tag
+    // resolved to an arbitrary one of two DIFFERENT commits, silently.
+    let mut matched: Vec<(String, gix::ObjectId)> = Vec::new();
+    for r in fetch_outcome.ref_map.remote_refs.iter() {
+        let (name, object) = match r {
+            gix::protocol::handshake::Ref::Symbolic {
+                full_ref_name,
+                object,
+                ..
             }
-        })
+            | gix::protocol::handshake::Ref::Direct {
+                full_ref_name,
+                object,
+            } => (full_ref_name, *object),
+            // ⛔ AN ANNOTATED TAG ADVERTISES AS `Peeled`, and this arm did not
+            // exist: everything but Symbolic/Direct fell to `_ => None`, so a
+            // selector naming an annotated tag resolved to nothing and the
+            // acquisition reported `NoHeadRef` — a missing-ref message for a
+            // ref that was advertised.
+            // ⭐ DECIDED: it RESOLVES, to `object`, the commit the tag points
+            // at. Refusing was the alternative and it loses on the contract:
+            // this acquisition exists to produce an immutable commit, an
+            // annotated tag is the commonest way to NAME one, and `Peeled`
+            // hands over exactly that commit with no peeling of our own.
+            gix::protocol::handshake::Ref::Peeled {
+                full_ref_name,
+                object,
+                ..
+            } => (full_ref_name, *object),
+            _ => continue,
+        };
+        let hit = if requested == "HEAD" {
+            name == "HEAD"
+        } else if requested.starts_with("refs/") {
+            name == requested
+        } else {
+            name == &gix::bstr::BString::from(format!("refs/heads/{requested}"))
+                || name == &gix::bstr::BString::from(format!("refs/tags/{requested}"))
+        };
+        if hit {
+            matched.push((name.to_string(), object));
+        }
+    }
+    // ⛔ AMBIGUITY IS REFUSED BY NAME, and only when it is real: two names for
+    // the SAME commit resolve to the same acquisition, so they are not an
+    // ambiguity and are not refused. The caller disambiguates by writing the
+    // full ref, which the selector grammar already accepts.
+    if matched.len() > 1 {
+        let mut distinct: Vec<gix::ObjectId> = matched.iter().map(|(_, o)| *o).collect();
+        distinct.sort();
+        distinct.dedup();
+        if distinct.len() > 1 {
+            let mut names: Vec<String> = matched.iter().map(|(n, _)| n.clone()).collect();
+            names.sort();
+            return Err(GitError::AmbiguousRefSelector {
+                selector: requested.to_owned(),
+                names,
+            });
+        }
+    }
+    let head_id = matched
+        .first()
+        .map(|(_, object)| *object)
         .or_else(|| {
             (requested.len() == 40 && requested.chars().all(|c| c.is_ascii_hexdigit()))
                 .then(|| gix::ObjectId::from_hex(requested.as_bytes()).expect("40 hex parses"))
@@ -1431,6 +1499,83 @@ mod tests {
         .detach()
     }
 
+    /// Acquire naming a SELECTOR — the fragment production reads — so the
+    /// ref-resolution controls drive the real path rather than a stand-in.
+    fn acquire_local_ref(
+        source_dir: &std::path::Path,
+        selector: &str,
+        limits: &GitLimits,
+    ) -> Result<GitAcquisition, GitError> {
+        let workspace =
+            Arc::new(OwnedDirectory::create("git", "test-acquire").expect("the workspace creates"));
+        let url = Url::parse(&format!("file://{}#{selector}", source_dir.display()))
+            .expect("the file url parses");
+        acquire_into(
+            workspace,
+            &url,
+            limits,
+            file_factory(source_dir.to_path_buf()),
+        )
+    }
+
+    /// A second commit on the fixture, so an ambiguity control has two
+    /// DIFFERENT objects to be ambiguous between.
+    fn second_commit(dir: &std::path::Path) -> gix::ObjectId {
+        let repo = gix::open(dir.join(".git")).expect("the fixture repo opens");
+        let blob = repo.write_blob(b"second").expect("the blob writes");
+        let tree = repo
+            .write_object(&gix::objs::Tree {
+                entries: vec![gix::objs::tree::Entry {
+                    mode: gix::objs::tree::EntryKind::Blob.into(),
+                    oid: blob.detach(),
+                    filename: "b.txt".into(),
+                }],
+            })
+            .expect("the tree writes")
+            .detach();
+        repo.commit_as(
+            fixture_identity(),
+            fixture_identity(),
+            "refs/heads/second",
+            "second",
+            tree,
+            gix::commit::NO_PARENT_IDS,
+        )
+        .expect("the commit writes")
+        .detach()
+    }
+
+    /// Point a full ref name at a commit, by writing the loose ref the way the
+    /// advertisement will read it.
+    fn write_ref(dir: &std::path::Path, full_name: &str, object: gix::ObjectId) {
+        let path = dir.join(".git").join(full_name);
+        std::fs::create_dir_all(path.parent().expect("a ref has a parent"))
+            .expect("the ref directory creates");
+        std::fs::write(&path, format!("{object}\n")).expect("the ref writes");
+    }
+
+    /// An ANNOTATED tag — the `Ref::Peeled` advertisement — rather than the
+    /// lightweight kind `write_ref` produces.
+    fn annotate_tag(dir: &std::path::Path, name: &str, target: gix::ObjectId) {
+        let repo = gix::open(dir.join(".git")).expect("the fixture repo opens");
+        let tag = repo
+            .write_object(&gix::objs::Tag {
+                target,
+                target_kind: gix::object::Kind::Commit,
+                name: name.into(),
+                tagger: Some(
+                    fixture_identity()
+                        .to_owned()
+                        .expect("the fixture identity is valid"),
+                ),
+                message: "an annotated tag".into(),
+                signature: None,
+            })
+            .expect("the tag object writes")
+            .detach();
+        write_ref(dir, &format!("refs/tags/{name}"), tag);
+    }
+
     fn acquire_local(
         source_dir: &std::path::Path,
         limits: &GitLimits,
@@ -1831,6 +1976,96 @@ mod tests {
         let acquisition = acquire_local(&source_dir, &GitLimits::default())
             .expect("a transfer inside the default 120 s ceiling still succeeds");
         assert_eq!(acquisition.resolved_commit, first.to_string());
+    }
+
+    /// `SIGNOFF-REPAIR.7.2.8` (1) — an annotated tag RESOLVES, to its commit.
+    ///
+    /// 🔴 Observed RED first: before the `Ref::Peeled` arm the match sent every
+    /// variant but `Symbolic`/`Direct` to `None`, so an advertised annotated
+    /// tag resolved to nothing and the acquisition reported `NoHeadRef` — a
+    /// missing-ref message for a ref the remote had advertised.
+    #[test]
+    fn an_annotated_tag_resolves_to_its_commit() {
+        let tmp = OwnedDirectory::create("git", "test-tag").expect("the workspace creates");
+        let tmp = tmp.path();
+        let source_dir = tmp.join("source");
+        std::fs::create_dir_all(&source_dir).expect("the source dir creates");
+        let commit = source_repo(&source_dir);
+        annotate_tag(&source_dir, "v1.0", commit);
+        let acquisition = acquire_local_ref(&source_dir, "v1.0", &GitLimits::default())
+            .expect("an annotated tag resolves");
+        assert_eq!(
+            acquisition.resolved_commit,
+            commit.to_string(),
+            "the peeled commit, not the tag object"
+        );
+    }
+
+    /// `SIGNOFF-REPAIR.7.2.8` (2) — a short name that is both a branch and a
+    /// tag at DIFFERENT commits is refused BY NAME, never resolved arbitrarily.
+    ///
+    /// 🔴 Observed RED first: the old `find_map` returned whichever the remote
+    /// advertised first, a silent choice between two different commits.
+    #[test]
+    fn a_short_name_that_is_both_a_branch_and_a_tag_is_refused() {
+        let tmp = OwnedDirectory::create("git", "test-ambig").expect("the workspace creates");
+        let tmp = tmp.path();
+        let source_dir = tmp.join("source");
+        std::fs::create_dir_all(&source_dir).expect("the source dir creates");
+        let first = source_repo(&source_dir);
+        let second = second_commit(&source_dir);
+        assert_ne!(first, second, "the fixture needs two distinct commits");
+        write_ref(&source_dir, "refs/heads/dup", first);
+        write_ref(&source_dir, "refs/tags/dup", second);
+        match acquire_local_ref(&source_dir, "dup", &GitLimits::default()) {
+            Err(GitError::AmbiguousRefSelector { selector, names }) => {
+                assert_eq!(selector, "dup");
+                assert_eq!(
+                    names,
+                    vec!["refs/heads/dup".to_owned(), "refs/tags/dup".to_owned()],
+                    "the refusal names BOTH, so the remedy is obvious"
+                );
+            }
+            other => panic!("an ambiguous short name must be refused by name, got {other:?}"),
+        }
+    }
+
+    /// ⭐ THE NEGATIVE HALF: two names for the SAME commit are NOT ambiguous
+    /// and must still resolve. Without this arm the rule degenerates into
+    /// "a name that matches twice is refused", which would break a repository
+    /// that merely tags its own branch tip.
+    ///
+    /// ⚠️ LABELLED: it goes red under the FRAGMENT neutralization along with
+    /// every other selector control, but that red is incidental — the whole
+    /// path is broken there. Its OWN red is a rule that refuses any double
+    /// match without comparing the commits
+    /// (`docs/knowledge/a-control-that-passes-for-an-unrelated-reason.md`).
+    #[test]
+    fn a_branch_and_tag_at_the_same_commit_still_resolve() {
+        let tmp = OwnedDirectory::create("git", "test-same").expect("the workspace creates");
+        let tmp = tmp.path();
+        let source_dir = tmp.join("source");
+        std::fs::create_dir_all(&source_dir).expect("the source dir creates");
+        let commit = source_repo(&source_dir);
+        write_ref(&source_dir, "refs/heads/same", commit);
+        write_ref(&source_dir, "refs/tags/same", commit);
+        let acquisition = acquire_local_ref(&source_dir, "same", &GitLimits::default())
+            .expect("one commit under two names is not an ambiguity");
+        assert_eq!(acquisition.resolved_commit, commit.to_string());
+    }
+
+    /// `SIGNOFF-REPAIR.7.2.8` (3) — `refs/heads/..` is refused by the selector.
+    ///
+    /// 🔴 Observed RED first: the `refs/` arm RETURNED EARLY, so the `..` guard
+    /// below it never saw a `refs/` selector and the charset admits `.`.
+    #[test]
+    fn a_refs_selector_carrying_a_parent_traversal_is_refused() {
+        assert!(!valid_ref_selector("refs/heads/.."), "the `..` guard reaches the refs/ arm");
+        assert!(!valid_ref_selector("refs/../../etc/passwd"));
+        // ⭐ NEGATIVE: an ordinary full ref, and a legitimate dot in a tag
+        // name, must still pass — or the guard is a prohibition, not a bound.
+        assert!(valid_ref_selector("refs/heads/main"));
+        assert!(valid_ref_selector("refs/tags/v1.0.0"));
     }
 
     /// `SIGNOFF-REPAIR.7.2.9` — the per-object allocation limit is IN FORCE.

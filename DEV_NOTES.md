@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — Calibrate against what the corpus does, not against what the check says it should
+
+- I set out to fix a scoping bug: the acceptance gate reads one checklist per file and this tree has 194. Every predicate I priced refused a quarter to a half of honest history, and I kept reaching for a cleverer scope. The scope was not the binding problem.
+- ⭐ **I had not asked what the corpus actually writes.** One census of evidence-bullet lead-ins settled it: the project's checklist is `REPRODUCE / ISSUE` · `FIX / LOCKSTEP` · `NO REGRESSION`, used 142 · 192 · 203 times. The gate blocks on `ROOT CAUSE` and `ADDRESSED` — 13 and 14 uses. It was enforcing a vocabulary nobody writes, and it never found out because it only ever read one bullet, which happened to be an old-style one.
+- 🔎 **An inert control does not hold a line; it hides that the line moved.** Both defects — the scope and the words — have the same cause. Nothing ran the check meaningfully for ~200 commits, so the practice drifted and the gate drifted, independently, and neither could correct the other.
+- ⭐ **The reframing that made a "too high" number shippable.** 20.9% refused looked disqualifying next to `.11.2.5`'s 1%. But that measures leaves already closed while the gate was asleep — past drift — and the gate only ever examines the leaf being closed now. **Ask what the number is a rate OF before rejecting it.** I nearly discarded the right candidate on a figure that was evidence FOR it.
+- 🔴 **And I made the key-too-loose mistake a third time today.** I detected which leaf a commit closes by matching added `Status: done` lines by their text. That line is byte-identical for every leaf. One commit appeared to close dozens and the candidate scored 64.7% instead of 57.7%. The sound version reads the diff's hunk headers for POST-image line numbers. Three instances in one session — `list_runs`, `tenant_id`, and now this — is the honest measure of how easily a key that *looks* specific is not.
+- promotion: DECLINED — all three lessons already have notes and this adds instances rather than a new shape: `[[a-key-too-loose-returns-the-wrong-instance]]` (the third instance), `[[a-control-that-passes-for-an-unrelated-reason]]` (an inert control), and `[[a-control-is-calibrated-against-the-renderer]]`, whose rule — calibrate against the thing that actually produces the corpus — is exactly what the vocabulary census applied.
+
 ## 2026-09-18 — Two routes over one view must not disagree about who may read it
 
 - The census handed me one defect: a presence read with no principal. What made it a defect rather than a design choice was not the missing check in isolation — presence is genuinely observability data, and "this is public on purpose" was a real possibility. It was that **the same view already had an authorized reader**, three routes away, on the same port.

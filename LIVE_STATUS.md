@@ -5,6 +5,14 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+⚠️ **THE ACCEPTANCE GATE ENFORCES A VOCABULARY THIS PROJECT DOES NOT USE (`.11.2.6`, calibration — NOT yet repaired).**
+
+🔴 **`check_task_acceptance.sh` validates ONE checklist per staged tree file; this tree has 194 `ROOT CAUSE` boxes and it reads line 388 on every code commit.** Calibrating the repair found a larger second defect: the census returns `NO REGRESSION` **203**, `REPRODUCE / ISSUE` **142**, `FIX / LOCKSTEP` **192** against the gate's hard-gated `ADDRESSED` **14** and `ROOT CAUSE` **13**.
+
+- ✅ Four candidates priced over 300 commits: **23.8% · 25.5% · 57.7%** rejected; **deepest closed leaf + corpus-derived vocabulary at 20.9%** is the candidate.
+- ⭐ **20.9% is past drift, not a forecast** — the gate only examines the leaf being closed now. Four of five sampled refusals carry no regression evidence anywhere: real omissions an inert gate never asked about.
+- ⛔ **Not repaired yet.** The leaf stays `pending` with the design settled by measurement; the historical debt is named for an explicit decision rather than silently inherited.
+
 ✅ **ONE NODE PRESENCE READ ASKED NOBODY WHO WAS CALLING (`.3.5.5`, REPAIR-0261).**
 
 🔴 **`GET /v1/nodes/presence` took no `HeaderMap`** — no principal, no authorization — then `SELECT … FROM node_presence WHERE node_id = $1` on a view carrying `tenant_id`, while `GET /v1/admin/nodes/presence` gated the SAME view behind a `tenant_admin` grant, on one port in one process.

@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-18 — The acceptance gate enforces a vocabulary this project does not use (`SIGNOFF-REPAIR.11.2.6`, calibration)
+
+🔴 **`check_task_acceptance.sh` reads ONE checklist per staged tree file — this tree has 194 `ROOT CAUSE` boxes and the gate validates line 388, a leaf closed long ago, on every commit that touches code. Calibrating the repair found a second defect larger than the first.**
+
+- 🔴 **The vocabulary census:** `NO REGRESSION` **203**, `LOCKSTEP` **147**, `REPRODUCE / ISSUE` **142**, `FIX / LOCKSTEP` **45** — against the gate's own hard-gated `ADDRESSED` **14** and `ROOT CAUSE` **13**. Two of its three blocking labels are the project's rarest spellings, and the two it does not know at all are how the checklist is actually written. ⭐ One root cause for both holes: the gate has been inert for ~200 commits, so nothing kept its scope or its words honest — `.11.2.4`'s defect, in the gate that polices the other gates.
+- ✅ **Four candidates priced over 300 commits** (231 touched code and staged a tree): added-lines boxes **23.8%** refused; the same accepting prose **25.5%**; every closed leaf **57.7%** (a commit closes **2.75 leaves on average, up to 5** — parent lanes close with their child and carry no checklist); **deepest closed leaf + corpus-derived vocabulary 20.9%**.
+- ⭐ **20.9% is PAST DRIFT, not a forecast.** The gate is staged-scope-aware and only examines the leaf being closed now, so a leaf written to the enforced standard passes. Classified rather than assumed: **four of five sampled refusals carry no regression evidence anywhere** — real omissions the inert gate never asked about.
+- 🔴 **My own third measurement was unsound and is recorded, not quietly replaced.** It matched added `Status: done` lines by TEXT; that line is byte-identical for every leaf, so one commit appeared to close dozens and the candidate scored 64.7%. Re-derived from the diff's hunk headers it scores 57.7%. ⭐ Third `a-key-too-loose-returns-the-wrong-instance` in one session.
+- ⚠️ The gate is NOT yet repaired — this commit records the calibration and the leaf stays `pending`. The debt the 20.9% represents is named for an explicit decision rather than silently inherited.
+
 ## 2026-09-18 — One node presence read asked nobody who was calling (`SIGNOFF-REPAIR.3.5.5`)
 
 🔴 **`GET /v1/nodes/presence` took no `HeaderMap` at all.** It never learned who was calling, never asked whether they may, and then selected `FROM node_presence WHERE node_id = $1` — on a view that carries `tenant_id`. Meanwhile `GET /v1/admin/nodes/presence` gated the SAME view behind a `tenant_admin` grant, on the same port, in the same process.

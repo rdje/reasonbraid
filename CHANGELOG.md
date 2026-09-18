@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-18 — Unformatted Rust reached `main`, because nothing checked per commit (`SIGNOFF-REPAIR.11.21`)
+
+🔴 **`crates/reasonbraid-server/src/git.rs` sat on `main` failing `cargo fmt --all -- --check` at two sites, and was found only because a LATER leaf happened to run the check while verifying a file it had not touched.**
+
+- ⭐ **A policy gap, not a lapse.** `CLAUDE.md` §16 routes the full CI to pre-push and the per-commit gate to the doctrine enforcer, whose 18 registered checks contained no formatting check; `cargo fmt --check` appeared only in `COMMIT.md`'s pre-push list. Pushes go out in batches of ~300 commits, so unformatted code could sit on `main` for as many commits as that — and did, from REPAIR-0251/0252.
+- ✅ **Measured before the rule was proposed (`.11.6`).** Three runs each, warm: `cargo fmt --all -- --check` at **0.81 / 0.66 / 0.66 s**, the enforcer at **12.57 / 12.52 / 13.00 s**. About **5 %**, and `.11.5`'s constraint holds — nobody routes around two-thirds of a second.
+- ⛔ **Leaving it in the pre-push list was rejected on evidence, not taste**: that is exactly where it already was, and it is the arrangement that let the defect ship. A check running once per ~300 commits cannot say WHICH commit broke formatting, so the cost of finding out is the thing being economised on.
+- ✅ **`RUST-FORMATTING` is now doctrine 16 of 19**, whole-workspace rather than staged-scope — deliberately, because the defect was in a file no staged change touched. ⚠️ That is affordable only because the workspace is formatted as of this commit; a strict check over pre-existing debt would have needed a ratchet like `TABLE-ARITY`.
+- ✅ **Seen RED, then green.** `let  _deliberately = 1 ;` injected into `git.rs::expired` produced `❌ RUST-FORMATTING … 1 doctrine breach(es) — commit blocked`, naming the file by repository-relative path; restored byte-identical, the gate returns to green over 19 checks. Its own self-test reaches the TOOL rather than just the verdict, and FAILS rather than skipping when `rustfmt` is absent.
+- 🔴 **The registry's own guard caught me while registering it.** My first description spelled the command in backticks — and each registry entry is a bash double-quoted string, so that is command substitution the driver would EXECUTE on every commit and in CI. `DOCTRINE-REGISTRY` refused it by name. `DOCTRINE_ENFORCEMENT.md` documents this exact trap from a previous occurrence; the gate worked, and so would have reading the section first.
+- ⚠️ A number corrected in passing: the enforcer costs ~12.6 s, not the 3.15 s of `.11.4.3.1.7.2`. That figure is anchored to its own leaf rather than wrong — the registry has grown — so the current one is named beside it rather than edited into history.
+
 ## 2026-09-18 — A route key that was too loose and too tight in one expression (`SIGNOFF-REPAIR.11.8.1`)
 
 🔴 **The route-documentation census was wrong in BOTH directions, and its own self-test asserted the defect rather than catching it.**

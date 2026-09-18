@@ -83,7 +83,7 @@ binary, so all four cost seconds:
 ```bash
 make gate                      # the doctrine enforcer
 make book                      # the rendered book
-cargo fmt --all -- --check     # formatting
+cargo fmt --all -- --check     # formatting (also a gate check since REPAIR-0256)
 python3 -B scripts/project_env.py python3 -B -m unittest discover -s scripts/tests -p 'test_*.py'
 ```
 

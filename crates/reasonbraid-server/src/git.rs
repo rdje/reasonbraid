@@ -926,9 +926,7 @@ impl Deadline {
 
     fn expired(&self) -> bool {
         std::time::Instant::now() >= self.at
-            || self
-                .interrupt
-                .load(std::sync::atomic::Ordering::Relaxed)
+            || self.interrupt.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// A checkpoint between phases. The ceiling is on the WHOLE acquisition, so
@@ -2060,7 +2058,10 @@ mod tests {
     /// below it never saw a `refs/` selector and the charset admits `.`.
     #[test]
     fn a_refs_selector_carrying_a_parent_traversal_is_refused() {
-        assert!(!valid_ref_selector("refs/heads/.."), "the `..` guard reaches the refs/ arm");
+        assert!(
+            !valid_ref_selector("refs/heads/.."),
+            "the `..` guard reaches the refs/ arm"
+        );
         assert!(!valid_ref_selector("refs/../../etc/passwd"));
         // ⭐ NEGATIVE: an ordinary full ref, and a legitimate dot in a tag
         // name, must still pass — or the guard is a prohibition, not a bound.

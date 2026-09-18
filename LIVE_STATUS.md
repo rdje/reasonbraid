@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **UNFORMATTED RUST REACHED `main`, BECAUSE NOTHING CHECKED PER COMMIT (`.11.21`, REPAIR-0256).**
+
+🔴 **`crates/reasonbraid-server/src/git.rs` failed `cargo fmt --all -- --check` at two sites from REPAIR-0251/0252** — found only because a LATER leaf happened to run the check while verifying a file it had not touched.
+
+- ⭐ **A policy gap, not a lapse.** §16 routes full CI to pre-push and the per-commit gate to the enforcer, whose 18 checks had no formatting check; `cargo fmt --check` sat only in `COMMIT.md`'s pre-push list, and pushes go out in batches of ~300 commits.
+- ✅ **Measured before proposing (`.11.6`)**: `cargo fmt --all -- --check` at **0.66 s** against an enforcer at **12.6 s** — about 5 %. ⚠️ That enforcer figure supersedes the anchored `3.15 s` of `.11.4.3.1.7.2`; the registry has grown since.
+- ⛔ **Leaving it pre-push was rejected on evidence**: that is the arrangement that let the defect ship, and a check running once per ~300 commits cannot say which commit broke formatting.
+- ✅ `RUST-FORMATTING` is doctrine 16 of 19, **seen RED** against injected unformatted code and green again. Its self-test reaches the tool, not just the verdict, and FAILS rather than skips when `rustfmt` is absent.
+- 🔴 The registry's own `DOCTRINE-REGISTRY` guard refused my first entry: backticks in a bash-quoted description are command substitution the driver would EXECUTE on every commit.
+
 ✅ **A ROUTE KEY THAT WAS TOO LOOSE AND TOO TIGHT IN ONE EXPRESSION (`.11.8.1`, REPAIR-0255).**
 
 🔴 **`stem()` DELETED path parameters, so the route census was wrong in both directions — and its own self-test ASSERTED the defect.**

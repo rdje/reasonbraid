@@ -65,6 +65,7 @@ DOCTRINES=(
   "TABLE-ARITY-RATCHET|a staged markdown file may not RAISE the number of table rows whose cell count disagrees with their header — GFM silently drops the extra cells or pads the missing ones|scripts/check_table_arity.sh"
   "LOCKSTEP-CLAIM|a ticked LOCKSTEP box may not name a core live document the commit does not stage — the box is a claim about THIS commit, and a partially-failed scripted edit staged with add -A is exactly how a false checklist entry ships|scripts/check_lockstep_claim.sh"
   "INDEX-FRONTIER|the task-tree index may not name a frontier its own tree does not — a second copy nothing derived drifted for 39 commits, starting at the very commit that closed the leaf it kept naming|scripts/check_tree_index_frontier.sh"
+  "RUST-FORMATTING|the workspace passes cargo fmt --all --check — nothing ran it per commit, so unformatted Rust reached main and sat there; pushes go out in batches of about 300 commits, and a pre-push-only check cannot say which commit broke it|scripts/check_rust_formatting.sh"
   "SELF-TEST|every check and census instrument passes its OWN --self-test — nothing ran them before this gate, and one had been failing since the very commit that added it, because its probe was a literal the file itself contained|scripts/check_self_tests.sh"
 )
 # Optional derived-artifact sync check (present only when the subsystem exists).

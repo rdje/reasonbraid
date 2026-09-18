@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — A check that runs once per 300 commits cannot name the commit
+
+- Formatting was checked before every PUSH and never before a COMMIT. Both sound like "we check formatting". They are not the same control, and the difference is not thoroughness — it is ATTRIBUTION.
+- ⭐ **The cost being economised on was never the check.** `cargo fmt --all -- --check` is 0.66 s. What the pre-push placement saved was 0.66 s per commit and what it spent was the ability to say WHICH of ~300 commits broke formatting. A gate's value is not only whether it catches a thing but whether it catches it while the cause is still obvious.
+- 🔎 **The tell that it was a policy gap rather than a lapse:** the file had been unformatted for two commits and every gate was green throughout. When a defect survives a green gate, ask what the gate's population IS before asking who was careless. Here the enforcer's 18 checks simply had no formatting check in them.
+- ⚠️ **Whole-workspace beats staged-scope for this class, and the instance proves it.** The offending file was one no staged change touched; a staged-scope check would have been green on every commit after the one that broke it. That choice is only affordable on a clean baseline — over pre-existing debt it would have had to be a ratchet, which is what `TABLE-ARITY` does and why.
+- ⛔ **Announce a missing tool; never skip quietly.** The check exits 0 when `cargo` is absent but says NOT CHECKED, and its self-test FAILS when `rustfmt` is missing rather than passing vacuously. A skip that looks like a pass is the same defect as a control that cannot see its target.
+- 🔴 **The registry guard caught me putting backticks in a bash-quoted description** — command substitution the driver would run on every commit. The trap is documented in `DOCTRINE_ENFORCEMENT.md` from a previous occurrence, one section above where I was working. Reading the *Adding a doctrine* steps first costs seconds; the gate caught it, which is what a gate is for, but the cheaper control was the page.
+- promotion: DECLINED — *measure a proposed gate's cost against the gate it joins, before proposing it* is `.11.6`'s own rule and is already in `TOOLBOX.md`.
+
 ## 2026-09-18 — A key can be too loose and too tight in the same expression
 
 - A census matched routes to the book by DELETING path parameters: `/v1/snapshots/{id}` → `/v1/snapshots`. One line, and it fails in opposite directions simultaneously.

@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **A REPLAY OVER POLICED HISTORY MEASURES DETERRENCE, NOT COST (`.11.18.2`, REPAIR-0247).**
+
+🔴 **Two calibrations of the same candidate returned 0 of 559 and only one meant anything.** Once a rule is enforced, every commit that landed had already been edited until it passed.
+
+- ⚠️ **Neighbour of the window trap, not the same one:** widening the window fixes that one and makes this one worse.
+- ⭐ **ABSORBED into the window note**, needing a third clause beyond `.11.20.2`'s criterion — same activity, different failure mode, decided by the host already claiming the reader's question.
+- ✅ **Census, not judgement:** **2 of 3** calibrating instruments replay over a corpus their own `--check` gates; detection costs **17 ms**; the distortion grows to 100% exactly when a mature gate is re-argued. Shipped as a DISCLOSURE, not a refusal.
+- 🔴 Adding the arms caught a banner printing `23 arms` over **21** — the second instance of one hazard in two leaves.
+
 ✅ **THE ADVISORY AND THE BLOCKER NEVER GOVERNED THE SAME CORPUS (`.11.18.1`, REPAIR-0246).**
 
 🔴 **`GAP-CLAIM-CENSUS` advised on 69 files and enforced on 15, for the whole of its life, because the script spelled its population twice.**

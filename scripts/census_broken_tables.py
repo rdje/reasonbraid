@@ -314,6 +314,44 @@ def census() -> dict:
     }
 
 
+def enforced_span(script: str, depth: int) -> tuple[int, str | None]:
+    """How much of a `depth`-commit replay this instrument's OWN gate policed.
+
+    ⛔ A BACKTEST OVER POLICED HISTORY MEASURES DETERRENCE, NOT COST
+    (`SIGNOFF-REPAIR.11.18.2`). Once a rule is enforced, every commit that
+    LANDED had already been edited until it passed — so a replay across that
+    interval returns 0 by construction, and that 0 reads exactly like "this
+    rule would never have fired". ⭐ The distortion is not static: it is the
+    fraction of the window lying after registration, so it grows to 100% and
+    is total precisely when a mature gate is being re-argued.
+    ⚠️ DISCLOSED, NOT REFUSED. The post-registration number is the right one
+    when the question is *does the gate still hold*; it is the wrong one when
+    the question is *what would this rule cost*. Only the caller knows which,
+    so the instrument names the span and lets them say.
+    """
+    out = subprocess.run(
+        ["git", "log", "--format=%H", "-S", script,
+         "--", "scripts/check_doctrines.project.sh", "scripts/check_doctrines.sh"],
+        cwd=ROOT, capture_output=True, text=True,
+    ).stdout.split()
+    if not out:
+        return 0, None                      # never registered: the whole window is honest
+    registered = out[-1]
+    since = subprocess.run(["git", "rev-list", "--count", f"{registered}..HEAD"],
+                           cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    n = min(int(since or 0), depth)
+    return n, registered[:7]
+
+
+def print_enforced_span(script: str, depth: int) -> None:
+    n, sha = enforced_span(script, depth)
+    if not n:
+        return
+    print(f"  ⚠️ {n} of these {depth} commits are AFTER this gate was registered ({sha}), "
+          f"so they were\n     already made to pass it — that span measures DETERRENCE, not the "
+          f"rule's cost\n     (`SIGNOFF-REPAIR.11.18.2`).")
+
+
 def calibrate(depth: int, absorbed_too: bool = False) -> dict:
     """What the gate would have fired on, commit by commit.
 
@@ -400,9 +438,16 @@ def calibrate(depth: int, absorbed_too: bool = False) -> dict:
 
 def self_test() -> int:
     fails = 0
+    ran = 0
 
+    # ⛔ THE ARM TOTAL IS COUNTED, NOT WRITTEN DOWN. The banner below said "23
+    # arms" as a literal — correct on the day, and one added arm away from
+    # publishing a false total. `TOOLBOX.md` names that hazard ("an instrument's
+    # own banner is prose too"), `SIGNOFF-REPAIR.11.20.1` repaired the same
+    # shape in `census_memory_warnings.py`, and this is its second instance.
     def check(name, got, want):
-        nonlocal fails
+        nonlocal fails, ran
+        ran += 1
         if got != want:
             print(f"BROKEN-TABLE self-test: {name}: got {got!r}, want {want!r}", file=sys.stderr)
             fails += 1
@@ -569,10 +614,23 @@ def self_test() -> int:
         )
         fails += 1
 
+    # ---- `SIGNOFF-REPAIR.11.18.2`: a replay over policed history -----------
+    # ⭐ A REGISTERED GATE REPORTS A NON-EMPTY ENFORCED SPAN, so the disclosure
+    #    printed beside `--calibrate` is a line that has been seen to fire.
+    n_reg, sha_reg = enforced_span("census_broken_tables.py", 10_000)
+    check("a registered gate reports its enforced span", n_reg > 0 and bool(sha_reg), True)
+    # ⭐ NEGATIVE, without which the rule degenerates into "always warn": an
+    #    instrument the enforcer never registered has no enforced span at all.
+    check("an UNREGISTERED instrument reports no enforced span",
+          enforced_span("census_mirror_numbers.py", 10_000), (0, None))
+    # ⛔ and the span is clamped to the window asked for.
+    check("the enforced span is clamped to the requested depth",
+          enforced_span("census_broken_tables.py", 3)[0] <= 3, True)
+
     if fails:
         return 1
     print(
-        "BROKEN-TABLE self-test: 23 arms — BOTH directions of the table boundary"
+        f"BROKEN-TABLE self-test: {ran} arms — BOTH directions of the table boundary"
         " (a blank line where none belongs, and none where one belongs), TEN negatives,"
         " the renderer's answers about what a table, a body row and a terminator are,"
         " an escaped pipe, an unbalanced fence refused, and"
@@ -595,6 +653,7 @@ def main(argv: list[str]) -> int:
         print(f"over {c['commits_examined']} commits")
         print(f"  commits changing the population : {c['commits_changing_the_population']}")
         print(f"  commits it would have BLOCKED   : {c['commits_blocked']}  ({c['blocked_pct']}%)")
+        print_enforced_span("census_broken_tables.py", depth)
         for d in c["detail"][-12:]:
             print(f"     {d['commit']}  {', '.join(d['files'])}")
         return 0

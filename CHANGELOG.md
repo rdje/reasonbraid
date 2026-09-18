@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-18 — A replay over policed history measures deterrence, not cost (`SIGNOFF-REPAIR.11.18.2`)
+
+🔴 **Two calibrations of the same candidate returned 0 of 559 commits and only one of them meant anything.**
+
+- **The trap.** Once a rule is enforced, every commit that LANDED had already been edited until it passed, so a replay across that interval returns 0 **by construction** — and that 0 reads exactly like *"this rule would never have fired"*. It measures the gate's DETERRENCE, not the rule's COST, in the same units.
+- ⚠️ **It is the neighbour of the window trap, not the same one.** `calibrate-over-the-history-that-contains-the-instance` is about a window too short to contain the defect, and widening fixes that. Here the whole interval is enforced and **widening makes it worse** — more policed history is more zeros.
+- ⭐ **ABSORBED into that note rather than extracted, which needed a third clause beyond `.11.20.2`'s criterion.** This is the same activity with a different failure mode, neither thesis nor tool. What decides it: the host's `answers:` line already claims *"my proposed gate catches nothing in the calibration, is it unnecessary"* — so **a note that advertises a question owes every answer to it**, and extracting would have made the host a confidently wrong reply.
+- ✅ **Mechanizability answered by census, not judgement.** Of this project's three calibration-bearing instruments, **2 of 3** replay over a corpus their own `--check` gates (`census_positional_refs.py` 12 of 200, `census_broken_tables.py` 10 of 200; `census_mirror_numbers.py` is a review instrument). Detection costs **17 ms** against a 10.8 s replay. ⭐ The case rests on growth, not on 5–6%: the overlap is the fraction of the window after registration, so it reaches 100% exactly when a mature gate is re-argued.
+- ✅ **Shipped as a DISCLOSURE, not a refusal** — the post-registration number is the right one when the question is *does the gate still hold*, and only the caller knows which question they are asking.
+- ⚠️ The helper is duplicated in two scripts, named rather than hidden: **26 tracked `scripts/*.py`, 0 sibling imports**, so the project's first shared module is a structural change this leaf does not own. Trigger for revisiting: a third instrument needing it.
+- 🔴 **Adding the arms caught a live false total.** `census_broken_tables.py`'s self-test printed a hardcoded `23 arms` while running **21** — measured two independent ways. Counted now, the same repair `.11.20.1` made one leaf earlier: the second instance of one `TOOLBOX.md` hazard in two leaves.
+- ⭐ Restated outside software: *"how many drivers would this speed limit catch?"*, measured on a road that already has a camera.
+
 ## 2026-09-18 — The advisory and the blocker never governed the same corpus (`SIGNOFF-REPAIR.11.18.1`)
 
 🔴 **`GAP-CLAIM-CENSUS` advised on 69 files and enforced on 15, for the whole of its life, because the script spelled its population twice.**

@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — A note that advertises a question owes every answer to it
+
+- `.11.20.2` set a criterion for routing a recurring lesson: **absorb when the host note's THESIS is your rule; extract when your rule is a TOOL the host merely uses.** One leaf later it met a case that is neither — the same activity as the host, with a different failure mode.
+- ⭐ **The third clause, and it decides on the READER rather than on the content:** look at the host's `answers:` line. If it already claims the question your rule answers, **absorb** — otherwise the host stays advertised as the place to go and hands out one of two answers.
+- 🔴 **The concrete harm, which is why this is not a filing preference.** A reader whose calibration returns a suspicious 0 searches *"my proposed gate catches nothing, is it unnecessary"*. That lands on the window note. If the policed-history answer lives elsewhere, the reader widens the window, gets the same 0, and concludes the rule is unnecessary — **the host actively produced the wrong conclusion**, which is worse than not existing.
+- ⚠️ **The cost of absorbing is real and worth naming:** the host grows, and a long note is its own retrieval problem. The mitigation is a discriminator up front — a two-column table saying which failure mode a reader has — rather than two sections they must read in full to tell apart.
+- ⭐ **The clause generalizes past notes:** any index, FAQ or error message that advertises a question owns every answer to it. A troubleshooting page listing one of three causes is the same defect, and it is the reason a partial answer under a confident heading outranks no answer at all in how much damage it does.
+- promotion: recorded as the routing rule itself; the lesson it routed is absorbed into `docs/knowledge/calibrate-over-the-history-that-contains-the-instance.md`. ⛔ No new note — writing one here would be the very fork this clause exists to prevent.
+
 ## 2026-09-18 — A replay can only price a rule over history the rule did not police
 
 - Two calibrations of the same candidate returned **0 of 559** and only one of them meant anything. Extending a gate to a corpus nothing had ever enforced: a real 0. The identical harness over the corpus the gate *has* policed since the initial commit: also 0, and an artefact — every commit that landed had already been edited until it passed.

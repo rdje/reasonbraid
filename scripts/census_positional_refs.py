@@ -391,6 +391,44 @@ def calibrate(depth: int, kinds: tuple[str, ...] = REFUSED) -> dict:
     }
 
 
+def enforced_span(script: str, depth: int) -> tuple[int, str | None]:
+    """How much of a `depth`-commit replay this instrument's OWN gate policed.
+
+    ⛔ A BACKTEST OVER POLICED HISTORY MEASURES DETERRENCE, NOT COST
+    (`SIGNOFF-REPAIR.11.18.2`). Once a rule is enforced, every commit that
+    LANDED had already been edited until it passed — so a replay across that
+    interval returns 0 by construction, and that 0 reads exactly like "this
+    rule would never have fired". ⭐ The distortion is not static: it is the
+    fraction of the window lying after registration, so it grows to 100% and
+    is total precisely when a mature gate is being re-argued.
+    ⚠️ DISCLOSED, NOT REFUSED. The post-registration number is the right one
+    when the question is *does the gate still hold*; it is the wrong one when
+    the question is *what would this rule cost*. Only the caller knows which,
+    so the instrument names the span and lets them say.
+    """
+    out = subprocess.run(
+        ["git", "log", "--format=%H", "-S", script,
+         "--", "scripts/check_doctrines.project.sh", "scripts/check_doctrines.sh"],
+        cwd=ROOT, capture_output=True, text=True,
+    ).stdout.split()
+    if not out:
+        return 0, None                      # never registered: the whole window is honest
+    registered = out[-1]
+    since = subprocess.run(["git", "rev-list", "--count", f"{registered}..HEAD"],
+                           cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    n = min(int(since or 0), depth)
+    return n, registered[:7]
+
+
+def print_enforced_span(script: str, depth: int) -> None:
+    n, sha = enforced_span(script, depth)
+    if not n:
+        return
+    print(f"  ⚠️ {n} of these {depth} commits are AFTER this gate was registered ({sha}), "
+          f"so they were\n     already made to pass it — that span measures DETERRENCE, not the "
+          f"rule's cost\n     (`SIGNOFF-REPAIR.11.18.2`).")
+
+
 def report(rows: list[dict]) -> None:
     distinct = {r["ref"] for r in rows}
     counts = Counter(r["kind"] for r in rows)
@@ -635,6 +673,25 @@ def self_test() -> int:
         print(f"census_positional_refs: live-corpus arm raised {exc!r}")
     arms.append(("live-corpus: the real tree is readable to this census", live_ok))
 
+
+    # ---- `SIGNOFF-REPAIR.11.18.2`: a replay over policed history ------------
+    # 25 ⭐ A REGISTERED GATE REPORTS A NON-EMPTY ENFORCED SPAN. Without this the
+    #    disclosure is a line nobody has seen fire, and a calibration's 0 keeps
+    #    reading as "this rule would never have cost anything".
+    n_reg, sha_reg = enforced_span("census_positional_refs.py", 10_000)
+    arms.append(("a registered gate reports its enforced span",
+                 n_reg > 0 and bool(sha_reg)))
+    # 26 ⭐ NEGATIVE, and the rule degenerates into "always warn" without it: a
+    #    script the enforcer never registered has NO enforced span, so its whole
+    #    replay window is honest and nothing is disclosed.
+    n_un, sha_un = enforced_span("census_mirror_numbers.py", 10_000)
+    arms.append(("an UNREGISTERED instrument reports no enforced span",
+                 (n_un, sha_un) == (0, None)))
+    # 27 ⛔ and the span is CLAMPED to the window asked for, or a short replay
+    #    would be told more of it was policed than it contains.
+    arms.append(("the enforced span is clamped to the requested depth",
+                 enforced_span("census_positional_refs.py", 3)[0] <= 3))
+
     passed = sum(1 for _, ok in arms if ok)
     for name, ok in arms:
         print(f"census_positional_refs: {'arm ok' if ok else 'arm FAILED'} — {name}")
@@ -658,6 +715,7 @@ def main(argv: list[str]) -> int:
         c = calibrate(depth, kinds)
         print(f"a gate on [{', '.join(c['kinds'])}], over {c['commits_examined']} commits")
         print(f"  commits it would have BLOCKED : {c['commits_blocked']}  ({c['blocked_pct']}%)")
+        print_enforced_span("census_positional_refs.py", c["commits_examined"])
         for d in c["detail"]:
             print(f"     {d['commit']}  {', '.join(d['files'])}")
         return 0

@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+⭐ **DIRECTION RECORDED, UNSCHEDULED (2026-09-18): small-swarm orchestration is the EXISTING objective, not a pivot.**
+
+The director asked for 2–5 agents coordinated on any given problem, scaling later. `README.md` already states that objective, and the shipped step vocabulary carries no programming-specific verb — `solicit`, `blind_solicit`, `critique`, `revise`, `synthesize`, `assess`, `vote`, `adjudicate`, `decide`, … A profile is versioned CONFIGURATION over existing verbs, and real `claude.rs`/`codex.rs` adapters already dispatch.
+
+- ⛔ **The binding constraint is the ACCEPTOR, not orchestration.** Model output stays untrusted until DETERMINISTIC rules accept it; programming has acceptors, "any problem" often has none.
+- ⚠️ 2–5 agents is in range; **thousands is a re-architecture**, not an extrapolation — the design serialises administrative acts on one guard row.
+- ⛔ **It does not displace the LAN bar and no leaf is opened.** Much of it is inside that bar anyway: `blind_solicit`, rounds, quorum and adjudication are G3/G5 surfaces, and G5 is withdrawn.
+- Record: `docs/decisions/2026-09-18_multi-agent-orchestration-is-the-objective-not-a-pivot.md`.
+
 ⛔ **INTERNET EXPOSURE IS DEFERRED — director instruction, 2026-09-18.**
 
 > *"The internet exposure is not high priority right now. It needs to fully work on the local network first."*

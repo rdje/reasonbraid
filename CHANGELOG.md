@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-18 — Small-swarm orchestration recorded as the existing objective, unscheduled (director direction)
+
+The director asked for ReasonBraid to orchestrate 2–5 agents working collectively on any given problem, scaling later, prompted by the reported OpenAI Navier–Stokes swarm and xAI's Grok 4.20 multi-agent model.
+
+- **It is not a pivot.** `README.md` already states the objective, and the shipped step vocabulary in `workflows.rs` — `solicit`, `blind_solicit`, `critique`, `revise`, `synthesize`, `assess`, `vote`, `adjudicate`, `decide`, `approve`, `moderate`, `present`, `retrospect`, `evidence_request`, `quick_advice` — contains **no programming-specific verb**. A profile is versioned configuration over existing verbs, so changing domain is writing a profile rather than changing code; real `claude.rs`/`codex.rs` adapters already dispatch to agent harnesses.
+- ⛔ **The binding constraint is the ACCEPTOR, not orchestration.** Output stays untrusted until deterministic rules accept it. Programming has acceptors — compilers, suites, this repo's own gates. "Any problem" frequently has none, which is exactly what the Navier–Stokes episode illustrates: a swarm produced a result that remains unverified and whose attribution is disputed. Those two difficulties are what this platform is for.
+- ⚠️ **2–5 agents is in range; thousands is a re-architecture**, not an extrapolation — the current design serialises administrative acts on one site guard row under per-tenant transactions.
+- ⛔ **Unscheduled, and no leaf is opened** — deliberately, because the LAN bar was defined hours earlier and a leaf would put this above it. Much of the capability sits inside that bar regardless: `blind_solicit`, rounds, quorum and adjudication are G3/G5 surfaces and G5 is currently withdrawn.
+- ⚠️ The two external results are recorded as **reported, not established** — the Navier–Stokes claim is explicitly unverified — because a direction may rest on them but no claim may.
+
 ## 2026-09-18 — Internet exposure deferred; the LAN path is the priority (director instruction)
 
 > *"The internet exposure is not high priority right now. It needs to fully work on the local network first."*

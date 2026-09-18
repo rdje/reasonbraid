@@ -26,7 +26,13 @@ moment of deletion rather than read off this census:
   - no TRACKED file names it. A retained cluster a task tree cites by name is
     evidence, and evidence is not disposable;
   - it is older than `--min-age-hours` (default 1), so a run that is still being
-    read is left alone.
+    read is left alone;
+  - it has NOT already been reduced to its evidence. `SIGNOFF-REPAIR.7.3.2.1`'s
+    `scripts/census_retained_fixtures.py` applies the other disposition — keep
+    the receipt, drop the reproducible PGDATA payload — and leaves a
+    `retired.json` behind. A reduced cluster is receipts and configuration with
+    the bulk already gone, so removing it here would destroy the very evidence
+    that reduction was performed to preserve, and recover almost nothing.
 
 A cluster failing any check is REPORTED and kept. The exit code is the verdict:
 0 when the requested operation completed, 1 when something was refused.
@@ -46,6 +52,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 CLUSTERS = ROOT / "target" / "pg-tests"
 PREFIX = "run-"
+# Written by scripts/census_retained_fixtures.py when it reduces a cluster to
+# its evidence. Its presence means the bulk is already gone.
+REDUCED = "retired.json"
 
 
 class Cluster:
@@ -135,6 +144,11 @@ def refusals(cluster: Cluster, repo_device: int, min_age_hours: float) -> list[s
     references = tracked_references(cluster.name)
     if references:
         reasons.append(f"named by {references} tracked file(s) — it is cited evidence")
+    if (cluster.path / REDUCED).is_file():
+        reasons.append(
+            f"already reduced to its evidence ({REDUCED}) — removing it would destroy "
+            "the receipts that reduction preserved"
+        )
     return reasons
 
 
@@ -186,6 +200,14 @@ def self_test() -> int:
             fragment="under the",
             min_age=1e9,
         )
+        reduced = build("reduced", {"state": "stopped"})
+        (reduced.path / REDUCED).write_text('{"rule": "keep the receipt"}')
+        # Re-age: writing the marker refreshed the mtime, and an arm should be
+        # refused by the property under test and nothing else.
+        old_time = time.time() - 3600 * 5
+        os.utime(reduced.path, (old_time, old_time))
+        expect("an already-reduced cluster", Cluster(reduced.path), fragment="already reduced")
+
         broken = build("broken", {"state": "stopped"})
         (broken.path / "runner.json").write_text("{not json")
         expect("an unreadable receipt", Cluster(broken.path), fragment="unreadable receipt")
@@ -210,7 +232,10 @@ def self_test() -> int:
         print(f"SELF-TEST FAILED: {failure}", file=sys.stderr)
     if failures:
         return 1
-    print("self-test: 6 refusal arms and the citation guard's two directions all fire")
+    print(
+        "self-test: 7 refusal arms — including a cluster already reduced to its evidence by "
+        "scripts/census_retained_fixtures.py — and the citation guard's two directions all fire"
+    )
     return 0
 
 

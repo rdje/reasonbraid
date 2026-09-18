@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — The branch your own process cannot reach
+
+- An instrument that reduces retained test fixtures must never touch one whose browser is still alive, so it probes each recorded id with signal 0. Three outcomes: ESRCH is absence, success is presence, and **EPERM is presence too** — the id exists and belongs to somebody else, which is precisely the process that is not ours to clean up.
+- 🔴 **Nine refusal arms covered that function and not one entered the EPERM branch.** Every arm built its fixture from `os.getpid()` / `os.getpgrp()`, where signal 0 *succeeds*. Mutating `except PermissionError: return True` into `return False` left the entire self-test green — a change that would let the instrument delete a live fixture owned by another user.
+- ⭐ **The structural rule: a fixture built from yourself only ever exercises the branch for yourself.** Whenever the subject is ownership, permission, identity or trust, the fixture you reach for first sits on the permissive side of every check — uid, file mode, a lock another process holds, a port another process bound, a row another tenant owns.
+- ✅ **The remedy is two arms, not one.** Inject the condition (replace the syscall with one that raises) so the branch's logic is checked hermetically on every machine; then find a real instance — `ps -axo pid=,uid=` yields a root-owned pid an unprivileged caller cannot signal — and **skip loudly** when the machine offers none. A silent skip looks exactly like a tested branch.
+- 🔎 **How to see it without a mutant:** ask of each arm *which branch does this enter*, and compare that list to the branches in the function. An `except PermissionError` with no arm that raises one is visible by reading, once you are counting branches rather than behaviours.
+- ⚠️ Two sibling controls were vacuous for a related reason: a guard that only fires when the code is wrong (`after != before`) never fires while the code is right, and a loop living inside `main()` is driven by nothing. Both needed a seam — a documented `after_removal` callback, and extraction into `retire_all()` — before they could be seen refusing.
+- promotion: PROMOTED — `docs/knowledge/a-guard-your-own-process-cannot-reach.md`.
+
 ## 2026-09-18 — A reading can find real defects in code no control reaches
 
 - Three defects had been found by reading the resolution logic, recorded precisely, and left for a later leaf. All three were real. All three were also **unreachable**: an earlier line handed the URL's fragment to the remote, so every acquisition that named a ref failed before the resolution ran at all.

@@ -199,6 +199,55 @@ scanner version or exceptions. The full configured history scan still runs befor
 push; it does not scan uncommitted files or prove that every possible secret is
 absent. See `docs/tasks/artifacts/signoff_review/history-fixture-fingerprints.md`.
 
+## Retained fixtures keep their receipts, not their payload
+
+Both suites retain a workspace when a run fails, deliberately: the retained
+directory is the diagnostic evidence. The browser harness keeps a fixture under
+`target/browser-lifetime-controls/case-*` whenever a control failed or a browser
+group outlived it, and `scripts/run_pg_tests.py` removes its cluster under
+`target/pg-tests/run-*` only on success. Neither had a retirement rule, so both
+grew without bound: measured at 1,896,248,619 bytes across 37 fixtures, of which
+**99.93 % was reproducible payload** and 1.34 MB was the evidence.
+
+One rule covers both populations — **keep the receipt, drop the reproducible
+payload** — and `scripts/census_retained_fixtures.py` applies it:
+
+```bash
+python3 -B scripts/census_retained_fixtures.py                    # the census
+python3 -B scripts/census_retained_fixtures.py --retire --confirm # reduce
+python3 -B scripts/census_retained_fixtures.py --population pg    # one population
+```
+
+A *retired* fixture is still there. Reduction never deletes a fixture and never
+deletes anything a reader acts on: every log, receipt and configuration file
+stays, and a `retired.json` records exactly which directories were dropped, how
+many files and bytes each held, and that they are reproducible by re-running the
+control. What goes is the Chrome profile and cache for a browser fixture, and the
+PGDATA storage directories for a cluster — in one measured fixture, 56,394,675 of
+56,546,450 bytes were `profile/`, 36.7 MiB of that a single machine-learning model
+Chrome had downloaded.
+
+Which bytes count as evidence is decided by measurement, not by extension. The
+browser worker writes `owner.json` and `completion.json` — carrying the browser
+group and whether cleanup was confirmed — *inside* the workspace directory, so
+those and any crash dump are kept while their sibling `profile/` is dropped. For
+a cluster, every directory under PGDATA is reproducible storage and every plain
+file at its root (`postgresql.conf`, `pg_hba.conf`, `PG_VERSION`,
+`postmaster.opts`) records what the failing cluster actually ran with, so it stays.
+
+Reduction refuses, and keeps the fixture whole, when any of these holds: the
+receipt does not parse; a cluster's receipt does not say `state: stopped`; any
+process id or browser process group the fixture records is still in use; the
+directory is not a real directory on the repository's own volume; a tracked file
+names it, which makes it cited evidence; or it is younger than `--min-age-hours`
+(default 1). Every check is re-run immediately before the fixture is touched,
+because a census is minutes old by the time anyone confirms it.
+
+The instrument never signals a process. A recorded id is only ever asked whether
+it exists, because a numeric id from an old receipt may since have been recycled
+by an unrelated process. An id that is in use therefore keeps a fixture rather
+than removing one: being wrong costs disk, never evidence.
+
 ## Publisher verification owns its directories
 
 The offline publisher tests create private, exclusive directories under
@@ -261,7 +310,8 @@ a later successful connection does not prove the original listener survived. The
 harness consumes the original socket's close receipt as well as its serving task.
 The original failed connection's peer was not captured, so its exact cause remains
 unstated. All twenty-six final worker/browser groups are independently absent;
-the nine earlier failed fixtures remain preserved. Exact results and remaining
+the nine earlier failed fixtures remain preserved — see the retirement rule below
+for what "preserved" means once a fixture has been retired. Exact results and remaining
 boundaries are in `docs/tasks/artifacts/signoff_review/browser-combined-qualification.md`.
 
 ### Browser timing and the selected test runtime

@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-18 — A retention rule with no retirement, on both populations at once (`SIGNOFF-REPAIR.7.3.2.1`)
+
+🔴 **Two test suites retain a workspace on failure, deliberately and correctly — and nothing had ever retired one. Measured at closure: 1,896,248,619 bytes across 37 fixtures, of which 99.93 % is reproducible payload and 1.34 MB is the evidence they exist for.**
+
+- **The premise had got worse while the leaf sat pending.** `target/pg-tests` went from the 12 clusters / 599 MiB this leaf recorded when it opened to **25 clusters / 1,372,355,705 bytes** in two days. `target/browser-lifetime-controls` held 12 fixtures / 523,892,914 bytes.
+- ⭐ **What a retained fixture must keep was measured, not chosen.** Of one fixture's 56,546,450 bytes, `profile/` is 56,394,675 — 36.7 MiB of it a single `model.tflite` Chrome downloaded — and the evidence is 1,293 bytes in 7 files. ⛔ **Two of those seven sit INSIDE the payload directory**: `owner.json` and `completion.json` are the production worker's own receipts, carrying `browser_group` and `cleanup_confirmed`. Dropping `.project-data` wholesale — the obvious rule, and the first one written — would have destroyed exactly the record `.7.3.2` exists to preserve.
+- ✅ **One rule, both populations: keep the receipt, drop the reproducible payload.** `scripts/census_retained_fixtures.py` censuses and reduces. It **never deletes a fixture and never signals a process** — every liveness probe is signal 0, honouring `.7.3.2`'s "never signal a historical numeric PID solely from a stale receipt". An id in use keeps a fixture, so a recycled id costs disk, never evidence.
+- ✅ **Result: 34 of 37 fixtures reduced, 1,824,989,121 bytes dropped, 0 deleted**, residue census green and `du` agreeing independently (`target/browser-lifetime-controls` 511,614 KiB → **384 KiB**; `target/pg-tests` 1,340,190 KiB → **70,464 KiB**). ⭐ The citation guard fired in PRODUCTION rather than only in its self-test, keeping `run-9_ueev0t` whole because three tracked files name it.
+- 🔴 **Mutation found three of this instrument's own controls vacuous.** Flipping `except PermissionError: return True` to `return False` — which would let it reduce a fixture whose browser is alive under another uid — passed every arm, because all nine liveness arms probed *our own* pid, where signal 0 succeeds and the EPERM branch never runs. Deleting the kept-tree equality check entirely passed too. So did removing the pre-removal re-check, which lived inline in `main()` where nothing drove it. All three are repaired with arms that fail for their own reason, and all six mutants are now red.
+- ✅ `scripts/census_pg_test_clusters.py` removes a cluster outright, a different disposition owned by `.11.4.3.1.7` and left intact. It now refuses any cluster carrying `retired.json`, so it cannot undo this repair.
+- 📄 Promoted: `docs/knowledge/a-guard-your-own-process-cannot-reach.md`.
+
 ## 2026-09-18 — Three ref clauses, and a fourth defect that made all three unreachable (`SIGNOFF-REPAIR.7.2.8`)
 
 🔴 **`acquire_into` passed the URL's fragment to `remote_at`, so every selector-bearing acquisition failed at the remote. The three clauses this leaf was opened for all sit downstream of a path nothing could reach.**

@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **A RETENTION RULE WITH NO RETIREMENT, ON BOTH POPULATIONS AT ONCE (`.7.3.2.1`, REPAIR-0253).**
+
+🔴 **Two suites retain a workspace on failure — deliberately, because it is the evidence — and nothing had ever retired one. 1,896,248,619 bytes across 37 fixtures, of which 99.93 % is reproducible payload.** The premise had got worse while the leaf sat pending: `target/pg-tests` went from 12 clusters / 599 MiB to **25 / 1,372,355,705 bytes** in two days.
+
+- ⭐ **What a fixture must keep was measured, not chosen.** `owner.json` and `completion.json` — the worker's own `browser_group`/`cleanup_confirmed` receipts — live INSIDE the payload directory, so dropping `.project-data` wholesale would have destroyed exactly what `.7.3.2` is about.
+- ✅ **One rule, both populations: keep the receipt, drop the reproducible payload.** `scripts/census_retained_fixtures.py` never deletes a fixture and never signals a process; an id in use keeps a fixture, so a recycled id costs disk, never evidence.
+- ✅ **34 of 37 reduced, 1,824,989,121 bytes dropped, 0 deleted**, residue green and `du` agreeing independently (384 KiB and 70,464 KiB remain). ⭐ The citation guard fired in PRODUCTION, keeping `run-9_ueev0t` whole.
+- 🔴 **Mutation found three of the instrument's own controls vacuous** — the EPERM branch no self-owned pid can reach, a guard that only fires when the code is wrong, and a re-check nothing drove. All six mutants now red. Promoted: `a-guard-your-own-process-cannot-reach`.
+
 ✅ **THREE REF CLAUSES, AND A FOURTH DEFECT THAT MADE ALL THREE UNREACHABLE (`.7.2.8`, REPAIR-0252).**
 
 🔴 **`acquire_into` passed the URL's fragment to `remote_at`, so every selector-bearing acquisition failed at the remote.** It survived because nothing ever drove the feature: 13 `acquire_local` call sites, none with a fragment.

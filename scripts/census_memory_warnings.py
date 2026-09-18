@@ -242,15 +242,20 @@ def classify(warnings: list[str], headings: set[str], corpus: str,
         resolving = [leaf for leaf in cited if leaf in headings]
         phrase = key_phrase(text)
         in_corpus = bool(phrase) and phrase in corpus
-        if resolving:
-            verdict = "anchored:leaf"
-        elif in_corpus:
-            verdict = "anchored:method"
-        else:
-            verdict = "UNCITED"
+        # ⛔ BOTH ANCHORS, NOT THE FIRST ONE. This was a precedence chain — a
+        # resolving leaf id SHADOWED the method check — so a warning that
+        # pointed at a `docs/knowledge/` note and also named its leaf reported
+        # `anchored:leaf`, and the question *is the note reachable?* had no
+        # answer at all. `SIGNOFF-REPAIR.11.20.2` found it by writing an
+        # acceptance clause the instrument could not satisfy: the pointer it
+        # required was correct and the census still would not say so.
+        # ⚠️ The two counts therefore do NOT partition, and the output says so.
+        anchors = ([("leaf") ] if resolving else []) + (["method"] if in_corpus else [])
+        verdict = "anchored:" + "+".join(anchors) if anchors else "UNCITED"
         rows.append(
             {
                 "verdict": verdict,
+                "anchors": anchors,
                 "bullet": bullets[i] if bullets else None,
                 "bytes": len(text.encode()),
                 "cited": cited,
@@ -286,8 +291,9 @@ def run(as_json: bool) -> int:
     print(f"MEMORY.md standing warnings: {len(rows)}")
     print(f"  weight                       : {warn_bytes} of {total_bytes} bytes "
           f"({pct}% of the file; cap {BYTE_CAP}, headroom {BYTE_CAP - total_bytes})")
-    print(f"  anchored to a task-tree leaf : {sum(1 for r in rows if r['verdict'] == 'anchored:leaf')}")
-    print(f"  anchored to a method record  : {sum(1 for r in rows if r['verdict'] == 'anchored:method')}")
+    print(f"  anchored to a task-tree leaf : {sum(1 for r in rows if 'leaf' in r['anchors'])}")
+    print(f"  anchored to a method record  : {sum(1 for r in rows if 'method' in r['anchors'])}"
+          "   (a warning can be both; these do not partition)")
     print(f"  UNCITED (classify by hand)   : {len(uncited)}")
     print()
     print(f"  bullets read ({len(state_bullets(memory))} in the block; "
@@ -300,7 +306,13 @@ def run(as_json: bool) -> int:
     print()
     for i, r in enumerate(rows, 1):
         mark = "?" if r["verdict"] == "UNCITED" else " "
-        where = ",".join(r["resolving"]) if r["resolving"] else r["verdict"]
+        # Show BOTH anchors, or the detail line re-hides what the counts just
+        # stopped hiding: a warning anchored in a leaf AND a note read as
+        # leaf-only here, which is the shadowing this leaf repaired one line up.
+        where = ",".join(r["resolving"]) if r["resolving"] else ""
+        if "method" in r["anchors"]:
+            where = f"{where}+method" if where else "method"
+        where = where or r["verdict"]
         print(f"{mark}{i:3d} [{where}] {r['bytes']:>5}B {r['bullet']:<22} {r['text'][:80]}")
     print()
     print("⚠️ UNCITED is a POPULATION, not a defect count. It means this instrument found")
@@ -363,6 +375,17 @@ def self_test() -> int:
     # Neither: the class this census exists to find.
     rows = classify(["⚠️ **Some standing advice** with no citation."], set(), "")
     check("verdict-uncited", rows[0]["verdict"], "UNCITED")
+    # ⭐ BOTH anchors are reported, not the first. A warning citing a resolving
+    #    leaf AND matching a method record is anchored twice, and the method
+    #    half must not be shadowed — the question "is the note reachable?" has
+    #    to be answerable (`SIGNOFF-REPAIR.11.20.2`).
+    rows = classify(["⭐ **A rule** (`.1.2`) — read the note."], {".1.2"}, "… A rule …")
+    check("both-anchors", rows[0]["anchors"], ["leaf", "method"])
+    check("both-anchors-verdict", rows[0]["verdict"], "anchored:leaf+method")
+    # …and the negative half: a leaf citation alone must NOT claim a method anchor,
+    #    or "both" degenerates into "always both".
+    rows = classify(["⭐ **A rule** (`.1.2`) — read the note."], {".1.2"}, "")
+    check("leaf-only-claims-no-method", rows[0]["anchors"], ["leaf"])
     # A citation that resolves to NOTHING must not anchor — the silent-failure
     # shape, where a leaf id is renamed and the warning looks anchored anyway.
     rows = classify(["⛔ a rule (`.9.9`)."], {".1.2"}, "")

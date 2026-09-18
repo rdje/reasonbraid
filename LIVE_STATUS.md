@@ -5,6 +5,14 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **A CONTROL THAT PASSES FOR AN UNRELATED REASON, PROMOTED (`.11.20.2`, REPAIR-0245).**
+
+🔴 **A lesson that had fired in three consecutive leaves was reachable only from the tree it was written in.**
+
+- ⭐ **EXTRACTED, not absorbed, and the criterion is the deliverable:** *absorb when the host note's THESIS is your rule; extract when your rule is a TOOL it merely uses* — the named difference from `.11.17.2`'s opposite ruling one commit earlier. The host note got SHORTER.
+- ⭐ **New beyond relocation:** a NEGATIVE arm cannot be falsified against the old code, and needs a DEGENERATE implementation of the new rule; running a suite against broken code is the only time your controls are tested as reporters.
+- 🔴 **The acceptance's own last clause was unsatisfiable** — a precedence chain let a leaf citation SHADOW the method anchor, so a correct pointer could not be confirmed. Both anchors are reported now, falsified from both sides. `MEMORY.md` 3,883 → 3,659 bytes.
+
 ✅ **THE MEMORY CENSUS SAW TWO WARNINGS WHERE EIGHT STOOD (`.11.20.1`, REPAIR-0244).**
 
 🔴 **47% of `MEMORY.md` by weight was invisible to the instrument that exists to guard its weight.** Its model was one bullet; the template the file had been conformed to uses several.

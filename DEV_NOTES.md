@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — Absorb or extract: which note does a recurring lesson belong to
+
+- Two consecutive leaves routed a lesson into `docs/knowledge/` and took OPPOSITE branches — one absorbed into an existing note, one extracted to a new one. `docs/CLAIM_VERIFICATION.md` leg 2 says the earlier ruling wins unless a difference is named, so here is the difference.
+- ⭐ **Absorb when the existing note's THESIS is your rule.** `.11.17.2`'s finding — a classifier deciding a class from the shape of a string — *was* "trust comes from the check, not the shape", arriving in a second domain. Forking it would have produced two weaker halves of one rule, and a second domain is precisely what proves a rule is not being carried by its example.
+- ⭐ **Extract when your rule is a TOOL the host note merely uses.** "Run the new control against the old code" sat in the last section of a note whose thesis is *a scoping defect errs in one direction*. It is reachable there by subject, not by question — and the evidence it was unreachable is that it fired three times while `MEMORY.md` still carried it flagged "not yet a note".
+- ⛔ **The test for a good extraction is that the HOST gets shorter.** If the host still restates the rule, you have not extracted it, you have duplicated it — and `MEMORY_ARCHITECTURE.md` §10's dedupe rule is against you rather than for you.
+- ⚠️ **The failure mode of over-extracting** is a retrieval layer of one-line notes nobody can place, so the bar is a rule with instances in more than one host. Three firings across three leaves cleared it here; one would not have.
+- promotion: promoted → `docs/knowledge/a-control-that-passes-for-an-unrelated-reason.md` (the extracted rule). This entry is the decision procedure, recorded because the two rulings look contradictory without it.
+
 ## 2026-09-18 — A negative control needs a degenerate implementation, not the old one
 
 - The in-situ falsification habit is *run the new control against the OLD code; every arm claiming to cover the defect must fail by name*. It works, and it has a blind spot that showed up cleanly here: **it cannot fire a negative arm.**

@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-18 — A control that passes for an unrelated reason, promoted (`SIGNOFF-REPAIR.11.20.2`)
+
+🔴 **A lesson that had fired in three consecutive leaves was reachable only from the tree it was written in.**
+
+- **The gap, by command.** `grep -rl 'passes for an UNRELATED reason' docs/knowledge/ TOOLBOX.md docs/decisions/` returns nothing; over `docs/tasks/` it returns `SIGNOFF-REPAIR.md`. It was written down inside `a-scoping-defect-errs-in-one-direction`'s method section — reachable by subject, not by question.
+- ⭐ **EXTRACTED rather than absorbed, and the criterion is the deliverable.** `.11.17.2` absorbed its lesson one commit earlier, so the opposite ruling needs a named difference: **absorb when the host note's THESIS is your rule; extract when your rule is a TOOL the host merely uses.** ⭐ The host got SHORTER — its method section is now a pointer plus its own instance — which is the test for a good extraction.
+- ⭐ **New beyond relocation.** A **NEGATIVE** arm cannot be falsified against the old code: the old code under-reached, so the arm passes against it for the same reason it passes against the fix. *A positive arm is falsified against the past; a negative arm against the future you rejected* — a DEGENERATE implementation of the new rule. And running a suite against broken code is the only time your controls are tested as **reporters**.
+- ✅ **Checked outside software**, per `docs/CLAIM_VERIFICATION.md` §0: a fire alarm that has never sounded and one with a flat battery are the same observation, and pressing the test button is also how you learn whether it carries to the stairwell.
+- 🔴 **The acceptance's own last clause was UNSATISFIABLE, and that is the second finding.** It required the census to confirm the pointer by reporting `anchored:method`. `classify` was a precedence chain, so naming the leaf SHADOWED the note: a correct pointer, a correct note, and the instrument would not say so. ⚠️ The tempting move — drop the citation until the instrument agrees — is fitting the corpus to the measurement. Both anchors are reported now; the counts no longer partition and the output says so.
+- ✅ Falsified from both sides: the precedence version reds `both-anchors` by name, a degenerate *always both* reds `leaf-only-claims-no-method` by name. `MEMORY.md` 3,883 → 3,659 bytes, warnings 8 → 7.
+
 ## 2026-09-18 — The memory census saw two warnings where eight stood (`SIGNOFF-REPAIR.11.20.1`)
 
 🔴 **Its model was one bullet; the template the file had been conformed to uses several. 47% of `MEMORY.md` by weight was invisible to the instrument that exists to guard its weight.**

@@ -66,18 +66,20 @@ that pretends. The second is how a self-test grows an arm that asserts nothing.
 
 > Run the NEW control against the OLD code, in situ.
 
-Put the pre-fix logic back into the current instrument, arms and all, and run its
-self-test. Every arm that claims to cover the defect must FAIL, by name. Arms that
-pass both ways are legitimate — a no-regression arm and a limit-pinning arm both
-should — but each one must be *labelled* as such, because an unlabelled
-pass-both-ways arm is indistinguishable from a broken one.
+⭐ **The general rule now lives in its own note** —
+[[a-control-that-passes-for-an-unrelated-reason]] — because it is a tool this note
+*uses* rather than this note's thesis, and by the time it had fired in three
+consecutive leaves it was reachable only by readers who arrived here thinking about
+scope (`SIGNOFF-REPAIR.11.20.2`). Go there for the labelling rule, for why a
+NEGATIVE arm needs a degenerate implementation rather than the old code, and for
+the restatement outside software.
 
-🔴 That run earns its keep immediately. In this instance it caught a defect in one
-of the *new arms*: the fixture for "an indented fence is still a fence" had put
-its `#` at indent 2, and an indented `#` was not a heading to the old scanner
-either — so the arm passed before and after, discriminating on the **indentation**
-instead of on the fence. [[an-injection-must-be-shown-to-land]] is the same
-failure one layer out.
+🔴 **The instance stays here, because it is this defect's.** That run earned its
+keep immediately: it caught a defect in one of the *new arms*. The fixture for "an
+indented fence is still a fence" had put its `#` at indent 2, and an indented `#`
+was not a heading to the old scanner either — so the arm passed before and after,
+discriminating on the **indentation** instead of on the fence.
+[[an-injection-must-be-shown-to-land]] is the same failure one layer out.
 
 ## Related
 

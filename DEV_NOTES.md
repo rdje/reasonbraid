@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — An unconstructed variant is a whole refusal path nobody can reach
+
+- A limit field with no reader is easy to spot and easy to under-read. The sharper question is what ELSE was built for it: here the unread `max_time` came with an error variant, a Display message and a wire mapping — three files of refusal machinery, and `git grep` finds **no construction site**. The feature was complete except for the one line that could produce it.
+- ⭐ **`grep` for the CONSTRUCTOR, not the name.** `Foo::Bar` matches the declaration, the match arms that map it, and the tests that assert on it — every use except the one that matters. The question is *what constructs this?*, and a variant that nothing constructs is dead in a way a variant nothing matches is not.
+- ⭐ **The cheapest repairs are the ones where the hook already exists.** The dependency's `receive` had always taken an interrupt flag; the caller passed `AtomicBool::default()`, a flag with no owner. The fix was to give it one — not to add a mechanism, but to connect one that was already wired at both ends but the middle.
+- ⚠️ **A timeout around a blocking task is not a bound on the work.** `tokio::time::timeout` around a `spawn_blocking` handle returns on time and leaves the thread running: it bounds the caller's WAIT, not the resource consumption. Bounding the work needs something the work itself polls — and whether the callee polls it is a question to answer by reading the callee, not by assuming.
+- ⛔ **Decline defensively-obvious changes on a measurement.** Two were declined here — a decompression-ratio brake and a `checked_add` overflow guard — and both declines rest on a command, not on a feeling: the dependency allocates fallibly, and the limit is never operator-supplied. Each decline carries the trigger that would reopen it, which is what separates a decision from a shrug.
+- promotion: DECLINED as a note, per `LESSON-PROMOTION` — `docs/knowledge/a-prohibition-names-a-mechanism.md` is the neighbouring thesis and `.11.20.2`'s criterion makes this absorb-or-decline; the census proving the class is a single occurrence is recorded in the leaf rather than generalised into a note.
+
 ## 2026-09-18 — Read the code as it was, not as it is, when auditing a closed record
 
 - A closed leaf's claim was challenged. The instinct is to check it against the current source — and the current source is the one that leaf REPAIRED, so it answers a different question. Every conclusion drawn from it would have been about code the record was never describing.

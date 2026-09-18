@@ -828,14 +828,96 @@ fn init_acquisition_repository(dir: &std::path::Path) -> Result<gix::Repository,
     .map_err(|e| GitError::TransferFailed(format!("the target repository failed: {e}")))
 }
 
+/// The whole-acquisition time ceiling, made real.
+///
+/// ⛔ `GitLimits::max_time` was declared, defaulted to 120 s, and read by
+/// NOTHING (`SIGNOFF-REPAIR.7.2.7`). `GitError::TimedOut` was declared, carried
+/// a Display message, and was mapped to the `timed_out` wire reason in
+/// `api.rs` — and was constructed by nothing, so the whole refusal path was
+/// wired end to end and unreachable. Five of `GitLimits`' six fields were
+/// enforced; this was the sixth.
+///
+/// ⭐ THE HOOK ALREADY EXISTED. `gix`'s `receive` takes a `&AtomicBool` it
+/// polls during the pack transfer, and this module handed it
+/// `AtomicBool::default()` — a flag nobody could ever set. Giving it a flag a
+/// watchdog raises bounds the TRANSFER itself, not merely the caller's wait,
+/// which is the difference between this and a `tokio::time::timeout` around
+/// the `spawn_blocking` handle: that would return on time and leave the
+/// blocking worker transferring.
+///
+/// ⚠️ DECLARED LIMIT: `gix` polls the flag during the pack receive and write.
+/// A remote that stalls in the connection or the ref advertisement is bounded
+/// by the checkpoint AFTER that phase, not inside it, so the effective ceiling
+/// is `max_time` plus however long one un-polled phase blocks.
+struct Deadline {
+    at: std::time::Instant,
+    interrupt: Arc<std::sync::atomic::AtomicBool>,
+    finished: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl Deadline {
+    fn start(limit: Duration) -> Self {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let at = std::time::Instant::now() + limit;
+        let interrupt = Arc::new(AtomicBool::new(false));
+        let finished = Arc::new(AtomicBool::new(false));
+        let (watch, done) = (Arc::clone(&interrupt), Arc::clone(&finished));
+        // ⭐ The watchdog exits as soon as the acquisition finishes, so a 120 s
+        // ceiling does not cost a 120 s thread on every successful clone.
+        std::thread::spawn(move || {
+            while !done.load(Ordering::Relaxed) {
+                if std::time::Instant::now() >= at {
+                    watch.store(true, Ordering::Relaxed);
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        });
+        Self {
+            at,
+            interrupt,
+            finished,
+        }
+    }
+
+    fn interrupt(&self) -> &std::sync::atomic::AtomicBool {
+        &self.interrupt
+    }
+
+    fn expired(&self) -> bool {
+        std::time::Instant::now() >= self.at
+            || self
+                .interrupt
+                .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// A checkpoint between phases. The ceiling is on the WHOLE acquisition, so
+    /// it is checked where one phase ends rather than only after the transfer.
+    fn check(&self) -> Result<(), GitError> {
+        if self.expired() {
+            return Err(GitError::TimedOut);
+        }
+        Ok(())
+    }
+}
+
+impl Drop for Deadline {
+    fn drop(&mut self) {
+        self.finished
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 fn acquire_into(
     workspace: Arc<OwnedDirectory>,
     url: &Url,
     limits: &GitLimits,
     transport_factory: Box<TransportFactory>,
 ) -> Result<GitAcquisition, GitError> {
+    let deadline = Deadline::start(limits.max_time);
     let target_dir = workspace.path();
     let repo = init_acquisition_repository(target_dir)?;
+    deadline.check()?;
     let remote = repo
         .remote_at(url.as_str())
         .map_err(|e| GitError::TransferFailed(format!("the remote failed: {e}")))?;
@@ -869,11 +951,19 @@ fn acquire_into(
             ),
             None => gix::remote::fetch::Shallow::NoChange,
         })
-        .receive(
-            &mut gix::progress::Discard,
-            &std::sync::atomic::AtomicBool::default(),
-        )
-        .map_err(|e| GitError::TransferFailed(format!("the fetch failed: {e}")))?;
+        .receive(&mut gix::progress::Discard, deadline.interrupt())
+        // ⛔ The deadline is consulted BEFORE the error is classified: an
+        // interrupted transfer surfaces as an ordinary `gix` error, and
+        // reporting it as `TransferFailed` would hide the ceiling that caused
+        // it behind a message about the remote.
+        .map_err(|e| {
+            if deadline.expired() {
+                GitError::TimedOut
+            } else {
+                GitError::TransferFailed(format!("the fetch failed: {e}"))
+            }
+        })?;
+    deadline.check()?;
 
     // The resolved immutable commit: the requested ref, resolved through the
     // advertised refs (the HEAD entry, the exact ref name, or the requested
@@ -935,6 +1025,7 @@ fn acquire_into(
         &mut paths,
         limits,
     )?;
+    deadline.check()?;
     let object_count = repo
         .objects
         .iter()
@@ -1666,6 +1757,78 @@ mod tests {
             .contains(&"dir/nested.txt".to_owned()));
         assert!(receipt.manifest.excluded.is_empty());
         assert_eq!(receipt.acquired_at, acquired_at);
+    }
+
+    /// `SIGNOFF-REPAIR.7.2.7` — the ceiling is ENFORCED, and refuses by name.
+    ///
+    /// 🔴 Observed RED first: against the pre-repair source this returns
+    /// `Ok(..)`, because `max_time` was declared, defaulted to 120 s and read
+    /// by nothing, while `GitError::TimedOut` was declared, given a Display
+    /// message and mapped to the `timed_out` wire reason — and constructed by
+    /// nothing. The whole refusal path existed and was unreachable.
+    #[test]
+    fn the_time_ceiling_refuses_by_name() {
+        let tmp = OwnedDirectory::create("git", "test-src").expect("the fixture workspace creates");
+        let tmp = tmp.path();
+        let source_dir = tmp.join("source");
+        std::fs::create_dir_all(&source_dir).expect("the source dir creates");
+        source_repo(&source_dir);
+        let limits = GitLimits {
+            max_time: Duration::from_millis(0),
+            ..GitLimits::default()
+        };
+        let result = acquire_local(&source_dir, &limits);
+        assert!(
+            matches!(result, Err(GitError::TimedOut)),
+            "a zero ceiling must refuse as TimedOut, got {result:?}"
+        );
+        assert_eq!(
+            GitError::TimedOut.to_string(),
+            "the acquisition exceeded the time ceiling",
+            "the refusal names the ceiling rather than the remote"
+        );
+    }
+
+    /// ⭐ THE NEGATIVE HALF, and the acceptance demanded it by name: the repair
+    /// is a BOUND, not a prohibition. Without this arm the ceiling is satisfied
+    /// by an acquisition that refuses everything.
+    ///
+    /// ⚠️ LABELLED: this arm passes BOTH before and after the repair, and that
+    /// is what it is for. It covers the rule's boundary, not the defect — its
+    /// own red comes from a degenerate ceiling that refuses everything, not
+    /// from the pre-fix code, which refused nothing
+    /// (`docs/knowledge/a-control-that-passes-for-an-unrelated-reason.md`).
+    #[test]
+    fn a_transfer_inside_the_time_ceiling_still_succeeds() {
+        let tmp = OwnedDirectory::create("git", "test-src").expect("the fixture workspace creates");
+        let tmp = tmp.path();
+        let source_dir = tmp.join("source");
+        std::fs::create_dir_all(&source_dir).expect("the source dir creates");
+        let first = source_repo(&source_dir);
+        let acquisition = acquire_local(&source_dir, &GitLimits::default())
+            .expect("a transfer inside the default 120 s ceiling still succeeds");
+        assert_eq!(acquisition.resolved_commit, first.to_string());
+    }
+
+    /// ⛔ And the watchdog does not outlive the acquisition. A 120 s ceiling
+    /// must not cost a 120 s thread on every successful clone, which is what a
+    /// watchdog without an early exit would do.
+    ///
+    /// ⚠️ LABELLED, like the arm above: it passes before and after, because it
+    /// covers a DIFFERENT failure — a resource leak the repair could have
+    /// introduced — rather than the unenforced ceiling. Its red is a `Drop`
+    /// that forgets to release the flag.
+    #[test]
+    fn the_watchdog_exits_when_the_acquisition_finishes() {
+        use std::sync::atomic::Ordering;
+        let deadline = Deadline::start(Duration::from_secs(3600));
+        let finished = Arc::clone(&deadline.finished);
+        assert!(!finished.load(Ordering::Relaxed), "it starts unfinished");
+        drop(deadline);
+        assert!(
+            finished.load(Ordering::Relaxed),
+            "dropping the deadline releases the watchdog"
+        );
     }
 
     #[test]

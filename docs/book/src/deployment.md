@@ -1697,6 +1697,40 @@ link count is not part of the proof: its links grow as subdirectories appear
 inside it, and macOS was measured still reporting two links on a held descriptor
 after the directory was removed.
 
+### What bounds a Git acquisition, and when each bound trips
+
+An acquisition carries six ceilings. Five of them are measured on the object
+database the transfer has already written, and one bounds the transfer itself —
+which is the distinction an operator sizing a deployment needs, because it says
+what a hostile remote can spend before anything refuses it.
+
+| ceiling | default | what it bounds | when it trips |
+| --- | --- | --- | --- |
+| time | 120 s | the whole acquisition, **including the transfer** | during the pack receive, and at each phase boundary |
+| objects | 100,000 | the object count | after the transfer, counted from the written database |
+| bytes | 256 MiB | the object-database size | after the transfer, measured from the object directory |
+| files | 10,000 | the file count in the resolved tree | during the tree walk |
+| path depth | 32 | the deepest path in the resolved tree | during the tree walk |
+| shallow depth | 1 | how much history is requested | in the fetch request itself |
+
+The time ceiling is enforced through the interrupt flag `gix` polls while it
+receives and writes the pack, so it stops the transfer rather than only
+releasing the caller. A refusal names it: `the acquisition exceeded the time
+ceiling`.
+
+⚠️ **The honest limit, stated rather than implied.** Because the object and byte
+ceilings are measured after the transfer, a remote that sends more than
+`max_bytes` has already written it when the refusal fires. What bounds that
+spend is the **time** ceiling, not the byte ceiling: consumption before the
+first allocation check is bounded in seconds, and only then in bytes. An
+operator sizing disk for a worker should therefore budget for what the link can
+deliver in `max_time`, not for `max_bytes`.
+
+⚠️ A remote that stalls in the connection or the ref advertisement — before the
+pack phase the interrupt flag reaches — is caught by the checkpoint after that
+phase rather than inside it, so the effective ceiling is `max_time` plus however
+long one un-polled phase blocks.
+
 ### What `rb-server` checks before it touches the database
 
 Every configuration refusal now happens **before** anything mutates. The

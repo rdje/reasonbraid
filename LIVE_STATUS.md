@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **A REFUSAL WIRED END TO END AND CONSTRUCTED BY NOTHING (`.7.2.7`, REPAIR-0249).**
+
+🔴 **`GitError::TimedOut` was declared, given a Display message and mapped to a wire string — with no construction site. `GitLimits::max_time` was read by no code path, and `gix` was handed an interrupt flag nobody could raise.**
+
+- ⭐ **The repair bounds the TRANSFER, not the caller's wait**, through the flag `gix` already polls — traced in the pinned dependency to the reader that fails once it is set.
+- ✅ ***Before allocation* narrowed with its measurement:** all five other ceilings trip after `receive`, so consumption is bounded **in seconds, not bytes**. Published as a ceiling table in `deployment.md` and read back out of the rendered page.
+- ⛔ **Decode brake and overflow guard both DECLINED on measurements**, with triggers stated: `gix-pack` has no ratio guard but allocates fallibly, and `max_time` is never operator-supplied.
+- ✅ One arm red by name; two labelled. Routed: `.7.2.9`, `.7.2.10`.
+
 ✅ **A RIGHT CONCLUSION ON A FALSE PREMISE, GRADED SEPARATELY (`.3.4.3.1.1.1`, DOC-0047).**
 
 🔴 **A signed-off leaf closed on *"nothing enforces the stored value"*. Three production sites enforce it. Its conclusion still stands — for reasons it did not give.**

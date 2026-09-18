@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-18 — A refusal wired end to end and constructed by nothing (`SIGNOFF-REPAIR.7.2.7`)
+
+🔴 **`GitError::TimedOut` was declared, carried a message, and was mapped to a wire string — and nothing could produce it. `GitLimits::max_time` was declared, defaulted to 120 s, and read by no code path. `gix` was handed an interrupt flag nobody could raise.**
+
+- **The defect, re-derived and larger than the leaf recorded.** Five of `GitLimits`' six fields were enforced; the sixth bounded nothing. And it was not merely an unread field: the refusal existed in three files — the variant (`crates/reasonbraid-server/src/git.rs:100`), its Display message (`:158`), the wire mapping (`crates/reasonbraid-server/src/api.rs:2646`) — with no construction site.
+- ⭐ **The hook already existed.** `gix`'s `receive` polls a `&AtomicBool` throughout the transfer; this module passed `AtomicBool::default()`. Giving it a flag a watchdog raises bounds the **transfer**, not merely the caller's wait — the difference from a `tokio::time::timeout` around the `spawn_blocking` handle, which returns on time and leaves the worker transferring. The chain was read in the pinned dependency: `receive` → `gix_protocol::fetch` → `Bundle::write_to_directory` → `interrupt::Read`, which fails the next `read` once the flag is set.
+- ✅ **The "before allocation" clause is NARROWED, with the measurement that narrows it.** All five other ceilings trip AFTER `receive` — objects and bytes from the written object database, files and depth during the tree walk. So consumption before the first allocation check is bounded **in seconds, not in bytes**, and an operator should budget disk for what the link delivers in `max_time`. Published in the book as a six-row ceiling table with a *when it trips* column, read back out of the rendered page rather than trusted from the source.
+- ⛔ **Two declines, each on a measurement rather than a judgement.** The decode brake: `gix-pack 0.74.2` has no ratio guard anywhere, but allocates with `try_reserve`, so an absurd declared size errors instead of aborting — a brake of `check_ratio`'s shape would duplicate that, and the aggregate residual it would not cover is routed to `.7.2.9`. The `checked_add` overflow guard: `GitLimits` is only ever `Default::default()` in production and `max_time` reaches no config, environment or request path, so the panic is unreachable; the trigger for revisiting is stated.
+- ✅ **One arm red by name** — restoring the pre-fix behaviour in situ makes the acquisition succeed under a zero ceiling, 14 passed / 1 failed — and the two arms that pass both ways are labelled with why.
+- Routed: `.7.2.9` (a pack expanding beyond its wire size in aggregate) and `.7.2.10` (`AcquisitionError.kind` is a second, undocumented refusal vocabulary — checked against the struct before it was claimed, and it is **not** a `REASON-CODE-DOC` gap).
+
 ## 2026-09-18 — A right conclusion on a false premise, graded separately (`SIGNOFF-REPAIR.3.4.3.1.1.1`)
 
 🔴 **A signed-off leaf closed on "nothing enforces the stored value". Three production sites enforce it. Its conclusion still stands — for reasons it did not give.**

@@ -116,11 +116,23 @@ secret, but the CHANNEL identity is the certificate:
 
 ## Presence and leases
 
-`GET /v1/nodes/presence?node_id=…` exposes one node's observable state:
+`GET /v1/nodes/presence?node_id=…` exposes one node's observable state **to a
+caller in that node's own tenant**:
 
 ```json
 { "node_id": "rol_…", "online": true, "last_seen_at": "…", "lease_expires_at": "…" }
 ```
+
+**Who may call it.** The request carries the dev-profile
+`x-reasonbraid-principal` header, and the tenant is derived from that principal —
+a principal belongs to exactly one tenant, so there is nothing to name in the
+query string. A request with no principal is `401 unauthenticated`; a principal
+enrolled in no tenant is `403 unauthorized`. ⛔ A node belonging to **another**
+tenant answers `404 unknown_node` — the same answer a node that does not exist
+gives, so the surface never reveals which node ids are real. This read is scoped
+to a single node the caller already names; the tenant-wide enumeration is
+`GET /v1/admin/nodes/presence?tenant_id=…`, which additionally requires a
+`tenant_admin` grant (see [Authority](authority.md)).
 
 `online` is **derived from the lease expiry clock** — never a stored flag — so a
 crashed process cannot leave a stale `online` row behind: within one TTL of its

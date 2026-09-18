@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **ONE NODE PRESENCE READ ASKED NOBODY WHO WAS CALLING (`.3.5.5`, REPAIR-0261).**
+
+🔴 **`GET /v1/nodes/presence` took no `HeaderMap`** — no principal, no authorization — then `SELECT … FROM node_presence WHERE node_id = $1` on a view carrying `tenant_id`, while `GET /v1/admin/nodes/presence` gated the SAME view behind a `tenant_admin` grant, on one port in one process.
+
+- ⚠️ **Reproduced at 200 against 401**, with the other 37 tests passing so the control discriminates exactly this repair. Because the handler read no headers, that path was **every** caller's — the cross-tenant case is the same execution, not an extrapolation.
+- ✅ **Authenticate, then DERIVE the tenant from the principal** — no wire change, since a principal belongs to exactly one tenant structurally. The parser is shared, not copied. ⛔ A foreign node answers `unknown_node`, the SAME answer an absent node gives: the existence oracle is closed (§9.8 `scope_hidden`).
+- ⭐ **Cost measured at ZERO for the only caller:** `web/app.js` already sends the header on every GET and its comment claimed the gates applied. No node client calls the route.
+- ✅ `node_channel` **38/38**, `node_replacement` **2/2**, clippy `-D warnings` clean, book rebuilt. Decision: `docs/decisions/2026-09-18_node-presence-is-read-by-its-own-tenant.md`.
+- ⛔ **NOT claimed:** that the node channel's authentication is settled generally — `presence` was its only GET; the POST verbs use fencing/enrolment tokens, unaudited here.
+
 ✅ **THE READ CENSUS COULD NOT SEE 34 OF ITS OWN ROUTES (`.3.5.4`, REPAIR-0260).**
 
 🔴 **`.3.5.3` published "24 `get(…)` routes in `api.rs`"; its own commit had 54, and the binary merges three routers for 58.** The leaf was opened to follow 10 delegating handlers and found the population wrong by more than half. ⛔ The `24` had **no producer** — prose in a leaf, nothing deriving it, so nothing could contradict it.

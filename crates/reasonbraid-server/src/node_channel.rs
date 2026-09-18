@@ -54,7 +54,7 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
@@ -472,6 +472,30 @@ impl ApiError {
             status: StatusCode::BAD_REQUEST,
             code: "invalid_command",
             message: format!("{refusal}"),
+        }
+    }
+
+    /// No `x-reasonbraid-principal` header, or one that is not a typed principal
+    /// id. `SIGNOFF-REPAIR.3.5.5` — the presence read had no caller at all.
+    fn unauthenticated() -> Self {
+        ApiError {
+            status: StatusCode::UNAUTHORIZED,
+            code: "unauthenticated",
+            message: format!(
+                "missing or malformed `{}` header (dev profile: hpr_… | rol_…)",
+                crate::api::PRINCIPAL_HEADER
+            ),
+        }
+    }
+
+    /// A well-formed principal that belongs to no tenant reads nothing. Distinct
+    /// from `unauthenticated`: the caller identified itself and the answer is
+    /// still no.
+    fn unenrolled() -> Self {
+        ApiError {
+            status: StatusCode::FORBIDDEN,
+            code: "unauthorized",
+            message: "an unenrolled principal reads no presence".to_string(),
         }
     }
 
@@ -1179,7 +1203,14 @@ impl NodeChannelState {
 
     /// One node's observable presence (`node_presence`, migration 0009). `None`
     /// when the node is not enrolled.
-    pub async fn presence(&self, node_id: &str) -> Result<Option<PresenceResponse>, sqlx::Error> {
+    /// `SIGNOFF-REPAIR.3.5.5`: the tenant is a REQUIRED argument, not an option.
+    /// Making it a parameter rather than a filter applied by the caller means a
+    /// future caller cannot forget it — the type system asks the question.
+    pub async fn presence(
+        &self,
+        node_id: &str,
+        tenant_id: &str,
+    ) -> Result<Option<PresenceResponse>, sqlx::Error> {
         #[derive(sqlx::FromRow)]
         struct PresenceRow {
             online: bool,
@@ -1193,9 +1224,10 @@ impl NodeChannelState {
                     (SELECT (v.profile->'availability'->>'concurrency')::bigint \
                      FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
                      WHERE v.role_id = $1 AND v.version = p.current_version) AS concurrency \
-             FROM node_presence WHERE node_id = $1",
+             FROM node_presence WHERE node_id = $1 AND tenant_id = $2",
         )
         .bind(node_id)
+        .bind(tenant_id)
         .fetch_optional(&self.pool)
         .await?;
         Ok(row.map(|r| PresenceResponse {
@@ -1776,14 +1808,46 @@ async fn heartbeat(
 /// One node's observable presence. Presence is a read-only observability fact
 /// (no token, no key, no fingerprint — never a credential), derived from the
 /// lease clock; an unenrolled node is a 404, not a fabricated `offline`.
+/// One node's observable state — **bound to the caller's own tenant**
+/// (`SIGNOFF-REPAIR.3.5.5`).
+///
+/// 🔴 This handler used to take no `HeaderMap`, so it never learned who was
+/// calling and never asked whether they may. It then selected from
+/// `node_presence` — a view that carries `tenant_id` (migration 0017, from
+/// `nodes.tenant_id NOT NULL`) — by `node_id` alone. Anyone who could reach the
+/// port read any node's presence, and `200` versus `unknown_node` told them
+/// which node ids exist. Meanwhile `GET /v1/admin/nodes/presence` gated the SAME
+/// view behind a `tenant_admin` grant, and `rb-server.rs` serves both from one
+/// process on one port.
+///
+/// The tenant is DERIVED from the authenticated caller rather than accepted from
+/// the query, which is `SIGNOFF-REPAIR.3.5.2.1`'s shape: a principal belongs to
+/// exactly one tenant structurally, so there is no second identifier to bind and
+/// no wire change. The only caller in this repository — the web console's
+/// `api()` helper — already sends the header on every GET, and no node client
+/// calls this route.
+///
+/// ⛔ A node in ANOTHER tenant answers `unknown_node`, exactly as a node that
+/// does not exist does. Distinguishing them would keep the existence oracle that
+/// §9.8's `scope_hidden` exists to prevent, and this file already takes that
+/// stance for the handshake ("or whose node has no key — the same refusal: no
+/// existence leak").
 async fn presence(
     State(state): State<Arc<NodeChannelState>>,
+    headers: HeaderMap,
     Query(params): Query<PresenceParams>,
 ) -> Result<Json<PresenceResponse>, ApiError> {
     if params.node_id.is_empty() {
         return Err(ApiError::bad_request("node_id is required".to_string()));
     }
-    match state.presence(&params.node_id).await? {
+    let principal =
+        crate::api::resolve_principal(&headers).map_err(|_| ApiError::unauthenticated())?;
+    let Some(tenant) = crate::api::reader_tenant(&state.pool, &principal).await? else {
+        // An unenrolled principal reads no presence — the same wording the
+        // reference, snapshot and assessment reads use for this case.
+        return Err(ApiError::unenrolled());
+    };
+    match state.presence(&params.node_id, &tenant).await? {
         Some(p) => Ok(Json(p)),
         None => Err(ApiError::unknown_node(&params.node_id)),
     }

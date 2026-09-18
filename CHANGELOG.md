@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-18 — One node presence read asked nobody who was calling (`SIGNOFF-REPAIR.3.5.5`)
+
+🔴 **`GET /v1/nodes/presence` took no `HeaderMap` at all.** It never learned who was calling, never asked whether they may, and then selected `FROM node_presence WHERE node_id = $1` — on a view that carries `tenant_id`. Meanwhile `GET /v1/admin/nodes/presence` gated the SAME view behind a `tenant_admin` grant, on the same port, in the same process.
+
+- ⚠️ **Reproduced, and the measurement covers more than one caller:** against the unrepaired handler the control failed `left: 200 / right: 401` with the other 37 tests passing. Because that handler read no headers, **every** caller took the path the anonymous one was measured on — the cross-tenant case is the same execution, not an extrapolation.
+- ✅ **Authenticate, then DERIVE the tenant from the principal.** A principal belongs to exactly one tenant structurally, so there is no second identifier to name and none to bind: **no wire change**. The parser is shared (`crate::api::resolve_principal` is now `pub(crate)`) rather than copied, because two copies of that rule would drift — which is the disagreement this repair exists to end.
+- ⛔ **A foreign node answers `unknown_node`, the SAME answer an absent node gives.** The existence oracle is closed, not the payload withheld — §9.8's `scope_hidden`, and the stance this file already took for the handshake ("or whose node has no key — the same refusal: no existence leak").
+- ⭐ **Cost measured at ZERO for the only caller.** `web/app.js` already sends `x-reasonbraid-principal` on every GET through one `api()` helper, and its own comment says *"so the server's gates apply exactly as they do to the CLI"* — they did not, here. No node client calls the route.
+- ⭐ **Three tests failed the first repaired run for the RIGHT reason**, which is the repair demonstrating itself: their node lives in a bootstrapped admin's tenant, not the suite's seed tenant, so the seed reader was correctly a foreign caller. `node_channel` 38/38, `node_replacement` 2/2, clippy clean.
+- ⛔ **NOT claimed:** that this settles the node channel's authentication generally. `presence` was the only GET on `node_router`; the POST verbs authenticate on fencing and enrolment tokens in their bodies, a mechanism this leaf did not audit.
+- Decision: `docs/decisions/2026-09-18_node-presence-is-read-by-its-own-tenant.md`, with both rejected alternatives.
+
 ## 2026-09-18 — The read census could not see 34 of its own routes, and its population had no producer (`SIGNOFF-REPAIR.3.5.4`)
 
 🔴 **`.3.5.3` published "24 `get(…)` routes in `api.rs`". At its own commit there were 54 — and `api.rs` is not the surface: `rb-server.rs` merges three routers, for 58.** The leaf was opened to follow 10 delegating handlers; it found the population itself was wrong by more than half.

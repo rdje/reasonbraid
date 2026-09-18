@@ -121,8 +121,24 @@ async fn pool() -> Option<PgPool> {
     .execute(&pool)
     .await
     .expect("seed tenant");
+    // `SIGNOFF-REPAIR.3.5.5`: the one-node presence read is bound to the
+    // caller's own tenant, so every presence assertion needs a principal in the
+    // tenant its node lives in. Seeded directly, like the node rows beside it.
+    sqlx::query(
+        "INSERT INTO human_principals (principal_id, tenant_id, name) \
+         VALUES ($1, 'ten_00000000-0000-7000-8000-000000000000', 'channel-seed-reader') \
+         ON CONFLICT (principal_id) DO NOTHING",
+    )
+    .bind(SEED_READER)
+    .execute(&pool)
+    .await
+    .expect("seed reader principal");
     Some(pool)
 }
+
+/// The seed tenant's reader (`SIGNOFF-REPAIR.3.5.5`). A presence read now asks
+/// who is calling; this is the suite's answer for nodes in the seed tenant.
+const SEED_READER: &str = "hpr_00000000-0000-7000-8000-0000000000e1";
 
 /// Seed an enrolled node the `.1.2.1` way (host → node → key rows) — the
 /// Seed an enrolled node the `.1.2.1`/`.1.2.2` way (host → node → key → cert
@@ -1234,6 +1250,7 @@ async fn handshake_without_a_valid_certificate_proof_is_refused() {
             "{}/v1/nodes/presence?node_id={node_id}",
             server.base_url()
         ))
+        .header(PRINCIPAL_HEADER, SEED_READER)
         .send()
         .await
         .unwrap();
@@ -1283,6 +1300,7 @@ async fn heartbeat_renews_the_lease_and_presence_shows_online() {
                 "{}/v1/nodes/presence?node_id={node_id}",
                 server.base_url()
             ))
+            .header(PRINCIPAL_HEADER, SEED_READER)
             .send()
             .await
             .unwrap()
@@ -1472,6 +1490,7 @@ async fn lease_expiry_flips_presence_offline_and_refuses_channel_traffic() {
                 "{}/v1/nodes/presence?node_id={node_id}",
                 server.base_url()
             ))
+            .header(PRINCIPAL_HEADER, SEED_READER)
             .send()
             .await
             .unwrap()
@@ -1978,6 +1997,7 @@ async fn the_offline_known_distinction_and_the_operator_enumeration() {
     // The one-node surface: never-leased → offline, null clocks.
     let presence = client
         .get(format!("{base}/v1/nodes/presence?node_id={never_leased}"))
+        .header(PRINCIPAL_HEADER, &admin_id)
         .send()
         .await
         .expect("presence request");
@@ -1989,6 +2009,7 @@ async fn the_offline_known_distinction_and_the_operator_enumeration() {
     // Expired-lease → offline WITH the past expiry visible.
     let presence = client
         .get(format!("{base}/v1/nodes/presence?node_id={expired}"))
+        .header(PRINCIPAL_HEADER, &admin_id)
         .send()
         .await
         .expect("presence request");
@@ -2009,6 +2030,7 @@ async fn the_offline_known_distinction_and_the_operator_enumeration() {
         .get(format!(
             "{base}/v1/nodes/presence?node_id=nod_00000000-0000-7000-8000-0000000000ff"
         ))
+        .header(PRINCIPAL_HEADER, &admin_id)
         .send()
         .await
         .expect("presence request");
@@ -2057,6 +2079,108 @@ async fn the_offline_known_distinction_and_the_operator_enumeration() {
         .await
         .expect("enumeration request");
     assert_eq!(refused.status().as_u16(), 403, "the non-admin is refused");
+
+    server.crash();
+}
+
+/// THE `SIGNOFF-REPAIR.3.5.5` acceptance: the one-node presence read is bound to
+/// the caller's own tenant, and a foreign node is indistinguishable from one that
+/// does not exist.
+///
+/// The defect this reproduces: the handler took no `HeaderMap` at all, so it
+/// never learned who was calling. An anonymous request read any node's presence
+/// by id, and `200` versus `unknown_node` told the caller which node ids exist —
+/// while `GET /v1/admin/nodes/presence` gated the SAME `node_presence` view
+/// behind a `tenant_admin` grant, on the same port, in the same process.
+///
+/// ⭐ The POSITIVE arm matters as much as the refusals: a repair that simply
+/// refused everyone would pass the first two assertions and fail the third.
+#[tokio::test]
+async fn the_presence_read_is_bound_to_the_callers_tenant() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base_url();
+    let client = reqwest::Client::new();
+
+    // Two tenants, each with its own administrator: enrollment mints a tenant.
+    let (tenant_a, admin_a) = bootstrap_admin(&client, &base).await;
+    let (tenant_b, admin_b) = bootstrap_admin(&client, &base).await;
+    assert_ne!(tenant_a, tenant_b, "two enrollments are two tenants");
+
+    let node = "nod_00000000-0000-7000-8000-0000000000b7".to_string();
+    seed_node_in_tenant(&pool, &tenant_a, &node).await;
+
+    // (1) ANONYMOUS reads nothing. This is the defect: it used to answer 200.
+    let anonymous = client
+        .get(format!("{base}/v1/nodes/presence?node_id={node}"))
+        .send()
+        .await
+        .expect("presence request");
+    assert_eq!(
+        anonymous.status().as_u16(),
+        401,
+        "an unauthenticated caller reads no presence"
+    );
+    let body: Value = anonymous.json().await.unwrap();
+    assert_eq!(body["code"], json!("unauthenticated"), "{body}");
+
+    // (2) ANOTHER TENANT'S administrator gets the SAME answer a nonexistent node
+    // gives — the existence oracle is closed, not merely the payload withheld.
+    let foreign = client
+        .get(format!("{base}/v1/nodes/presence?node_id={node}"))
+        .header(PRINCIPAL_HEADER, &admin_b)
+        .send()
+        .await
+        .expect("presence request");
+    assert_eq!(
+        foreign.status().as_u16(),
+        404,
+        "a foreign node is not found"
+    );
+    let foreign_body: Value = foreign.json().await.unwrap();
+    assert_eq!(
+        foreign_body["code"],
+        json!("unknown_node"),
+        "{foreign_body}"
+    );
+
+    let absent = client
+        .get(format!(
+            "{base}/v1/nodes/presence?node_id=nod_00000000-0000-7000-8000-0000000000bf"
+        ))
+        .header(PRINCIPAL_HEADER, &admin_b)
+        .send()
+        .await
+        .expect("presence request");
+    assert_eq!(absent.status().as_u16(), 404);
+    let absent_body: Value = absent.json().await.unwrap();
+    assert_eq!(
+        absent_body["code"], foreign_body["code"],
+        "a foreign node and an absent one answer with the SAME code: \
+         {foreign_body} vs {absent_body}"
+    );
+
+    // (3) THE POSITIVE ARM: the node's OWN tenant still reads it, in full.
+    let owner = client
+        .get(format!("{base}/v1/nodes/presence?node_id={node}"))
+        .header(PRINCIPAL_HEADER, &admin_a)
+        .send()
+        .await
+        .expect("presence request");
+    assert_eq!(
+        owner.status().as_u16(),
+        200,
+        "the owning tenant still reads"
+    );
+    let p: Value = owner.json().await.unwrap();
+    assert_eq!(p["node_id"], json!(node), "{p}");
+    assert_eq!(
+        p["state"],
+        json!("offline"),
+        "no lease was ever issued: {p}"
+    );
+    assert_eq!(p["online"], json!(false), "{p}");
 
     server.crash();
 }
@@ -2139,6 +2263,7 @@ async fn revoking_a_node_refuses_the_next_handshake_and_flips_presence_suspended
             "{}/v1/nodes/presence?node_id={node_id}",
             server.base_url()
         ))
+        .header(PRINCIPAL_HEADER, &alice)
         .send()
         .await
         .unwrap()
@@ -2293,6 +2418,7 @@ async fn a_revoked_nodes_live_lease_stops_being_extended() {
             "{}/v1/nodes/presence?node_id={node_id}",
             server.base_url()
         ))
+        .header(PRINCIPAL_HEADER, &alice)
         .send()
         .await
         .unwrap()
@@ -2495,6 +2621,7 @@ async fn a_revoked_nodes_withheld_work_is_delivered_to_its_replacement() {
             "{}/v1/nodes/presence?node_id={node_id}",
             server.base_url()
         ))
+        .header(PRINCIPAL_HEADER, &alice)
         .send()
         .await
         .unwrap()
@@ -3830,6 +3957,7 @@ async fn a_heartbeat_cannot_revive_a_lease_that_lapsed_mid_request() {
                 "{}/v1/nodes/presence?node_id={node_id}",
                 server.base_url()
             ))
+            .header(PRINCIPAL_HEADER, SEED_READER)
             .send()
             .await
             .unwrap()

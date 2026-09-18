@@ -358,7 +358,13 @@ impl From<threads::ThreadError> for ControlApiError {
 /// Resolve the presented principal from the trusted dev header. A missing or
 /// malformed value is `unauthenticated` — the dev profile trusts the header, but it
 /// must still be WELL-FORMED and typed.
-fn resolve_principal(headers: &HeaderMap) -> Result<GrantSubject, ControlApiError> {
+///
+/// `pub(crate)` for `node_channel::presence` (`SIGNOFF-REPAIR.3.5.5`), which had
+/// no principal at all. It reads the header the same way rather than parsing it a
+/// second time: a second copy of this rule would drift from this one, and the two
+/// routes disagreeing about who may read `node_presence` is the defect that leaf
+/// exists to close.
+pub(crate) fn resolve_principal(headers: &HeaderMap) -> Result<GrantSubject, ControlApiError> {
     let value = headers
         .get(PRINCIPAL_HEADER)
         .and_then(|v| v.to_str().ok())

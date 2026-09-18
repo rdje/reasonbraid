@@ -17,7 +17,7 @@ Every view is one of the existing inspection GETs, rendered as-is:
 | Timeline (the ordered event log) | `GET /v1/threads/{thread_id}/events?tenant_id=…` |
 | Audit (authorization records) | `GET /v1/threads/{thread_id}/audit?tenant_id=…` |
 | Budget (ceiling + reservation rows, incl. denials — `.1.6.1`) | `GET /v1/threads/{thread_id}/budget?tenant_id=…` |
-| Node presence (derived from the lease clock) | `GET /v1/nodes/presence?node_id=…` |
+| Node presence (derived from the lease clock; the caller's own tenant) | `GET /v1/nodes/presence?node_id=…` |
 | Node inbox (tenant_admin) | `GET /v1/nodes/inbox?node=…&tenant_id=…` |
 
 ## Identity

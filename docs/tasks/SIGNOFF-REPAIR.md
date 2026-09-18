@@ -3983,7 +3983,14 @@ with `panicked at crates/reasonbraid-server/src/ca.rs:142:75` in the same run �
   - `TABLE-ARITY-RATCHET` reads cell COUNTS, never cell meaning.
   ⭐ So the defect lives precisely in the seam between three checks that each do their own job correctly — the `.7.2.9` shape, one layer up.
 - ⚠️ **The dangerous direction is row 1 specifically.** A stale `pending` on a historical row costs a reader a moment; a stale row 1 sends the next session to a leaf that closed, which is how REPAIR-0256's successor began. ⛔ **And the inverse must not be gated away:** a row deliberately naming a `done` leaf as HISTORY is correct and common — rows `1a11`–`1a18` are all `done`. The rule wanted is about row 1 and about the status COLUMN's agreement, not about the presence of closed leaves in the table.
-- Owns: deciding the exact rule (most likely: every row's status column equals its leaf's own `Status:`, and row 1's leaf is `pending`), measuring the corpus before proposing it (`.11.6`), and either registering a check or stating why prose is enough.
+- ⚠️ **A LEAF'S STATUS IS NOT ALWAYS IN A `Status:` LINE, and a rule written without this would be wrong on its first run.** Measured over the tree: **350 leaves, 28 carry no `- Status:` line, and 27 of those state it in their `Opened:` bullet** (`- Opened: \`pending\` by …`). The frontier's own row 1 is one of them — `.11.2.4` has no `Status:` line at all. ⛔ So `TASK-STATUS`'s "exactly ONE" permits zero, and any comparison must read BOTH forms or it will report 28 false disagreements and be switched off. Producing command:
+
+  ```bash
+  python3 -B -c 'import re,pathlib; s=pathlib.Path("docs/tasks/SIGNOFF-REPAIR.md").read_text(); \
+    h=list(re.finditer(r"^#{3,6} (SIGNOFF-REPAIR[\d.]*\d) — ", s, re.M)); \
+    print(sum(1 for i,x in enumerate(h) if not re.search(r"^- Status: `", s[x.end():h[i+1].start() if i+1<len(h) else len(s)], re.M)))'
+  ```
+- Owns: deciding the exact rule (most likely: every row's status column equals its leaf's own status, read from a `Status:` line OR an `Opened:` bullet, and row 1's leaf is not `done`), measuring the corpus before proposing it (`.11.6`), and either registering a check or stating why prose is enough.
 - Acceptance: a census of the whole frontier table naming every row whose status column disagrees with its leaf, run before any rule is written; the rule stated with the `done`-as-history case explicitly permitted; if registered, the gate seen RED against both a stale `pending` row and a row-1 pointer at a closed leaf, and its cost measured against the enforcer's ~12.6 s; and the two hand reconciliations above named as the founding population rather than a remembered anecdote.
 - Verification / commit: pending.
 

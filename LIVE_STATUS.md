@@ -12,7 +12,7 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 - 🔎 A careful reading found three real defects in unreachable code; the FIRST control found why it was unreachable.
 - ✅ An annotated tag resolves via `Ref::Peeled` (decided, not defaulted); an ambiguous short name is refused BY NAME listing both refs, and only when the commits differ; `refs/heads/..` is refused.
 - ✅ Two falsification passes, because the fragment neutralization would have masked the other three. 21 tests pass, clippy rc=0.
-- ⭐ **`ACQUISITION-KIND-DOC`, shipped one leaf earlier, refused this commit** until its new kind was documented. `.7.2`'s mechanism table is now fully discharged.
+- ⭐ **`ACQUISITION-KIND-DOC`, shipped one leaf earlier, refused the change** by command, the moment the wire mapping was added — before any commit was attempted. `.7.2`'s mechanism table is now fully discharged.
 
 ✅ **A SAFETY DEFAULT DISABLED BY OUR OWN CORRECTNESS (`.7.2.9`, REPAIR-0251).**
 

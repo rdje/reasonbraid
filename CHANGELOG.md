@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-18 — A route key that was too loose and too tight in one expression (`SIGNOFF-REPAIR.11.8.1`)
+
+🔴 **The route-documentation census was wrong in BOTH directions, and its own self-test asserted the defect rather than catching it.**
+
+- **The mechanism, one function.** `stem()` DELETED every `{param}`: `re.sub(r"\{[^}]*\}", "", route).replace("//", "/")`. That is too loose and too tight at once.
+- ⛔ **Too loose — a false `described`.** `/v1/snapshots/{snapshot_id}` and `/v1/snapshots` collapse onto one key, so a contract line for one credits the other. Re-derived by hand: `/v1/calls` was counted documented because `GET /v1/calls/{call_id}` appears at `authority.md:833`, while a grep for a bare `… /v1/calls` contract line returns nothing. `/v1/policy-publications` was credited the same way by `POST /v1/policy-publications/{id}/publish`.
+- ⛔ **Too tight — a false `absent`.** A parameter in the MIDDLE of a path leaves a stem no book writes: `/v1/snapshots/{id}/derivations` became `/v1/snapshots/derivations`, though the book names it at `deployment.md:584`.
+- ✅ **21 of 104 routes misclassified** — 18 wrongly `absent`, 3 wrongly credited as documented. Corrected today: **104 routes — 49 described, 3 mentioned, 52 absent**. And apples-to-apples, at `.11.8`'s own commit `0fbb85f` in a throwaway on-volume worktree with only the key replaced: **103 routes — 30 described, 3 mentioned, 70 absent**, against its published **22 / 1 / 80**.
+- ⚠️ **A correction to this file.** REPAIR-0254's entry attributed `35 described / 68 absent` to `.11.8`. Those are what the DEFECTIVE instrument reports over today's corpus; `.11.8` published `22 / 1 / 80` over 103 routes. A number needs its producer *and* its moment.
+- ✅ **The repair is to normalise, not delete** — every `{whatever}` becomes `{}` on both sides, so a key matches the book's own spelling and two routes stay two keys — plus a right match edge so `/v1/snapshots` cannot match inside `GET /v1/snapshots/{}`.
+- ⛔ **No LEFT edge, measured rather than assumed.** It guards a hazard this surface has **0** of, and it would cost a real answer: `curl -i "$RB_URL/v1/admin/grants"` would read `absent`. Instead `tail_collisions()` prints the count every run, so the day the hazard appears the reader is told — the assumption is checked, not commented.
+- 🔴 **The old self-test's third arm asserted `stem("/v1/calls/{call_id}/respond") == "/v1/calls/respond"`** — codifying a key no book writes as the correct answer. Not a control that could not see the defect: one that demanded it. Falsified five ways, each red by name; a sixth attempt was a bad mutant of mine (`return [] or sorted(...)` evaluates to the sorted list) and is recorded rather than counted.
+- ⛔ Unchanged: 52 is not 52 defects, `described` is still a proxy, and no gate is proposed — a better key does not touch `.11.6`'s reasoning.
+
 ## 2026-09-18 — A citation is withdrawn by its tenant; a shared row is tombstoned by the site (`SIGNOFF-REPAIR.7.4.4`)
 
 🔴 **One verb carried two acts that do not share an authority. A snapshot two tenants cite is ONE row, so `DELETE /v1/snapshots/{id}` removed tenant B's evidence when tenant A asked — and stamped B's receipt with A's reason.**

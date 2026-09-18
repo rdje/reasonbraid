@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — A key can be too loose and too tight in the same expression
+
+- A census matched routes to the book by DELETING path parameters: `/v1/snapshots/{id}` → `/v1/snapshots`. One line, and it fails in opposite directions simultaneously.
+- ⭐ **Too loose**, because deleting a component merges two different things: a collection and its item now share a key, so a contract line for either credits both. **Too tight**, because the deleted form is not what anyone WRITES: a mid-path parameter yields `/v1/snapshots/derivations`, a path that exists in no document and no router.
+- 🔎 **Both are the same mistake seen from two sides — the key is not in the vocabulary of the thing being searched.** The fix is not a looser or tighter key but a key in the target's own language: normalise `{whatever}` to `{}` on BOTH sides and the key becomes the book's spelling. Normalising beats deleting whenever the two sides spell the same thing differently.
+- ⛔ **The self-test asserted the defect.** Its arm read `stem("/v1/calls/{call_id}/respond") == "/v1/calls/respond"`. That is a category beyond "a control that cannot see the defect": a control that DEMANDS it, and no amount of running it could ever have helped. When writing an arm over a normalisation, ask what the normalised form is FOR — here, to be found in a document — and assert that, not the transformation's output.
+- ⚠️ **A guard I nearly shipped unmeasured.** I added a left match edge alongside the right one, symmetric and plausible. Measuring: the hazard it guards occurs **0** times on this surface, and it cost a real answer — a route shown as `"$RB_URL/v1/admin/grants"` read `absent` because the variable's last letter is a word character. Dropped, and replaced by an instrument that PRINTS the hazard count every run, so the assumption is checked rather than written in a comment that ages.
+- ⚠️ **One of my six mutants was a no-op**: `return [] or sorted(...)` evaluates to the sorted list, so the "neutralised" function behaved identically and the green told me nothing. A mutant must be shown to CHANGE something before its result counts — the same rule as `an-injection-must-be-shown-to-land`, applied to falsification itself.
+- promotion: DECLINED — `docs/knowledge/a-key-too-loose-returns-the-wrong-instance.md` and `a-control-that-passes-for-an-unrelated-reason.md` already carry both halves, and `.11.20.2`'s criterion makes a third file absorb-or-decline.
+
 ## 2026-09-18 — One verb, two acts, two authorities
 
 - `DELETE /v1/snapshots/{id}` meant *tombstone this snapshot*. On a content-addressed store that row is SHARED: two tenants citing one URL at one digest hold the same row by construction. So the verb let either of them delete the other's evidence and write a reason onto the other's receipt.

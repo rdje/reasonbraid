@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-18 — Correction: REPAIR-0259's severity claim, and a reproduction that modelled a path nobody uses
+
+⚠️ **The previous entry said *"a project that pulled this spine could not make its first commit"*. That is wrong, and the reproduction behind it was a fixture rather than the product.**
+
+- **How projects are actually created, from the director and confirmed in this repository's own history:** `rdje/bedrock` is a **GitHub template repository**, not a syncable remote. A new project is instantiated through GitHub's *Use this template*, which copies the WHOLE repository, and is then cloned and bootstrapped locally — `b932c05 "Initial commit"` followed by `823c2bc "bootstrapped from bedrock"`. The remotes confirm it: `origin` is `rdje/reasonbraid` and **there is no bedrock remote at all**.
+- ⛔ **So a fresh project receives every script and commits fine.** Copying only the `NEUTRAL` paths into a bare `git init` was a model of a creation path nobody uses, and its `10 doctrine breach(es)` measured my own fixture.
+- ✅ **What remains true, and why the repair stands.** `update_scaffold.sh` is an UPDATE mechanism and only copies listed files — it deletes nothing. `NEUTRAL` carried the registry and not the 7 scripts it names, so syncing into a project instantiated from an OLDER snapshot installs a registry naming checks that never arrive and breaks that project's gate. A real hazard at update time for an older project; not at creation.
+- ⚠️ **Corrected severity:** the defect is *the update mechanism cannot deliver the doctrines the registry names*, not *the spine ships broken*. `SCAFFOLD-COVERAGE` keeps its 0.02 s on that basis — registry-versus-list drift is silent and bites the project being updated — as a consistency guard rather than a shipped-broken guard. The root-cause finding is untouched: `NEUTRAL` is a second copy of the registry that nothing derives, and it had drifted by seven.
+- 🔎 **The method failure, which is the useful part.** I built a fixture, reproduced a failure inside it, and reported the fixture's behaviour as the product's. **A reproduction is evidence only if the path it models is one that occurs.** The falsify leg asks what would have to be true for the claim to be false — here, *"projects are created some other way"* — and I never checked how a project is created before asserting creation was broken.
+
 ## 2026-09-18 — The scaffold shipped an enforcer registering checks it did not carry (`SIGNOFF-REPAIR.11.23`)
 
 🔴 **A project that pulled this spine could not make its first commit.** `scripts/update_scaffold.sh` carried `check_doctrines.sh` — the registry of 18 doctrines — and **not the 7 check scripts that registry names**. Copying only the `NEUTRAL` paths into a bare `git init` repository printed seven `?? (missing/not executable: …)` rows and `10 doctrine breach(es) — commit blocked`.

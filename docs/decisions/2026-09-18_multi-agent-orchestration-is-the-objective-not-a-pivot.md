@@ -127,6 +127,7 @@ old; `DOCTRINE-REGISTRY` refused a backticked description that the driver would
 have executed. A template shipping doctrines is a claim; a template shipping
 doctrines *with their firing records* is a measurement.
 
+⛔ **bedrock is a GITHUB TEMPLATE REPOSITORY, not a syncable remote** (director, 2026-09-18). A project is instantiated through GitHub's *Use this template* — the whole repository is copied — then cloned and bootstrapped locally, which is exactly this repository's own first two commits (`b932c05 "Initial commit"`, `823c2bc "bootstrapped from bedrock"`), and there is **no bedrock remote**. ⚠️ So there is no pull, no fork relationship and no sync path in either direction: `update_scaffold.sh` here names *reasonbraid* as the template source for reasonbraid's OWN descendants. Anything that reaches bedrock is carried by hand.
 ⛔ **bedrock is a SEPARATE repository with its own task tree.** Nothing here may
 edit it; work there is owned by `BEDROCK-MAINTENANCE` leaves, and the scaffold
 direction already runs the other way (`scripts/update_scaffold.sh`).

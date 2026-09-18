@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — A reproduction is evidence only if the path it models occurs
+
+- I found a real inconsistency — the scaffold's file list had drifted seven checks behind the registry it carries — then built a fixture to show the consequence: copy only the listed files into a bare repository, run the enforcer, watch the first commit fail. It failed. I reported that as the product's behaviour.
+- 🔴 **The fixture was not the product.** Projects here are instantiated from a GitHub *template*, which copies the whole repository. Nothing ever creates a project by copying only the sync list, so the path I reproduced does not exist and the failure I measured was my own fixture's.
+- ⭐ **The falsify leg would have caught it in one question.** *What would have to be true for "a fresh project cannot commit" to be FALSE?* — that projects are created some other way. That is not an obscure possibility; it is the first thing to check, and it is checkable in seconds from the repository's own first commits and remotes.
+- ⚠️ **The defect and the severity are separable, and only the severity was wrong.** The list really had drifted, the drift really does break the update path for an older project, and the gate that stops it is still worth its 0.02 s. What was unsupported was the *blast radius*, and overstating that is its own kind of false claim — a real defect described as worse than it is still misdirects whoever reads it next.
+- 🔎 **The tell I should have noticed unprompted:** I had no evidence about how a project is created. I inferred it from the existence of a sync script, which is a tool for UPDATING an existing project, and quietly promoted it into the creation story because it was the mechanism in front of me. A tool's existence is evidence that it is used, never evidence of what else is not.
+- promotion: DECLINED — this is `docs/CLAIM_VERIFICATION.md`'s falsify leg applied to a reproduction rather than a number, and that document already states it; the instance is recorded in the leaf.
+
 ## 2026-09-18 — Improvements accumulate where they are earned unless something carries them
 
 - Seven doctrines were earned in this project, each by a measured defect. All seven were registered in the enforcer and **none was in the scaffold's `NEUTRAL` list** — the only mechanism that moves a spine file anywhere. So they could not leave, and worse: the enforcer that *names* them was carried, so a fresh project got a registry pointing at files that never arrived and **could not make its first commit**.

@@ -26,9 +26,20 @@ ALLOWLIST=".doctrine/visibility_exceptions.txt"
 # Deliberately NOT a bare "private" match: the corpus legitimately discusses
 # private files, private channels, private overlays and private repositories in
 # general, and an allowlist of those would teach bypass rather than review.
-PATTERN='(keep(ing|s)?|mak(e|es|ing)) +(a|the|this|its) +repositor(y|ies) +(\*\*)?privat'
-PATTERN="$PATTERN"'|repositor(y|ies) +(is|are|was|were|stays?|remains?) +(\*\*)?privat'
-PATTERN="$PATTERN"'|repositor(y|ies) +(must|should|shall|will|may|can|could) +(not +)?(remain|be|stay|become)s? +(\*\*)?privat'
+# ⚠️ THE NOUN IS ABBREVIATED TOO (`SIGNOFF-REPAIR.11.2.4`). Every clause was
+# anchored on the full word `repositor(y|ies)`, so two live instances written
+# `the repo is private` sat in the corpus invisibly — in a gate built for
+# exactly that claim. `repo(s|sitory|sitories)?` covers all four spellings.
+#
+# ⛔ The widening is DERIVED, not invented. Censusing every tracked-Markdown line
+# carrying a repo word beside `privat` showed the abbreviation is the only
+# uncovered spelling that STATES a visibility; the many `private-repository
+# instruction` lines put `private` BEFORE the noun and are corrections of the
+# superseded policy, so no clause matches them and none should. Measured delta:
+# 3 matches to 11, none lost.
+PATTERN='(keep(ing|s)?|mak(e|es|ing)) +(a|the|this|its) +repo(s|sitory|sitories)? +(\*\*)?privat'
+PATTERN="$PATTERN"'|repo(s|sitory|sitories)? +(is|are|was|were|stays?|remains?) +(\*\*)?privat'
+PATTERN="$PATTERN"'|repo(s|sitory|sitories)? +(must|should|shall|will|may|can|could) +(not +)?(remain|be|stay|become)s? +(\*\*)?privat'
 PATTERN="$PATTERN"'|privat[a-z]* +until +(ADR|that ADR|name|clearance)'
 
 trim() {
@@ -51,6 +62,10 @@ Keep the repository private until ADR-001 records the naming decision.
 One person fills both roles while the repository is private and pre-clearance.
 The repository must remain private.
 Keep this repository **private** until that ADR's clearance gate passes.
+model has no external owners yet (the repo is private) —
+channel: the repo is PRIVATE, the ADR-001 gate);
+Keep the repo private until ADR-001 records the naming decision.
+The repos must remain private.
 PROBES
   # And it must NOT fire on the unrelated senses the corpus is full of.
   while IFS= read -r probe; do
@@ -63,9 +78,12 @@ The store writes a complete private state.json.next and synchronizes it.
 Private repositories and provider credentials remain on their owning nodes.
 Confidential reports require a separate private channel or workspace.
 Keep the repository public, as explicitly directed.
+the earlier private-repository instruction was wrong; README and ADR-001
+the embargo is the honest private-repo shape (the fix ships with its leaf)
+A broad private-repository match yields 30 tracked hits, mostly private files.
 PROBES
   [ "$fails" -eq 0 ] || exit 1
-  echo "VISIBILITY-POLICY self-test: matcher fires on 4 leak shapes, silent on 4 unrelated senses"
+  echo "VISIBILITY-POLICY self-test: matcher fires on 8 leak shapes including the four abbreviated spellings, silent on 7 unrelated senses including the corrections that put 'private' BEFORE the noun"
   exit 0
 fi
 

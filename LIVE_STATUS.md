@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **A GATE BLIND TO THE ABBREVIATION OF THE VERY NOUN IT IS BUILT ON (`.11.2.4`, REPAIR-0258).**
+
+🔴 **`check_visibility_policy.sh` exists because the superseded private-repository instruction leaked past two reviews — and all four of its clauses were anchored on the full word, so two live instances in the abbreviated form sat in the corpus with the gate returning rc=0.**
+
+- ✅ Widening DERIVED from a ~60-line census, not invented: the abbreviation is the only uncovered spelling that *states* a visibility, while `private-repository instruction` lines put `private` before the noun and are corrections. Delta **3 → 11**, none lost.
+- 🔴 **Six of the eight new matches were the project documenting its own blind spot** — the self-reference trap reached from the documentation side.
+- ✅ Dispositioned by rule: **except what must stay verbatim (3), reword what is prose (5)**, so the changeable surfaces stay policed. Falsified four ways, including a genuinely new sentence refused by file and line.
+- ⭐ `FRONTIER-STATUS`, registered one commit earlier, caught this leaf leaving a stale frontier row — firing on its author within the hour.
+
 ⭐ **DIRECTION RECORDED, UNSCHEDULED (2026-09-18): small-swarm orchestration is the EXISTING objective, not a pivot.**
 
 The director asked for 2–5 agents coordinated on any given problem, scaling later. `README.md` already states that objective, and the shipped step vocabulary carries no programming-specific verb — `solicit`, `blind_solicit`, `critique`, `revise`, `synthesize`, `assess`, `vote`, `adjudicate`, `decide`, … A profile is versioned CONFIGURATION over existing verbs, and real `claude.rs`/`codex.rs` adapters already dispatch.

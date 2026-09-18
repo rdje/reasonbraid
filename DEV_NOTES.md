@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — Documenting a blind spot puts the trigger into the corpus
+
+- Widening a gate to catch an abbreviation flagged eight lines. **Two were the defect. Six were the project describing the defect** — the leaf, the frontier row, the index, the resume pointer. Writing *"the instances read X"* puts X into the corpus the gate searches.
+- ⭐ **This is the self-reference trap from the other side.** `check_self_tests.sh`'s founding incident was a control that searched for a string its own source contained. Here nothing is wrong with the control; the DOCUMENTATION of the control's gap trips it. Same mechanism, and it will recur every time a gate's blind spot is written down honestly.
+- ✅ **The disposition rule that fell out, and it generalises: except what must stay VERBATIM, reword what is PROSE.** A reproduction command and a preserved historical quotation must keep their exact bytes — those go in the allowlist. Prose describing the defect can NAME the form instead of instantiating it, and rewording keeps that surface policed as it changes. An allowlist entry for prose rots the moment someone edits the sentence, and a stale entry is itself a breach.
+- 🔎 **The corollary for writing gate documentation:** describe the shape, do not quote an instance, unless the instance is the evidence. "The abbreviated copular form" costs one clause and stays out of the corpus; the literal sentence costs an allowlist entry forever.
+- ⚠️ **The census discipline paid again.** The obvious widening — matching `private-repo` anywhere — would have flagged ~15 lines that are all *corrections of the superseded policy*, because those put `private` before the noun. Reading the population first is what kept the repair to one substitution in three clauses.
+- promotion: DECLINED — `check_self_tests.sh` documents the trap and `a-census-is-as-wide-as-its-key.md` carries the widening half; a third file would restate both.
+
 ## 2026-09-18 — Census the symptom and you find the mechanism
 
 - A stale frontier pointer looked like one careless edit. Censusing the table instead of fixing the row showed the real shape: **the table gains a row when a leaf closes and never retires the opening row**, so 13 of 49 leaves carried 2–4 rows and 10 status columns contradicted their leaf.

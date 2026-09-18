@@ -19,3 +19,23 @@ docs/decisions/2026-09-09_publication-precondition.md	A local instruction to kee
 # A preserved historical quotation of the superseded README line, inside the
 # evidence record that reproduced the conflict. Quoting it is the evidence.
 docs/tasks/artifacts/signoff_review/publication-precondition.md	README.md:4 says: “Keep this repository **private** until that ADR’s clearance gate
+
+# ── The abbreviated spelling, admitted by SIGNOFF-REPAIR.11.2.4 ──
+# Every clause was anchored on the full word `repositor(y|ies)`, so these sat in
+# the corpus invisibly. All three are PRESERVED EVIDENCE, not instructions: the
+# five live prose sentences that DESCRIBED the defect were REWORDED instead of
+# listed here, so the gate keeps policing the surfaces that can still change.
+
+# Preserved history. A dated decision record (2026-09-07) states the premise that
+# held then; docs/decisions/ SUPERSEDES rather than mutates, so this line stays and
+# the director's 2026-09-09 correction is recorded separately. Not an instruction.
+docs/decisions/2026-09-07_phase6-gate-record.md	model has no external owners yet (the repo is private) —
+
+# Preserved history inside a dated `Done (2026-09-08)` entry — and the entry
+# immediately above it already carries the 2026-09-09 correction, so the record
+# corrects itself in place. Describes what was true then, instructs nothing now.
+docs/tasks/PHASE-7.md	channel: the repo is PRIVATE, the ADR-001 gate);
+
+# The leaf's own REPRODUCTION command. The literal sentence is the evidence that
+# the old pattern did not match it; rewording it would destroy the reproduction.
+docs/tasks/SIGNOFF-REPAIR.md	printf '%s\n' "model has no external owners yet (the repo is private) —" \

@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-18 — A gate blind to the abbreviation of the very noun it is built on (`SIGNOFF-REPAIR.11.2.4`)
+
+🔴 **`check_visibility_policy.sh` exists because the superseded private-repository instruction "had already leaked past two" reviews. All four of its clauses were anchored on the full word, so two live instances written in the abbreviated copular form sat in the corpus invisibly and the gate returned rc=0 over them.**
+
+- ✅ **The widening is DERIVED, not invented** (`.11.2.2`'s rule). A census of every tracked-Markdown line carrying a repo word beside `privat` — about 60 lines — shows the abbreviation is the ONLY uncovered spelling that *states* a visibility. The many `private-repository instruction` lines put `private` BEFORE the noun and are corrections of the superseded policy, so no clause matches them and none should. One substitution in three clauses; **delta 3 → 11 matches, `comm` confirms none lost**.
+- 🔴 **Six of the eight new matches were the project documenting its own blind spot.** Writing down what the instances read puts the trigger into the corpus, so the widened gate flagged `MEMORY.md`, `docs/TASK_TREE.md` and three places in the tree. That is `check_self_tests.sh`'s founding incident — *a control searched for a string it contained* — reached from the documentation side.
+- ✅ **Dispositioned by a rule rather than case by case: except what must stay VERBATIM, reword what is PROSE.** Five live sentences now NAME the abbreviated form instead of instantiating it, following `check_self_tests.sh`'s own precedent of rewording rather than path-excluding, so those surfaces stay policed. Three preserved-evidence lines are excepted with reasons: a dated decision record (decisions supersede rather than mutate), a dated `Done (2026-09-08)` entry whose correction is the line above it, and the leaf's own reproduction command, where the literal sentence *is* the evidence.
+- ✅ **Falsified four ways**: the pattern reverted (three positives red), a bare `privat[a-z]*.repo` clause added (**all four** negatives red, including two real corrections), a genuinely new sentence injected into the book (refused by file and line — what the gate is *for*), and a bogus exception added (`stale exception` by name).
+- ⭐ **And `FRONTIER-STATUS`, registered one commit earlier, caught this leaf leaving a stale frontier row behind** — the defect it was built for, firing on its author within the hour.
+- ⛔ Not claimed: that the pattern is complete. It covers the spellings this corpus contains today; the census command is recorded so the next reader re-derives rather than trusts.
+
 ## 2026-09-18 — Small-swarm orchestration recorded as the existing objective, unscheduled (director direction)
 
 The director asked for ReasonBraid to orchestrate 2–5 agents working collectively on any given problem, scaling later, prompted by the reported OpenAI Navier–Stokes swarm and xAI's Grok 4.20 multi-agent model.

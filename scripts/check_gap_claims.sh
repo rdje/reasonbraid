@@ -21,9 +21,25 @@
 #   (75 % true-positive on the strict reading). Both founding sentences — the active
 #   "no instrument in the tree crosses the two" and the passive "is checked by nothing" — are pinned
 #   verbatim by `--self-test`.
-# ⛔ THE GOVERNED POPULATION IS `docs/tasks/*.md` ONLY (measured: claims in the changelog and the
-#   dev notes co-occur with a task-leaf claim in the same commit 76–90 % of the time, so governing
-#   them would double-fire). The layer-A resume pointer is excluded STRUCTURALLY — it is byte-capped.
+# ⛔ THE GOVERNED POPULATION IS EVERY TRACKED `docs/tasks/**/*.md` EXCEPT THE TEMPLATE (measured:
+#   claims in the changelog and the dev notes co-occur with a task-leaf claim in the same commit
+#   76–90 % of the time, so governing THEM would double-fire). The layer-A resume pointer is
+#   excluded STRUCTURALLY — it is byte-capped.
+# ⛔⛔ NESTED ARTIFACTS ARE GOVERNED, AND THEY WERE NOT (`SIGNOFF-REPAIR.11.18.1`). The blocking path
+#   filtered `^docs/tasks/[^/]*\.md$` while `--all` iterated `git ls-files 'docs/tasks/*.md'` — and
+#   git's `*` crosses `/`, so the ADVISORY reported 102 claims across 6 files while the BLOCKER
+#   governed 97 across 5. A reader of the advisory's backlog was reading a corpus 4.6x larger (69
+#   files vs 15) than the one anything enforced.
+# ⭐ The "a signoff artifact is a dated record, not a living leaf" defence was REFUTED by measurement,
+#   not argued down: 66 of 559 commits modify one. ⭐ And the extension is free — replayed over ALL
+#   559 commits it would have blocked **0**, which is `REASON-CODE-DOC`'s shape. ⛔ Full history
+#   rather than a window is deliberate: the blocker never governed these files, so there is no
+#   survivorship to correct for — unlike a replay over the TOP-LEVEL corpus, which returns 0 by
+#   construction because every commit that landed had already been made to pass
+#   (`docs/knowledge/calibrate-over-the-history-that-contains-the-instance.md`).
+# ⭐ ONE FILTER SERVES BOTH PATHS, so they cannot drift apart again: `governed_filter` reads paths on
+#   stdin, and `--all` and the staged path each pipe through it. The agreement is structural rather
+#   than remembered, which is what the previous divergence cost.
 #
 # ARCHETYPE: evidence. HONEST LIMIT — this verifies the census was RECORDED, not that it was RUN,
 #   nor that its population was right, nor that its conclusion was correct.
@@ -134,6 +150,14 @@ remedy() {
   } >&2
 }
 
+# ── the governed corpus, in ONE place ───────────────────────────────────────────────────────────
+# ⛔ Both the advisory and the blocker pipe through this. They disagreed for the whole of this
+# gate's life because each spelled the population itself (`SIGNOFF-REPAIR.11.18.1`).
+GOVERNED_RE='^docs/tasks/.+\.md$'
+GOVERNED_EXCLUDE='^docs/tasks/TEMPLATE\.md$'
+
+governed_filter() { grep -E "$GOVERNED_RE" | grep -Ev "$GOVERNED_EXCLUDE" || true; }
+
 mode="${1:-}"
 
 if [ "$mode" = "--self-test" ]; then
@@ -199,6 +223,39 @@ if [ "$mode" = "--self-test" ]; then
   #    Measured: this fixture classifies identically before and after the fix.
   printf '### `.9` — a claim with no census of its own\n- context, and a command belonging to something else:\n\n```bash\n# an explanatory comment\ncargo test -p some-crate\n```\n\n- **THE GAP** — nothing reads the `@sample` annotation.\n' > "$work/limit.md"; printf '9\n' > "$work/limit.nums"
   [ -z "$(classify "$work/limit.nums" "$work/limit.md")" ] && arm ok "DECLARED LIMIT: a foreign command in the same section still discharges" || arm bad "the declared limit changed — re-read the archetype before editing this"
+  # ---- `SIGNOFF-REPAIR.11.18.1`: one filter, and it reaches nested artifacts ----
+  # ⭐ These arms run `governed_filter` ITSELF — the single function both the advisory and the
+  #   blocker pipe through — so they cover both callers by construction. An arm that re-spelled
+  #   the population would be the very defect this leaf repaired, written into its own control.
+  sel="$(printf '%s\n' \
+        docs/tasks/SIGNOFF-REPAIR.md \
+        docs/tasks/artifacts/signoff_review/RECONCILIATION.md \
+        docs/tasks/TEMPLATE.md \
+        docs/decisions/INDEX.md \
+        CHANGELOG.md \
+        docs/tasks/notes.txt | governed_filter | tr '\n' ' ')"
+  # 9 🔴 THE DEFECT: a NESTED task artifact is governed. The blocker filtered `[^/]*` and never
+  #   saw one, while `--all` did — 69 files advised, 15 enforced.
+  case " $sel " in *" docs/tasks/artifacts/signoff_review/RECONCILIATION.md "*)
+      arm ok "a NESTED task artifact is governed" ;;
+    *) arm bad "a nested task artifact must be governed" ;; esac
+  # 10 and the top-level corpus is still governed — the fix must widen, not move
+  case " $sel " in *" docs/tasks/SIGNOFF-REPAIR.md "*)
+      arm ok "a top-level task file is still governed" ;;
+    *) arm bad "widening must not drop the original corpus" ;; esac
+  # 11 ⭐ NEGATIVE: the TEMPLATE stays excluded. It was excluded per-file inside the staged loop,
+  #   where `--all` could not see it; now one filter excludes it for both, so this arm proves the
+  #   exclusion SURVIVED being moved rather than being lost in the widening.
+  case " $sel " in *" docs/tasks/TEMPLATE.md "*) arm bad "TEMPLATE.md must stay excluded" ;;
+    *) arm ok "NEGATIVE — TEMPLATE.md is excluded from BOTH paths" ;; esac
+  # 12 ⭐ NEGATIVE: the widening must not escape docs/tasks/. Without this, `^docs/tasks/.+\.md$`
+  #   degenerating to something looser would govern the decisions layer and the changelog — the
+  #   double-firing the header measured at 76–90 %.
+  case " $sel " in *docs/decisions*|*CHANGELOG*) arm bad "the widening must not reach outside docs/tasks/" ;;
+    *) arm ok "NEGATIVE — docs/decisions/ and CHANGELOG.md stay out" ;; esac
+  # 13 ⭐ NEGATIVE: a non-Markdown file under docs/tasks/ is not a task document
+  case " $sel " in *notes.txt*) arm bad "a non-.md file must not be governed" ;;
+    *) arm ok "NEGATIVE — a non-Markdown file under docs/tasks/ is not governed" ;; esac
   # 8 hunk arithmetic: added lines resolve to NEW-file numbers
   parsed="$(printf '%s\n' '--- a/x.md' '+++ b/x.md' '@@ -1,0 +2,2 @@' '+alpha' '+beta' '@@ -9,1 +11,1 @@' '-old' '+gamma' | added_line_numbers | tr '\n' ' ')"
   [ "$parsed" = "2 3 11 " ] && arm ok "added-line numbers resolve to NEW-file positions (2 3 11)" || arm bad "hunk arithmetic yields '$parsed'"
@@ -209,7 +266,7 @@ fi
 
 if [ "$mode" = "--all" ]; then
   mkdir -p "$WORK"; total=0; unbacked=0; files=0
-  for f in $(git ls-files 'docs/tasks/*.md'); do
+  for f in $(git ls-files -- 'docs/tasks/*.md' | governed_filter); do
     [ -r "$f" ] || continue
     seq 1 "$(wc -l < "$f")" > "$WORK/all.nums"
     rows="$(awk -v CLAIM_RE="$CLAIM_RE" -v CENSUS_RE="$CENSUS_RE" "$CLASSIFY_AWK" "$WORK/all.nums" "$f")"
@@ -224,11 +281,10 @@ if [ "$mode" = "--all" ]; then
 fi
 
 mkdir -p "$WORK"
-staged="$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null | grep -E '^docs/tasks/[^/]*\.md$' || true)"
+staged="$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null | governed_filter)"
 [ -n "$staged" ] || { ok "NOT EVALUATED — no staged docs/tasks file"; exit 0; }
 fail=0; checked=0
 for file in $staged; do
-  case "$file" in docs/tasks/TEMPLATE.md) continue ;; esac
   # Judge the INDEX content, never the worktree: the commit ships what is staged.
   git show ":$file" > "$WORK/staged.md" 2>/dev/null || continue
   git diff --cached -U0 -- "$file" 2>/dev/null | added_line_numbers | sort -un > "$WORK/staged.nums"

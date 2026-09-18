@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE ADVISORY AND THE BLOCKER NEVER GOVERNED THE SAME CORPUS (`.11.18.1`, REPAIR-0246).**
+
+🔴 **`GAP-CLAIM-CENSUS` advised on 69 files and enforced on 15, for the whole of its life, because the script spelled its population twice.**
+
+- **Measured:** `--all` iterates `git ls-files 'docs/tasks/*.md'` (69 — git's `*` crosses `/`); the blocker filtered `^docs/tasks/[^/]*\.md$` (15). **102 claims across 6 files advised, 97 across 5 enforced**, 54 nested artifacts invisible.
+- ⛔ **The cause is the two spellings.** One `governed_filter` now serves both paths and the arms run that filter itself, so the agreement is structural.
+- ✅ The *dated record, not a living leaf* defence was refuted by measurement (**66 of 559 commits** edit one), and the extension replays at **0 of 559** — `REASON-CODE-DOC`'s shape. ⛔ Full history, because the top-level replay's identical 0 is survivorship (`.11.18.2`).
+- ✅ Five wrong rules, five arms red by name; the gate proved end-to-end on a real staged nested artifact — rc 1 after, rc 0 before.
+
 ✅ **A CONTROL THAT PASSES FOR AN UNRELATED REASON, PROMOTED (`.11.20.2`, REPAIR-0245).**
 
 🔴 **A lesson that had fired in three consecutive leaves was reachable only from the tree it was written in.**

@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — A replay can only price a rule over history the rule did not police
+
+- Two calibrations of the same candidate returned **0 of 559** and only one of them meant anything. Extending a gate to a corpus nothing had ever enforced: a real 0. The identical harness over the corpus the gate *has* policed since the initial commit: also 0, and an artefact — every commit that landed had already been edited until it passed.
+- ⛔ **A backtest over policed history measures the gate's DETERRENCE, not the rule's COST**, and from the number alone the two are indistinguishable. The reassuring reading ("this rule would never have fired, so it is harmless") is available for both.
+- ⚠️ **It is the neighbour of the window trap, not the same one.** `calibrate-over-the-history-that-contains-the-instance` is about a window too short to contain the defect; widening it fixes that. Here no window helps, because the whole interval is enforced — the fix is to find history, or a corpus, the rule did not reach.
+- ⭐ **The discriminator is one question, asked before believing the number:** *was this population under enforcement during the replay?*
+- ⭐ **And a 0 deserves a working harness before it deserves belief.** *Nothing to find* and *broken replay* produce the same output. A synthetic positive through the same classifier invocation, and its censused twin, separate them for the cost of two fixtures — and here the positive fired and the negative stayed silent, which is what made the real 0 worth publishing.
+- promotion: DECLINED here and routed — `.11.18.2` owns whether this joins the window note or stands alone, and whether the discriminator is mechanizable. ⛔ Writing the note mid-leaf would pre-empt the absorb-versus-new decision `.11.20.2` just set the criterion for.
+
 ## 2026-09-18 — Absorb or extract: which note does a recurring lesson belong to
 
 - Two consecutive leaves routed a lesson into `docs/knowledge/` and took OPPOSITE branches — one absorbed into an existing note, one extracted to a new one. `docs/CLAIM_VERIFICATION.md` leg 2 says the earlier ruling wins unless a difference is named, so here is the difference.

@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-18 — The advisory and the blocker never governed the same corpus (`SIGNOFF-REPAIR.11.18.1`)
+
+🔴 **`GAP-CLAIM-CENSUS` advised on 69 files and enforced on 15, for the whole of its life, because the script spelled its population twice.**
+
+- **The defect.** `--all` iterates `git ls-files 'docs/tasks/*.md'` — **69** files, because git's `*` crosses `/` — while the blocker filtered `^docs/tasks/[^/]*\.md$` and saw **15**. The backlog reported **102 claim lines across 6 files**; enforcement covered **97 across 5**. **54** nested artifacts were invisible to the blocking path, and nothing said so.
+- ⛔ **The cause is the two spellings, not the exclusion.** Each path named the population itself, and the `TEMPLATE.md` exclusion lived *inside the staged loop* where `--all` could not reach it. One `governed_filter` now serves both, so the agreement is structural rather than remembered — and the self-test arms run that filter itself, covering both callers by construction.
+- ✅ **The "a signoff artifact is a dated record, not a living leaf" defence was refuted by measurement**, not argued down: **66 of 559 commits** modify a nested artifact, and `RECONCILIATION.md` is the clause ledger three tranches are actively writing.
+- ✅ **Calibrated and free:** replayed over **all 559 commits**, the extension would have blocked **0** — `REASON-CODE-DOC`'s shape.
+- ⛔ **Full history rather than a window, and the control is what showed why.** The same harness over the TOP-LEVEL corpus also returns 0 — and that number is worthless, because the blocker has governed those files since the initial commit, so every commit that landed had already been made to pass. **A replay can only price a rule over history the rule did not police.** Routed to `.11.18.2`.
+- ⭐ **The harness was proved before its zero was believed.** A synthetic unbacked claim through the same classifier returns `BLOCKED`; its censused twin returns nothing. Without that pair, *nothing to find* and *broken replay* are the same output.
+- ✅ Five in-situ wrong rules, five arms RED by name, no arm needing a label. And the gate end-to-end on a real staged nested artifact: rc **1** after, rc **0** (`NOT EVALUATED`) before.
+
 ## 2026-09-18 — A control that passes for an unrelated reason, promoted (`SIGNOFF-REPAIR.11.20.2`)
 
 🔴 **A lesson that had fired in three consecutive leaves was reachable only from the tree it was written in.**

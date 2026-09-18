@@ -5,6 +5,14 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **A RIGHT CONCLUSION ON A FALSE PREMISE, GRADED SEPARATELY (`.3.4.3.1.1.1`, DOC-0047).**
+
+🔴 **A signed-off leaf closed on *"nothing enforces the stored value"*. Three production sites enforce it. Its conclusion still stands — for reasons it did not give.**
+
+- ⭐ Read from the PRE-REPAIR source at `9446034`: `rotate` sampled `now` AFTER signing so its stored value is never earlier; `enroll` sampled it 11 awaits and 16 database calls before, so it is earlier whenever a second boundary falls in between.
+- ✅ **The refusal window is real and UNREACHABLE** — the final sub-second of a 600 s certificate against a rotate trigger at the halfway point.
+- ⭐ **§4.1 on all three axes:** PROSE holds (re-derived), NAMED INSTANCE false and **withdrawn**. The control is named by its ABSENCE — 0 pre-repair, and the one the repair added prevents the divergence rather than observing the window.
+
 ✅ **A LEAF DISCHARGED ITS OWN GAP CLAIMS BY HAVING BEEN VERIFIED (`.11.2.5`, REPAIR-0248).**
 
 🔴 **`GAP-CLAIM-CENSUS` asked "does this section contain a command?", and `TASK-ACCEPTANCE` puts one in every closed leaf by construction: 103 claim lines, 0 undischarged — inert everywhere.**

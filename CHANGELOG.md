@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-18 — A right conclusion on a false premise, graded separately (`SIGNOFF-REPAIR.3.4.3.1.1.1`)
+
+🔴 **A signed-off leaf closed on "nothing enforces the stored value". Three production sites enforce it. Its conclusion still stands — for reasons it did not give.**
+
+- **The premise, refuted by command.** `git grep -n 'expires_at > now()' -- crates/reasonbraid-server/src` returns `crates/reasonbraid-server/src/node_channel.rs:673`, `:1121`, `:1158` — lease acquisition, lease renewal, the usability check.
+- ⭐ **Read from the PRE-REPAIR source at `9446034`, not from today's**, because REPAIR-0136 rewrote both call sites. `now_offset()` truncates to whole seconds so `signed = floor(T_sign) + 600`, while the row stored `now + 600` at full precision: `stored − signed = T_now − floor(T_sign)`. `rotate` sampled `now` AFTER signing, so its difference is never negative; `enroll` sampled it **11 awaits and 16 database calls** before signing, so it is negative whenever a second boundary falls in between.
+- ✅ **The refusal window is real at `enroll` and unreachable.** It is the final sub-second of a 600 s certificate, and the node rotates at `ROTATE_REMAINING_SECS = 300` — the halfway point. A node inside it got there by clock skew and is within a second of the handshake refusing it anyway.
+- ⭐ **Graded on all three §4.1 axes separately, which is the point:** PROSE **holds** and is now re-derived; NUMBER, none carried; NAMED INSTANCE **false, and withdrawn** — exact, no tolerance band. A single verdict would have had to choose between "the record was wrong" and "the record was fine", and both are false.
+- ✅ **The control is named by its ABSENCE:** `git grep -c ... 9446034 -- crates` → 0. Nothing pre-repair compared the stored instant to the signed one, and the control the repair added prevents the divergence rather than observing the window. Stated rather than built — a control reachable only by disabling the rotate trigger tests the harness.
+
 ## 2026-09-18 — A leaf discharged its own gap claims by having been verified (`SIGNOFF-REPAIR.11.2.5`)
 
 🔴 **`GAP-CLAIM-CENSUS` asked "does this section contain a command?" — and `TASK-ACCEPTANCE` puts one in every closed leaf by construction. Measured: 103 claim lines, 0 undischarged. Inert everywhere.**

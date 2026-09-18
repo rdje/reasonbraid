@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — Read the code as it was, not as it is, when auditing a closed record
+
+- A closed leaf's claim was challenged. The instinct is to check it against the current source — and the current source is the one that leaf REPAIRED, so it answers a different question. Every conclusion drawn from it would have been about code the record was never describing.
+- ⭐ **The commit to read is the repair's parent**, `<repair>^`, and naming it in the audit is what makes the audit re-runnable. Here the two call sites the record was about had both been rewritten; at the parent they are visibly different from each other, which is the whole finding.
+- 🔴 **And they differed in the one way that decided the answer.** Two sites computing the same quantity: one sampled its clock AFTER the signing it had to agree with, the other 11 awaits and 16 database calls BEFORE. Same defect class, opposite sign, and only one of the two could produce the harm being asked about. A single reading of "the code" would have got one of them.
+- ⚠️ **A right conclusion resting on a false premise needs both verdicts, not an average.** The record's sentence was *"no certificate was ever accepted or refused wrongly — nothing enforces the stored value"*. The clause after the dash is false; the clause before it survives a re-derivation its own stated reason could not have supported. Scoring that as "half wrong" tells a reader nothing useful; scoring prose and named-instance separately says exactly what to trust and what to delete.
+- ⭐ **Name the absent control rather than inventing a reachable one.** The window here is reachable only by disabling the mechanism that keeps a node away from it — so a control for it would be testing the harness. Saying so is a stronger record than a green test that proves nothing.
+- promotion: DECLINED as a note — this is `docs/CLAIM_VERIFICATION.md` §4.1 APPLIED, not extended, and the pre-repair-parent habit belongs with it rather than in a fork.
+
 ## 2026-09-18 — Classify the extra flags before choosing the tighter rule
 
 - Six candidate rules, priced against one population of 103, produced a tidy ladder: 65.0%, 59.2%, 37.9%, 14.6%, 9.7%, 1.0%. The temptation is to read the ladder and pick a number that feels affordable.

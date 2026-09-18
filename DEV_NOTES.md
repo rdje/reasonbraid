@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — Census the symptom and you find the mechanism
+
+- A stale frontier pointer looked like one careless edit. Censusing the table instead of fixing the row showed the real shape: **the table gains a row when a leaf closes and never retires the opening row**, so 13 of 49 leaves carried 2–4 rows and 10 status columns contradicted their leaf.
+- ⭐ **The difference matters because the two diagnoses imply different repairs.** "Someone forgot" implies care. "Every closure adds a contradicting row" implies a check, and tells you what the check must say — which is not *no finished leaves in the table* (most of the table is deliberately history) but *no row may lie about its leaf*.
+- 🔎 **The defect caught its author mid-session.** Two commits before censusing, I closed `.11.21` by ADDING a `done` row and leaving its `pending` row in place — the exact mechanism, performed while writing the leaf that describes it. A pattern you can perform accidentally an hour after documenting it is a pattern that needs a gate, not a note.
+- ⚠️ **Two false starts in my own census, and they are one lesson twice.** `s.index("## Current Frontier")` matched an earlier PROSE mention of the phrase and measured a table 400 KB away — reporting `0 rows`, which looks like good news. Then bounding the table to "up to the next `## `" swept in unrelated tables and inflated the count. Anchor to `^…$`, and bound a table to its contiguous pipe lines.
+- ⛔ **`0 rows` is the dangerous output of a broken census**, because it reads as *nothing wrong*. A census should assert its own population is non-empty before anyone reads its verdict — the same rule as a control that must be seen to fail.
+- ⚠️ **28 of 350 leaves carry no `Status:` line**, stating it in an `Opened:` bullet instead. A rule reading one form would have fired 28 false positives on its first run, which is how a gate gets switched off rather than fixed. Check the shape of the whole population before writing the predicate.
+- promotion: DECLINED — `a-key-too-loose-returns-the-wrong-instance.md` carries the census half, and the gate-seam half is `.7.2.9`'s promoted shape (a defect living between two correct decisions) one layer up.
+
 ## 2026-09-18 — A check that runs once per 300 commits cannot name the commit
 
 - Formatting was checked before every PUSH and never before a COMMIT. Both sound like "we check formatting". They are not the same control, and the difference is not thoroughness — it is ATTRIBUTION.

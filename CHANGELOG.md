@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-18 — The frontier table gains a row per state change and never retires the old one (`SIGNOFF-REPAIR.11.22`)
+
+🔴 **DOC-0049 reported a stale frontier pointer. Censusing it found the cause is structural, and worse than the symptom.**
+
+- **The census, run before any rule (`.11.6`): 66 rows naming 49 distinct leaves — 13 leaves carry 2 to 4 rows each, and 10 rows' status columns contradict their leaf.** A leaf gets a row when it opens (`pending`) and another when it closes (`done`), and the opening row is never removed. `.11.14.3.10` had four rows, three stale.
+- ⭐ **It caught its author in the act.** `.11.21` had a `done` row at `1a18` and a `pending` row at `1a16` — both written by me two commits earlier, in this same session.
+- 🔴 **A third historical firing, found by the census rather than remembered:** `.11.15` records `.7.4.1` sitting at row 2 for seven commits after closing. With REPAIR-0253's five rows and row 1's own pointer, the founding population is three separate firings.
+- ⚠️ **Two false starts in the census itself, recorded because they are one lesson twice.** `s.index("## Current Frontier")` matched an earlier prose mention and censused a table 400 KB away, returning `0 rows`; then the slice ran to the next `## ` heading and swept in unrelated tables. Anchoring to `^## Current Frontier$` and bounding to the contiguous pipe lines fixed them. Both are `a-key-too-loose-returns-the-wrong-instance` — in the leaf immediately after the one that repaired a key defect of the same shape.
+- ✅ **The rule, with the history case explicitly permitted:** every row's status column equals its leaf's own status, and row 1's leaf is not finished. ⛔ It is NOT "no finished leaves in the table" — most of the table is closed rows kept as recent history. A self-test arm asserts the legal `done` row so the rule cannot drift into the stricter one.
+- ✅ **Both status forms read.** 350 leaves, 28 carry no `Status:` line and 27 of those state it in an `Opened:` bullet; reading one form would report 28 false disagreements. `active` is a real third value and is not finished.
+- ✅ **Reconciled:** 9 stale rows removed, 1 corrected (`.9.3.4` `pending` → `active`). **`FRONTIER-STATUS` registered** as doctrine 16 of 20 at **0.06 s**, falsified five ways and against the real defect in both shapes.
+
 ## 2026-09-18 — A frontier row pointed at a leaf closed forty commits earlier (`SIGNOFF-REPAIR.11.22`)
 
 🔴 **Row 1 of the frontier — the one row a fresh session resumes from — named `.7.4.5`, which has been `done` since REPAIR-0216.** It was found only by opening the leaf in order to work on it.

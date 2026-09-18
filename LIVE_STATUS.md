@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE FRONTIER TABLE GAINS A ROW PER STATE CHANGE AND NEVER RETIRES THE OLD ONE (`.11.22`, REPAIR-0257).**
+
+🔴 **Censusing DOC-0049's stale pointer found a structural cause: 66 rows naming 49 leaves — 13 leaves with 2–4 rows each, and 10 status columns contradicting their leaf.**
+
+- ⭐ It caught its author: `.11.21` carried a `done` row and a `pending` row, both written two commits earlier in the same session. A third historical firing surfaced too — `.11.15` records `.7.4.1` sitting at row 2 for seven commits after closing.
+- ✅ Rule: every row's status column equals its leaf's own status, and row 1's leaf is not finished. ⛔ **A `done` row kept as history stays legal** — the rule refuses a row that lies, not a finished leaf, and a self-test arm pins that.
+- ✅ 28 of 350 leaves carry no `Status:` line (27 use an `Opened:` bullet), so both forms are read; `active` is a real third value and is not finished.
+- ✅ 9 stale rows removed, 1 corrected. `FRONTIER-STATUS` registered at **0.06 s**, falsified five ways and against the real defect.
+
 ⚠️ **A FRONTIER ROW POINTED AT A LEAF CLOSED FORTY COMMITS EARLIER (`.11.22`, DOC-0049).**
 
 🔴 **Row 1 of the frontier — the single row a fresh session acts on — named `.7.4.5`, `done` since REPAIR-0216.** Found only by opening the leaf to work on it. Two days earlier REPAIR-0253 had reconciled **five** rows whose status column said `pending` while their leaves said `done`.

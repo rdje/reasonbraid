@@ -47,15 +47,79 @@ simply not what the next commit should be about.
 - `2026-09-16_internet-qualification-route.md` stands as the route; it is
   re-ranked, not superseded.
 
-## The resumption trigger, and the open question it leaves
+## The resumption trigger, defined
 
-The trigger is "the local network deployment fully works". ⚠️ **That is not yet
-measurable, and this record says so rather than inventing a definition the
-instruction did not give.** The candidate the tree already supports is: every
-corrective repair under Phases 1–6 closed, plus Phase 8's LAN-relevant children
-(`.5.3` store-and-forward, `.5.4` export/import) — leaving Phase 7 and 9 as the
-Internet-facing remainder. That candidate is proposed, not adopted; the director
-confirms or replaces it before it becomes a gate condition.
+Clarified by the director on 2026-09-18, in two steps:
 
-Until then the practical rule is unambiguous and needs no definition: **work the
-LAN-path repairs, and do not spend a commit on Internet-exposure work.**
+> *"ReasonBraid behavior shall match the objective as defined in the roadmap in
+> the LAN not over the internet yet."*
+>
+> *"G7 should work inside the LAN before trying to make it work over the
+> internet."*
+
+⛔ **THE FIRST CANDIDATE THIS RECORD CARRIED IS WITHDRAWN, and it was wrong in
+KIND rather than in detail.** It read "every corrective repair under Phases 1–6
+closed, plus `.5.3`/`.5.4`" — phase arithmetic, which can diverge from behaviour
+in both directions: every repair can close with an objective clause still unmet,
+and an objective can be met while unrelated repairs stay open. The definition is
+BEHAVIOURAL, and the roadmap already encodes it.
+
+**The roadmap states it in its own header** — *Initial deployment: multiple
+trusted hosts on a private LAN or private overlay* against *Target deployment:
+authenticated agents and humans on arbitrary Internet-connected hosts* — and its
+gate table (`ROADMAP.md:2076–2085`) carries an *unlocks* column that partitions
+on exactly this line:
+
+| Gate | What it unlocks | In the LAN bar? |
+| --- | --- | --- |
+| G0 Contract, G1 Component | boundary implementation, merge artifact | yes |
+| G2 Vertical slice | LAN preview | yes |
+| G3 Governance | binding policy use | yes |
+| G4 Resource safety | arbitrary-reference feature | yes |
+| G5 Quality | the "deliberation improves answers" claim | yes |
+| G6 Internet security | **Internet exposure** | **NO — this is the deferral** |
+| G7 Operations | production beta | **yes, on the LAN** (director, 2026-09-18) |
+| G8 Compatibility, G9 Release | stable protocol, declared maturity | beyond the bar |
+
+**So: the LAN bar is G0–G5 genuinely met, plus G7 earned on the LAN. G6 is out of
+scope.** G6 is the only gate whose unlock is a transport, which is why the line
+falls there and nowhere else.
+
+### Why G7 belongs inside, and the one part of it that does not
+
+G7's evidence is mostly **transport-independent**, so earning it on the LAN is
+not merely the safer order — it is the order that does not waste the work.
+Whether a restore restores, whether the system survives losing a node, whether it
+is instrumented at all: none of that changes when the transport does. The cost
+asymmetry points the same way — chaos and game-day work is cheap and repeatable
+on a private network and expensive after exposure.
+
+⛔ **But G7 splits, and the split must be recorded now or it becomes a false claim
+later.** Load thresholds and SLO targets measured on a LAN say nothing about
+Internet latency, loss or adversarial traffic:
+
+- **Structural legs — earned once, on the LAN:** restore correctness, survival of
+  induced failure, instrumentation coverage.
+- **Numeric legs — re-derived under the Internet posture:** load thresholds and
+  SLO targets. A LAN figure is anchored to a LAN, and `docs/CLAIM_VERIFICATION.md`
+  forbids restating it as though it were not.
+
+### What G7 costs, measured rather than estimated
+
+Stated so the bar is entered with the number in front of the director. G7 is the
+least-built of the LAN gates:
+
+| G7 leg | State on 2026-09-18 |
+| --- | --- |
+| Backup / restore | **real** — `scripts/backup.sh`, `scripts/restore.sh`, and the `backup_restore` suite |
+| SLO instrumentation | **partial** — `GET /v1/admin/metrics` exists (ADR-023); objectives and thresholds do not |
+| Load | **dev scale only** — one storm control asserting fan-out caps and expiry refusal, explicitly "at the dev scale" |
+| Chaos / game day | **absent** — `git grep -lni "chaos\|game.day" -- crates scripts docs/book/src` returns **0** |
+
+### The practical rule, which needs no further definition
+
+**Work the LAN bar — G0–G5 and G7-on-LAN — and do not spend a commit on
+Internet-exposure work.** ⚠️ Note that G5 is currently *withdrawn* rather than
+merely unverified (the subtraction gate retracted the quality-lift claim), and
+G1–G5's shipped-line claims are mid-re-derivation under `.11.4.7.x`. Re-earning
+them IS the LAN-completeness work, not a detour from it.

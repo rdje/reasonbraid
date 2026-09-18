@@ -11,7 +11,9 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 - B1, B2 and B3 become **`yes (deferred)`**: the in-repo work is still owed and `.14` still owns it, but it leaves the frontier and no commit is spent on it until the LAN path is complete. ⛔ **`yes (deferred)` is not `no`** — a `no` row has nothing left for this repository to do; these three do.
 - ⛔ **Priority changed, claims did not.** Phase 7 G6/G7 remains **NOT MET** and `.14`'s standing prohibition against turning the exposure profile on is untouched. Deferring the work moves the claim further away, not closer.
-- ⚠️ **The resumption trigger is not yet measurable.** A candidate — Phases 1–6 corrective repairs closed plus Phase 8's `.5.3`/`.5.4` — is proposed in `docs/decisions/2026-09-18_lan-completeness-precedes-internet-exposure.md` and awaits the director. Until then: work the LAN-path repairs.
+- ✅ **The trigger is DEFINED** (director, 2026-09-18): the LAN bar is **G0–G5 genuinely met plus G7 earned on the LAN**, G6 out of scope. The roadmap's gate table partitions exactly there — G6 is the only gate whose *unlocks* column names a transport. ⛔ The earlier phase-arithmetic candidate is WITHDRAWN as wrong in kind: repairs closing and behaviour matching can diverge in both directions.
+- ⛔ **G7 splits.** Structural legs (restore, survival of induced failure, instrumentation) are earned once on the LAN; **load and SLO NUMBERS are anchored to a LAN** and must be re-derived under the Internet posture rather than carried across.
+- ⚠️ **G7 is the least-built LAN gate, measured before the bar was accepted:** backup/restore real, metrics surface without objectives, load dev-scale only, **chaos/game-day absent — 0 hits across `crates scripts docs/book/src`**. ⚠️ And G5 is *withdrawn*, not merely unverified, so re-earning it is inside the bar.
 
 ✅ **THE FRONTIER TABLE GAINS A ROW PER STATE CHANGE AND NEVER RETIRES THE OLD ONE (`.11.22`, REPAIR-0257).**
 

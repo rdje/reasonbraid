@@ -87,13 +87,33 @@ unsurfaced blocker is harder to notice than an unowned one.
 exposure profile on is untouched. Deferring work is not permission to describe
 the system as Internet-ready; if anything it makes the claim further off.
 
-⚠️ **The trigger is not yet measurable.** "The LAN fully works" needs a
-definition before it can gate anything. The candidate — every corrective repair
-under Phases 1–6 closed, plus Phase 8's LAN-relevant `.5.3` and `.5.4` — is
-proposed in
-`docs/decisions/2026-09-18_lan-completeness-precedes-internet-exposure.md`
-and awaits the director's confirmation. Until then the practical rule needs no
-definition: work the LAN-path repairs.
+### The trigger, defined
+
+"The LAN fully works" means **ReasonBraid's behaviour matches the roadmap's
+objective on a private network**. The roadmap already partitions on this line:
+its header separates *Initial deployment: trusted hosts on a private LAN* from
+*Target deployment: arbitrary Internet-connected hosts*, and its gate table
+carries an *unlocks* column in which **G6 Internet security is the only gate
+whose unlock is a transport**.
+
+So the bar is **G0–G5 genuinely met, plus G7 earned on the LAN**, with G6 out of
+scope until the director says otherwise.
+
+G7 is inside the bar because its evidence is mostly transport-independent —
+whether a restore restores, whether the system survives losing a node, whether
+it is instrumented — so earning it on the LAN is the order that does not waste
+the work, and chaos exercises are cheap on a private network and expensive after
+exposure.
+
+⛔ **G7 splits, and the split matters.** Its *structural* legs are earned once.
+Its *numeric* legs — load thresholds and SLO targets — are anchored to a LAN and
+say nothing about Internet latency, loss or adversarial traffic; they are
+re-derived under the Internet posture rather than carried across.
+
+⚠️ **G7 is the least-built of the LAN gates**, and the bar is entered with that
+known: backup/restore is real (`scripts/backup.sh`, `scripts/restore.sh` and a
+suite), the metrics surface exists without objectives, load exists only as a
+dev-scale storm control, and chaos/game-day work does not exist at all.
 
 ⛔ **Nothing about the blockers themselves has moved.** B1, B2 and B4 still need
 outside parties, `.14` is still under its standing prohibition against turning

@@ -1712,6 +1712,7 @@ what a hostile remote can spend before anything refuses it.
 | files | 10,000 | the file count in the resolved tree | during the tree walk |
 | path depth | 32 | the deepest path in the resolved tree | during the tree walk |
 | shallow depth | 1 | how much history is requested | in the fetch request itself |
+| per-object allocation | 256 MiB | the memory one pack object may ask for | inside the pack decode, before the allocation |
 
 The time ceiling is enforced through the interrupt flag `gix` polls while it
 receives and writes the pack, so it stops the transfer rather than only
@@ -1730,6 +1731,17 @@ deliver in `max_time`, not for `max_bytes`.
 pack phase the interrupt flag reaches — is caught by the checkpoint after that
 phase rather than inside it, so the effective ceiling is `max_time` plus however
 long one un-polled phase blocks.
+
+⭐ **The per-object allocation limit is set explicitly, and the reason is worth
+knowing if you operate this.** `gix` already refuses to allocate for a pack
+object larger than its allocation limit, and ships a 16 MiB default — but that
+default applies only to a repository it considers *reduced trust*, and the
+repository an acquisition clones into is created by the server, so it is fully
+trusted and the brake never engaged. A remote-supplied pack entry could
+therefore declare any size at all, and the only thing standing in the way was
+the allocator refusing. The acquisition now sets the limit to the same
+**256 MiB** it already allows the whole object database, so it refuses nothing
+that ceiling would have allowed and caps what a single object can ask for.
 
 ### What `rb-server` checks before it touches the database
 

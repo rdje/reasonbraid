@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-18 — A safety default disabled by our own correctness (`SIGNOFF-REPAIR.7.2.9`)
+
+🔴 **`gix` ships a 16 MiB per-object allocation brake. This project had it switched off — by the very property that makes its acquisition repositories safe in every other respect.**
+
+- **The mechanism, read in the pinned dependency.** `gix-pack 0.74.2` refuses to allocate for an object larger than `alloc_limit_bytes` (`gix-pack-0.74.2/src/data/file/decode/entry.rs:475`), and gix supplies `ALLOC_LIMIT_IF_REDUCED_TRUST_DEFAULT` = 16 MiB. ⛔ It applies **only at `Trust::Reduced`**, and `init_opts` sets `git_dir_trust = Some(Trust::Full)` unconditionally (`gix-0.87.1/src/init.rs:76`). Every acquisition repository goes through `init_opts`, so the brake never engaged: a remote-supplied pack entry could declare any size and gix would ask the allocator for it.
+- ⭐ **The defect lives in the seam between two correct decisions, in two codebases.** The repository is fully trusted *because the server created it* — the same fact that makes `open::Options::isolated()` the right config posture — and full trust is exactly what disables the limit. Nobody would find this by reading either codebase alone.
+- ✅ **The repair refuses nothing that would have succeeded**, which is why this limit and not gix's. It is set to `max_bytes`, the ceiling the acquisition already declares for its whole object database: an object larger than that could never have passed anyway. gix's 16 MiB was rejected for the opposite reason — it sits *below* what this project's own ceilings permit.
+- ⛔ **No crafted pack, and the leaf says so.** The acceptance offered *demonstrate it or withdraw the concern*; reading the dependency established both that the bound exists and the exact condition disabling it — stronger than a synthetic fixture, and it does not rest on one nobody will re-run.
+- ✅ The control proves the setting **lands** (`an-injection-must-be-shown-to-land`); what gix does with the limit is gix's behaviour, tested by gix. One arm red by name, the negative arm labelled. 17 tests pass, clippy `-D warnings` rc=0, and the book's ceiling table gains the row.
+
 ## 2026-09-18 — A second refusal vocabulary, documented nowhere (`SIGNOFF-REPAIR.7.2.10`)
 
 🔴 **An acquisition refusal travels in `acquisition_error.kind`, not in `code`. Forty-one strings a client branches on, and the book documented none of them.**

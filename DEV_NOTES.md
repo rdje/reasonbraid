@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — A dependency's safety default can be disabled by your own correct choice
+
+- A library shipped a bound for exactly the risk being investigated — a per-object allocation limit against a hostile pack — and it was not in force. Not because it was overridden, and not because the library is careless: it is conditioned on the repository being *reduced trust*, and this project's repositories are *fully* trusted because the server creates them itself.
+- ⭐ **Two correct decisions, one in each codebase, and the hole is in the seam.** Full trust is the right answer for a directory you just made; conditioning a memory brake on trust is a defensible library default. Neither is wrong, and reading either codebase alone finds nothing.
+- ⛔ **So the question to ask of a dependency's safety feature is not "does it exist?" but "what turns it on, and is that true here?"** Grepping for the constant finds it; grepping for the CONDITION is what tells you whether you have it. Here the condition was five lines away and inverted by a call the project makes on purpose.
+- ⭐ **Set the value explicitly rather than inheriting it**, even when the inherited default looks right — an inherited default is a claim about a condition you do not control and may change.
+- ⭐ **Choose the number from your OWN declared limits, not the library's.** The library's 16 MiB would have refused content this project's ceilings already allow; the project's existing 256 MiB object-database ceiling refuses nothing that ceiling did not already refuse. A bound that cannot reject anything previously accepted needs no calibration and no exemption list.
+- ⚠️ **And prove the setting LANDS, not what it does.** The control reads the resolved configuration back; what the dependency does with the value is the dependency's behaviour, tested by the dependency. Asserting the downstream effect would mean maintaining a fixture for someone else's code.
+- promotion: DECLINED as a note for now, per `LESSON-PROMOTION` and `.11.20.2`'s criterion — the shape is genuinely transferable but has ONE instance. The trigger for extracting it is a second.
+
 ## 2026-09-18 — Check which FIELD a string travels in before calling it a gap
 
 - A surface was emitting refusal strings the book did not document, and the obvious reading was that the reason-code gate had a blind spot. It does not. The strings travel in `acquisition_error.kind`; the gate, the registry and the book table are all about `code`. Two fields, two namespaces — and measured, **zero** strings in common.

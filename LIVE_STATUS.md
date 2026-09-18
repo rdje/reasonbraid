@@ -5,6 +5,14 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **A SAFETY DEFAULT DISABLED BY OUR OWN CORRECTNESS (`.7.2.9`, REPAIR-0251).**
+
+🔴 **`gix` ships a 16 MiB per-object allocation brake; this project had it switched off.** The default applies only at `Trust::Reduced`, and `init_opts` hardcodes `Trust::Full` — so every acquisition repository, fully trusted BECAUSE the server created it, let a remote-supplied pack entry declare any size.
+
+- ⭐ **The defect lives in the seam between two correct decisions in two codebases** — full trust is right for config isolation and is exactly what disables the limit.
+- ✅ **The repair refuses nothing that would have succeeded:** the limit is `max_bytes`, the ceiling the acquisition already declares. gix's 16 MiB was rejected for sitting *below* this project's own limits.
+- ⛔ No crafted pack — reading the dependency established both the bound and the condition disabling it. One arm red by name; the negative arm labelled. 17 tests, clippy rc=0, book table updated.
+
 ✅ **A SECOND REFUSAL VOCABULARY, DOCUMENTED NOWHERE (`.7.2.10`, REPAIR-0250).**
 
 🔴 **An acquisition refusal travels in `acquisition_error.kind`, not in `code`: 41 strings a client branches on, and the book documented none.**

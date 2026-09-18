@@ -817,12 +817,34 @@ fn acquire_blocking(
 /// configuration file, prohibiting accessing the environment or spreading
 /// beyond the git repository location". The repository's OWN config is still
 /// loaded — gix always loads it, and it is the one this process just created.
-fn init_acquisition_repository(dir: &std::path::Path) -> Result<gix::Repository, GitError> {
+///
+/// ⛔⛔ AND IT SETS THE PER-OBJECT ALLOCATION LIMIT EXPLICITLY
+/// (`SIGNOFF-REPAIR.7.2.9`), because gix's own brake is switched OFF here by a
+/// property that is otherwise a virtue. `gix-pack` refuses to allocate for an
+/// object larger than `alloc_limit_bytes`, and gix supplies a 16 MiB default —
+/// but ONLY at `Trust::Reduced`, and `init_opts` sets
+/// `git_dir_trust = Some(Trust::Full)` unconditionally
+/// (`gix-0.87.1/src/init.rs:76`). A repository this server creates is therefore
+/// always fully trusted and always unbraked, so a remote-supplied pack entry
+/// could declare any size and gix would try to allocate it, bounded only by
+/// `try_reserve` failing — i.e. by the machine.
+///
+/// ⭐ The limit is `max_bytes`, the ceiling this acquisition already declares
+/// for its WHOLE object database, and that choice is what makes the repair
+/// cost nothing: an object larger than the database ceiling could never have
+/// passed `max_bytes` anyway, so nothing that would have succeeded is refused.
+/// It converts an unbounded peak allocation into one bounded by a number the
+/// project already publishes.
+fn init_acquisition_repository(
+    dir: &std::path::Path,
+    limits: &GitLimits,
+) -> Result<gix::Repository, GitError> {
     gix::ThreadSafeRepository::init_opts(
         dir,
         gix::create::Kind::Bare,
         gix::create::Options::default(),
-        gix::open::Options::isolated(),
+        gix::open::Options::isolated()
+            .config_overrides([format!("gitoxide.objects.allocLimit={}", limits.max_bytes)]),
     )
     .map(Into::into)
     .map_err(|e| GitError::TransferFailed(format!("the target repository failed: {e}")))
@@ -916,7 +938,7 @@ fn acquire_into(
 ) -> Result<GitAcquisition, GitError> {
     let deadline = Deadline::start(limits.max_time);
     let target_dir = workspace.path();
-    let repo = init_acquisition_repository(target_dir)?;
+    let repo = init_acquisition_repository(target_dir, limits)?;
     deadline.check()?;
     let remote = repo
         .remote_at(url.as_str())
@@ -1646,7 +1668,8 @@ mod tests {
         // The acquisition's own open, exactly as production calls it.
         let owned = tmp.path().join("owned");
         std::fs::create_dir_all(&owned).expect("the owned dir creates");
-        init_acquisition_repository(&owned).expect("the acquisition open succeeds");
+        init_acquisition_repository(&owned, &GitLimits::default())
+            .expect("the acquisition open succeeds");
         println!("acquisition HEAD: {}", head_line(&owned));
 
         // The suite's own inputs: the real fixture builder the acquisition
@@ -1808,6 +1831,68 @@ mod tests {
         let acquisition = acquire_local(&source_dir, &GitLimits::default())
             .expect("a transfer inside the default 120 s ceiling still succeeds");
         assert_eq!(acquisition.resolved_commit, first.to_string());
+    }
+
+    /// `SIGNOFF-REPAIR.7.2.9` — the per-object allocation limit is IN FORCE.
+    ///
+    /// 🔴 Observed RED first: without the `config_overrides` call the key is
+    /// absent, because `init_opts` hardcodes `Trust::Full`
+    /// (`gix-0.87.1/src/init.rs:76`) and gix applies its 16 MiB default only at
+    /// `Trust::Reduced`. So the brake gix ships was switched off by exactly the
+    /// property that makes this repository safe in every other respect.
+    ///
+    /// ⭐ THE CONTROL PROVES THE SETTING LANDS, which is the honest claim here
+    /// (`docs/knowledge/an-injection-must-be-shown-to-land.md`). What gix does
+    /// with the limit is gix's behaviour, tested by gix; what this project owes
+    /// is evidence that the value it sets is the value the repository resolves.
+    #[test]
+    fn the_per_object_allocation_limit_is_in_force() {
+        let tmp = OwnedDirectory::create("git", "test-alloc").expect("the workspace creates");
+        let dir = tmp.path().join("bare");
+        std::fs::create_dir_all(&dir).expect("the dir creates");
+        let limits = GitLimits::default();
+        let repo = init_acquisition_repository(&dir, &limits).expect("the open succeeds");
+        let resolved = repo
+            .config_snapshot()
+            .integer("gitoxide.objects.allocLimit")
+            .expect("the acquisition sets a per-object allocation limit");
+        assert_eq!(
+            resolved, limits.max_bytes as i64,
+            "the limit must be the object-database ceiling this acquisition already declares, \
+             so it refuses nothing that ceiling would have allowed"
+        );
+    }
+
+    /// ⭐ THE NEGATIVE HALF: a plain isolated open has NO such limit, which is
+    /// the state every acquisition was in. Without this arm the control above
+    /// is satisfied by a gix default nobody set.
+    ///
+    /// ⚠️ LABELLED: it passes before and after the repair, and that is what it
+    /// is for. Its red is not the pre-fix code — which is the state it asserts
+    /// — but a future `gix` that starts setting an allocation limit by default
+    /// at full trust, at which point this repair can be reconsidered rather
+    /// than silently duplicated
+    /// (`docs/knowledge/a-control-that-passes-for-an-unrelated-reason.md`).
+    #[test]
+    fn a_plain_isolated_open_has_no_allocation_limit() {
+        let tmp = OwnedDirectory::create("git", "test-noalloc").expect("the workspace creates");
+        let dir = tmp.path().join("bare");
+        std::fs::create_dir_all(&dir).expect("the dir creates");
+        let repo: gix::Repository = gix::ThreadSafeRepository::init_opts(
+            &dir,
+            gix::create::Kind::Bare,
+            gix::create::Options::default(),
+            gix::open::Options::isolated(),
+        )
+        .expect("the plain open succeeds")
+        .into();
+        assert!(
+            repo.config_snapshot()
+                .integer("gitoxide.objects.allocLimit")
+                .is_none(),
+            "an unbraked open is the state this leaf repaired — if gix starts \
+             setting one by default, the repair can be reconsidered"
+        );
     }
 
     /// ⛔ And the watchdog does not outlive the acquisition. A 120 s ceiling

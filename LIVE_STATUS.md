@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE ACCEPTANCE GATE READ ONE CHECKLIST PER FILE, AND HAD DRIFTED OUT OF ITS OWN CORPUS (`.11.2.6`, REPAIR-0262).**
+
+🔴 **`check_task_acceptance.sh` stopped at the first matching box and exited. This tree carries 194 `ROOT CAUSE` boxes; it read one, at line 388, from a leaf closed long before — on every code commit for ~200 commits.** ⭐ One cause, two defects: while inert, its vocabulary drifted — it blocked on `ADDRESSED` (14) and `ROOT CAUSE` (13) against the corpus's `NO REGRESSION` (203), `FIX / LOCKSTEP` (192), `REPRODUCE / ISSUE` (142).
+
+- ✅ Scope is now the **deepest leaf whose `Status:` turns `done` in the staged diff** — from the hunk headers, never the commit message (a pre-commit hook runs before the message exists) and from the staged blob, never the working tree.
+- ✅ Label families are a census-derived project seam, `.doctrine/acceptance_labels.txt`. Calibrated over 300 commits: **57.7% → 20.6%**.
+- ✅ The gate gained the `--self-test` it never had (six arms; the negative arm is the extractor it replaced). `scripts/tests/test_task_acceptance.py` rewritten — **13 tests, OK**.
+- 🔴 **The in-situ falsification caught the first repair passing with its own checklist deleted** — the leaf *discusses* `NO REGRESSION`, so prose mentioning it answered the question. Fixed by anchoring the family as the bullet's **lead-in**; 17.5 % → **20.6 %** refused, three points paid for correctness.
+- ⛔ **`--debt` counts 73 of 281 closed leaves; they are NOT backfilled.** Writing the missing bullets in would manufacture evidence after the fact — the exact offence the gate guards against. ⚠️ Not a quality claim about those changes: most were verified, the record of it is what is missing. Decision: `docs/decisions/2026-09-19_acceptance-debt-is-counted-not-backfilled.md`.
+
 ⚠️ **THE ACCEPTANCE GATE ENFORCES A VOCABULARY THIS PROJECT DOES NOT USE (`.11.2.6`, calibration — NOT yet repaired).**
 
 🔴 **`check_task_acceptance.sh` validates ONE checklist per staged tree file; this tree has 194 `ROOT CAUSE` boxes and it reads line 388 on every code commit.** Calibrating the repair found a larger second defect: the census returns `NO REGRESSION` **203**, `REPRODUCE / ISSUE` **142**, `FIX / LOCKSTEP` **192** against the gate's hard-gated `ADDRESSED` **14** and `ROOT CAUSE` **13**.

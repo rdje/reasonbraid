@@ -62,6 +62,22 @@
 # census, so that is harmless today; it would not be for a mutating script, and
 # a future one must be excluded here.
 #
+# 🔴 THAT RESIDUAL MATERIALISED (`SIGNOFF-REPAIR.11.2.6`), and not as "ignored":
+# `scripts/tests/test_task_acceptance.py` gained a case that RUNS the checker
+# with the flag, so its source contains the literal and discovery found it. A
+# unittest module does not ignore an unknown argument — it exits non-zero with
+# `error: unrecognized arguments: --self-test` — so the gate reported a passing
+# test suite as a failing instrument. The prediction was right about the
+# mechanism and wrong about the consequence, which is the useful half.
+#
+# `scripts/tests/` is excluded BY PATH: it holds unittest modules, which are
+# tests OF instruments rather than instruments. They are run by
+# `python3 -m unittest discover -s scripts/tests` in the pre-push list, where
+# their arguments mean what they say. ⛔ The exclusion is a directory, not a
+# filename, so the next test that mentions the flag does not re-break this gate —
+# the failure mode here was a NAMED file, and naming files is how an exclusion
+# list rots.
+#
 # Self-test: scripts/check_self_tests.sh --self-test
 set -uo pipefail
 ROOT="$(git rev-parse --show-toplevel)"; cd "$ROOT"
@@ -80,7 +96,8 @@ export RB_SELF_TEST_GATE=1
 # runs it (defence 2 — see the trap note).
 discover() {
   git grep -l -- "$FLAG" -- scripts knowledge-map .githooks 2>/dev/null \
-    | grep -vFx "$SELF" | grep -vFx "$ENFORCER" | sort
+    | grep -vFx "$SELF" | grep -vFx "$ENFORCER" \
+    | grep -vE '^scripts/tests/' | sort
 }
 
 # The two populations this gate is about, printed rather than restated in prose.

@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — An inert control does not hold a line; it hides that the line moved
+
+- I set out to fix one defect — the acceptance gate read one checklist per file — and found a second one hiding behind it. While the gate was vacuous, the vocabulary it enforced drifted out of the corpus it governed. It blocked on the two rarest spellings in the project and did not know the three most common. **Neither defect could correct the other, because the gate never fired.**
+- ⭐ **That is the general shape, and it is worse than a gate that is simply absent.** An absent gate is a known gap. An inert one reports green, so the practice and the check drift apart independently and both look fine. The tell was available all along: the gate had never refused anything.
+- 🔎 **Every predicate I tried refused a quarter to a half of honest history, and I kept reaching for a cleverer scope.** The scope was not the binding constraint. One census of what the corpus actually writes settled in minutes what three scoping variants could not.
+- ⭐ **Ask what a number is a rate OF before rejecting it.** 20.9 % refused looked disqualifying next to a sibling gate's 1 %. But it measured leaves closed while the gate was asleep — past drift — and the check only ever examines the leaf closing now. I nearly discarded the right candidate on a figure that was evidence for it.
+- ⛔ **And the debt it exposed must not be paid the easy way.** Writing the missing `NO REGRESSION` bullets into 67 closed leaves would satisfy the gate by committing the exact offence the gate exists to prevent. Backfilled evidence is worse than absent evidence, because absence is honest. The number gets a command that derives it instead.
+- 🔴 **I hit *a key too loose* three times in one session**, which is the honest measure of how easy it is: a function name that was also a path tail, a column name with two other spellings, and a line of structured prose that recurs by design. All three *looked* like identifiers. None identified. The property they shared is being a value the domain repeats — and repetition is invisible until you ask how many times.
+- promotion: PROMOTED — `docs/knowledge/a-key-too-loose-returns-the-wrong-instance.md` gains all three instances and the rule they share. ⚠️ Also recorded there: two of the three were caught by running the instrument over a case whose answer I already knew. The unknown a tool is built for cannot contradict it.
+
 ## 2026-09-18 — Calibrate against what the corpus does, not against what the check says it should
 
 - I set out to fix a scoping bug: the acceptance gate reads one checklist per file and this tree has 194. Every predicate I priced refused a quarter to a half of honest history, and I kept reaching for a cleverer scope. The scope was not the binding problem.

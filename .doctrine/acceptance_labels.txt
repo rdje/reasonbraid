@@ -1,0 +1,41 @@
+# TASK-ACCEPTANCE label families — scripts/check_task_acceptance.sh
+#
+# Each line is one HARD-GATED question a closing leaf must answer:
+#
+#     <NAME><TAB><extended regular expression matching this project's spellings>
+#
+# The regex is matched case-insensitively against the leaf's BULLET lines. A file
+# here REPLACES the built-in default families; absent, the portable defaults apply.
+#
+# ⭐ WHY THIS SEAM EXISTS, measured rather than assumed (`SIGNOFF-REPAIR.11.2.6`).
+# The gate used to hard-gate `ROOT CAUSE` and `ADDRESSED`. A census of every
+# evidence-bullet lead-in in `docs/tasks/SIGNOFF-REPAIR.md` returned:
+#
+#     NO REGRESSION 203 · LOCKSTEP 147 · REPRODUCE / ISSUE 142 · FIX / LOCKSTEP 45
+#     ... against ADDRESSED 14 and ROOT CAUSE 13
+#
+# Two of the three blocking labels were this project's RAREST spellings, and the
+# two it wrote most were unknown to the gate. It never found out because it only
+# ever read the file's first box — one bullet, at line 388, from a leaf closed
+# long ago. An inert control does not hold a line; it hides that the line moved.
+#
+# ⛔ Derived from the corpus, never invented. The `FIX` family below is wide
+# because the project genuinely names its repair a dozen ways — `THE REPAIR`,
+# `THE RULE`, `DISPOSITIONED BY A RULE`, `THE RECONCILIATION`, `THE DECISION` —
+# and that variety is prose, not missing discipline.
+#
+# Priced over 300 commits, each step measured rather than argued: the original
+# labels refused 20.9 %; widening to these families 17.5 %; and requiring the
+# family to be the bullet's LEAD-IN rather than a word anywhere inside it,
+# 20.6 %. ⭐ The last step COSTS three points and is still right — without it a
+# leaf that merely DISCUSSES `NO REGRESSION` answers it, which is how the leaf
+# repairing this gate passed while its real checklist bullet was deleted.
+#
+# The residual is dominated by `NO REGRESSION`, a label with 203 uses, so it is
+# not a spelling problem: those leaves genuinely carry no regression evidence.
+# ⛔ They are NOT backfilled — see docs/decisions/. Ask the count, never restate
+# it: `scripts/check_task_acceptance.sh --debt`.
+
+CAUSE	root.?cause|reproduce|reproduced|\bissue\b|measured|the census|the defect|defect [0-9]
+FIX	addressed|\bfix\b|decided|the decision|the repair|the rule|disposition|reconciliation|the widening|the result
+NO REGRESSION	no.?regress

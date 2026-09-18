@@ -54,6 +54,33 @@ not a table row at all:
 **total row count is 76 before and after**. The rows were always rows. A check
 counting rows would have reported success against the unrepaired file.
 
+## Three more instances, all in one session — and what they share
+
+⚠️ 2026-09-19. Building two instruments in a single sitting produced this failure
+**three times**, which is a better measure of how easy it is than any argument.
+
+| the key | the wrong instance it returned | the fix |
+| --- | --- | --- |
+| `\b(list_runs)\s*\(` over a handler body | `crate::evaluation::list_runs` matched `api.rs`'s OWN free `list_runs`, so a route with no gate was reported as authorized — a false POSITIVE on a security census | a negative lookbehind for `::` and `.`: a bare call is not a path tail |
+| the literal token `tenant_id` | `authored_by_tenant` and `{CITED_BY_TENANT}` read as UNSCOPED, so correct code was reported as a leak | the noun's other spellings, case-insensitively |
+| the TEXT of an added `- Status: \`done\`` line | that line is byte-identical for every leaf, so one commit appeared to close dozens and a candidate scored 64.7 % instead of 57.7 % | the diff's hunk headers — POST-image line NUMBERS |
+
+⭐ **All three shared one property: the key looked specific.** A function name, a
+column name, a whole line of prose — each reads like an identifier and none of
+them identifies. The tell is not vagueness; it is that **the key is a value the
+domain repeats**, and repetition is invisible until you ask how many times.
+
+> Before keying on a string, ask: *what else in this corpus is allowed to equal
+> it?* A function name may be re-exported or shadowed. A column name has
+> synonyms. A line of structured prose recurs by design — that is what structure
+> IS.
+
+🔎 And note what caught two of the three: **reading the instrument's output
+against a case whose answer was already known.** The census said `get_audit` was
+unauthorized; it is not, and that disagreement exposed both the generic-function
+bug and, through it, the `list_runs` collision. The unknown a tool is built for
+cannot contradict it. Run it first over something you can already answer.
+
 ## The check that makes this mechanical
 
 Before drawing a conclusion from a located instance:

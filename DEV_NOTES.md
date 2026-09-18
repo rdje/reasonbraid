@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — Improvements accumulate where they are earned unless something carries them
+
+- Seven doctrines were earned in this project, each by a measured defect. All seven were registered in the enforcer and **none was in the scaffold's `NEUTRAL` list** — the only mechanism that moves a spine file anywhere. So they could not leave, and worse: the enforcer that *names* them was carried, so a fresh project got a registry pointing at files that never arrived and **could not make its first commit**.
+- ⭐ **The general shape, met four times now: a second copy that nothing derives.** The index's copy of the frontier, a row's copy of a leaf's status, the scaffold's copy of the registry. Each is convenient, each drifts the moment the first copy grows, and each needs a derivation or a check — a convention will not hold it.
+- 🔎 **The asymmetric cost is what makes this one worth a gate.** A stale index row costs a reader a moment. A stale `NEUTRAL` means every downstream project is born broken, and the breakage appears at the worst possible moment — the first commit, before anyone has any context.
+- ⚠️ **Run a new gate inside the reproduction it was written to validate.** Mine failed there, correctly: a project may have no scaffold script at all, which is NOT CHECKED rather than a breach. I would not have thought of that case by reading my own code; the bare repo produced it in one run.
+- 🔴 **Falsification found the new gate's own guard unreachable.** The `$EXEMPT` filter protected nothing, because the parser anchored on one of the two registration forms and the exempt entry only ever appears in the other. A guard whose subject the parser cannot see is decoration. Then widening the parser over-matched an explanatory COMMENT — the same *key too loose* lesson for the third time today, which is the honest measure of how easy it is.
+- promotion: DECLINED — the fourth instance of a shape `.7.2.9` and `a-key-too-loose-returns-the-wrong-instance` already carry between them.
+
 ## 2026-09-18 — Documenting a blind spot puts the trigger into the corpus
 
 - Widening a gate to catch an abbreviation flagged eight lines. **Two were the defect. Six were the project describing the defect** — the leaf, the frontier row, the index, the resume pointer. Writing *"the instances read X"* puts X into the corpus the gate searches.

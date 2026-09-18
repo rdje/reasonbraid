@@ -5,6 +5,14 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE SCAFFOLD SHIPPED AN ENFORCER REGISTERING CHECKS IT DID NOT CARRY (`.11.23`, REPAIR-0259).**
+
+🔴 **A project that pulled this spine could not make its first commit.** `update_scaffold.sh` carried the registry of 18 doctrines and not the 7 scripts it names; a bare `git init` reproduction printed seven `?? (missing/not executable)` rows and a blocked commit.
+
+- ⭐ Fourth instance of *a second copy nothing derives*: `NEUTRAL` is the scaffold's copy of the registry. All seven were EARNED here, and that list is the only mechanism that moves a doctrine anywhere — so the spine's improvements could not leave the instance.
+- ✅ Fixed, `SCAFFOLD-COVERAGE` registered at **0.02 s**, bare-repo re-run now **zero** `??` rows. 🔴 The gate failed its own reproduction (a project need not carry the sync script — NOT CHECKED, not a breach), and falsification found its `$EXEMPT` guard DEAD because the parser could not see the conditional registration form.
+- ⛔ Backflow to `rdje/bedrock` remains MANUAL: the scaffold pulls downstream only and bedrock is the root template. The seven are now transportable; carrying them up is a `BEDROCK-MAINTENANCE` leaf there.
+
 ✅ **A GATE BLIND TO THE ABBREVIATION OF THE VERY NOUN IT IS BUILT ON (`.11.2.4`, REPAIR-0258).**
 
 🔴 **`check_visibility_policy.sh` exists because the superseded private-repository instruction leaked past two reviews — and all four of its clauses were anchored on the full word, so two live instances in the abbreviated form sat in the corpus with the gate returning rc=0.**

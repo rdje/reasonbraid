@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-18 — The scaffold shipped an enforcer registering checks it did not carry (`SIGNOFF-REPAIR.11.23`)
+
+🔴 **A project that pulled this spine could not make its first commit.** `scripts/update_scaffold.sh` carried `check_doctrines.sh` — the registry of 18 doctrines — and **not the 7 check scripts that registry names**. Copying only the `NEUTRAL` paths into a bare `git init` repository printed seven `?? (missing/not executable: …)` rows and `10 doctrine breach(es) — commit blocked`.
+
+- The seven: `HEADING-DEPTH`, `TASK-STATUS`, `LOCKSTEP-CLAIM`, `INDEX-FRONTIER`, `FRONTIER-STATUS`, `RUST-FORMATTING`, `SELF-TEST`. **Every one was earned here by a measured defect** — and the list they were missing from is the only mechanism that moves a doctrine anywhere, so the spine's improvements were accumulating in the instance and could not leave it.
+- ⭐ **Fourth instance of one shape:** `NEUTRAL` is a second copy of a fact the registry owns and nothing derived it — as `INDEX-FRONTIER` is the index's copy of the frontier, and `FRONTIER-STATUS` a row's copy of a leaf's status. Each drifted the moment the first copy grew.
+- ✅ **Fixed and re-reproduced:** the seven join `NEUTRAL`, `SCAFFOLD-COVERAGE` is registered at **0.02 s**, and the bare-repo run now prints **zero** `??` rows. Four breaches remain there, none a scaffold defect — three are empty-project content checks, and the fourth is below.
+- 🔴 **The gate failed its own reproduction, which is the useful part.** `update_scaffold.sh` is deliberately absent from its own `NEUTRAL` (a sync script overwriting itself mid-run is its own hazard), so a project may legitimately have no scaffold at all. That is **NOT CHECKED** — never a pass, never a breach.
+- 🔴 **And falsification found the gate's own `$EXEMPT` guard DEAD.** Mutating it away changed nothing, because the parser anchored on the array literal and never saw the conditional `DOCTRINES+=("…")` form that registers `KNOWLEDGE-MAP` and `PROJECT-SPECIFIC`. Both forms are parsed now. ⚠️ Widening the parser then over-matched the registry's own explanatory comment — the third *key too loose* in one session.
+- ⛔ **Backflow is still manual.** `update_scaffold.sh` pulls downstream only and `rdje/bedrock` is the root template with nothing to pull from. What changed is that the seven are now **transportable** and the class cannot silently recur; carrying them up belongs to a `BEDROCK-MAINTENANCE` leaf there.
+
 ## 2026-09-18 — A gate blind to the abbreviation of the very noun it is built on (`SIGNOFF-REPAIR.11.2.4`)
 
 🔴 **`check_visibility_policy.sh` exists because the superseded private-repository instruction "had already leaked past two" reviews. All four of its clauses were anchored on the full word, so two live instances written in the abbreviated copular form sat in the corpus invisibly and the gate returned rc=0 over them.**
@@ -331,43 +342,26 @@ The director asked for ReasonBraid to orchestrate 2–5 agents working collectiv
 - 🔴 **And the falsification destroyed three of my own discharges.** The injection went into `LIVE_STATUS.md`; `git checkout --` then restored it to HEAD, taking three unrelated uncommitted repairs with it. Nothing failed and nothing warned. **`docs/knowledge/an-injection-must-be-shown-to-land.md` recommended that restore and is CORRECTED by the failure it caused**: stash rather than checkout, and check the restore for what should STILL be there.
 - Routed: **9 references name no tracked file at all** — 8 `init.rs`, plus the registry row's own illustrative placeholder. 🔎 That placeholder is the finding: a gate on this class would have to tell an EXAMPLE from a CITATION, which the ambiguity gate never has to do. `.11.17.1`.
 
-## 2026-09-17 — The section scanner did not know what Markdown is (`SIGNOFF-REPAIR.11.18`)
-
-🔴 **A doctrine gate's parser called every `#` line a heading, including shell comments inside the fenced censuses it exists to require — and the leaf's own claim about which way that failed was wrong.**
-
-- **The defect.** `GAP-CLAIM-CENSUS` requires a "nothing checks X" claim to carry a census in its own heading section. Its scanner assigned sections with `/^#{1,6} /`, so a fenced `# PINNED at …` opened a pseudo-section and the claim above it lost the census three lines below. That is exactly how it BLOCKED `.11.14.3.2`.
-- 🔴 **THE LEAF'S OWN DIRECTION CLAIM IS REFUTED, and that is the finding.** It opened asserting *"the dangerous direction is the MIRROR of the one that fired, and it is silent"*. A pseudo-section starts LATER than its real section and ends NO LATER, so it is a strict SUBSET — and a subset can only WITHHOLD a discharge, never invent one. ⛔ **The defect could produce false POSITIVES only.**
-- **Measured, not argued:** a fixture built to exhibit the asserted silent direction classifies **identically before and after the fix**. It is pinned as self-test arm 16 and labelled as the gate's own DECLARED limit — *"verifies the census was RECORDED, not that it was RUN"* — so the repair is not misread as closing it.
-- ⚠️ **The population is 6, not the leaf's 7, and only 3 are governed.** The leaf's probe keyed on `^```` and the corpus has **20 indented fence lines**; re-measured with an indent-tolerant toggle it is 6 in 2 files, of which 3 sit in a nested artifact the gate's `^docs/tasks/[^/]*\.md$` filter never reads. ⚠️ Its two pinned positions had also MOVED, `:4510`/`:4514` → `:4573`/`:4577` — the `.11.17` shape, inside one session.
-- ⭐ **A second instance of the same defect, found while fixing the first and fixed with it:** an ATX heading may carry up to 3 leading spaces too, and the corpus has one (in the TEMPLATE file) the scanner could not see. ⛔ Widening a heading test only ADDS boundaries and so only REMOVES discharges — the direction that newly blocks a commit — so it was measured first: **82 blocked rows before, 82 after, 0 newly blocked.**
-- ⚠️ **An unbalanced fence now REFUSES rather than guessing.** Otherwise every line after the last marker reads as fenced, no heading is recognised, and later claims silently inherit the last real section's discharges — an instrument quietly widening its own scope. Every governed file is balanced today, so it ships inert.
-- **Population unchanged: 94 claim lines across 6 files, 0 unbacked, before AND after.** A prevention, not a correction — said plainly so a green run is not read as evidence of a present defect.
-- **FALSIFIED IN SITU:** the pre-fix classifier put back into the current script, arms and all → `--self-test` reports **12/17**, failing arms 10, 12, 13, 14, 15 by name. Arms 11 and 16 pass both ways deliberately and are labelled (no-regression; declared limit).
-- 🔴 **And that run caught a defect in one of my own arms.** Arm 12's first draft put its fenced `#` at indent 2 — not a heading to the OLD scanner either — so it passed before and after, discriminating on the indentation rather than the fence. The session's third control that passed for an unrelated reason.
-- Promoted: `docs/knowledge/a-scoping-defect-errs-in-one-direction.md`. Routed: the gate's filter excludes nested task artifacts, so its advisory and blocking paths disagree about the corpus — `.11.18.1`.
-
-## 2026-09-17 — A credential binding is tenant-bound (`SIGNOFF-REPAIR.11.14.3.10`)
-
-🔴 **A credential SELECTOR lived on a content-addressed row, so a second tenant drove an authenticated acquisition with the first tenant's credential.**
-
-- **The defect.** `resource_references` is keyed `UNIQUE (original_locator, expected_digest)` — its identity is the CONTENT. `credential_binding_ref` is not content: it is the caller's means of ACCESS, and the R5 arm hands it straight to `broker.resolve`. A second tenant registering the same pair replayed the first tenant's row, inherited a binding it never named, and its resolve attached the OWNER's credential. ⛔ ROADMAP §16.3 invariant 5: *target credentials are selected only after authorization for the concrete target and action.*
-- **REPRODUCED RED FIRST**, gate open, one binding registered, two tenants, one locator: the stranger's resolve answered `resolvers: ["r5-credential-broker"]` → `destination_refused`, and that refusal is the **loopback pre-flight**, reached only once a credential has RESOLVED.
-- ⭐ **The discriminator is the RESOLVER, not the error kind**, and naming it was the difference between a control that proves something and one that passes. Both paths end at the same loopback refusal; only `resolvers` says which ran. ⛔ My first draft asserted `credential_unavailable` and would have FAILED against the repaired product.
-- ⭐ **DECIDED: the selector moves to `reference_registrations`, and `migrations/0069` DROPS the old column.** The shared row keeps the CONTENT; the tenant-bound row keeps the DECISION — this family's own correction for the **fourth** time (citations, assessments, reference reads, now a means of access). Promoted as `docs/knowledge/a-shared-row-may-not-hold-a-tenant-decision.md`.
-- ⭐ **The repair is wider than a denial, and that was measured rather than designed.** The binding is a RANKING input: it ranks only the `credential`-class packs, and a binding-less reference ranks only the `none`-class ones. A tenant that named no binding is **not routed to the credential broker at all**.
-- ⭐ **And a limit closes in the OTHER direction that nobody had stated.** The pair key meant two tenants citing one URL could not hold two DIFFERENT bindings — the second's value was discarded by the replay. Both may now.
-- ⭐ **The strongest part is structural:** the unbound read has no column to read a selector from, so it cannot leak one even by mistake. Only `get_for_tenant` supplies one, and only the asking tenant's own.
-- ⚠️ **The backfill is EXACT, which is the only reason a credential may be moved at all.** `registered_by` and `submitted_by` are literally the same value, so the submitter joins precisely to its own registration and every other tenant's gets NULL — §16.4's fail-closed rule for secret access. ⛔ Had no such join existed, the honest backfill would have been NOBODY.
-- 🔴 **A defect of my own, caught by the neighbours.** The new control left the opt-in gate open and broke `the_gated_packs_resolve_only_while_the_gate_is_open`. ⛔ Closing the gate at the END of my test was NOT the fix — a test that PANICS never reaches its own end, which is exactly how it was found. The gate is now normalised in `pool()` with the other fixtures.
-- **FALSIFIED** — source and migration stashed together, stash verified landed, RED at exactly the defect arm (`r5-credential-broker` where the repair gives `r0-https-fetcher`), restored and re-verified.
-- **No regression:** `profiles` 55/55, `migration_upgrade` 4/4, `backup_restore` 1/1, `--lib` 113/113, clippy clean.
-- ⚠️ **What is NOT closed, and is owned.** The broker's namespace is global: naming a binding an operator created for someone else is still sufficient. It needs an operator-issued tenant-scoped grant, and `GrantAction` is thread-scoped (10 variants, 0 about a resource or credential) — a §16.4 authorization surface, not a wiring change. `.11.14.3.10.1`.
 ## Historical entries and exact retrieval
 
 This is a recent digest. Older chronology remains in reachable Git history under
-the rotation contract in `README_POLICY.md`. This file has rotated twenty-two times;
+the rotation contract in `README_POLICY.md`. This file has rotated twenty-three times;
 each rotation names the commit holding the ledger immediately before it, so the
 chain walks back without guessing.
+
+Retrieve the ledger immediately before the TWENTY-THIRD rotation (2026-09-18)
+from the repository root:
+
+```bash
+git show 8f67cbcd37fa8ea598600a0b45e4400d71e7afb7:CHANGELOG.md
+```
+
+That snapshot is 95,703 bytes and contains 29 dated entries; its Git blob is
+`656f77ac7fc771d8210ae4ede3c54c9aec283027`, and its SHA-256 is
+`61f068622b606d4a1eb26fb1c9c2787c72f1e8410eddb302da43589fc1405461`. The newest
+entry it holds that this digest no longer carries is
+`2026-09-17 — The section scanner did not know what Markdown is (`SIGNOFF-REPAIR.11.18`)`.
+It carries the TWENTY-SECOND rotation's notice in turn, which names the ledger before it.
 
 Retrieve the ledger immediately before the TWENTY-SECOND rotation (2026-09-18)
 from the repository root:

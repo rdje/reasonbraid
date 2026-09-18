@@ -52,6 +52,22 @@ NEUTRAL=(
   .doctrine/README.md
   scripts/check_docpaths.sh
   scripts/check_task_tree_ownership.sh
+  # ⛔ These seven were REGISTERED in check_doctrines.sh and absent here, so a
+  # project that pulled this spine got an enforcer naming checks that never
+  # arrived: seven `?? (missing/not executable)` rows and a BLOCKED first commit,
+  # reproduced in a fresh `git init` repo (`SIGNOFF-REPAIR.11.23`). `NEUTRAL` is a
+  # second copy of the registry and nothing derived it, so it drifted as the
+  # registry grew — and it drifted in the direction that hurts, since this list is
+  # the only mechanism that moves an earned doctrine anywhere.
+  # scripts/check_scaffold_coverage.sh now fails when the two disagree.
+  scripts/check_heading_depth.sh
+  scripts/check_task_status.sh
+  scripts/check_lockstep_claim.sh
+  scripts/check_tree_index_frontier.sh
+  scripts/check_frontier_status.py
+  scripts/check_rust_formatting.sh
+  scripts/check_self_tests.sh
+  scripts/check_scaffold_coverage.sh
   knowledge-map/scripts/gen_knowledge_map.sh
   knowledge-map/scripts/check_knowledge_map.sh
   DOCTRINE_VERSION

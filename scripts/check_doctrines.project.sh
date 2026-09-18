@@ -77,6 +77,22 @@ fi
 # existed either. ⭐ This gate fires on ZERO breaches today and would have fired
 # on all nine, which is the shape a gate should have: it catches the NEXT
 # drift rather than presenting a backlog.
+#
+# ⛔⛔ THE SAME INVOCATION NOW CARRIES A SECOND ARM, `ACQUISITION-KIND-DOC`
+# (`SIGNOFF-REPAIR.7.2.10`): an acquisition refusal travels in
+# `acquisition_error.kind`, NOT in `code`, and the two vocabularies share not
+# one string — measured, 0 overlap. So this census was RIGHT to key on `code:`
+# and the gap it left was real: 41 kinds a client branches on, and the book
+# documented none of them. ⭐ Derived from the PRODUCERS — each
+# `AcquisitionError { kind: … }` construction, walked from `kind:` to
+# `message:` — because two cheaper keys were both wrong at once: a marker of
+# `kind: match &error {` missed the `GitError` site (written without the `&`),
+# and a `kind:\s*"…"` regex also matched `derived_kind:` and `actor_kind:`.
+# ⚠️ The set is OPEN at five sites that forward a worker-chosen kind, and the
+# book says so rather than implying closure. ⭐ Calibrated at **0 of 200
+# commits** introducing a new kind, with `.11.18.2`'s discriminator applied:
+# this population was gated by NOTHING during the replay, so the zero is real
+# rather than survivorship. Standing population discharged to 0 first.
 if ! python3 -B scripts/census_reason_codes.py --check >/dev/null 2>&1; then
     python3 -B scripts/census_reason_codes.py --check >&2
     exit 1

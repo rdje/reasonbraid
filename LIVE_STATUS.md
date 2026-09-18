@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **A SECOND REFUSAL VOCABULARY, DOCUMENTED NOWHERE (`.7.2.10`, REPAIR-0250).**
+
+🔴 **An acquisition refusal travels in `acquisition_error.kind`, not in `code`: 41 strings a client branches on, and the book documented none.**
+
+- ⭐ **Not a `REASON-CODE-DOC` gap** — the two vocabularies share **0** strings, so the census keying on `code:` was right and the gap it left was real.
+- ⭐ **Three keys were wrong before the fourth was right** (a missed `GitError` site, a regex catching `derived_kind:`/`actor_kind:`, a window overrunning into a `#[serde]` attribute) — all pinned as arms with their own reds.
+- ✅ Gated as `ACQUISITION-KIND-DOC`, **0 of 200** commits, standing population discharged to 0, fired red end to end. The book table was asserted equal to the producers before it was written.
+- ⚠️ The set is **OPEN at 5 sites** forwarding a worker-chosen kind, and the page says so.
+
 ✅ **A REFUSAL WIRED END TO END AND CONSTRUCTED BY NOTHING (`.7.2.7`, REPAIR-0249).**
 
 🔴 **`GitError::TimedOut` was declared, given a Display message and mapped to a wire string — with no construction site. `GitLimits::max_time` was read by no code path, and `gix` was handed an interrupt flag nobody could raise.**

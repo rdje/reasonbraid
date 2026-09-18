@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — Check which FIELD a string travels in before calling it a gap
+
+- A surface was emitting refusal strings the book did not document, and the obvious reading was that the reason-code gate had a blind spot. It does not. The strings travel in `acquisition_error.kind`; the gate, the registry and the book table are all about `code`. Two fields, two namespaces — and measured, **zero** strings in common.
+- ⭐ **That check cost one look at the struct and changed the finding entirely.** Reported as "the gate is blind" it is a defect in a gate; reported as "there is a second vocabulary nobody documents" it is a missing feature with a different owner, a different fix and a different gate. The wrong version would have sent a repair at machinery that was working.
+- ⛔ **Then derive the vocabulary from the PRODUCERS, and expect the first key to be wrong.** Three were, here, in one sitting: a marker string that missed a site written with one character different (`match error` against `match &error`); a field regex with no left anchor, so `derived_kind:` and `actor_kind:` matched too; and a fixed-length window that ran past the end of the function into the next item's attributes.
+- ⭐ **The tell for all three is the same: the answer changed when the key did.** 16 kinds appeared, 4 disappeared, 1 disappeared. A census whose count moves when you tighten its key has not been measuring the thing you named — and the only way to see that is to tighten it and look, which costs less than defending the first number.
+- ⭐ **Assert the generated artifact against its source before writing it.** The book table here is 41 hand-described rows; the script that emits them fails if the row set is not exactly the producer set. A transcription slip cannot survive that, and no reviewer has to catch it.
+- ⚠️ **Say when a vocabulary is OPEN.** Two arms forward a string a worker chose, so the list can never be complete — and a table that does not say so teaches a client to treat an unknown value as a bug rather than as the designed forward-compatibility path.
+- promotion: DECLINED — every mechanism is already a note (`a-census-is-as-wide-as-its-key`, `a-restated-number-needs-a-producer`, `a-control-that-passes-for-an-unrelated-reason`). `.11.20.2`'s criterion makes this absorb-or-decline, and there is nothing new to absorb.
+
 ## 2026-09-18 — An unconstructed variant is a whole refusal path nobody can reach
 
 - A limit field with no reader is easy to spot and easy to under-read. The sharper question is what ELSE was built for it: here the unread `max_time` came with an error variant, a Display message and a wire mapping — three files of refusal machinery, and `git grep` finds **no construction site**. The feature was complete except for the one line that could produce it.

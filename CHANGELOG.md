@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-18 — A second refusal vocabulary, documented nowhere (`SIGNOFF-REPAIR.7.2.10`)
+
+🔴 **An acquisition refusal travels in `acquisition_error.kind`, not in `code`. Forty-one strings a client branches on, and the book documented none of them.**
+
+- ⭐ **It is NOT a `REASON-CODE-DOC` gap, and checking that first is why this is a leaf rather than a correction.** The struct carries `kind`; the §9.8 registry, `KnownReasonCode` and the book's error table are all about `code`. The two vocabularies share **0** strings — measured. So the census keying on `code:` was right, and the gap it left was real.
+- ⭐ **Derived from the PRODUCERS, and three keys were wrong before the fourth was right** — `a-census-is-as-wide-as-its-key`, three times in one leaf. A `kind: match &error {` marker missed the `GitError` site, written without the `&`, hiding 16 kinds. A `kind:\s*"…"` regex also matched `derived_kind:` and `actor_kind:`, sweeping in `chunk`, `database`, `approval`, `decision`. A fixed 50-line window overran `FetchError::kind` and took the `snake_case` of a `#[serde(rename_all = …)]`. All three are pinned as arms, each with its own red.
+- ✅ **The instrument's 41 agrees exactly with a hand derivation reached a different way**, and the book's table was ASSERTED equal to the producers before it was written — a transcription slip could not survive. Descriptions come from each variant's own `Display` message.
+- ⚠️ **The set is OPEN at five sites** that forward a worker-chosen kind, and the page says so: a client must preserve an unrecognised `kind` exactly as it preserves an unrecognised `code`.
+- ✅ **Gated as `ACQUISITION-KIND-DOC`, calibrated at 0 of 200 commits**, standing population discharged to 0 first, and fired RED end to end — removing one book row takes the enforcer from rc=0 to rc=1 naming the field.
+- ⭐ **`.11.18.2`'s discriminator applies in the unusual direction:** the `code` half has long been gated, so a replay of it would be survivorship; the `kind` half was policed by nothing, which is what makes this zero real.
+- ⛔ A third hardcoded self-test total is counted now. This one was **accurate** at 14 — which is the point: it was one added arm from being wrong, and this leaf was that arm.
+
 ## 2026-09-18 — A refusal wired end to end and constructed by nothing (`SIGNOFF-REPAIR.7.2.7`)
 
 🔴 **`GitError::TimedOut` was declared, carried a message, and was mapped to a wire string — and nothing could produce it. `GitLimits::max_time` was declared, defaulted to 120 s, and read by no code path. `gix` was handed an interrupt flag nobody could raise.**

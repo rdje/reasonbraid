@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — A negative control needs a degenerate implementation, not the old one
+
+- The in-situ falsification habit is *run the new control against the OLD code; every arm claiming to cover the defect must fail by name*. It works, and it has a blind spot that showed up cleanly here: **it cannot fire a negative arm.**
+- ⭐ **Why, structurally.** A negative arm exists to stop the new rule over-reaching — *"read the whole block"* must not become *"every bullet is a warning"*. The OLD code did not over-reach; it under-reached. So the negative arm passes against it for the same reason it passes against the fix, and a green that means nothing is indistinguishable from a green that means something.
+- ⛔ **The second falsification is against a DEGENERATE implementation of the new rule** — the over-reaching version you deliberately did not write. Here: a segmenter returning every bullet whole. It fired the two negative arms by name and nothing else did. ⇒ **A positive arm is falsified against the past; a negative arm is falsified against the future you rejected.**
+- ⚠️ **Arms that pass both ways are not thereby worthless**, and the labelling has to say WHICH kind they are: an arm exercising a reader the old code did not have has no old behaviour to contradict, which is a different thing from an arm that covers nothing.
+- 🔴 **And running a self-test against broken code is how you learn whether your controls can report.** One arm here was written `rows[1]["bullet"]`; against the pre-fix model it raised `IndexError` and took the whole suite down — a RED that names nothing, in the exercise whose entire purpose is a RED that names something. A suite only ever run green never meets this.
+- promotion: DECLINED as a new note here, and routed instead — `.11.20.2` owns deciding whether this joins `docs/knowledge/a-scoping-defect-errs-in-one-direction.md` (which already carries *run the new control against the old code*) or becomes its own statement. ⛔ Writing a third overlapping note before that decision is the fork `MEMORY_ARCHITECTURE.md` §10 exists to prevent.
+
 ## 2026-09-18 — A classifier with two branches, and only one of them consults the corpus
 
 - An instrument decided a class from the shape of a string. `kind = "pathed" if "/" in ref` — a source citation was called resolvable because it *looked* like a path, while the very same instrument resolved every reference *without* a slash against the tracked file list. ⭐ The check existed, was correct, and was wired to one branch.

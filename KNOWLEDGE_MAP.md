@@ -184,6 +184,7 @@
 - [`2026-09-17_the-snapshot-write-is-bound-to-the-reference-it-names.md`](docs/decisions/2026-09-17_the-snapshot-write-is-bound-to-the-reference-it-names.md)
 - [`2026-09-17_the-standalone-assessment-is-citation-bound.md`](docs/decisions/2026-09-17_the-standalone-assessment-is-citation-bound.md)
 - [`2026-09-17_what-a-citation-list-costs.md`](docs/decisions/2026-09-17_what-a-citation-list-costs.md)
+- [`2026-09-18_a-cargo-process-is-not-evidence-of-this-repo.md`](docs/decisions/2026-09-18_a-cargo-process-is-not-evidence-of-this-repo.md)
 
 ## Promoted lessons
 

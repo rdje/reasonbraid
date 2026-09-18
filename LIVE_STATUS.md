@@ -5,6 +5,14 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE MEMORY CENSUS SAW TWO WARNINGS WHERE EIGHT STOOD (`.11.20.1`, REPAIR-0244).**
+
+🔴 **47% of `MEMORY.md` by weight was invisible to the instrument that exists to guard its weight.** Its model was one bullet; the template the file had been conformed to uses several.
+
+- **Measured before the model was touched:** 2 visible, 8 present, **1,801 of 3,809 bytes** in four bullets never read. ⭐ The new model is parsed from `MEMORY_ARCHITECTURE.md` §6, never from the measured file. After: 8 warnings, **2,312 of 3,809 bytes (61%)**, reported per bullet with the cap and headroom.
+- ⛔ **Two falsifications were needed.** The negative arms have no red against the old model, so a DEGENERATE rule was run to fire them by name — a negative arm falsified only against the old code is untested. 🔴 That exercise exposed an arm raising `IndexError`: a RED naming nothing.
+- ✅ **Re-deciding `UNCITED` changed its answer** — 3 of 4 recorded, **1 not**: an environment fact living only in layer A, written there the same session, now `docs/decisions/2026-09-18_a-cargo-process-is-not-evidence-of-this-repo.md`. UNCITED **4 → 2**.
+
 ✅ **A SLASH IS NOT A RESOLUTION (`.11.17.2`, REPAIR-0243).**
 
 🔴 **`POSITIONAL-REF` decided a citation was resolvable from the SHAPE of the string. Of 251 such occurrences, 39 named no tracked file and one was a suffix of THREE — the ambiguity the gate exists to refuse, passed by it.**

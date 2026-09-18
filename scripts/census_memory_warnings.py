@@ -27,6 +27,29 @@ whose leaf the line names.
     python3 -B scripts/census_memory_warnings.py --json      # machine-readable
     python3 -B scripts/census_memory_warnings.py --self-test # the instrument's own controls
 
+⛔ IT READS THE WHOLE `## Current state` BLOCK, NOT ONE BULLET
+(`SIGNOFF-REPAIR.11.20.1`). It was written when every standing warning lived
+inside the `Next action` bullet, and `MEMORY_ARCHITECTURE.md` §6's template —
+which `SIGNOFF-REPAIR.11.4.2.3` conformed the file to — puts the named facts in
+separate `key:` bullets, so warnings migrated into top-level bullets of their
+own. Measured before the model was changed: the instrument reported **2**
+warnings while **8** stood in the block, and **1,801 of 3,809 bytes (47%)** sat
+in bullets it could not see. ⭐ Its headline was not wrong so much as answering a
+question the template had stopped asking, which is worse — a reader at the byte
+cap runs it, sees a small number, and concludes the file is mostly next-action.
+
+⭐ THE BULLET NAMES COME FROM THE TEMPLATE, NOT FROM THIS FILE'S CONTENTS. A
+model fitted to today's `MEMORY.md` is stale the next time the file is reshaped
+— which is exactly how this instrument died the first time. `template_keys`
+parses §6's fenced template, so the named-fact bullets are whatever the standard
+says they are; every OTHER bullet in the block is warning text in its own right.
+⚠️ An unkeyed bullet is NOT a defect — `SIGNOFF-REPAIR.11.20` deliberately moved
+the standing lessons into pointer bullets of their own. It only has to be SEEN.
+
+⭐ WEIGHT IS REPORTED BESIDE THE COUNT, because weight is what the cap is about.
+A census that answers "how many" to a reader who is about to evict something for
+bytes is answering the wrong question.
+
 ⚠️ SEGMENTATION IS THE HARD PART, and it is why this is a tracked instrument
 rather than a one-off grep. A warning legitimately contains internal markers:
 "🔴 DELEGATION IS ONE HOP DEEP: ⛔ do not fix …" is ONE warning with two. A
@@ -92,6 +115,75 @@ def warning_text(memory: str) -> str:
     )
 
 
+CURRENT_STATE = "## Current state"
+ARCHITECTURE = "MEMORY_ARCHITECTURE.md"
+
+
+def template_keys(architecture: str) -> tuple[str, ...]:
+    """The named-fact bullets `MEMORY_ARCHITECTURE.md` §6's template defines.
+
+    ⛔ Parsed from the STANDARD, never from `MEMORY.md`. A model derived from the
+    file it measures agrees with that file by construction and says nothing —
+    and re-deriving it from today's contents is how this census went stale the
+    first time (`SIGNOFF-REPAIR.11.20`).
+    """
+    keys: list[str] = []
+    in_fence = in_block = False
+    for line in architecture.splitlines():
+        if line.startswith("```"):
+            if in_fence and keys:
+                break
+            in_fence, in_block = not in_fence, False
+            continue
+        if not in_fence:
+            continue
+        if line.startswith(CURRENT_STATE):
+            in_block = True
+            continue
+        if in_block:
+            m = re.match(r"- ([a-z_]+):", line)
+            if m:
+                keys.append(m.group(1))
+            elif line.strip():
+                in_block = False
+    if not keys:
+        raise SystemExit(
+            f"census: {ARCHITECTURE} has no '{CURRENT_STATE}' template block to read the "
+            "resume pointer's bullet names from"
+        )
+    return tuple(keys)
+
+
+def state_bullets(memory: str) -> list[str]:
+    """Every bullet in `MEMORY.md`'s Current state block, in order."""
+    lines = memory.splitlines()
+    for i, line in enumerate(lines):
+        if line.startswith(CURRENT_STATE):
+            break
+    else:
+        raise SystemExit(f"census: MEMORY.md has no '{CURRENT_STATE}' block")
+    bullets = []
+    for line in lines[i + 1:]:
+        if line.startswith("#"):
+            break
+        if line.startswith("- "):
+            bullets.append(line)
+    return bullets
+
+
+def bullet_body(bullet: str, keys: tuple[str, ...]) -> tuple[str, str]:
+    """-> (the bullet's name, the text a warning can live in).
+
+    A bullet the template names contributes the text AFTER its key; any other
+    bullet is warning text in its own right and contributes all of it.
+    """
+    text = bullet[2:]
+    for key in keys:
+        if text.startswith(f"{key}:"):
+            return key, text[len(key) + 1:].strip()
+    return "(unkeyed)", text.strip()
+
+
 def segment(body: str) -> list[str]:
     """Split the bullet into warnings. Prose before the first marker is the
     resume pointer itself, not a warning, and is dropped."""
@@ -132,9 +224,20 @@ def key_phrase(warning: str) -> str | None:
     return phrase or None
 
 
-def classify(warnings: list[str], headings: set[str], corpus: str) -> list[dict]:
+def collect_warnings(memory: str, keys: tuple[str, ...]) -> list[tuple[str, str]]:
+    """Every standing warning in the Current state block, with its bullet."""
+    found: list[tuple[str, str]] = []
+    for bullet in state_bullets(memory):
+        name, body = bullet_body(bullet, keys)
+        for text in segment(body):
+            found.append((name, text))
+    return found
+
+
+def classify(warnings: list[str], headings: set[str], corpus: str,
+             bullets: list[str] | None = None) -> list[dict]:
     rows = []
-    for text in warnings:
+    for i, text in enumerate(warnings):
         cited = sorted(set(_LEAF.findall(text)))
         resolving = [leaf for leaf in cited if leaf in headings]
         phrase = key_phrase(text)
@@ -148,6 +251,8 @@ def classify(warnings: list[str], headings: set[str], corpus: str) -> list[dict]
         rows.append(
             {
                 "verdict": verdict,
+                "bullet": bullets[i] if bullets else None,
+                "bytes": len(text.encode()),
                 "cited": cited,
                 "resolving": resolving,
                 "phrase": phrase,
@@ -157,43 +262,75 @@ def classify(warnings: list[str], headings: set[str], corpus: str) -> list[dict]
     return rows
 
 
+BYTE_CAP = 7168      # `MEMORY_POINTER_BYTE_CAP`'s default in MEMORY_ARCHITECTURE.md §9
+
+
 def run(as_json: bool) -> int:
     memory = (ROOT / "MEMORY.md").read_text()
-    warnings = segment(warning_text(memory))
-    rows = classify(warnings, leaf_headings(), durable_corpus())
+    keys = template_keys((ROOT / ARCHITECTURE).read_text())
+    found = collect_warnings(memory, keys)
+    bullets = [b for b, _ in found]
+    rows = classify([w for _, w in found], leaf_headings(), durable_corpus(), bullets)
     uncited = [r for r in rows if r["verdict"] == "UNCITED"]
+    total_bytes = len(memory.encode())
+    warn_bytes = sum(r["bytes"] for r in rows)
 
     if as_json:
-        print(json.dumps({"total": len(rows), "uncited": len(uncited), "rows": rows}, ensure_ascii=False, indent=2))
+        print(json.dumps({"total": len(rows), "uncited": len(uncited),
+                          "warning_bytes": warn_bytes, "file_bytes": total_bytes,
+                          "byte_cap": BYTE_CAP, "template_keys": list(keys),
+                          "rows": rows}, ensure_ascii=False, indent=2))
         return 0
 
+    pct = round(100 * warn_bytes / total_bytes) if total_bytes else 0
     print(f"MEMORY.md standing warnings: {len(rows)}")
+    print(f"  weight                       : {warn_bytes} of {total_bytes} bytes "
+          f"({pct}% of the file; cap {BYTE_CAP}, headroom {BYTE_CAP - total_bytes})")
     print(f"  anchored to a task-tree leaf : {sum(1 for r in rows if r['verdict'] == 'anchored:leaf')}")
     print(f"  anchored to a method record  : {sum(1 for r in rows if r['verdict'] == 'anchored:method')}")
     print(f"  UNCITED (classify by hand)   : {len(uncited)}")
     print()
+    print(f"  bullets read ({len(state_bullets(memory))} in the block; "
+          f"template names {', '.join(keys)}):")
+    per: dict[str, list[int]] = {}
+    for r in rows:
+        per.setdefault(r["bullet"], []).append(r["bytes"])
+    for name, sizes in per.items():
+        print(f"    {name:<24} {len(sizes)} warning(s), {sum(sizes)} bytes")
+    print()
     for i, r in enumerate(rows, 1):
         mark = "?" if r["verdict"] == "UNCITED" else " "
         where = ",".join(r["resolving"]) if r["resolving"] else r["verdict"]
-        print(f"{mark}{i:3d} [{where}] {r['text'][:110]}")
+        print(f"{mark}{i:3d} [{where}] {r['bytes']:>5}B {r['bullet']:<22} {r['text'][:80]}")
     print()
     print("⚠️ UNCITED is a POPULATION, not a defect count. It means this instrument found")
-    print("   neither a resolving leaf citation nor a verbatim phrase match — NOT that the")
-    print("   warning is undocumented. Classified by hand on 2026-09-13, all 13 of 13 were")
-    print("   in fact recorded in a durable layer (`SIGNOFF-REPAIR.11.4.2.1`). What UNCITED")
-    print("   actually marks is a warning that, once evicted, leaves the reader no pointer")
-    print("   back to where its substance lives — a findability cost, not a loss of fact.")
+    print("   neither a resolving leaf citation nor a verbatim phrase match — usually a")
+    print("   findability cost (the substance is recorded; the pointer back is missing)")
+    print("   rather than a loss of fact. Hand-classified twice, and the two runs do NOT")
+    print("   agree, which is why the older sentence is gone: 2026-09-13, 13 of 13 were")
+    print("   recorded somewhere durable (`SIGNOFF-REPAIR.11.4.2.1`); 2026-09-18, over the")
+    print("   population this widened model can finally see, 3 of 4 were and ONE was not —")
+    print("   an environment fact that existed only in this file. It is now")
+    print("   `docs/decisions/2026-09-18_a-cargo-process-is-not-evidence-of-this-repo.md`")
+    print("   (`SIGNOFF-REPAIR.11.20.1`).")
+    print("⛔ So do not read UNCITED as 'already safe to evict'. Classify it; the class")
+    print("   that costs a FACT rather than a pointer is rare, real, and was invisible to")
+    print("   this census until it read the whole block.")
     return 0
-
-
-CONTROL_COUNT = 17
 
 
 def self_test() -> int:
     """Two-sided controls over the part that can be silently wrong."""
-    failures = []
+    failures: list[str] = []
+    ran = 0
 
+    # ⛔ THE TOTAL IS COUNTED, NOT WRITTEN DOWN. This printed a hardcoded `17`
+    # beside its arms — correct on the day, and one added arm away from
+    # publishing a false total. `TOOLBOX.md` names that exact shape: an
+    # instrument's own banner is prose too.
     def check(name: str, got, want) -> None:
+        nonlocal ran
+        ran += 1
         if got != want:
             failures.append(f"{name}: got {got!r}, want {want!r}")
 
@@ -233,6 +370,88 @@ def self_test() -> int:
     # The heading extractor reads real trees, and must find a known leaf.
     check("headings-find-known", ".4.2.3" in leaf_headings(), True)
 
+    # ---- `SIGNOFF-REPAIR.11.20.1`: the block, not the bullet ---------------
+    # ⚠️ LABELLED, because two falsifications were needed and neither alone
+    #    covers this section. Against the PRE-FIX model (`collect_warnings`
+    #    returning the next-action bullet alone, restored in situ) exactly
+    #    three arms go red by name — `unkeyed-bullet-counted`, `block-total`,
+    #    `row-carries-bullet`. The rest pass both ways and are NOT thereby
+    #    worthless: they exercise readers the pre-fix instrument did not have
+    #    (`template_keys`, `bullet_body`, `state_bullets`), so there is no
+    #    pre-fix behaviour for them to contradict.
+    # ⛔ The negative arms have their own RED, against a DEGENERATE rule rather
+    #    than the old one — `segment` returning every bullet whole. That fires
+    #    `keyed-bullet-without-marker-is-silent` and `no-markers` by name, which
+    #    is the control that stops "read the whole block" collapsing into
+    #    "every bullet is a warning". A negative arm falsified only against the
+    #    old code is a negative arm nothing has tested.
+    KEYS = ("latest_commit", "next_action", "blockers")
+    TEMPLATE = """intro prose
+```markdown
+# MEMORY — resume pointer
+
+## How to resume
+- Read `MEMORY_ARCHITECTURE.md`.
+
+## Current state (OVERWRITE this block each update)
+- latest_commit: `<hash>`
+- next_action: <one concrete sentence>
+- blockers: <none | what and who-owns>
+```
+trailing prose
+"""
+    # The bullet names are read from the TEMPLATE, which is the whole point:
+    # a model derived from the measured file agrees with it by construction.
+    check("template-keys", template_keys(TEMPLATE), KEYS)
+    # …and the template's OWN prose bullets must not be mistaken for it.
+    check("template-skips-how-to-resume", "Read" not in " ".join(template_keys(TEMPLATE)), True)
+
+    MEM = """# MEMORY
+
+## Current state (OVERWRITE this block each update)
+- latest_commit: `abc1234` — a subject with no marker in it
+- next_action: do the thing. ⛔ **and mind this.**
+- ⚠️ **a standing lesson in a bullet of its own.**
+- blockers: none
+"""
+    # 🔴 THE DEFECT, POSITIVE DIRECTION: a warning in its own top-level bullet
+    #    is counted. Before this the census read `next_action` alone and
+    #    reported 2 where the block held 8, missing 47% of the file by weight.
+    found = collect_warnings(MEM, KEYS)
+    check("unkeyed-bullet-counted", [b for b, _ in found].count("(unkeyed)"), 1)
+    check("block-total", len(found), 2)
+    # ⭐ THE NEGATIVE DIRECTION, and without it the rule degenerates into "every
+    #    bullet is a warning": a template bullet carrying NO marker contributes
+    #    nothing, however long it is.
+    check("keyed-bullet-without-marker-is-silent",
+          [b for b, _ in found].count("latest_commit"), 0)
+    check("keyed-bullet-with-marker-contributes",
+          [b for b, _ in found].count("next_action"), 1)
+    # …and the key itself is never part of the warning text.
+    check("key-stripped-from-body",
+          all(not w.startswith("next_action") for _, w in found), True)
+    # A bullet whose key the template does NOT name is warning text, not a fact.
+    check("unknown-key-is-unkeyed",
+          bullet_body("- surprise: ⛔ a warning.", KEYS)[0], "(unkeyed)")
+    # Weight travels with the row, because weight is what the cap is about.
+    rows = classify([w for _, w in found], set(), "", [b for b, _ in found])
+    check("row-carries-bytes", all(r["bytes"] > 0 for r in rows) and bool(rows), True)
+    # ⛔ INDEXED SAFELY, and that is not defensive clutter. Written as
+    #    `rows[1]["bullet"]`, this arm raised IndexError against the pre-fix
+    #    model and took the whole self-test down with it — a RED that names
+    #    nothing, which is the one thing a falsification must not produce
+    #    (`docs/knowledge/an-instrument-must-explain-its-own-failure.md`).
+    check("row-carries-bullet", [r["bullet"] for r in rows][1:2], ["(unkeyed)"])
+    # Both readers REFUSE rather than returning an empty census — the shape
+    # `SIGNOFF-REPAIR.11.20` was killed by was a silent-on-paper failure.
+    for name, fn, arg in (("state-bullets-refuses", state_bullets, "# MEMORY\n\nno block here\n"),
+                          ("template-keys-refuses", template_keys, "no fenced template here")):
+        try:
+            fn(arg)
+            check(name, "returned", "SystemExit")
+        except SystemExit:
+            check(name, "SystemExit", "SystemExit")
+
     # ⭐ THE ARM THAT WOULD HAVE CAUGHT THIS INSTRUMENT DYING, and the reason it
     # is last: every control above is built from a FIXTURE, and a fixture written
     # beside the code shares its assumptions. This one reads the REAL `MEMORY.md`
@@ -243,16 +462,27 @@ def self_test() -> int:
     # ⛔ It deliberately asserts almost nothing about the CONTENT — only that the
     # instrument can still locate what it is about. A control coupled to the live
     # file's wording would fail on every honest edit and be waived within a week.
+    # ⛔ It now covers all THREE readers, because the census gained two more
+    #    ways to go blind: the template it derives its model from, and the
+    #    block it reads. One live arm per thing that can silently stop matching.
+    ran += 1
     try:
-        warning_text((ROOT / "MEMORY.md").read_text())
+        memory = (ROOT / "MEMORY.md").read_text()
+        warning_text(memory)
+        keys = template_keys((ROOT / ARCHITECTURE).read_text())
+        if not state_bullets(memory):
+            failures.append("live-corpus: the real MEMORY.md's Current state block has no bullets")
+        elif not collect_warnings(memory, keys):
+            failures.append("live-corpus: the real MEMORY.md yields no warnings at all — "
+                            "the segmenter or the block reader has stopped matching")
     except SystemExit as exc:
-        failures.append(f"live-corpus: the real MEMORY.md is unreadable to this census ({exc})")
+        failures.append(f"live-corpus: the real corpus is unreadable to this census ({exc})")
 
     if failures:
         for f in failures:
             print(f"SELF-TEST FAIL {f}", file=sys.stderr)
         return 1
-    print(f"census_memory_warnings --self-test: {CONTROL_COUNT} controls pass")
+    print(f"census_memory_warnings --self-test: {ran} controls pass")
     return 0
 
 

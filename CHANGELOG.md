@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-18 — The memory census saw two warnings where eight stood (`SIGNOFF-REPAIR.11.20.1`)
+
+🔴 **Its model was one bullet; the template the file had been conformed to uses several. 47% of `MEMORY.md` by weight was invisible to the instrument that exists to guard its weight.**
+
+- **The defect.** `run` called `segment(warning_text(memory))`, and `warning_text` returns ONE bullet. Measured at `69cf2dc` before the model was touched: **2** warnings visible, **8** present, **1,801 of 3,809 bytes (47%)** in four bullets never read. `.11.20` fixed WHERE it looks; nothing fixed WHAT it counts.
+- ⭐ **The new model is parsed from `MEMORY_ARCHITECTURE.md` §6, not from `MEMORY.md`.** A model fitted to the file it measures agrees with that file by construction and says nothing — and re-deriving it from current contents is how this census went stale the first time. A bullet the template names contributes the text after its key; every other bullet is warning text in its own right.
+- ✅ **After:** 8 warnings, **2,312 of 3,809 bytes (61%)**, reported per bullet and per warning against the 7,168-byte cap. Weight is what the cap is about, so a census answering only *how many* to a reader about to evict for BYTES answers the wrong question.
+- ⛔ **Two falsifications were needed, and that is the methodological finding.** The pre-fix model reds three arms by name. The NEGATIVE arms have no red against it at all — so a DEGENERATE `segment` (every bullet whole) was run to fire `keyed-bullet-without-marker-is-silent` and `no-markers`. **A negative arm falsified only against the old code is a negative arm nothing has tested.** Arms passing both ways are LABELLED in the source.
+- 🔴 **The falsification exposed a defect in the self-test itself.** One new arm raised `IndexError` against the pre-fix model and took the whole suite down — a RED that names nothing, when a naming RED is the entire point. A self-test only ever run against working code never meets this.
+- ⛔ **The hardcoded `CONTROL_COUNT = 17` is counted now** — `TOOLBOX.md` had already named the hazard, and it was found while adding arms to the very instrument it warns about.
+- ✅ **`UNCITED` was re-decided against the widened population, and the answer changed.** The footer asserted a 2026-09-13 classification: 13 of 13 recorded somewhere durable, so UNCITED only ever costs a pointer. Re-classified over the 4 now visible: **3 recorded, 1 not** — an environment fact living only in `MEMORY.md`, ⭐ written there this same session by this author, into the file whose own first bullet forbids it. Routed to `docs/decisions/2026-09-18_a-cargo-process-is-not-evidence-of-this-repo.md`. UNCITED **4 → 2**, anchored **4 → 6**; the footer now carries both runs and says they disagree.
+- Routed: the standing lesson *a control that passes for an unrelated reason* is in a leaf and reachable from nowhere else. `.11.20.2`.
+
 ## 2026-09-18 — A slash is not a resolution (`SIGNOFF-REPAIR.11.17.2`)
 
 🔴 **`POSITIONAL-REF` decided a reference was resolvable from the SHAPE of the string. Of 251 such occurrences, 39 named no tracked file and one was a suffix of THREE — the exact ambiguity the gate exists to refuse, passed by it.**

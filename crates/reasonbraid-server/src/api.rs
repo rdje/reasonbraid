@@ -832,7 +832,11 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
         )
         .route(
             "/v1/snapshots/{snapshot_id}",
-            get(get_snapshot).delete(tombstone_snapshot),
+            get(get_snapshot).delete(withdraw_snapshot_citation),
+        )
+        .route(
+            "/v1/snapshots/{snapshot_id}/tombstone",
+            post(tombstone_snapshot),
         )
         .route("/v1/resolvers", post(register_resolver))
         .route("/v1/threads", post(create_thread))
@@ -4135,17 +4139,33 @@ async fn get_snapshot(
     }
 }
 
-/// `DELETE /v1/snapshots/{id}` — the tombstone: the deletion records the
-/// reason + the time (the row stays — never a silent disappearance).
+/// `DELETE /v1/snapshots/{id}` — WITHDRAW this tenant's citation: it stops
+/// relying on the snapshot, and the shared row is untouched.
 ///
-/// Bound to the citing tenant alongside the reads it shares a route with
-/// (`.11.14.1`). Leaving it on enrolment would have let a tenant DELETE the
-/// evidence it had just been stopped from READING. ⚠️ What the binding does
-/// NOT settle is the SHARED row: two tenants may cite one snapshot, and
-/// either can still tombstone it for both. That is a design question about
-/// content-addressed evidence rather than a missing predicate, and it is
-/// owned by `SIGNOFF-REPAIR.7.4.3`.
-async fn tombstone_snapshot(
+/// ⛔ This verb used to tombstone the row, and `SIGNOFF-REPAIR.7.4.4` measured
+/// what that meant. A snapshot two tenants cite is ONE row — the pair key and
+/// ADR-011's digest addressing make it so — and `.11.14.1`'s binding to a
+/// CITING tenant does not separate two citers, because both are citers. So one
+/// tenant's deletion removed the evidence from the other's surface and stamped
+/// its receipt with a reason it never wrote, irreversibly: the `UPDATE` carries
+/// `AND deleted_at IS NULL` and nothing in the codebase clears the column.
+///
+/// Two acts were conflated in one verb. *Withdrawing a citation* is a statement
+/// about this tenant's own reliance and is plainly the tenant's to make.
+/// *Tombstoning the row* is a statement about bytes other tenants cite, which
+/// needs the authority the retention sweep needs — it is now
+/// `POST /v1/snapshots/{id}/tombstone`, a site-operator act.
+///
+/// The withdrawal is RECORDED, not deleted (§12.9): the citation row keeps
+/// `withdrawn_at`, `withdrawn_by` and `withdrawal_reason`, so *who stopped
+/// relying on this, when and why* still has an answer. Re-citing restores it.
+///
+/// ⚠️ The reason stays REQUIRED, and the field keeps its name. A caller that
+/// sent `{"reason": …}` to delete still sends it to withdraw; what changed is
+/// the `tombstoned` field in the reply, which became `withdrawn` because
+/// reporting a tombstone that did not happen would be the more damaging
+/// compatibility choice.
+async fn withdraw_snapshot_citation(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(snapshot_id): Path<String>,
@@ -4154,7 +4174,7 @@ async fn tombstone_snapshot(
     let principal = resolve_principal(&headers)?;
     let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
-            "an unenrolled principal tombstones no snapshot",
+            "an unenrolled principal withdraws no citation",
         ));
     };
     cited_snapshot(&state.pool, &snapshot_id, &tenant).await?;
@@ -4162,10 +4182,38 @@ async fn tombstone_snapshot(
         .get("reason")
         .and_then(|v| v.as_str())
         .ok_or_else(|| ControlApiError::invalid_command("the reason is required"))?;
-    let updated = crate::snapshots::tombstone(&state.pool, &snapshot_id, reason).await?;
+    let withdrawn = crate::snapshots::withdraw_citation(
+        &state.pool,
+        &snapshot_id,
+        &tenant,
+        &actor_handle_for_subject(&principal).to_string(),
+        reason,
+    )
+    .await?;
     Ok(Json(
-        json!({ "snapshot_id": snapshot_id, "tombstoned": updated }),
+        json!({ "snapshot_id": snapshot_id, "withdrawn": withdrawn }),
     ))
+}
+
+/// `POST /v1/snapshots/{id}/tombstone` — the site-operator tombstone of one
+/// named row (`SIGNOFF-REPAIR.7.4.4`).
+///
+/// Saying "this evidence must not be relied upon by anyone" is a statement
+/// about a SHARED row, so it takes the same authority the retention sweep takes
+/// and is audited the same way. A tenant withdraws its own citation instead
+/// (`DELETE /v1/snapshots/{id}`).
+async fn tombstone_snapshot(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(snapshot_id): Path<String>,
+    request: Result<Json<SiteReasonRequest>, axum::extract::rejection::JsonRejection>,
+) -> Result<Response, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let req = site_request(request)?;
+    site_receipt_response(
+        site::tombstone_evidence(&state.pool, &principal, &snapshot_id, &req.reason).await,
+        "a current site grant for this action and its actual boundary are required",
+    )
 }
 
 fn base64_decode(input: &str) -> Option<Vec<u8>> {

@@ -13,7 +13,7 @@ pub use operator::{
     disable_boundary, disable_grant, inspect, issue_boundary, issue_grant, Collection,
 };
 pub use registry::{execute, RegistryCommand};
-pub use retention::expire_evidence;
+pub use retention::{expire_evidence, tombstone_evidence};
 
 use std::collections::BTreeSet;
 use std::fmt;

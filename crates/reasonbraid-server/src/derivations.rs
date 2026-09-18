@@ -119,6 +119,7 @@ pub async fn submit(
     let parent_cited: bool = sqlx::query_scalar(
         "SELECT EXISTS (SELECT 1 FROM evidence_snapshots s \
          JOIN evidence_citations c ON c.snapshot_id = s.snapshot_id AND c.tenant_id = $2 \
+           AND c.withdrawn_at IS NULL \
          WHERE s.snapshot_id = $1)",
     )
     .bind(&submission.parent_snapshot_id)

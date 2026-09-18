@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **A CITATION IS WITHDRAWN BY ITS TENANT; A SHARED ROW IS TOMBSTONED BY THE SITE (`.7.4.4`, REPAIR-0254).**
+
+🔴 **One verb carried two acts that do not share an authority.** A snapshot two tenants cite is ONE row, and `.11.14.1`'s binding to a *citing* tenant cannot separate two citers — so A's delete removed B's evidence and stamped B's receipt with A's reason, reproduced RED with that exact string on B's read.
+
+- ✅ `DELETE /v1/snapshots/{id}` withdraws the caller's citation; `POST /v1/snapshots/{id}/tombstone` is a site act under the existing `evidence_expire` grant, the same authority the retention sweep needs.
+- ⛔ *Refuse when another tenant cites* and *tombstone on the last withdrawal* were BOTH rejected: each makes the caller's outcome depend on whether a stranger cites the row, which is the §9.8 leak.
+- ✅ The withdrawal is RECORDED not deleted (§12.9) and re-citing restores it; the tombstone stays irreversible, now behind an audited operator. Falsified four ways, each red by name. `profiles` 56/0, `evaluation` 3, `command_api` 39, `migration_upgrade` 4.
+- 🔎 Routed out: `.11.8.1` (the route census misclassifies in both directions) and `.11.21` (`git.rs` committed unformatted).
+
 ✅ **A RETENTION RULE WITH NO RETIREMENT, ON BOTH POPULATIONS AT ONCE (`.7.3.2.1`, REPAIR-0253).**
 
 🔴 **Two suites retain a workspace on failure — deliberately, because it is the evidence — and nothing had ever retired one. 1,896,248,619 bytes across 37 fixtures, of which 99.93 % is reproducible payload.** The premise had got worse while the leaf sat pending: `target/pg-tests` went from 12 clusters / 599 MiB to **25 / 1,372,355,705 bytes** in two days.

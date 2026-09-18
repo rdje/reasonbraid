@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — One verb, two acts, two authorities
+
+- `DELETE /v1/snapshots/{id}` meant *tombstone this snapshot*. On a content-addressed store that row is SHARED: two tenants citing one URL at one digest hold the same row by construction. So the verb let either of them delete the other's evidence and write a reason onto the other's receipt.
+- ⭐ **The tell is that a predicate could not fix it.** `.11.14.1` had already bound the verb to a CITING tenant — the obvious repair, and correct as far as it goes. It cannot separate two citers, because both *are* citers. When a binding is right and the defect survives, the verb is carrying more than one act.
+- ✅ **Separate the acts by asking whose statement each one is.** *I no longer rely on this* is about the speaker; *nobody may rely on this* is about the object. The second needed the authority the retention sweep already needed, and for the same reason — the property it turns on lives on the shared row, not on the citation.
+- ⛔ **Both "smart" alternatives leak, and the leak is the same one.** Refusing the delete when another tenant cites, or tombstoning only when the last citer leaves, each makes the caller's outcome depend on a fact about a stranger. A caller who can observe *my delete behaved differently this time* has learned that somebody else cites this row. A rule whose effect depends on an invisible third party is an oracle.
+- 🔎 **Deleting the citation row would have been simpler and would have lost the audit.** "Never a silent disappearance" is usually read as being about evidence; it applies just as well to the RELATIONSHIP to evidence. Three nullable columns keep *who stopped relying on this, when and why* answerable, and make re-citation a restore rather than a conflict.
+- ⚠️ Asymmetric reversibility, deliberately: the tenant's act is undoable and the operator's is not. Undoing a tombstone would falsify the record that it happened.
+- promotion: DECLINED — the transferable shape is the decision record's own thesis (`docs/decisions/2026-09-18_a-citation-is-withdrawn-a-row-is-tombstoned.md`) and is reachable there by question.
+
 ## 2026-09-18 — The branch your own process cannot reach
 
 - An instrument that reduces retained test fixtures must never touch one whose browser is still alive, so it probes each recorded id with signal 0. Three outcomes: ESRCH is absence, success is presence, and **EPERM is presence too** — the id exists and belongs to somebody else, which is precisely the process that is not ours to clean up.

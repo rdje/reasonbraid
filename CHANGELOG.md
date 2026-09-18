@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-18 — A citation is withdrawn by its tenant; a shared row is tombstoned by the site (`SIGNOFF-REPAIR.7.4.4`)
+
+🔴 **One verb carried two acts that do not share an authority. A snapshot two tenants cite is ONE row, so `DELETE /v1/snapshots/{id}` removed tenant B's evidence when tenant A asked — and stamped B's receipt with A's reason.**
+
+- **Reproduced RED first, and the reproduction printed the defect.** Two tenants submit the same `(locator, digest)` pair; the second gets `replay: true` and the SAME `snapshot_id` — one row, two citers. A deletes, and B's read returns `"deleted_at":"2026-09-18T09:09:11Z","deletion_reason":"tenant A no longer relies on this"`. `.11.14.1` had bound the verb to a CITING tenant, which stops a stranger and does not separate two citers, because both are citers.
+- ✅ **The split.** *Withdrawing a citation* is a statement about one tenant's own reliance and is the tenant's to make. *Tombstoning the row* is a statement about shared bytes, which needs the authority the retention sweep already needs — `retention_class` is a column on the shared row, `.7.4.3`'s own argument. So `DELETE` withdraws, and `POST /v1/snapshots/{id}/tombstone` is a site act under the existing `evidence_expire` grant.
+- ⛔ **Two obvious alternatives rejected for the same reason.** *Refuse the delete when another tenant cites the row* and *tombstone only when the last citer leaves* both make one tenant's observable outcome depend on whether a STRANGER cites it — the cross-tenant existence §9.8 forbids. The second is worse: it hands any tenant the shared-row authority by the back door of being the only citer.
+- ✅ **The withdrawal is RECORDED, not deleted** (§12.9, *never a silent disappearance*). `migrations/0070` adds `withdrawn_at`/`withdrawn_by`/`withdrawal_reason`; a plain `DELETE` would have left no answer to *who stopped relying on this, when and why*. Re-citing restores the row and keeps the original `cited_at`/`cited_by`.
+- ✅ **The irreversibility is removed for the tenant and kept for the tombstone.** A withdrawal is undone by citing again; a tombstone stays permanent but is now reachable only through an authorized, audited site act. Undoing one would make the §12.9 record of it a lie.
+- ✅ **Falsified four ways, each red BY NAME**: the withdrawal tombstoning again (B's sentence, plus the roundtrip control), the disclosure predicate dropping `withdrawn_at IS NULL` (A's 404), `record_citation` back to `DO NOTHING` (the restore arm), and the site route with no authority (the 403 arm). `profiles` 56/0, `evaluation` 3, `command_api` 39, `migration_upgrade` 4, clippy `-D warnings` rc=0.
+- ✅ `the_snapshot_store_roundtrips_replays_and_tombstones` is renamed `…_and_withdraws` with its three moved assertions named in the body — nothing was deleted to make it green.
+- 🔎 Two findings routed rather than reported: **`.11.8.1`** — the route census's `stem()` collapses `/v1/snapshots/{id}` onto `/v1/snapshots`, so an item route is counted *described* by the line documenting the submit route, while a mid-path parameter yields a stem no book writes; `.11.8`'s published `35 described / 68 absent` is wrong in both columns. **`.11.21`** — `git.rs` is committed unformatted, because the per-commit enforcer has no formatting check.
+
 ## 2026-09-18 — A retention rule with no retirement, on both populations at once (`SIGNOFF-REPAIR.7.3.2.1`)
 
 🔴 **Two test suites retain a workspace on failure, deliberately and correctly — and nothing had ever retired one. Measured at closure: 1,896,248,619 bytes across 37 fixtures, of which 99.93 % is reproducible payload and 1.34 MB is the evidence they exist for.**

@@ -583,7 +583,7 @@ read that citation:
 | `GET /v1/snapshots/{id}` | 200 with the row | 404 |
 | `GET /v1/snapshots/{id}/derivations` | 200 with the children | 404 |
 | `GET /v1/snapshots/{id}/assessments` | 200 with the tenant's OWN assessments | 404 |
-| `DELETE /v1/snapshots/{id}` | tombstones the row | 404 |
+| `DELETE /v1/snapshots/{id}` | withdraws the tenant's own citation | 404 |
 
 A tenant that did not cite a snapshot receives 404 rather than 403. The two
 answers are deliberately indistinguishable: a refusal that separated them would
@@ -641,10 +641,11 @@ Two limits are published rather than implied:
   one-way `Uuid::new_v5` of the submitting subject that joins to no identity
   table, and which the locator replay leaves naming the first citer regardless.
   Re-acquiring such a snapshot records the citation and restores the read.
-- **A shared row can still be tombstoned by any one of its citers**, which
-  removes it from the others' staleness surface. Who may delete shared evidence
-  is open under `SIGNOFF-REPAIR.7.4.4`. Who may run the site-wide retention
-  sweep is settled below.
+- **Who may delete shared evidence is settled** (`SIGNOFF-REPAIR.7.4.4`; it used
+  to be open here). A shared row could be tombstoned by any one of its citers,
+  which removed it from the others' staleness surface and stamped their receipt
+  with a reason they never wrote. The verb now withdraws the caller's own
+  citation; tombstoning a shared row is a site act — see below.
 - **An assessment written before its binding has no recorded author tenant** and
   is likewise read by no one. There is nothing to recover it from: `author` is a
   caller label, not a principal.
@@ -663,6 +664,53 @@ RB_DEMO=0 bash scripts/run_pg_tests.sh profiles
 
 `the_evidence_reads_are_bound_to_the_citing_tenant` drives two enrolled tenants
 through all five surfaces, including the shared row both of them cite.
+
+### Withdrawing a citation, and tombstoning a shared row
+
+These are two acts, and `SIGNOFF-REPAIR.7.4.4` separated them because one verb
+carried both. A snapshot two tenants cite is ONE row — the pair key and ADR-011's
+digest addressing make it so — and binding the delete verb to a *citing* tenant
+does not separate two citers, because both are citers.
+
+| Act | Verb | Authority | Effect |
+| --- | --- | --- | --- |
+| Withdraw a citation | `DELETE /v1/snapshots/{id}` | the citing tenant | that tenant stops reading the row; no other citer is affected |
+| Tombstone one named row | `POST /v1/snapshots/{id}/tombstone` | a site `evidence_expire` grant | `deleted_at` + the operator's reason, visible to every citer |
+| Tombstone every due row | `POST /v1/snapshots/expire-due` | a site `evidence_expire` grant | the retention sweep |
+
+*Withdrawing* says "this tenant no longer relies on this evidence" — a statement
+about one tenant's own reliance. *Tombstoning* says "this evidence must not be
+relied upon by anyone" — a statement about shared bytes, which is the authority
+the retention sweep already needs, because `retention_class` is a column on the
+shared row.
+
+The withdrawal is **recorded, not deleted**: the citation row keeps
+`withdrawn_at`, `withdrawn_by` and `withdrawal_reason`, so *who stopped relying
+on this, when and why* still has an answer (§12.9, *never a silent
+disappearance*). A withdrawn citation is not a citation — every disclosure
+surface in the table above requires `withdrawn_at IS NULL` — and **citing the
+evidence again restores it**, keeping the original `cited_at` and `cited_by`.
+
+Two behaviours are deliberate and worth stating, because the obvious
+alternatives leak:
+
+- **A delete is never refused because someone else cites the row.** Refusing
+  would let a caller learn whether another tenant cites a snapshot by watching
+  its own delete succeed or fail — the cross-tenant existence §9.8 forbids.
+- **The last citer withdrawing does not tombstone the row.** That would hand any
+  tenant the shared-row authority by the back door of being the only citer. A row
+  nobody cites is read by nobody until it is cited again, and the retention sweep
+  reaps it on its class TTL.
+
+The tombstone remains irreversible — nothing clears `deleted_at` — but it is now
+reachable only through an authorized, audited site act. What a tenant can do is
+fully reversible.
+
+`one_tenant_does_not_tombstone_evidence_another_tenant_cites` drives the whole
+sequence: two tenants cite one row, A withdraws, B's read stays live and
+unreasoned, the row goes absent for A, re-citing restores it, a tenant's
+tombstone is refused 403 having written nothing, and the granted site act
+tombstones it for both with the operator's own reason on the row.
 
 ### Who may run the retention sweep
 

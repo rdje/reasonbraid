@@ -4055,7 +4055,7 @@ async fn a_credential_binding_is_not_inherited_by_another_tenant() {
 /// same reference + digest is the REPLAY, and the deletion is the tombstone
 /// + the reason — never a silent disappearance.
 #[tokio::test]
-async fn the_snapshot_store_roundtrips_replays_and_tombstones() {
+async fn the_snapshot_store_roundtrips_replays_and_withdraws() {
     let _guard = guard().await;
     let Some(pool) = pool().await else { return };
     let server = TestServer::start(&pool).await;
@@ -4254,17 +4254,32 @@ async fn the_snapshot_store_roundtrips_replays_and_tombstones() {
         "{refused}"
     );
 
-    // The tombstone: the deletion records the reason + the time.
+    // ⚠️ CHANGED DELIBERATELY BY `SIGNOFF-REPAIR.7.4.4`, and the change is named
+    // rather than absorbed. This block used to assert that `DELETE` tombstones
+    // the row and that the caller then reads it back tombstoned. That verb now
+    // WITHDRAWS the caller's citation, because the row is shared and tombstoning
+    // it removed evidence other tenants cite. Three assertions moved:
+    //
+    //   * the reply field is `withdrawn`, not `tombstoned` — reporting a
+    //     tombstone that did not happen would be the worse compatibility choice;
+    //   * the caller's read is now 404, because a withdrawn citation is not a
+    //     citation and a non-citer read is ABSENT rather than forbidden;
+    //   * `deleted_at`/`deletion_reason` are asserted where they now belong —
+    //     on the site-operator path, in
+    //     `one_tenant_does_not_tombstone_evidence_another_tenant_cites`.
+    //
+    // ⛔ Nothing was deleted to make this green: the tombstone's own assertions
+    // live in that control, over the authority that now performs it.
     let response = client
         .delete(format!("{base}/v1/snapshots/{snapshot_id}"))
         .header(PRINCIPAL_HEADER, &human_id)
-        .json(&json!({ "reason": "the retention expired" }))
+        .json(&json!({ "reason": "this tenant no longer relies on it" }))
         .send()
         .await
-        .expect("tombstone request");
-    assert_eq!(response.status().as_u16(), 200, "the tombstone lands");
-    let tombstoned: Value = response.json().await.unwrap();
-    assert_eq!(tombstoned["tombstoned"], json!(true));
+        .expect("withdrawal request");
+    assert_eq!(response.status().as_u16(), 200, "the withdrawal lands");
+    let withdrawn: Value = response.json().await.unwrap();
+    assert_eq!(withdrawn["withdrawn"], json!(true));
 
     let (status, stored) = get(
         &client,
@@ -4274,11 +4289,313 @@ async fn the_snapshot_store_roundtrips_replays_and_tombstones() {
     )
     .await;
     assert_eq!(
-        status, 200,
-        "the tombstoned snapshot stays readable: {stored}"
+        status, 404,
+        "a withdrawn citation is not a citation, so the row is absent: {stored}"
     );
-    assert!(stored["deleted_at"].is_string(), "{stored}");
-    assert_eq!(stored["deletion_reason"], json!("the retention expired"));
+}
+
+/// `SIGNOFF-REPAIR.7.4.4` — a snapshot two tenants cite is ONE row.
+///
+/// `resource_references` is UNIQUE on `(original_locator, expected_digest)` and
+/// `snapshot_objects` is keyed by `digest` alone (ADR-011), so a second tenant
+/// naming the same pair REPLAYS the first tenant's row and `record_citation`
+/// adds it to the citer set. Sharing the row is the design, not the defect.
+///
+/// The defect is that `DELETE /v1/snapshots/{id}` tombstones that shared row.
+/// `.11.14.1` bound the verb to the CITING tenant, which stopped a stranger
+/// reaching it and does not reach this: both tenants here are citers. So
+/// tenant A's deletion removes the evidence from tenant B's surface and stamps
+/// B's receipt with A's reason — and irreversibly, since the `UPDATE` carries
+/// `AND deleted_at IS NULL` and nothing in the tree clears the column.
+///
+/// This control asserts the REPAIRED behaviour: A withdraws its own citation,
+/// B's reliance is untouched. Before the repair it fails at the final read,
+/// with A's reason visible on B's row.
+#[tokio::test]
+async fn one_tenant_does_not_tombstone_evidence_another_tenant_cites() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, a) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "cocite-a" }),
+    )
+    .await;
+    assert_eq!(status, 200, "tenant A enrolls: {a}");
+    let a_id = a["principal_id"].as_str().unwrap().to_string();
+    let a_tenant = a["tenant_id"].as_str().unwrap().to_string();
+
+    let (status, b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "cocite-b" }),
+    )
+    .await;
+    assert_eq!(status, 200, "tenant B enrolls: {b}");
+    let b_id = b["principal_id"].as_str().unwrap().to_string();
+    let b_tenant = b["tenant_id"].as_str().unwrap().to_string();
+    assert_ne!(
+        a_tenant, b_tenant,
+        "the two principals are two TENANTS — otherwise this control proves nothing"
+    );
+
+    const LOCATOR: &str = "https://example.org/co-cited-evidence";
+    let submit_reference = |principal: String| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/resources"))
+                .header(PRINCIPAL_HEADER, &principal)
+                .json(&json!({ "original_locator": LOCATOR, "scheme": "https" }))
+                .send()
+                .await
+                .expect("submit request");
+            let status = response.status().as_u16();
+            (status, response.json::<Value>().await.expect("submit json"))
+        }
+    };
+
+    let (status, a_ref) = submit_reference(a_id.clone()).await;
+    assert_eq!(status, 200, "A's reference submits: {a_ref}");
+    let reference_id = a_ref["resource_id"].as_str().unwrap().to_string();
+    let (status, b_ref) = submit_reference(b_id.clone()).await;
+    assert_eq!(status, 200, "B's reference submits: {b_ref}");
+    assert_eq!(
+        b_ref["resource_id"].as_str().unwrap(),
+        reference_id,
+        "the pair key replays: one reference row, two tenants"
+    );
+
+    let bytes = b"evidence two tenants rely on";
+    let digest = reasonbraid_server::fetcher::digest_sha256_hex(bytes);
+    let submit_snapshot = |principal: String| {
+        let client = client.clone();
+        let base = base.clone();
+        let reference_id = reference_id.clone();
+        let digest = digest.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/snapshots"))
+                .header(PRINCIPAL_HEADER, &principal)
+                .json(&json!({
+                    "reference_id": reference_id,
+                    "original_locator": LOCATOR,
+                    "final_locator": LOCATOR,
+                    "resolver_id": "r0-https-fetcher",
+                    "resolver_version": "0.1.0",
+                    "raw_digest": digest,
+                    "byte_length": bytes.len(),
+                    "media_type": "text/plain",
+                    "bytes_base64": base64_std(bytes),
+                }))
+                .send()
+                .await
+                .expect("snapshot request");
+            let status = response.status().as_u16();
+            (
+                status,
+                response.json::<Value>().await.expect("snapshot json"),
+            )
+        }
+    };
+
+    let (status, a_snap) = submit_snapshot(a_id.clone()).await;
+    assert_eq!(status, 200, "A's snapshot submits: {a_snap}");
+    assert_eq!(a_snap["replay"], json!(false));
+    let snapshot_id = a_snap["snapshot_id"].as_str().unwrap().to_string();
+
+    let (status, b_snap) = submit_snapshot(b_id.clone()).await;
+    assert_eq!(status, 200, "B's snapshot submits: {b_snap}");
+    assert_eq!(
+        b_snap["replay"],
+        json!(true),
+        "the digest replays: ONE row, two citers — the premise of this control"
+    );
+    assert_eq!(b_snap["snapshot_id"], json!(snapshot_id));
+
+    // Both citers read it live before anybody deletes anything.
+    for (who, principal) in [("A", &a_id), ("B", &b_id)] {
+        let (status, stored) = get(
+            &client,
+            &base,
+            &format!("/v1/snapshots/{snapshot_id}"),
+            principal,
+        )
+        .await;
+        assert_eq!(status, 200, "{who} reads the shared snapshot: {stored}");
+        assert_eq!(stored["deleted_at"], Value::Null, "{who}: {stored}");
+    }
+
+    // A is done with it and says so.
+    const A_REASON: &str = "tenant A no longer relies on this";
+    let response = client
+        .delete(format!("{base}/v1/snapshots/{snapshot_id}"))
+        .header(PRINCIPAL_HEADER, &a_id)
+        .json(&json!({ "reason": A_REASON }))
+        .send()
+        .await
+        .expect("A's delete request");
+    assert_eq!(response.status().as_u16(), 200, "A's withdrawal lands");
+
+    // ⛔ THE POINT, ASSERTED FIRST so a red lands on the sentence this leaf is
+    // about. B never asked for anything and must not have been touched.
+    let (status, b_after) = get(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{snapshot_id}"),
+        &b_id,
+    )
+    .await;
+    assert_eq!(status, 200, "B still cites the snapshot: {b_after}");
+    assert_eq!(
+        b_after["deleted_at"],
+        Value::Null,
+        "B's reliance survives A's withdrawal — one tenant does not tombstone \
+         a row another cites: {b_after}"
+    );
+    assert_eq!(
+        b_after["deletion_reason"],
+        Value::Null,
+        "B's receipt never carries A's reason: {b_after}"
+    );
+
+    // A's own surface: it withdrew, so the row is no longer A's to read. A
+    // non-citer read is ABSENT rather than forbidden — the same rule
+    // `.11.14.1` established, so withdrawing returns A to a stranger's view.
+    let (status, a_after) = get(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{snapshot_id}"),
+        &a_id,
+    )
+    .await;
+    assert_eq!(
+        status, 404,
+        "A withdrew its citation, so the snapshot is absent for A: {a_after}"
+    );
+
+    // A cites the same bytes again: the withdrawal is an episode, not a wall.
+    let (status, a_recite) = submit_snapshot(a_id.clone()).await;
+    assert_eq!(status, 200, "A re-cites: {a_recite}");
+    assert_eq!(a_recite["snapshot_id"], json!(snapshot_id));
+    let (status, a_restored) = get(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{snapshot_id}"),
+        &a_id,
+    )
+    .await;
+    assert_eq!(status, 200, "re-citing restores A's read: {a_restored}");
+    assert_eq!(a_restored["deleted_at"], Value::Null);
+
+    // ── The authority MOVED; it did not vanish ────────────────────────────
+    // Tombstoning a shared row is now a site act. An ordinary tenant is
+    // refused, and B's evidence stays live while it is.
+    let response = client
+        .post(format!("{base}/v1/snapshots/{snapshot_id}/tombstone"))
+        .header(PRINCIPAL_HEADER, &a_id)
+        .json(&json!({ "reason": "A would like this gone for everybody" }))
+        .send()
+        .await
+        .expect("unauthorized tombstone request");
+    assert_eq!(
+        response.status().as_u16(),
+        403,
+        "a tenant holds no site authority over a shared row"
+    );
+    let (status, still_live) = get(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{snapshot_id}"),
+        &b_id,
+    )
+    .await;
+    assert_eq!(status, 200, "{still_live}");
+    assert_eq!(
+        still_live["deleted_at"],
+        Value::Null,
+        "the refused tombstone wrote nothing: {still_live}"
+    );
+
+    // With the grant, the same request lands and every citer sees it — which
+    // is what makes it a site act rather than a tenant one.
+    site_fixture::provision(
+        &pool,
+        &a_id,
+        &[reasonbraid_server::site_authority::Action::EvidenceExpire],
+    )
+    .await;
+    const OPERATOR_REASON: &str = "the source withdrew the document";
+    let response = client
+        .post(format!("{base}/v1/snapshots/{snapshot_id}/tombstone"))
+        .header(PRINCIPAL_HEADER, &a_id)
+        .json(&json!({ "reason": OPERATOR_REASON }))
+        .send()
+        .await
+        .expect("authorized tombstone request");
+    assert_eq!(
+        response.status().as_u16(),
+        200,
+        "the site act lands with the grant"
+    );
+    let receipt: Value = response.json().await.expect("receipt json");
+    assert_eq!(receipt["tombstoned"], json!(true), "{receipt}");
+    assert_eq!(receipt["snapshot_id"], json!(snapshot_id), "{receipt}");
+
+    let (status, b_final) = get(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{snapshot_id}"),
+        &b_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the tombstoned row stays readable: {b_final}");
+    assert!(
+        b_final["deleted_at"].is_string(),
+        "a site tombstone reaches every citer: {b_final}"
+    );
+    assert_eq!(
+        b_final["deletion_reason"],
+        json!(OPERATOR_REASON),
+        "the operator's own reason is on the row, not a canned one: {b_final}"
+    );
+
+    eprintln!(
+        "co-citation: one row, two citers; A's withdrawal left B's read live and \
+         unreasoned and made the row absent for A; re-citing restored it; a tenant's \
+         tombstone was refused 403 writing nothing, and the granted site act \
+         tombstoned it for both with the operator's own reason"
+    );
+}
+
+/// Standard base64, for test bodies only — the API's decoder is under test.
+fn base64_std(bytes: &[u8]) -> String {
+    const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = chunk.get(1).copied().map(|b| b as u32).unwrap_or(0);
+        let b2 = chunk.get(2).copied().map(|b| b as u32).unwrap_or(0);
+        let triple = (b0 << 16) | (b1 << 8) | b2;
+        out.push(TABLE[(triple >> 18) as usize & 63] as char);
+        out.push(TABLE[(triple >> 12) as usize & 63] as char);
+        out.push(if chunk.len() > 1 {
+            TABLE[(triple >> 6) as usize & 63] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            TABLE[triple as usize & 63] as char
+        } else {
+            '='
+        });
+    }
+    out
 }
 
 /// The derivation graph (PHASE-4.6.2): every transformation is a

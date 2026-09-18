@@ -400,6 +400,12 @@ pub async fn submit(
 
 /// Record one citation — idempotent, so a re-acquisition by the same tenant
 /// keeps the original time and actor.
+///
+/// A tenant that WITHDREW (`SIGNOFF-REPAIR.7.4.4`) and cites again is restored
+/// rather than refused: the upsert clears the withdrawal and deliberately
+/// leaves `cited_at`/`cited_by` alone. The original citation time and actor are
+/// the durable fact; a withdrawal is an episode in that row's life, not a new
+/// row. Clearing three already-NULL columns on an ordinary replay is a no-op.
 async fn record_citation(
     pool: &PgPool,
     snapshot_id: &str,
@@ -407,7 +413,8 @@ async fn record_citation(
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO evidence_citations (snapshot_id, tenant_id, cited_by) \
-         VALUES ($1, $2, $3) ON CONFLICT (snapshot_id, tenant_id) DO NOTHING",
+         VALUES ($1, $2, $3) ON CONFLICT (snapshot_id, tenant_id) DO UPDATE \
+         SET withdrawn_at = NULL, withdrawn_by = NULL, withdrawal_reason = NULL",
     )
     .bind(snapshot_id)
     .bind(&citer.tenant_id)
@@ -491,8 +498,14 @@ const SNAPSHOT_COLUMNS: &str =
 /// The disclosure predicate (§16.8): a snapshot is readable by a tenant that
 /// CITED it and by no other. `$2` is the tenant in both bound reads, so this
 /// fragment carries its own parameter index.
+///
+/// A WITHDRAWN citation is not a citation (`SIGNOFF-REPAIR.7.4.4`). The row is
+/// kept so the withdrawal stays auditable, so every disclosure surface must say
+/// `withdrawn_at IS NULL` — omitting it on one surface would leave a tenant
+/// reading evidence it has declared it no longer relies on.
 const CITED_BY_TENANT: &str = "EXISTS (SELECT 1 FROM evidence_citations c \
-     WHERE c.snapshot_id = evidence_snapshots.snapshot_id AND c.tenant_id = $2)";
+     WHERE c.snapshot_id = evidence_snapshots.snapshot_id AND c.tenant_id = $2 \
+       AND c.withdrawn_at IS NULL)";
 
 /// Read a snapshot this tenant cited (the tombstone state rides the same row).
 ///
@@ -533,7 +546,7 @@ where
 {
     sqlx::query_scalar(
         "SELECT EXISTS (SELECT 1 FROM evidence_citations \
-         WHERE snapshot_id = $1 AND tenant_id = $2)",
+         WHERE snapshot_id = $1 AND tenant_id = $2 AND withdrawn_at IS NULL)",
     )
     .bind(snapshot_id)
     .bind(tenant_id)
@@ -541,10 +554,67 @@ where
     .await
 }
 
+/// Withdraw THIS tenant's citation: it stops relying on the snapshot, and the
+/// shared row is untouched (`SIGNOFF-REPAIR.7.4.4`).
+///
+/// ⛔ This is the act `DELETE /v1/snapshots/{id}` performs, and the one a tenant
+/// owns. Tombstoning the row says something about bytes other tenants may cite,
+/// which is a site-operator act — `tombstone` below, and the `expire_due` sweep.
+///
+/// Recorded rather than deleted, per §12.9: a `DELETE FROM evidence_citations`
+/// would leave no answer to *who stopped relying on this, when, and why*.
+/// Idempotent — the first withdrawal's reason and time win, so a repeated call
+/// returns `false` and rewrites nothing.
+///
+/// ⭐ The last citer withdrawing does NOT tombstone the row, deliberately. An
+/// uncited snapshot is simply read by nobody until it is cited again — exactly
+/// the state `migrations/0062` describes for every row written before citations
+/// existed — and the retention sweep reaps it on its own class TTL. Tombstoning
+/// on the last withdrawal would hand any tenant the shared-row authority this
+/// leaf has just taken away, by the back door of being the only citer.
+pub async fn withdraw_citation(
+    pool: &PgPool,
+    snapshot_id: &str,
+    tenant_id: &str,
+    withdrawn_by: &str,
+    reason: &str,
+) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query(
+        "UPDATE evidence_citations \
+         SET withdrawn_at = now(), withdrawn_by = $3, withdrawal_reason = $4 \
+         WHERE snapshot_id = $1 AND tenant_id = $2 AND withdrawn_at IS NULL",
+    )
+    .bind(snapshot_id)
+    .bind(tenant_id)
+    .bind(withdrawn_by)
+    .bind(reason)
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected() > 0)
+}
+
 /// The tombstone: the deletion records the reason + the time — the row
 /// stays (never a silent disappearance). Idempotent: the first reason wins.
+///
+/// ⛔ NO TENANT-BOUND CALLER (`SIGNOFF-REPAIR.7.4.4`). This writes the SHARED
+/// row, so every citer sees it; a tenant reaching it could remove evidence
+/// another tenant relies on and stamp that tenant's receipt with its own
+/// reason. Its callers are the site-operator acts: `expire_due`'s sweep and
+/// `site_authority::retention::tombstone_evidence`'s named row.
 pub async fn tombstone(
     pool: &PgPool,
+    snapshot_id: &str,
+    reason: &str,
+) -> Result<bool, sqlx::Error> {
+    tombstone_in(&mut *pool.acquire().await?, snapshot_id, reason).await
+}
+
+/// The same tombstone inside a caller's transaction, so a site act's tombstone,
+/// its authorization and its audit record commit together — a tombstone that
+/// committed without its audit record would be an unattributable deletion
+/// (the argument `expire_due` already makes for the sweep).
+pub async fn tombstone_in(
+    conn: &mut sqlx::PgConnection,
     snapshot_id: &str,
     reason: &str,
 ) -> Result<bool, sqlx::Error> {
@@ -554,7 +624,7 @@ pub async fn tombstone(
     )
     .bind(snapshot_id)
     .bind(reason)
-    .execute(pool)
+    .execute(&mut *conn)
     .await?;
     Ok(result.rows_affected() > 0)
 }

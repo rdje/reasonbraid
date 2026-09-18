@@ -92,6 +92,45 @@ quorum and adjudication are G3 governance and G5 quality surfaces, and G5 is
 currently *withdrawn*. Re-earning G5 therefore exercises much of this capability
 anyway — the two are not in competition for most of the distance.
 
+## The named first workload: `rdje/bedrock`
+
+Named by the director on 2026-09-18: **help build `github.com/rdje/bedrock`**, the
+template every project of theirs should adopt, distilled from PGEN's doctrines,
+policies and rules. Cloned locally at `/Volumes/SSD/Documents/github/bedrock`
+(same volume, §13) and actively maintained under its own `BEDROCK-MAINTENANCE`
+tree at `DOCTRINE_VERSION 0.6.1`.
+
+⭐ **It is an unusually good first workload, for the precise reason this record
+worries about elsewhere: it SOLVES the acceptor problem.** "Is this template
+good?" has a deterministic answer — clone it fresh, bootstrap, and see whether a
+first commit passes the template's own gates. bedrock's own `BEDROCK-MAINTENANCE-0010`
+already runs exactly that trial (clone → bootstrap 13/13 → commit green → `make
+gate` green → `make check` green, idempotent re-run). A domain with a mechanical
+acceptor is rare, and it is what makes this a fair first test rather than a demo.
+
+⭐ **And reasonbraid is the best available evidence source for it, with no new
+capability required.** This repository has run the spine hard for 258 commits and
+knows which doctrines FIRE. Measured 2026-09-18, comparing registered enforcer
+arrays: **bedrock registers 11; reasonbraid registers 18 plus 2 conditional; the
+difference is 7 doctrines reasonbraid has and bedrock does not, and 0 the other
+way** — `FRONTIER-STATUS`, `HEADING-DEPTH`, `INDEX-FRONTIER`, `LOCKSTEP-CLAIM`,
+`RUST-FORMATTING`, `SELF-TEST`, `TASK-STATUS`. Every one is spine-shaped rather
+than domain-shaped, so every one is a candidate. ⚠️ `RUST-FORMATTING` is
+language-specific and would need to be conditional in a general template.
+
+⛔ **What makes that list worth more than the scripts is the EVIDENCE attached to
+each**, which a template cannot generate for itself: a founding defect, a cost
+against the enforcer, and whether it has ever caught anything. `SELF-TEST` catches
+nothing today and prevents a class; `FRONTIER-STATUS` (0.06 s) caught its own
+author within the hour; `RUST-FORMATTING` (0.66 s) caught a defect two commits
+old; `DOCTRINE-REGISTRY` refused a backticked description that the driver would
+have executed. A template shipping doctrines is a claim; a template shipping
+doctrines *with their firing records* is a measurement.
+
+⛔ **bedrock is a SEPARATE repository with its own task tree.** Nothing here may
+edit it; work there is owned by `BEDROCK-MAINTENANCE` leaves, and the scaffold
+direction already runs the other way (`scripts/update_scaffold.sh`).
+
 ## What to do first when it IS scheduled
 
 Not "support any problem", which is unfalsifiable. **Add ONE non-programming

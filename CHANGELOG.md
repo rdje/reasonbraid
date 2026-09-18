@@ -297,67 +297,26 @@ The director asked for ReasonBraid to orchestrate 2–5 agents working collectiv
 - ⭐ **`BROKEN-TABLE` gains it as a SECOND ARM rather than a second doctrine** — both halves are the same subject, where the author put the table's boundary, measured over the same corpus by the same instrument. **23 arms, ten of them negatives.** Falsified against the real historical defect rather than a fixture.
 - ⚠️ **What this does not do:** `TABLE-ARITY-RATCHET` still cannot see an absorbed line — one cell in a four-column table, and GFM PADS a short row, the silent direction that gate already declares. Not repaired, and it need not be: the cause is now caught, so widening the arity gate would be a second instrument reporting the same defect.
 
-## 2026-09-18 — Twelve verification-log rows had lost their first two cells (`SIGNOFF-REPAIR.11.19.1`)
-
-🔴 **An insert-at-top edit re-emitted the row it displaced without its date and leaf id — twelve times, over twelve commits — and asking the renderer why found two defects in the gate shipped one commit earlier.**
-
-- **The defect.** Twelve rows of `docs/tasks/PHASE-2.md`'s Verification Log render with their columns SHIFTED LEFT and padded with two empty cells: the date and the leaf id are simply gone from the page. `git show e7a829c` has the `PHASE-2.4.3` row added well-formed; `git show bb42f65` has the hunk that dropped its first two cells while prepending a new row above it.
-- ✅ **All 12 recovered unambiguously**, by matching each pipe-less line as a SUFFIX of every well-formed `| \`2026-…\` |` row in the file's history. ⭐ Confirmed by a property the match never uses: the recovered leaf ids come out strictly descending and continue the two rows above them.
-- ✅ **Verified by the RENDERER, on a property no other row shares:** rows whose first cell is a date go **21 → 33**, rows ending in two empty cells go **12 → 0**, and the total row count is **76 both ways**. ⛔ That invariance is the point — a row-count check would have reported success before the repair.
-- 🔴 **AND THE SECOND HALF OF THE ACCEPTANCE FOUND TWO DEFECTS IN `BROKEN-TABLE`, ONE COMMIT OLD.** Asked rather than assumed, mdbook says a table body continues across ANY non-blank line — `3 | 4` renders as two cells, bare prose as one, padded. The gate's scanner ended a table at the first pipe-less line, which is wrong in both directions at once: a **FALSE POSITIVE** reporting two adjacent tables separated by a blank line (ordinary Markdown) as 3 orphaned rows, and a **FALSE NEGATIVE** missing a blank line later in a table containing a pipe-less row.
-- ⭐ **The terminators are not uniform and no specification reading would have produced them.** A list item, an ATX heading, a blockquote and an HTML block END a table with no blank line; plain prose and indented continuation text do NOT. Established one construct at a time against the renderer; that distinction took the mirror defect's population from an over-counted 15 to the real 11. All four are self-test arms; the gate now carries **18**.
-- ⭐ **Falsified in situ:** the pre-fix scanner run against the new arms fails 11, 12 and 13 by name (3 / 0 / 0 against 0 / 1 / 1); the two no-regression arms pass both ways and are labelled.
-- 🔴 **CORRECTION to the previous entry.** REPAIR-0238's entry says one of the twelve rows "renders outside the table entirely". It does not — all twelve are rows with shifted columns. That reading came from a probe whose key, the bare phrase *"inventory-groundwork deferral record"*, occurs **7 times** in the file, and `str.find` returned the first, ordinary prose **1,889 lines** above the row it was meant to find. ⚠️ A key too LOOSE fails the opposite way to one too narrow: not an undercount, a wrong instance. The live documents that restated it are swept; this ledger entry carries the correction rather than the previous one being rewritten.
-- Routed: **11 lines of `docs/tasks/PHASE-3.md` are a wrapped closing paragraph ABSORBED into its frontier table** — the mirror of `.11.19`, visible only once the table model was corrected. Neither table gate reaches it. `.11.19.2`.
-
-## 2026-09-18 — A blank line ENDS a Markdown table, and one sat inside the tree's own frontier (`SIGNOFF-REPAIR.11.19`)
-
-🔴 **52 table rows across 3 tracked files were rendering as paragraphs of literal pipe-text — including all 46 rows of the active tree's Current Frontier, row 1 among them.**
-
-- **The defect.** A blank line TERMINATES a GFM table. Every row after it stops being a row and comes back as one paragraph. ⛔ The SOURCE looks perfectly fine, which is why this survived every review that read the file rather than the page.
-- ⭐ **Asked of the RENDERER, not the specification** — `TABLE-ARITY-RATCHET`'s practice, and it corrected two rules the ad-hoc probe had wrong: a delimiter row whose cell count differs from its header is **not a table at all**, and four spaces of indent is a **code block** while three is still a table. Each rule is rendered before being asserted, and each is a self-test arm.
-- ⚠️ **The narrow key found 1; the wide key found 51.** Keyed on *"a blank right after the delimiter row"* the census reports one instance. Keyed on *"a blank anywhere in the body"* — the shape that actually ends a table — it reports **5 blanks across 3 files**. `a-census-is-as-wide-as-its-key` for the third time in one session, and by far the widest miss.
-- 🔎 **`TABLE-ARITY-RATCHET` governs all three files and cannot see it**: it compares a row's cell count against its header's, and an ORPHANED ROW HAS NO HEADER to disagree with. `BOOK-LINKS`' founding shape a third time — *the doctrine's intent was satisfied and the rendering broke*.
-- **The five blanks were decided MECHANICALLY, not by eye.** A stray blank and a deliberate separator between two tables differ observably: cells on each side, and whether a second header + delimiter follows. All five measured **4 cells before, 4 after, no delimiter after the blank** — so none is a second table, and deletion is right for all five.
-- ✅ **All 52 discharged, verified by the RENDERER**: `<tr><td>` counts go `157 → 203`, `53 → 56`, `29 → 32` — **+52 exactly**, matching the census by a different route.
-- ⭐ **`BROKEN-TABLE` SHIPS, calibrated across 200 commits before it was proposed** (`.11.6`): it would have blocked **1 commit (0.5%)**, and that commit is the one that INTRODUCED the defect. Zero false positives — `REASON-CODE-DOC`'s shape, not the backlog shape rejected at 87% and 93%. ⚠️ Three of its twelve arms are NEGATIVES (a blank that legitimately ends a table, a table at EOF, a table in a fence); without them the rule degenerates into "no blank line near a table".
-- 🔎 **`86dd272` is the same commit that introduced `.11.16`'s stale `SELF-TEST` numbers** — one commit, two defects of different families, found by two instruments two leaves apart, neither visible in its diff.
-- 🔴 **The leaf published a `0` that measured `12`, and checking it is what found the next defect.** Its boundary bullet claimed no table row in the corpus lacks a leading pipe. Twelve do, all in `docs/tasks/PHASE-2.md`, and they are verification-log rows that LOST their first two cells — one renders outside the table entirely. Both table gates are blind to the shape. The superseded claim is kept rather than edited into agreement. `.11.19.1`.
-
-## 2026-09-18 — A restated number needs a PRODUCER, not a rule (`SIGNOFF-REPAIR.11.16`)
-
-🔴 **The file that documents this project's gates calls itself "the human-readable mirror of the registry", and four of the numbers it mirrored had gone stale with nothing deriving them.**
-
-- **The defect.** `DOCTRINE_ENFORCEMENT.md`'s `SELF-TEST` row said *"all 17 pass"* and *"11 of the 28 check/census scripts"*; measured, **29** and **9 of 38**. Its `FILE-TERMINATION` row said *"642 files scan"*; measured, **773**. ⛔ Every one was ALSO stale in the instrument's own header comment, so the registry was a mirror of a mirror and neither copy had a producer. Third instance of the shape `BOOK-FRONTIER` and `INDEX-FRONTIER` already gate.
-- ⚠️ **The leaf's own first pass was off by a factor of seventeen** — it reported *"6 bolded numerals"* because it keyed on **bold**, and the file's numbers are mostly unbolded. The real population is **103 numerals across 19 rows**, by `scripts/census_mirror_numbers.py` (tracked, `--json`, `--calibrate`, `--self-test` with 12 arms).
-- ⛔ **ALL THREE CANDIDATE GATES ARE MEASURED UNSOUND AND DECLINED**, each priced before it was proposed (`.11.6`): a sentence-level citation requirement fires on **68 of 103 (66%)**; minus four mechanical structural exclusions, **51 of 103 (50%)**; scoped to the staged diff — the `GAP-CLAIM-CENSUS` precedent — it would have blocked **10 of the 14 commits in 200 that add a numeral (71%)**. `.11.9`'s gate was rejected at 87% and `.11.15`'s at 93%; `POSITIONAL-REF` shipped at 9.5%.
-- ⛔ **And a per-numeral allowlist is refused by this project's own sentence**, in the registry row two lines from the defect: `VISIBILITY-POLICY`'s *"an allowlist thirty entries long teaches bypass"*, against a population of **103**.
-- ⭐ **THE MEASUREMENT REDIRECTED THE WORK.** The four stale numerals share a property the other 99 do not: each is a POPULATION SIZE the named instrument enumerates on every run and simply never printed. So `scripts/check_self_tests.sh --census` and `scripts/check_file_termination.sh --census` ship, the rows cite the command, and **no gate is registered**. A number derived on every run cannot go stale.
-- ✅ **`REASON-CODE-DOC` is discharged by DELETION, not correction.** Its numbers had drifted since `.9.2.1.1` and became true again BY ACCIDENT when `.11.14.3.2` retired a code. Correcting them to today's was the cheap fix and the wrong one — a mirror that happens to agree teaches a reader it never drifted.
-- **Also discharged:** `HEADING-DEPTH`'s founding measurement, which read as a present-tense claim and is false today (0 violations), re-anchored to the commit that measured it; and `TABLE-ARITY-RATCHET`'s self-test banner, which printed a hardcoded `9/9 arms` beside nine arms and now COUNTS them — falsified by injecting a tenth arm (`10/10`), restoring byte-identical, and reading `9/9` again.
-- **ADDRESSED:** `bare` numerals **51 → 37**, all five repaired rows clear. ⚠️ The remaining 37 are unreviewed by any instrument — read once by hand and judged frozen. That is the declined gate's cost, named rather than hidden.
-- Promoted: `docs/knowledge/a-restated-number-needs-a-producer.md` + a `TOOLBOX.md` statement. 🔴 Routed: **a blank line ENDS a Markdown table, and one sits inside this tree's own Current Frontier** — 45 rows render as literal pipe-text, 51 across 3 files once the key is widened from "after the delimiter row" to "anywhere in the body". `.11.19`.
-
-## 2026-09-18 — A positional reference is exact only if a reader can resolve it (`SIGNOFF-REPAIR.11.17`)
-
-🔴 **29 published source citations named two files each, and `DOCPATH` could not see any of them.**
-
-- **The defect.** `docs/CLAIM_VERIFICATION.md` §4.1 grades a NAMED INSTANCE as exact with no tolerance band. A bare `profiles.rs` with a five-digit line names a 606-line source AND an 11,154-line suite, and the prose does not say which. ⭐ `DOCPATH` already wants repo-root-relative references — a bare basename SATISFIES it while naming nothing, which is `BOOK-LINKS`' founding shape exactly.
-- ✅ **Leg 3 closed first:** `scripts/census_positional_refs.py` is the tracked producer (`--check`, `--json`, `--self-test`, 9 controls) and the ad-hoc pipeline is retired. **494 → 499 occurrences, 321 distinct, pathed 250, unique 240, ambiguous 0, unresolved 9.**
-- ⭐ **The leaf's 29 reconciled EXACTLY once the unit was named:** 29 DISTINCT references, 47 OCCURRENCES. Recorded rather than quietly reconciled — a number that moves between two honest measurements is what leg 1 exists to catch, and the answer was a definition, not a defect.
-- ⭐ **DECIDED: a positional reference carries a repo-root-relative PATH, and the gate ships — calibrated across 200 commits BEFORE it was proposed** (`.11.6`, which this leaf owed): of **415** references added, **48 were ambiguous (11.6%)**, blocking **19 commits (9.5%)**. Against **87%** (`.11.9`) and **93%** (`.11.15`), both rejected for teaching bypass.
-- ✅ **All 47 discharged, population 0** — 17 by line count alone, 30 by reading the prose and CONFIRMING against the file. Several confirmations were exact: `crates/reasonbraid-server/src/policy.rs:151` is literally `fn is_semver(...)`.
-- ⛔ **It gates AMBIGUITY, not DRIFT, and the discharge proved the distinction:** five references had already drifted and were confirmed by grepping the SYMBOL the prose names. Which FILE is fixable and stays fixed; which LINE moves with every insertion above it. The line numbers were not silently rewritten — they were exact when written.
-- 🔴 **The gate flagged its own registry row, then its own leaf prose.** Fixed by RE-WORDING both times rather than by an exclusion, so the doctrine polices its own description — the `STORAGE-LOCALITY` founding incident, twice.
-- 🔴 **And the falsification destroyed three of my own discharges.** The injection went into `LIVE_STATUS.md`; `git checkout --` then restored it to HEAD, taking three unrelated uncommitted repairs with it. Nothing failed and nothing warned. **`docs/knowledge/an-injection-must-be-shown-to-land.md` recommended that restore and is CORRECTED by the failure it caused**: stash rather than checkout, and check the restore for what should STILL be there.
-- Routed: **9 references name no tracked file at all** — 8 `init.rs`, plus the registry row's own illustrative placeholder. 🔎 That placeholder is the finding: a gate on this class would have to tell an EXAMPLE from a CITATION, which the ambiguity gate never has to do. `.11.17.1`.
-
 ## Historical entries and exact retrieval
 
 This is a recent digest. Older chronology remains in reachable Git history under
-the rotation contract in `README_POLICY.md`. This file has rotated twenty-three times;
+the rotation contract in `README_POLICY.md`. This file has rotated twenty-four times;
 each rotation names the commit holding the ledger immediately before it, so the
 chain walks back without guessing.
+
+Retrieve the ledger immediately before the TWENTY-FOURTH rotation (2026-09-18)
+from the repository root:
+
+```bash
+git show 2c1c5a301b3780717d5853de5bbe5a5b00a8f581:CHANGELOG.md
+```
+
+That snapshot is 93,923 bytes and contains 29 dated entries; its Git blob is
+`6552b9c0d6c5d04621f404a81c0831904e28d639`, and its SHA-256 is
+`7b1ee96ee7af5ba24bd48b71554729662049af12cf1623a27af74dba60bcf7d7`. The newest
+entry it holds that this digest no longer carries is
+`2026-09-18 — Twelve verification-log rows had lost their first two cells (`SIGNOFF-REPAIR.11.19.1`)`.
+It carries the TWENTY-THIRD rotation's notice in turn, which names the ledger before it.
 
 Retrieve the ledger immediately before the TWENTY-THIRD rotation (2026-09-18)
 from the repository root:

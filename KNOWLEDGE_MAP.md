@@ -186,6 +186,7 @@
 - [`2026-09-17_what-a-citation-list-costs.md`](docs/decisions/2026-09-17_what-a-citation-list-costs.md)
 - [`2026-09-18_a-cargo-process-is-not-evidence-of-this-repo.md`](docs/decisions/2026-09-18_a-cargo-process-is-not-evidence-of-this-repo.md)
 - [`2026-09-18_a-citation-is-withdrawn-a-row-is-tombstoned.md`](docs/decisions/2026-09-18_a-citation-is-withdrawn-a-row-is-tombstoned.md)
+- [`2026-09-18_lan-completeness-precedes-internet-exposure.md`](docs/decisions/2026-09-18_lan-completeness-precedes-internet-exposure.md)
 - [`2026-09-18_retained-fixtures-keep-receipts-not-payload.md`](docs/decisions/2026-09-18_retained-fixtures-keep-receipts-not-payload.md)
 
 ## Promoted lessons

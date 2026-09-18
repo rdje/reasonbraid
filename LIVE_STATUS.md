@@ -5,6 +5,14 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+⛔ **INTERNET EXPOSURE IS DEFERRED — director instruction, 2026-09-18.**
+
+> *"The internet exposure is not high priority right now. It needs to fully work on the local network first."*
+
+- B1, B2 and B3 become **`yes (deferred)`**: the in-repo work is still owed and `.14` still owns it, but it leaves the frontier and no commit is spent on it until the LAN path is complete. ⛔ **`yes (deferred)` is not `no`** — a `no` row has nothing left for this repository to do; these three do.
+- ⛔ **Priority changed, claims did not.** Phase 7 G6/G7 remains **NOT MET** and `.14`'s standing prohibition against turning the exposure profile on is untouched. Deferring the work moves the claim further away, not closer.
+- ⚠️ **The resumption trigger is not yet measurable.** A candidate — Phases 1–6 corrective repairs closed plus Phase 8's `.5.3`/`.5.4` — is proposed in `docs/decisions/2026-09-18_lan-completeness-precedes-internet-exposure.md` and awaits the director. Until then: work the LAN-path repairs.
+
 ✅ **THE FRONTIER TABLE GAINS A ROW PER STATE CHANGE AND NEVER RETIRES THE OLD ONE (`.11.22`, REPAIR-0257).**
 
 🔴 **Censusing DOC-0049's stale pointer found a structural cause: 66 rows naming 49 leaves — 13 leaves with 2–4 rows each, and 10 status columns contradicting their leaf.**

@@ -61,10 +61,39 @@ outsider — and replacing it changed three answers immediately.
 
 | # | Blocker | Who clears it | Owed here? | What is owed, or the trigger |
 | --- | --- | --- | --- | --- |
-| **B1** | Externally reviewed **threat model** and abuse cases | An independent reviewer | **yes** | `spec/threat-model.md` exists; its **fitness for review** is owed, and `SIGNOFF-REPAIR.14`'s frozen exposure candidate is what a reviewer would review. §2.6: AI review does not satisfy the requirement |
-| **B2** | **Penetration test**, critical and high findings resolved | An outside engagement | **yes** | The **scope and environment** document, and `.14`'s candidate freeze — which is this row's own stated trigger. §19.6: the release is *cancelled*, not waived, if findings stand |
-| **B3** | **Prompt-injection action-boundary suite** | — | **yes** | It lands with `.14`'s first action-bearing surface. The `ACTION-BOUNDARY` gate already fails the commit that ships one and says B3 is due |
+| **B1** | Externally reviewed **threat model** and abuse cases | An independent reviewer | **yes (deferred)** | `spec/threat-model.md` exists; its **fitness for review** is owed, and `SIGNOFF-REPAIR.14`'s frozen exposure candidate is what a reviewer would review. §2.6: AI review does not satisfy the requirement |
+| **B2** | **Penetration test**, critical and high findings resolved | An outside engagement | **yes (deferred)** | The **scope and environment** document, and `.14`'s candidate freeze — which is this row's own stated trigger. §19.6: the release is *cancelled*, not waived, if findings stand |
+| **B3** | **Prompt-injection action-boundary suite** | — | **yes (deferred)** | It lands with `.14`'s first action-bearing surface. The `ACTION-BOUNDARY` gate already fails the commit that ships one and says B3 is due |
 | **B4** | **Public-name clearance** (ADR-001) | Professional trademark, company, package and domain clearance | **no** | ⭐ The only row with nothing owed here. Jurisdictions decided; the rename cost is measured at 67 files / 191 lines. §2.7: the exact-name screen is explicitly *not* legal clearance |
+
+## Deferred, by director instruction of 2026-09-18
+
+> *"The internet exposure is not high priority right now. It needs to fully work
+> on the local network first."*
+
+B1, B2 and B3 are the Internet-exposure blockers, and they are now
+**`yes (deferred)`**: the in-repo work is still owed and still has a leaf, but it
+no longer rides the frontier and no commit is spent on it until the local-network
+path is complete.
+
+⛔ **`yes (deferred)` is not `no`.** A row parked on an outsider has nothing left
+for this repository to do. These three have work left; it is simply not current.
+The register keeps them visible — surfaced once per session with the ruling and
+the trigger — because the whole point of the register is that an owned but
+unsurfaced blocker is harder to notice than an unowned one.
+
+⛔ **And nothing about what may be CLAIMED changes.** Phase 7's G6/G7 remains
+**NOT MET**, and `SIGNOFF-REPAIR.14`'s standing prohibition against turning the
+exposure profile on is untouched. Deferring work is not permission to describe
+the system as Internet-ready; if anything it makes the claim further off.
+
+⚠️ **The trigger is not yet measurable.** "The LAN fully works" needs a
+definition before it can gate anything. The candidate — every corrective repair
+under Phases 1–6 closed, plus Phase 8's LAN-relevant `.5.3` and `.5.4` — is
+proposed in
+`docs/decisions/2026-09-18_lan-completeness-precedes-internet-exposure.md`
+and awaits the director's confirmation. Until then the practical rule needs no
+definition: work the LAN-path repairs.
 
 ⛔ **Nothing about the blockers themselves has moved.** B1, B2 and B4 still need
 outside parties, `.14` is still under its standing prohibition against turning

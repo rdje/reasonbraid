@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-18 — Internet exposure deferred; the LAN path is the priority (director instruction)
+
+> *"The internet exposure is not high priority right now. It needs to fully work on the local network first."*
+
+- **B1, B2 and B3 become `yes (deferred)`** in the blocker register — a third state the register did not have. The in-repo work is still owed and `SIGNOFF-REPAIR.14` still owns it; what changes is that it leaves the frontier and no commit is spent on it until the local-network path is complete.
+- ⛔ **`yes (deferred)` is deliberately not `no`.** `.13` was built around the observation that an owned-but-unsurfaced blocker is harder to notice than an unowned one, so these rows stay visible and are surfaced once per session with their ruling and trigger.
+- ⛔ **Priority moved; claims did not.** Phase 7's G6/G7 stays **NOT MET** and `.14`'s standing prohibition against turning the exposure profile on is untouched. Deferring work is not permission to describe the system as Internet-ready.
+- ⚠️ **The trigger is not yet measurable, and the record says so rather than inventing one.** A candidate definition — Phases 1–6 corrective repairs closed plus Phase 8's LAN-relevant `.5.3` and `.5.4` — is proposed and awaits the director's confirmation.
+- Recorded in `docs/decisions/2026-09-18_lan-completeness-precedes-internet-exposure.md`; the register, the book's blockers chapter, the frontier row for `.14` and `MEMORY.md` all carry it.
+
 ## 2026-09-18 — The frontier table gains a row per state change and never retires the old one (`SIGNOFF-REPAIR.11.22`)
 
 🔴 **DOC-0049 reported a stale frontier pointer. Censusing it found the cause is structural, and worse than the symptom.**

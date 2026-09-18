@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE READ CENSUS COULD NOT SEE 34 OF ITS OWN ROUTES (`.3.5.4`, REPAIR-0260).**
+
+🔴 **`.3.5.3` published "24 `get(…)` routes in `api.rs`"; its own commit had 54, and the binary merges three routers for 58.** The leaf was opened to follow 10 delegating handlers and found the population wrong by more than half. ⛔ The `24` had **no producer** — prose in a leaf, nothing deriving it, so nothing could contradict it.
+
+- ✅ `scripts/census_get_route_binding.py` enumerates all 58 across the three mounted routers, reports what the caller supplies, whether the handler authenticates, which authorization primitive it reaches **transitively**, and follows each `crate::module::fn` delegate one level. All 58 classified: **24 authorize · 6 derive the tenant and bind it · 24 site-global BY SCHEMA · 4 unauthenticated**.
+- ⭐ **The 24 site-global routes are the false-positive class.** Every one of their 24 tables has no tenant column, so there is nothing to bind — a column-grep would have reported 24 defects. The schema, not the predicate, is what separates a design from a leak.
+- 🔴 **One product defect → `.3.5.5`: `GET /v1/nodes/presence` asks nobody who is calling** — no principal, no authorization, no tenant predicate, on a `node_presence` view that carries `tenant_id`, while the same view is gated at `/v1/admin/nodes/presence`. ⚠️ Bounded: a read, observability payload, needs a known unguessable node id; but it needs **no principal at all** and leaks existence. Source-measured; runtime reproduction is `.3.5.5`'s first act.
+- 🔴 **The instrument found five defects in itself first**, including two on the dangerous axes — a false negative that read 11 gated admin routes as ungated, and a false positive that reported a gate on a route with none. All five are now two-sided self-test arms.
+- 🔎 **Second finding → `.11.2.6`:** `check_task_acceptance.sh` validates **one** checklist per staged tree file; this tree has **194** `ROOT CAUSE` boxes and the gate reads line 388 every time.
+
 ✅ **THE SCAFFOLD SHIPPED AN ENFORCER REGISTERING CHECKS IT DID NOT CARRY (`.11.23`, REPAIR-0259).**
 
 ⚠️ **CORRECTED (DOC-0055): the original claim overstated this.** A project is instantiated from a GitHub **template** — the whole repository is copied — then cloned and bootstrapped, so a fresh project receives every script and commits fine. Confirmed in this repo's own history (`b932c05 "Initial commit"` then `823c2bc "bootstrapped from bedrock"`) and its remotes (**reasonbraid's set contains no bedrock entry**; bedrock has its own `origin` for maintaining the template — what is absent is a link from an instantiated project back to it). The bare-repo reproduction modelled a creation path nobody uses. **The real hazard is at UPDATE time:** `update_scaffold.sh` only copies listed files, so syncing into a project built from an older snapshot installs a registry naming checks that never arrive. The repair stands on that basis. `update_scaffold.sh` carried the registry of 18 doctrines and not the 7 scripts it names; a bare `git init` reproduction printed seven `?? (missing/not executable)` rows and a blocked commit.

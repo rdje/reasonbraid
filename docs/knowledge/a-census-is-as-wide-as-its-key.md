@@ -51,15 +51,16 @@ grep -n  '"/v1/resources'            crates/…/src   # one of its addresses
 routes and not about reachability, and a reader cannot tell which claim was meant
 unless the command is there.
 
-## Three instances, and the third is the one that hurts
+## Four instances, and the last two are the ones that hurt
 
-⚠️ This shape has now appeared three times in this repository.
+⚠️ This shape has now appeared four times in this repository.
 
 | | The census | What it could not see |
 | --- | --- | --- |
 | `.3.5.3` | the node-administration **mutations** | the inbox **read**, which selected by node id alone |
 | `.11.14.3.8` | the **`snapshot_id` surfaces**, counted from `Path(…)` extractors and gate call sites | `POST /v1/derivations`, which names its parent in the **body** — and which was **unbound** |
 | `.11.14.3.4` | the **routes under a prefix** | `POST /v1/snapshots`, which names the object in its **body** |
+| `.3.5.3` (again) | the GET routes **in one file**, published as `24` | **30 more in the same file** and **4 in two other routers** — the binary merges three |
 
 Each was correct about its own scope and said so. None was careless. What they
 share is that the scoping key was chosen for convenience — it is what the grep
@@ -77,6 +78,37 @@ and was found only when the maintainer asked whether the findings held.
 > re-run its check against every census the project has already published. That
 > sweep is minutes; the alternative is a number that is false for as long as
 > nobody asks.
+
+## The fourth row moves the rule: the POPULATION is a key too
+
+🔴 `.3.5.3` appears twice in that table, and the second time the key was
+fine. It enumerated `get(…)` — the right token — and still saw **24 of 54**
+in the file it read, plus nothing at all of the two other routers
+`rb-server.rs` merges into the same listener. The scoping failure was not the
+identifier; it was the **boundary of the population**.
+
+> Derive the population from where the system is **assembled**, not from where
+> it looks assembled.
+
+A file is a convenient boundary and almost never the real one. The real one is
+wherever the thing is composed for the run — the binary's `merge`, the router's
+mount, the module that re-exports. Ask *what does the process actually serve?*
+and enumerate that.
+
+⛔ **And the number must have a producer.** `24` was prose in a leaf. Nothing
+derived it, so nothing could contradict it, and the only way it was ever going
+to be found wrong was somebody re-counting by hand a week later — which is what
+happened. A census that publishes a count without shipping the command that
+produces it has published something unfalsifiable. See
+[[a-restated-number-needs-a-producer]].
+
+🔎 **The sweep this note already demanded would have caught it, and was not
+run.** The rule above says: write the note, then re-run its check against every
+census the project has already published. `.3.5.3` is **row 1 of this note's own
+table**. Its published population was never re-examined, and it was wrong by
+more than half. ⭐ A prescribed sweep that nobody schedules is a resolution to
+be careful wearing a rule's clothes — which is exactly what the next section
+says a lesson must not be.
 
 ## What makes this checkable rather than a resolution to be careful
 

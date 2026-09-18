@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-18 — A leaf discharged its own gap claims by having been verified (`SIGNOFF-REPAIR.11.2.5`)
+
+🔴 **`GAP-CLAIM-CENSUS` asked "does this section contain a command?" — and `TASK-ACCEPTANCE` puts one in every closed leaf by construction. Measured: 103 claim lines, 0 undischarged. Inert everywhere.**
+
+- **The defect, by controlled experiment.** Two sections, the identical claim line, one variable: whether a ticked `- [x] **ADDRESSED**` box sat beside it. The one with the box was not flagged. ⭐ A control calibrated against a PROXY for a census rather than against a census.
+- ✅ **Six candidate discharge tests priced against the same 103 claims** — same-line 65.0%, same-bullet 59.2%, bullet-or-next 37.9%, within-3-lines 14.6%, boxes-excluded 9.7%, and the shipped rule **1.0%**. ⛔ Proximity was measured and rejected, not skipped: the 34-line incidental case it was aimed at is one it accepts.
+- 🔴 **The 9.7% variant's extra nine were CLASSIFIED, not counted, and 6 were FALSE POSITIVES** — a claim inside a box discharged by a sibling box, which is the normal structure of an acceptance record. That classification is what bought the final clause and the difference between 10 standing instances and 1.
+- ✅ **1 of 200 commits (0.5%), 1 true positive, 0 false positives** — and the replay is honest by `.11.18.2`'s discriminator: the looser rule was enforced throughout, but the tightening it adds was policed by nothing. Two independent implementations agree exactly at 103/1.
+- ⭐ **The predicate shipped with a redundant clause and the falsification sweep deleted it.** `own[j]==own[i]` is subsumed — same bullet implies same section and equal box-ness — and dropping it changed no arm and no corpus number. It was found by a degenerate arm that should have failed and did not.
+- 🔴 **The repaired gate's FIRST real catch was a false claim inside a signed-off leaf.** `.3.4.3.1.1` closed asserting *"nothing enforces the stored value"*; `git grep -n 'expires_at > now()' -- crates/reasonbraid-server/src` returns three production sites. ⭐ The record's conclusion survives for a different reason than the one it gave — the signed `not_after` is enforced first at the mTLS handshake — and the direction that argument does not cover is routed to `.3.4.3.1.1.1` rather than waved. Standing population **0 of 104**.
+
 ## 2026-09-18 — A replay over policed history measures deterrence, not cost (`SIGNOFF-REPAIR.11.18.2`)
 
 🔴 **Two calibrations of the same candidate returned 0 of 559 commits and only one of them meant anything.**

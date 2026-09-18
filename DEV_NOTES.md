@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-18 — Classify the extra flags before choosing the tighter rule
+
+- Six candidate rules, priced against one population of 103, produced a tidy ladder: 65.0%, 59.2%, 37.9%, 14.6%, 9.7%, 1.0%. The temptation is to read the ladder and pick a number that feels affordable.
+- ⛔ **The ladder is a population, not a defect count** — the warning this project already applies to a raw `grep` hit count, arriving one level up, at the rule-selection step. Two candidates differing by nine flags are not "nine worse"; you have to know what the nine ARE.
+- ⭐ **Classifying them decided the rule, and reversed the reading.** Of the 9.7% candidate's extra nine over the shipped one, **six were false positives of a single kind** — a claim written inside an acceptance-checklist box, discharged by a command in a SIBLING box of the same record. That is not a loophole; it is how an acceptance record is written, and the ADDRESSED box genuinely evidences what the ROOT CAUSE box asserts. The final clause of the shipped rule exists for exactly those six.
+- ⚠️ **And the obvious axis was the wrong one.** Proximity — "the census must be near the claim" — reads like the fix and is not: the 34-line incidental case the rule was aimed at is one that a within-3-lines rule ACCEPTS, while genuine discharges 5 lines away get rejected. The mechanism was never distance; it was that a verification box is not a census for a prose claim.
+- ⭐ **A rule aimed at the mechanism is cheaper than one aimed at the symptom**, and here the difference is measurable: 1.0% against 14.6% for the best proximity variant, with strictly better classification at both ends.
+- 🔴 **The by-product is the real argument for the repair.** The tightened gate's first catch was a false claim inside a signed-off leaf — a sentence that had passed review, passed the gate, and was wrong. No percentage makes that case as well as one instance does.
+- promotion: DECLINED as a note — the mechanism is `docs/knowledge/a-control-is-calibrated-against-the-renderer.md`'s thesis (a control calibrated against a proxy for the thing it checks), and `.11.20.2`'s criterion makes a second instance an absorb-or-decline rather than a fork. Nothing is added to the note because the leaf found no new mechanism.
+
 ## 2026-09-18 — A note that advertises a question owes every answer to it
 
 - `.11.20.2` set a criterion for routing a recurring lesson: **absorb when the host note's THESIS is your rule; extract when your rule is a TOOL the host merely uses.** One leaf later it met a case that is neither — the same activity as the host, with a different failure mode.

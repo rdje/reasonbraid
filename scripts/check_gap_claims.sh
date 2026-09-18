@@ -98,6 +98,29 @@ CENSUS_RE='git grep|grep -r|grep -c|grep -l|grep -o|grep -n|grep -w|git ls-files
 #   the last one is read as fenced, no heading is recognised, and every later claim silently inherits
 #   the last real section's censuses — an instrument quietly widening its own discharge. It refuses
 #   and names the file instead (`docs/knowledge/an-instrument-must-explain-its-own-failure.md`).
+# ⛔⛔ A VERIFICATION BOX IS NOT A CENSUS FOR A PROSE CLAIM (`SIGNOFF-REPAIR.11.2.5`).
+#   `TASK-ACCEPTANCE` requires tool output in every `- [x]` box, so EVERY closed leaf names
+#   `cargo` or `make` by construction — and a section-wide discharge test made this gate INERT
+#   for exactly the leaves that are complete. Proved by controlled experiment before it was
+#   believed: two sections carrying the IDENTICAL claim line and differing in one variable,
+#   whether a ticked box sat beside it; the one with the box was not flagged.
+# ⭐ THE RULE, narrower than "be near the claim" and measured against all four alternatives: a
+#   census discharges a claim when it is anywhere in the same section PROVIDED it is not inside
+#   a checklist box — UNLESS the claim is itself inside one, because an acceptance record is one
+#   unit and the ADDRESSED box legitimately evidences what the ROOT CAUSE box asserts.
+# ⭐ IT WAS WRITTEN WITH A THIRD CLAUSE, `own[j]==own[i]` ("or the census is in the claim OWN
+#   bullet"), and the FALSIFICATION SWEEP DELETED IT. Removing it changed no arm and no corpus
+#   number, because it is provably subsumed: same bullet implies same section AND
+#   `isbox[j]==isbox[i]`, so the second clause reduces to `!isbox[i] || isbox[i]` — always true.
+#   ⛔ Kept as a note rather than as code: a redundant clause in a predicate is a clause that can
+#   later be edited into a difference nobody measured.
+# ⛔ That last clause is not a softening; it is what keeps the rule honest. Without it the rule
+#   flags 10 of 103 standing claims and 6 of the 10 are that normal structure — a false-positive
+#   class. With it: 1 of 103 (1.0%), against the 87% and 93% that got two candidate gates
+#   rejected for teaching bypass. Proximity alone was measured and rejected: same-bullet 59.2%,
+#   within-3-lines 14.6%, same-line 65.0%.
+# ⚠️ A claim can now be discharged only by a command a reader can see is ABOUT it. The honest
+#   limit is unchanged and still the archetype: it verifies a census was RECORDED, not RUN.
 CLASSIFY_AWK='
   FNR==NR { added[$1+0]=1; next }
   { line[FNR]=$0; low[FNR]=tolower($0) }
@@ -109,10 +132,26 @@ CLASSIFY_AWK='
       sec[i]=cur
     }
     if(fence){ printf "UNBALANCED\t0\tfenced blocks do not close — section boundaries are unknowable\n"; exit }
-    for(i=1;i<=FNR;i++){ if(low[i] ~ CENSUS_RE) has[sec[i]]=1 }
+    # bullet ownership: a bullet, heading or table row owns its continuation
+    # lines and any fenced block abutting it. See the header for why.
+    fence = 0; cur = 0
     for(i=1;i<=FNR;i++){
-      if(added[i] && low[i] ~ CLAIM_RE && !has[sec[i]])
-        printf "BLOCKED\t%d\t%s\n", i, substr(line[i],1,160)
+      t=line[i]; sub(/^[ \t]*/,"",t)
+      if(t ~ /^(```|~~~)/){ fence = !fence; own[i]=cur; continue }
+      if(fence){ own[i]=cur; continue }
+      if(t ~ /^([-*+] |[0-9]+\. |#+ |\|)/) cur=i
+      own[i]=cur
+    }
+    for(i=1;i<=FNR;i++){ t=line[own[i]]; sub(/^[ \t]*/,"",t); isbox[i] = (t ~ /^- \[[ x]\] /) }
+    nc=0
+    for(i=1;i<=FNR;i++){ if(low[i] ~ CENSUS_RE) cens[++nc]=i }
+    for(i=1;i<=FNR;i++){
+      if(!(added[i] && low[i] ~ CLAIM_RE)) continue
+      ok=0
+      for(k=1;k<=nc;k++){ j=cens[k]
+        if(sec[j]==sec[i] && (!isbox[j] || isbox[i])){ ok=1; break }
+      }
+      if(!ok) printf "BLOCKED\t%d\t%s\n", i, substr(line[i],1,160)
     }
   }'
 
@@ -223,6 +262,35 @@ if [ "$mode" = "--self-test" ]; then
   #    Measured: this fixture classifies identically before and after the fix.
   printf '### `.9` — a claim with no census of its own\n- context, and a command belonging to something else:\n\n```bash\n# an explanatory comment\ncargo test -p some-crate\n```\n\n- **THE GAP** — nothing reads the `@sample` annotation.\n' > "$work/limit.md"; printf '9\n' > "$work/limit.nums"
   [ -z "$(classify "$work/limit.nums" "$work/limit.md")" ] && arm ok "DECLARED LIMIT: a foreign command in the same section still discharges" || arm bad "the declared limit changed — re-read the archetype before editing this"
+  # ---- `SIGNOFF-REPAIR.11.2.5`: the two-probe control ---------------------
+  # 🔴 THE DEFECT, as the controlled experiment that found it. Two sections,
+  #   the IDENTICAL claim line, ONE variable: whether a ticked acceptance box
+  #   sits beside it. Before the repair probe A was NOT flagged, so a leaf
+  #   discharged its own gap claims merely by having been verified.
+  printf '### `.9` — a leaf with a verification box\n- ⚠️ The two copies must agree about things nothing checks.\n- [x] **ADDRESSED (verified)** — `cargo clippy -p x --all-targets` rc=0.\n' > "$work/probeA.md"; printf '2\n3\n' > "$work/probeA.nums"
+  classify "$work/probeA.nums" "$work/probeA.md" | grep -q '^BLOCKED' && arm ok "PROBE A — a ticked box does NOT discharge a prose claim" || arm bad "probe A must be flagged: a verification box is not a census for a prose claim"
+  # and probe B, the same claim with nothing beside it, is flagged as it always was
+  printf '### `.9` — a leaf with nothing beside the claim\n- ⚠️ The two copies must agree about things nothing checks.\n' > "$work/probeB.md"; printf '2\n' > "$work/probeB.nums"
+  classify "$work/probeB.nums" "$work/probeB.md" | grep -q '^BLOCKED' && arm ok "PROBE B — the bare claim is still flagged" || arm bad "probe B must be flagged"
+  # ⚠️ NEGATIVE 1, LABELLED: this arm passes under every wrong rule the
+  #   falsification sweep tried, and it is kept anyway. It guards a property the
+  #   simplified predicate DERIVES rather than states — a census in the claim own
+  #   bullet is in the same section and shares its box-ness, so it always
+  #   discharges. The arm is what would notice if a future edit made ownership
+  #   load-bearing again.
+  printf '### `.9` — the census in the same bullet\n- ⚠️ nothing checks the `@sample` annotation — `git grep -c @sample -- src` returns 0.\n' > "$work/same.md"; printf '2\n' > "$work/same.nums"
+  [ -z "$(classify "$work/same.nums" "$work/same.md")" ] && arm ok "NEGATIVE — a census in the claim own bullet discharges it" || arm bad "a census in the same bullet must discharge"
+  # ⭐ NEGATIVE 2: a census in ordinary prose elsewhere in the section still
+  #   discharges. Only BOXES are excluded, not distance.
+  printf '### `.9` — the census in a sibling prose bullet\n- **CENSUS** — `git grep -c @sample -- src scripts` returns 0 over 2 paths.\n- ⚠️ nothing checks the `@sample` annotation.\n' > "$work/prose.md"; printf '3\n' > "$work/prose.nums"
+  [ -z "$(classify "$work/prose.nums" "$work/prose.md")" ] && arm ok "NEGATIVE — a census in a sibling PROSE bullet still discharges" || arm bad "only boxes are excluded, not distance"
+  # ⭐ NEGATIVE 3, and without it the repair breaks every closed leaf: a claim
+  #   made INSIDE a box is discharged by a sibling box, because an acceptance
+  #   record is one unit. Measured: dropping this clause flags 10 of 103
+  #   standing claims instead of 1, and 6 of the 10 are this normal structure.
+  printf '### `.9` — a claim inside an acceptance record\n- [x] **ROOT CAUSE (WHY + WHERE)** — nothing enforces the stored value.\n- [x] **ADDRESSED (verified)** — `cargo test -p x` rc=0, 12 passed.\n' > "$work/inbox.md"; printf '2\n3\n' > "$work/inbox.nums"
+  [ -z "$(classify "$work/inbox.nums" "$work/inbox.md")" ] && arm ok "NEGATIVE — a claim inside a box is discharged by a sibling box" || arm bad "an acceptance record is one unit; a sibling box must discharge a boxed claim"
+
   # ---- `SIGNOFF-REPAIR.11.18.1`: one filter, and it reaches nested artifacts ----
   # ⭐ These arms run `governed_filter` ITSELF — the single function both the advisory and the
   #   blocker pipe through — so they cover both callers by construction. An arm that re-spelled

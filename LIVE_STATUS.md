@@ -5,6 +5,14 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **A LEAF DISCHARGED ITS OWN GAP CLAIMS BY HAVING BEEN VERIFIED (`.11.2.5`, REPAIR-0248).**
+
+🔴 **`GAP-CLAIM-CENSUS` asked "does this section contain a command?", and `TASK-ACCEPTANCE` puts one in every closed leaf by construction: 103 claim lines, 0 undischarged — inert everywhere.**
+
+- ✅ **Six discharge tests priced against the same 103** (65.0%, 59.2%, 37.9%, 14.6%, 9.7%, **1.0%**). The 9.7% variant's extra nine were classified and **6 were false positives** — a claim inside a box discharged by a sibling box. **1 of 200 commits, 1 true positive, 0 false positives.**
+- ⭐ The predicate shipped with a redundant clause and the falsification sweep deleted it — found by a degenerate arm that should have failed and did not.
+- 🔴 **Its first real catch was a false claim inside a signed-off leaf:** `.3.4.3.1.1`'s *"nothing enforces the stored value"*, against three production sites. The conclusion survives for a different reason (the mTLS handshake enforces the signed expiry first); the direction that argument misses is routed to `.3.4.3.1.1.1`. Standing population **0 of 104**.
+
 ✅ **A REPLAY OVER POLICED HISTORY MEASURES DETERRENCE, NOT COST (`.11.18.2`, REPAIR-0247).**
 
 🔴 **Two calibrations of the same candidate returned 0 of 559 and only one meant anything.** Once a rule is enforced, every commit that landed had already been edited until it passed.

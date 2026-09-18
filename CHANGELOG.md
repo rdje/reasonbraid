@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-18 — A frontier row pointed at a leaf closed forty commits earlier (`SIGNOFF-REPAIR.11.22`)
+
+🔴 **Row 1 of the frontier — the one row a fresh session resumes from — named `.7.4.5`, which has been `done` since REPAIR-0216.** It was found only by opening the leaf in order to work on it.
+
+- **This is the second firing in two days.** REPAIR-0253 reconciled **five** rows whose status column said `pending` while their own leaves said `done` (`.11.18`, `.11.17`, `.11.14.3.7`, `.11.14.3.5`, `.11.4.7.2`). Two hand reconciliations is a population, not an anecdote.
+- **Censused rather than asserted:** `git grep -lni "frontier" -- scripts .githooks knowledge-map` returns **10** scripts, and **0** relate a row's status column to its leaf's `Status:` line. ⭐ Two apparent hits were false positives of a loose key — `check_task_status.sh` matched its own self-test FIXTURES, `bootstrap.sh` matched a heredoc it WRITES — a key defect of exactly the shape repaired one commit earlier in `.11.8.1`.
+- ⛔ **Three gates look adjacent and every one of them correctly misses it.** `INDEX-FRONTIER` compares `docs/TASK_TREE.md`'s Frontier column to the tree's own row 1 — both named `.7.4.5`, and two files agreeing is precisely what it asks for. `TASK-STATUS` requires one `Status:` line per leaf and never reads a table. `TABLE-ARITY-RATCHET` reads cell counts, never cell meaning. The defect lives in the seam between three checks each doing its job.
+- ⚠️ **The rule is not "no closed leaves in the table".** Rows `1a11`–`1a18` deliberately carry `done` leaves as history and should. What is wanted is that a row's status column AGREES with its leaf's own `Status:`, and that row 1 names a `pending` leaf.
+- ✅ Owned by `.11.22` with its acceptance: census the whole table before proposing a rule (`.11.6`), permit the `done`-as-history case explicitly, and if a gate is registered, see it RED against both a stale `pending` row and a row-1 pointer at a closed leaf. The pointer itself is corrected to `.11.2.4`, the tree's true next-ranked pending leaf.
+
 ## 2026-09-18 — Unformatted Rust reached `main`, because nothing checked per commit (`SIGNOFF-REPAIR.11.21`)
 
 🔴 **`crates/reasonbraid-server/src/git.rs` sat on `main` failing `cargo fmt --all -- --check` at two sites, and was found only because a LATER leaf happened to run the check while verifying a file it had not touched.**

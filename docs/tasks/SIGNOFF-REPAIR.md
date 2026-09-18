@@ -3962,6 +3962,31 @@ with `panicked at crates/reasonbraid-server/src/ca.rs:142:75` in the same run �
 - Status: `done`.
 - Verification / commit: `REASONBRAID-REPAIR-0255`.
 
+#### SIGNOFF-REPAIR.11.22 — A frontier row's status is a second copy of a leaf's Status line, and nothing relates them
+
+- Opened: `pending` by the frontier correction that followed REPAIR-0256 (§15: the symptom was fixed by hand, so the gap is owned rather than left to recur).
+- 🔴 **THE GAP, and it has already fired TWICE in two days.** A frontier row carries a leaf id and a status column. The leaf carries its own `- Status:` line. **0 of the 10 tracked scripts that mention a frontier relate the two**, censused below rather than asserted.
+- **THE CENSUS, by command.** `git grep -lni "frontier" -- scripts .githooks knowledge-map` returns **10** scripts. Classifying each by whether it is row-aware AND reads a leaf `Status:` line leaves **2 candidates**, and hand-checking both — because a loose key is what `.11.8.1` had just been about — shows **neither relates them**:
+
+  ```bash
+  git grep -lni "frontier" -- scripts .githooks knowledge-map     # -> 10 scripts
+  grep -n "Order | Leaf" scripts/check_task_status.sh             # -> 0: it never reads the table
+  grep -n "cat >" scripts/bootstrap.sh                            # -> 4: a template writer, not a check
+  ```
+
+  `check_task_status.sh` matched only because its own SELF-TEST FIXTURES contain the strings `- Status: \`pending\`` and `- Status: \`done\`` (lines 58–59); it counts `- Status:` lines per leaf and reads no table. `bootstrap.sh` matched because it WRITES `Status:` inside a heredoc when seeding a first tree. ⭐ Two false positives out of two candidates, from a key I wrote one commit after repairing a key defect of exactly this shape — recorded because it is the finding, not an aside.
+  - REPAIR-0253 found **five** rows saying `pending` whose leaves said `done` (`.11.18`, `.11.17`, `.11.14.3.7`, `.11.14.3.5`, `.11.4.7.2`) and reconciled them by hand;
+  - two commits later, row 1 — the frontier ITSELF, the single row a reader acts on — named `.7.4.5`, which has been `done` since REPAIR-0216. Discovered only by opening the leaf to work on it.
+- ⛔ **Why the three gates that look adjacent all miss it, stated per gate so no one re-checks them:**
+  - `INDEX-FRONTIER` compares `docs/TASK_TREE.md`'s Frontier column to the TREE's row 1. Both named `.7.4.5`; two files agreeing is exactly what it asks for, and it is silent when they agree about a closed leaf.
+  - `TASK-STATUS` requires exactly ONE `- Status:` line per leaf. It reads leaves, never tables.
+  - `TABLE-ARITY-RATCHET` reads cell COUNTS, never cell meaning.
+  ⭐ So the defect lives precisely in the seam between three checks that each do their own job correctly — the `.7.2.9` shape, one layer up.
+- ⚠️ **The dangerous direction is row 1 specifically.** A stale `pending` on a historical row costs a reader a moment; a stale row 1 sends the next session to a leaf that closed, which is how REPAIR-0256's successor began. ⛔ **And the inverse must not be gated away:** a row deliberately naming a `done` leaf as HISTORY is correct and common — rows `1a11`–`1a18` are all `done`. The rule wanted is about row 1 and about the status COLUMN's agreement, not about the presence of closed leaves in the table.
+- Owns: deciding the exact rule (most likely: every row's status column equals its leaf's own `Status:`, and row 1's leaf is `pending`), measuring the corpus before proposing it (`.11.6`), and either registering a check or stating why prose is enough.
+- Acceptance: a census of the whole frontier table naming every row whose status column disagrees with its leaf, run before any rule is written; the rule stated with the `done`-as-history case explicitly permitted; if registered, the gate seen RED against both a stale `pending` row and a row-1 pointer at a closed leaf, and its cost measured against the enforcer's ~12.6 s; and the two hand reconciliations above named as the founding population rather than a remembered anecdote.
+- Verification / commit: pending.
+
 #### SIGNOFF-REPAIR.11.21 — Unformatted Rust reached `main`, because nothing checks formatting per commit
 
 - Opened: `pending` by `SIGNOFF-REPAIR.7.4.4` (REPAIR-0254), whose own `cargo fmt --all -- --check` failed in a file it had not touched.
@@ -7158,7 +7183,7 @@ git grep -nI -E "never run|licen[cs]e decision|license decision" -- \
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
-| 1 | `SIGNOFF-REPAIR.7.4.5` | `pending` | two copies of the site authorization skeleton — the next unclaimed child of `.7.4`, whose siblings `.7.4.3` and `.7.4.4` are now closed |
+| 1 | `SIGNOFF-REPAIR.11.2.4` | `pending` | the visibility gate enumerates four sentence shapes, every one anchored on the full word `repositor(y\|ies)`, so two live instances of the superseded private-repository claim sit in the corpus invisibly — written `the repo is private`. ⚠️ Both are correct HISTORY, which is exactly why they survived; the risk the gate exists for is a NEW sentence. ⭐ The gate proved PRECISE by refusing the leaf that documented it. ⛔ **Corrected by REPAIR-0256's successor:** row 1 briefly named `.7.4.5`, which has been `done` since REPAIR-0216 — a frontier pointer at a closed leaf, the drift `INDEX-FRONTIER` guards between the two FILES and cannot see inside one |
 | 1a18 | `SIGNOFF-REPAIR.11.21` | `done` | ✅ REPAIR-0256 — **unformatted Rust reached `main` and stayed, because nothing looked per commit.** `git.rs` failed `cargo fmt --check` at two sites from REPAIR-0251/0252, found only when a later leaf ran the check on a file it had not touched. ⭐ A POLICY GAP: the enforcer's 18 checks had no formatting check and `cargo fmt --check` sat only in the pre-push list, with pushes batched at ~300 commits. ✅ Measured before proposing (`.11.6`): **0.66 s against a 12.6 s enforcer**, about 5 %. ⛔ Leaving it pre-push REJECTED on evidence — that is the arrangement that let it ship, and a check running once per ~300 commits cannot say which commit broke it. ✅ `RUST-FORMATTING` registered as doctrine 16 of 19, seen RED against injected unformatted code and green again. 🔴 The registry's own guard refused my first entry: backticks in a bash-quoted description are command substitution the driver would EXECUTE |
 | 1a17 | `SIGNOFF-REPAIR.11.8.1` | `done` | ✅ REPAIR-0255 — **a key that was too loose and too TIGHT in one expression.** `stem()` DELETED path parameters, so `/v1/snapshots/{id}` collapsed onto `/v1/snapshots` and the item route was counted *described* by the SUBMIT route's contract line (`/v1/calls` credited by `GET /v1/calls/{call_id}`, re-derived by hand), while a mid-path parameter produced a stem no book writes and three documented routes read *absent*. **21 of 104 misclassified.** ✅ Corrected: **104 routes — 49 described, 3 mentioned, 52 absent**; and at `.11.8`'s OWN commit `0fbb85f`, **30 / 3 / 70** against its published **22 / 1 / 80**. ⛔ No left match edge, measured: the hazard is 0 and it would cost `$RB_URL/v1/admin/grants` — so `tail_collisions()` prints the count every run instead. 🔴 **The old self-test ARM ASSERTED THE DEFECT.** Falsified five ways |
 | 1a15 | `SIGNOFF-REPAIR.7.4.4` | `done` | ✅ REPAIR-0254 — **one verb carried two acts that do not share an authority.** A snapshot two tenants cite is ONE row, and `.11.14.1`'s binding to a *citing* tenant does not separate two citers, so A's delete stamped B's receipt with A's reason — reproduced RED with `"deletion_reason":"tenant A no longer relies on this"` on B's read. ✅ `DELETE` now withdraws the caller's citation; tombstoning a shared row is a site act under the existing `evidence_expire` grant. ⛔ *Refuse when another tenant cites* and *tombstone on the last withdrawal* both REJECTED — each leaks whether a stranger cites the row. ✅ The withdrawal is recorded, not deleted (§12.9), and re-citing restores it; the tombstone stays irreversible behind an audited operator. ✅ Falsified four ways, each red by name |
@@ -7327,6 +7352,7 @@ The director resolved the visibility question: public repository visibility is i
 - `SIGNOFF-REPAIR.7.4.4`: `REASONBRAID-REPAIR-0254 (leaf SIGNOFF-REPAIR.7.4.4): a citation is withdrawn by its tenant, a shared row is tombstoned by the site`.
 - `SIGNOFF-REPAIR.11.8.1`: `REASONBRAID-REPAIR-0255 (leaf SIGNOFF-REPAIR.11.8.1): a route key that was too loose and too tight in one expression`.
 - `SIGNOFF-REPAIR.11.21`: `REASONBRAID-REPAIR-0256 (leaf SIGNOFF-REPAIR.11.21): unformatted Rust reached main, because nothing checked per commit`.
+- `SIGNOFF-REPAIR.11.2.4` / `.11.22`: `REASONBRAID-DOC-0049 (leaf SIGNOFF-REPAIR.11.22): a frontier row pointed at a leaf closed forty commits earlier`.
 - `SIGNOFF-REPAIR.11.12`: `REASONBRAID-REPAIR-0211 (leaf SIGNOFF-REPAIR.11.12): every configuration refusal happens before the first mutation`.
 - `SIGNOFF-REPAIR.7.3.5`: `REASONBRAID-REPAIR-0210 (leaf SIGNOFF-REPAIR.7.3.5): the R3 pack enforces the deny-policies it advertises`.
 - `SIGNOFF-REPAIR.7.2.6`: `REASONBRAID-REPAIR-0209 (leaf SIGNOFF-REPAIR.7.2.6): a credential stops at the origin the caller named`.

@@ -5,6 +5,14 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+⚠️ **A FRONTIER ROW POINTED AT A LEAF CLOSED FORTY COMMITS EARLIER (`.11.22`, DOC-0049).**
+
+🔴 **Row 1 of the frontier — the single row a fresh session acts on — named `.7.4.5`, `done` since REPAIR-0216.** Found only by opening the leaf to work on it. Two days earlier REPAIR-0253 had reconciled **five** rows whose status column said `pending` while their leaves said `done`.
+
+- **Censused, not asserted:** 10 tracked scripts mention a frontier and **0** relate a row's status column to its leaf's `Status:`. Both apparent hits were false positives of a loose key (a self-test fixture; a heredoc) — the `.11.8.1` shape, one commit later.
+- ⛔ Three gates look adjacent and all miss it: `INDEX-FRONTIER` compares the two FILES to each other (both agreed, about a closed leaf); `TASK-STATUS` reads leaves, never tables; `TABLE-ARITY-RATCHET` reads cell counts, never cell meaning. The defect is in the seam between three checks each doing its own job correctly.
+- ⚠️ A row deliberately naming a `done` leaf as HISTORY is correct and common, so the rule wanted is about row 1 and about the status column's AGREEMENT — not about closed leaves appearing in the table. Owned, measured and decided by `.11.22`; the pointer itself is corrected to `.11.2.4`.
+
 ✅ **UNFORMATTED RUST REACHED `main`, BECAUSE NOTHING CHECKED PER COMMIT (`.11.21`, REPAIR-0256).**
 
 🔴 **`crates/reasonbraid-server/src/git.rs` failed `cargo fmt --all -- --check` at two sites from REPAIR-0251/0252** — found only because a LATER leaf happened to run the check while verifying a file it had not touched.

@@ -16,8 +16,19 @@ sweep keys was written down.
 
 So the rule is not new and the checker is not wrong. What was missing is a
 TRIGGER at commit time, and it needs no database: every foreign key this corpus
-declares is inline in a `CREATE TABLE`, so the graph is readable from the
-migrations.
+declares is readable from the migrations.
+
+⛔ THAT SENTENCE ONCE READ "every foreign key this corpus declares is INLINE in a
+`CREATE TABLE`", AND `migrations/0072` FALSIFIED IT (`SIGNOFF-REPAIR.7.1.2.2.1`).
+It wrote `ALTER TABLE routing_resolutions ADD COLUMN tenant_id TEXT REFERENCES
+tenants (tenant_id)` — a column-level reference on an ALTER, matched neither by
+the `CREATE TABLE` walk nor by the `ADD CONSTRAINT … FOREIGN KEY` refusal. The
+edge was invisible to BOTH, so this gate reported `0 refused` while twenty-two
+plans named `tenants` without its two new children and twenty suites could not
+start. `ADD COLUMN … REFERENCES` is now modelled; `ADD CONSTRAINT` still refuses.
+⭐ The claim had been calibrated on the corpus that existed, with no arm that
+fails when the corpus grows a shape —
+`docs/knowledge/calibrate-over-the-history-that-contains-the-instance.md`.
 
     python3 -B scripts/check_fixture_plan_children.py            # the gate
     python3 -B scripts/check_fixture_plan_children.py --json     # the census
@@ -37,7 +48,12 @@ silently skips what it cannot read is the failure it exists to catch:
 
 ⛔ Numbers move with the tree; `--json` re-derives them. At the commit that added
 this gate: 45 inline foreign keys, 0 via ALTER, 16 parent tables, 29 declared
-plans, 0 refused.
+plans, 0 refused. At `SIGNOFF-REPAIR.7.1.2.2.1`, which taught it the ALTER
+column: 45 inline, **3 added-column**, 0 via ADD CONSTRAINT, 16 parents, 29
+plans, 0 refused after a 22-plan sweep. ⚠️ One of those three edges dates from
+`migrations/0060` — `node_enrollment_tokens.issued_under` →
+`authorization_records` — so the blind spot predated the migration that exposed
+it by twelve, and every plan reaching that parent happened to order it correctly.
 """
 
 from __future__ import annotations
@@ -63,6 +79,17 @@ REFERENCES = re.compile(r"REFERENCES\s+(\w+)")
 ALTER_FK = re.compile(
     r"ALTER TABLE\s+\w+[^;]*?ADD\s+CONSTRAINT[^;]*?FOREIGN\s+KEY", re.S | re.I
 )
+# ⛔ THE PRODUCTION THAT DEFEATED THIS GATE (`SIGNOFF-REPAIR.7.1.2.2.1`).
+# `migrations/0072` writes `ALTER TABLE routing_resolutions ADD COLUMN tenant_id
+# TEXT REFERENCES tenants (tenant_id)` — a COLUMN-level reference on an ALTER,
+# which `CREATE TABLE` parsing cannot see and `ALTER_FK` does not match either,
+# because that pattern wants `ADD CONSTRAINT … FOREIGN KEY`. So the edge was
+# neither modelled nor refused, and twenty-one suites could not start while this
+# gate reported `0 refused`.
+ALTER_STATEMENT = re.compile(r"ALTER TABLE\s+(?:ONLY\s+)?(\w+)([^;]*);", re.S | re.I)
+ADD_COLUMN_REF = re.compile(
+    r"ADD COLUMN\s+\w+[^,;]*?REFERENCES\s+(\w+)", re.S | re.I
+)
 CALL_SITE = re.compile(r"delete_tables\(")
 PLAN = re.compile(r"delete_tables\(\s*&?\w+\s*,\s*&\[(.*?)\]\s*,?\s*\)", re.S)
 QUOTED = re.compile(r'"([a-z_]+)"')
@@ -73,10 +100,16 @@ def strip_sql_comments(text: str) -> str:
     return "\n".join(line.split("--", 1)[0] for line in text.splitlines())
 
 
-def fk_graph(migrations: dict[str, str]) -> tuple[dict[str, set[str]], int]:
-    """parent -> {children}, plus the inline edge count."""
+def fk_graph(migrations: dict[str, str]) -> tuple[dict[str, set[str]], int, int]:
+    """parent -> {children}, plus the inline and the added-column edge counts.
+
+    ⭐ The two counts stay APART on purpose. They are the gate's own evidence
+    that it can see both shapes, and a single total would hide the added-column
+    edges going back to zero the way they silently were.
+    """
     children: dict[str, set[str]] = {}
-    edges = 0
+    inline = 0
+    added = 0
     for _, raw in sorted(migrations.items()):
         body = strip_sql_comments(raw)
         for match in CREATE_TABLE.finditer(body):
@@ -86,8 +119,16 @@ def fk_graph(migrations: dict[str, str]) -> tuple[dict[str, set[str]], int]:
                 if parent == child:
                     continue  # a self-reference orders nothing between tables
                 children.setdefault(parent, set()).add(child)
-                edges += 1
-    return children, edges
+                inline += 1
+        for statement in ALTER_STATEMENT.finditer(body):
+            child, rest = statement.group(1), statement.group(2)
+            for ref in ADD_COLUMN_REF.finditer(rest):
+                parent = ref.group(1)
+                if parent == child:
+                    continue  # a self-reference orders nothing between tables
+                children.setdefault(parent, set()).add(child)
+                added += 1
+    return children, inline, added
 
 
 def alter_added_keys(migrations: dict[str, str]) -> list[str]:
@@ -116,7 +157,7 @@ def parse_plans(sources: dict[str, str]) -> tuple[list[tuple[str, list[str]]], l
 
 def audit(migrations: dict[str, str], sources: dict[str, str]) -> dict:
     altered = alter_added_keys(migrations)
-    children, edges = fk_graph(migrations)
+    children, inline_edges, added_column_edges = fk_graph(migrations)
     plans, unreadable = parse_plans(sources)
     refused = []
     for path, tables in plans:
@@ -127,7 +168,8 @@ def audit(migrations: dict[str, str], sources: dict[str, str]) -> dict:
         if missing:
             refused.append({"plan": path, "missing": missing})
     return {
-        "inline_edges": edges,
+        "inline_edges": inline_edges,
+        "added_column_edges": added_column_edges,
         "alter_added": altered,
         "parents": len(children),
         "plans": len(plans),
@@ -214,7 +256,8 @@ def self_test() -> int:
     ok = audit(good_migrations, complete)
     assert ok["refused"] == [], ok
     assert ok["plans"] == 1 and ok["inline_edges"] == 1, ok
-    checks += 2
+    assert ok["added_column_edges"] == 0, ok
+    checks += 3
     bad = audit(good_migrations, incomplete)
     assert bad["refused"] == [{"plan": "t/a.rs", "missing": ["notes"]}], bad
     checks += 1
@@ -238,17 +281,49 @@ def self_test() -> int:
     assert audit(altered, complete)["alter_added"] == ["migrations/0002_y.sql"]
     checks += 1
 
-    # 5. an unreadable call site is an error, not a skip.
+    # 5. ⭐ THE ARM THAT WOULD HAVE CAUGHT `migrations/0072`, and it fails
+    #    against the parser this gate shipped with: a column-level `REFERENCES`
+    #    on an `ALTER TABLE` is a real edge, not an unmodelled one. It must be
+    #    MODELLED (so the incomplete plan is refused) and must NOT appear in
+    #    `alter_added` (which is the refusal for `ADD CONSTRAINT … FOREIGN KEY`,
+    #    a shape still outside the model).
+    added_column = dict(good_migrations)
+    added_column["migrations/0002_z.sql"] = (
+        "ALTER TABLE notes ADD COLUMN owner TEXT REFERENCES tenants (tenant_id);\n"
+    )
+    grown = audit(added_column, incomplete)
+    assert grown["alter_added"] == [], grown
+    assert grown["added_column_edges"] == 1, grown
+    assert grown["refused"] == [{"plan": "t/a.rs", "missing": ["notes"]}], grown
+    checks += 3
+
+    # 6. the same edge into a parent the plan does NOT already reach — the exact
+    #    `0072` shape, where `routing_recommendations` gained its FIRST key to
+    #    `tenants` and no plan had ever needed to name it.
+    fresh = {
+        "migrations/0001_x.sql": "CREATE TABLE tenants (\n    tenant_id TEXT PRIMARY KEY\n);\n"
+        "CREATE TABLE journal (\n    row_id TEXT PRIMARY KEY\n);\n",
+        "migrations/0002_y.sql": "ALTER TABLE journal ADD COLUMN tenant_id TEXT "
+        "REFERENCES tenants (tenant_id);\n",
+    }
+    late = audit(fresh, {"t/a.rs": 'delete_tables(&p, &["tenants"]).await;'})
+    assert late["refused"] == [{"plan": "t/a.rs", "missing": ["journal"]}], late
+    assert audit(fresh, {"t/a.rs": 'delete_tables(&p, &["journal", "tenants"]).await;'})[
+        "refused"
+    ] == [], "the swept plan passes"
+    checks += 2
+
+    # 7. an unreadable call site is an error, not a skip.
     odd = {"t/a.rs": "delete_tables(&pool, PLAN_CONST).await;"}
     assert audit(good_migrations, odd)["unreadable"], "an unreadable site must be named"
     checks += 1
 
-    # 6. the two excluded files are excluded by path, not by luck.
+    # 8. the two excluded files are excluded by path, not by luck.
     excluded = {p: 'delete_tables(&pool, PLAN_CONST).await;' for p in EXCLUDED}
     assert audit(good_migrations, excluded)["unreadable"] == [], EXCLUDED
     checks += 1
 
-    # 7. a self-referencing key orders nothing and must not be demanded.
+    # 9. a self-referencing key orders nothing and must not be demanded.
     selfref = {
         "migrations/0001_x.sql": (
             "CREATE TABLE nodes (\n"
@@ -258,7 +333,15 @@ def self_test() -> int:
         )
     }
     assert audit(selfref, {"t/a.rs": 'delete_tables(&p, &["nodes"]).await;'})["refused"] == []
-    checks += 1
+    selfref_altered = {
+        "migrations/0001_x.sql": "CREATE TABLE nodes (\n    node_id TEXT PRIMARY KEY\n);\n",
+        "migrations/0002_y.sql": "ALTER TABLE nodes ADD COLUMN parent TEXT "
+        "REFERENCES nodes (node_id);\n",
+    }
+    late_selfref = audit(selfref_altered, {"t/a.rs": 'delete_tables(&p, &["nodes"]).await;'})
+    assert late_selfref["refused"] == [], late_selfref
+    assert late_selfref["added_column_edges"] == 0, late_selfref
+    checks += 2
 
     print(f"check_fixture_plan_children --self-test: {checks} controls pass")
     return 0

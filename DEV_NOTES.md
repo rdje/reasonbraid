@@ -1,5 +1,16 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — An instrument that refuses what it cannot read has a blind spot the size of its model
+
+- I was about to write `ALTER TABLE policy_proposals ADD COLUMN tenant_id TEXT REFERENCES tenants (tenant_id)` and went looking for which test purge plans that new foreign key would break. I expected to find a handful to sweep.
+- 🔴 **I found twenty-two plans already broken, and twenty suites that could not start.** `administrative_effects` was `0 passed; 25 failed` on a clean tree at `HEAD`. Nobody had run it since `migrations/0072`.
+- ⛔ **The part worth keeping is not that a sweep was missed. It is that the doctrine gate written to catch missed sweeps was GREEN.** `check_fixture_plan_children.py` models `CREATE TABLE … REFERENCES` and REFUSES `ALTER TABLE … ADD CONSTRAINT … FOREIGN KEY` on the explicit reasoning that an edge it cannot read must stop the gate rather than be silently dropped. `0072` used a third shape — `ADD COLUMN … REFERENCES` — and fell between the model and the refusal.
+- ⭐ **So the design principle the gate states is right and its implementation did not achieve it.** "Refuse what you cannot read" only works if the refusal enumerates the readable shapes; this one enumerated *one* unreadable shape and assumed the rest were modelled. A refusal keyed to a specific syntax is not a refusal, it is a second model with the same blind spots.
+- 🔎 **The tell was sitting in `--json` and nothing read it.** `inline_edges` had not moved since the gate was written, through twelve migrations. A number that cannot move is not evidence; it is a constant with a plausible name. The repair reports `added_column_edges` as its own figure precisely so that a regression to zero is visible instead of being absorbed into a total.
+- ⚠️ **And I repeated the original mistake inside the repair.** My opening census of the affected plans globbed `crates/reasonbraid-server/tests/*.rs` and `crates/reasonbraid-mcp/src/*.rs`, because that is where I expected the problem, and reported 21. The repaired gate walks `git ls-files '*.rs'` and reported 22 — the extra one in the CLI crate. ⛔ The hand census and the original bad sweep failed the same way: each was keyed to where its author was already looking.
+- 🔎 **A third edge turned up that nobody was looking for.** `added_column_edges` is 3: `migrations/0060` added `node_enrollment_tokens.issued_under → authorization_records` in the same unmodelled shape, twelve migrations before the one that caused a visible failure. It broke nothing only because every plan reaching that parent happened to order its child first. The blind spot was not introduced by `0072`; it was merely paid for by it.
+- promotion: pending — *an instrument that refuses what it cannot read must enumerate the shapes it CAN read, or the refusal has a blind spot the same size as the model*, plus the corollary that a derived figure which never moves is the first thing to distrust.
+
 ## 2026-09-19 — Grep the mechanism, then check every site for a second belt
 
 - Having found that `rls::with_tenant_claim` enforces nothing under this repository's profile, the obvious next question is *how bad is it* — and the obvious wrong answer is "the RLS layer is broken".

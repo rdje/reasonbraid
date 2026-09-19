@@ -5,6 +5,17 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **TWENTY SUITES COULD NOT START, AND THE DOCTRINE GATE FOR EXACTLY THAT FAILURE WAS GREEN (`.7.1.2.2.1`, REPAIR-0277).**
+
+Measured on a clean tree at `8f32631`, before any repair: `administrative_effects` → **`0 passed; 25 failed`**, every one `MissingDependency { parent: "tenants", child: "public.routing_recommendations" }`. `check_fixture_plan_children.py` returned **rc=0** over the same tree.
+
+- 🔎 **One syntax is the whole root cause.** The gate models `CREATE TABLE … REFERENCES` and refuses `ALTER TABLE … ADD CONSTRAINT … FOREIGN KEY`. `migrations/0072` uses a third shape — `ADD COLUMN … REFERENCES` — invisible to the model AND to the refusal.
+- ⭐ **The gate's own header claimed *"every foreign key this corpus declares is inline in a `CREATE TABLE`"***. True when written; `0072` falsified it. A model calibrated on the corpus that existed, with no arm that fails when the corpus grows a shape.
+- 🔴 **The population is 22, not the 21 this leaf opened with** — the repaired gate walks every tracked `.rs` and found a CLI suite the hand census never looked at. ⛔ The opening census failed exactly as the original sweep did: keyed to where its author was already looking.
+- ⚠️ **`added_column_edges` is 3.** The third is `migrations/0060`'s, unmodelled for twelve migrations and harmless only by lucky ordering. The blind spot was not introduced by `0072`; it was paid for by it.
+- ✅ **VERIFIED:** the `0/25` suite is **25/0**; twenty-one further swept suites run, **0 failed anywhere**; `--self-test` 15 controls (was 8); gate rc=0; fmt rc=0; `make gate` green; 73 script unit tests ok. Falsified in situ and restored byte-identical; the arm carrying the real `0072` shape had to be run ISOLATED to be claimed.
+- ⚠️ **NOT a claim that `.7.1.2.2`'s repair was wrong** — the routing journal binding stands and its five swept plans were correctly swept. What was wrong is that nothing could enumerate the rest.
+
 🔴 **TWO POLICY-LIFECYCLE GATES WERE OPEN, AND NOTHING COULD HAVE OBSERVED THEM (`.6.1.5.1.1`, REPAIR-0276).**
 
 A foreign tenant registered a proposal against **another tenant's thread**, and recorded a **governance DECISION on another tenant's proposal** — citing a verdict from that tenant's thread, with herself as the sole electorate. Both returned 200 and were stored.

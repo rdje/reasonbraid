@@ -565,6 +565,7 @@ mod tests {
                 "cross_domain_receipts",
                 "mcp_listen_state",
                 "tenant_bootstrap_requests",
+                "routing_recommendations",
                 "tenants",
                 "idempotency",
                 "event_log",

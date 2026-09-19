@@ -8,12 +8,14 @@
 mod operator;
 mod registry;
 mod retention;
+mod workflows;
 
 pub use operator::{
     disable_boundary, disable_grant, inspect, issue_boundary, issue_grant, Collection,
 };
 pub use registry::{execute, RegistryCommand};
 pub use retention::{expire_evidence, tombstone_evidence};
+pub use workflows::register_profile;
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -131,6 +133,13 @@ pub enum Action {
     /// are due is a property of the SHARED row's `retention_class`, not of any
     /// one tenant's citation, so enforcing retention is a site act.
     EvidenceExpire,
+    /// Registering a workflow profile (`SIGNOFF-REPAIR.7.1.2.1`).
+    /// `workflow_profiles` is keyed `(profile_id, version)` with no tenant
+    /// column, `workflows::resolve` takes the HIGHEST version site-wide, and a
+    /// bare thread resolves `quick_advice` through it — so a registration
+    /// chooses the steps every tenant's next bare thread executes. The module
+    /// already called this "the operator's verb" and did not enforce it.
+    WorkflowRegister,
 }
 
 impl Action {
@@ -143,6 +152,7 @@ impl Action {
             Self::RegionPair => "region_pair",
             Self::RegionUnpair => "region_unpair",
             Self::EvidenceExpire => "evidence_expire",
+            Self::WorkflowRegister => "workflow_register",
         }
     }
 }

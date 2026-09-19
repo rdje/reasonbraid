@@ -138,8 +138,24 @@ pub async fn resolve(
 /// Register a custom profile (the operator's verb): the steps MUST pass
 /// the composition validation — the registry never stores an invalid
 /// profile.
+///
+/// 🔴 **"The operator's verb" was true in this sentence and false in the code
+/// until `SIGNOFF-REPAIR.7.1.2.1`.** The route reached here on tenant
+/// ENROLMENT, and because [`resolve`] takes the highest version of a
+/// `profile_id` site-wide with no `built_in` filter, appending a version under
+/// an existing id — one of the eight §13.1 built-ins included — chose the steps
+/// every other tenant's next bare thread executed. It is now reached only
+/// through [`crate::site_authority::register_profile`], which is why this takes
+/// a CONNECTION: the registration, its authorization and its audit record
+/// commit in one transaction or not at all.
+///
+/// ⚠️ Appending a version to an existing profile is deliberately still
+/// possible. The registry is versioned by design (`PRIMARY KEY (profile_id,
+/// version)`), and forbidding it would remove the feature rather than repair the
+/// authority — the defect was never that a profile can gain a version, only that
+/// anyone could give it one.
 pub async fn register(
-    pool: &PgPool,
+    conn: &mut sqlx::PgConnection,
     profile_id: &str,
     steps: &[String],
 ) -> Result<ResolvedProfile, ProfileError> {
@@ -148,7 +164,7 @@ pub async fn register(
         "SELECT COALESCE(MAX(version), 0) + 1 FROM workflow_profiles WHERE profile_id = $1",
     )
     .bind(profile_id)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await
     .map_err(|_| ProfileError::UnknownProfile(profile_id.to_owned()))?;
     sqlx::query(
@@ -158,7 +174,7 @@ pub async fn register(
     .bind(profile_id)
     .bind(version)
     .bind(serde_json::to_value(steps).expect("the steps serialize"))
-    .execute(pool)
+    .execute(&mut *conn)
     .await
     .map_err(|_| ProfileError::UnknownProfile(profile_id.to_owned()))?;
     Ok(ResolvedProfile {

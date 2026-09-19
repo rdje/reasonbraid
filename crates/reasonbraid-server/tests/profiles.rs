@@ -1955,6 +1955,16 @@ async fn the_workflow_profile_registry_validates_and_resolves() {
     assert_eq!(status, 200, "the human enrolls: {human}");
     let human_id = human["principal_id"].as_str().unwrap().to_string();
 
+    // `.7.1.2.1`: registering is a SITE act, so this suite's registrar holds the
+    // explicitly issued `workflow_register` capability. Reading the registry
+    // stays on enrolment — a tenant must see the profiles it may name.
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::WorkflowRegister],
+    )
+    .await;
+
     // The registry's built-ins list (the eight §13.1 entries).
     let (status, profiles) = get(&client, &base, "/v1/workflow-profiles", &human_id).await;
     assert_eq!(status, 200, "the profiles list: {profiles}");
@@ -1971,6 +1981,7 @@ async fn the_workflow_profile_registry_validates_and_resolves() {
         .json(&json!({
             "profile_id": "custom_deliberate",
             "steps": ["solicit", "critique", "decide"],
+            "reason": "the deliberate lane needs a critique step",
         }))
         .send()
         .await
@@ -1992,7 +2003,11 @@ async fn the_workflow_profile_registry_validates_and_resolves() {
         let response = client
             .post(format!("{base}/v1/workflow-profiles"))
             .header(PRINCIPAL_HEADER, &human_id)
-            .json(&json!({ "profile_id": "custom_bad", "steps": steps }))
+            .json(&json!({
+                "profile_id": "custom_bad",
+                "steps": steps,
+                "reason": "an invalid composition must refuse by name",
+            }))
             .send()
             .await
             .expect("invalid register request");
@@ -9286,6 +9301,14 @@ async fn the_moderation_actions_are_bounded_contributions() {
     let human_id = human["principal_id"].as_str().unwrap().to_string();
     let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
 
+    // `.7.1.2.1`: registering is a SITE act.
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::WorkflowRegister],
+    )
+    .await;
+
     // The custom profile composes the `moderate` step (the built-ins don't).
     let (status, registered) = post(
         &client,
@@ -9295,6 +9318,7 @@ async fn the_moderation_actions_are_bounded_contributions() {
         &json!({
             "profile_id": "moderated_panel",
             "steps": ["solicit", "moderate", "decide"],
+            "reason": "the moderation lane needs a moderate step",
         }),
     )
     .await;
@@ -11912,4 +11936,227 @@ async fn the_acquisition_path_is_bounded_per_resolver_and_per_destination() {
     eprintln!(
         "acquisition quota: the enrol transaction seeds one DEFAULT row per open scope; one resolution records one use per scope (resolver + destination); a host-specific ceiling overrides the default and refuses with a RECORDED denial (429); and removing both rows is still the typed fail-closed 503"
     );
+}
+
+/// `SIGNOFF-REPAIR.7.1.2.1` — the workflow registry is site-wide configuration,
+/// and before the repair any enrolled principal could rewrite it.
+///
+/// ⛔ **The NEGATIVE arm observes the takeover END TO END, not the write.** A
+/// control that only asserted "tenant B's INSERT succeeded" would prove nothing:
+/// the registry is versioned on purpose and a new row is not a defect. What
+/// makes it one is that `workflows::resolve` takes the HIGHEST version of a
+/// `profile_id` site-wide, with no `built_in` filter and no tenant predicate, so
+/// tenant A's next BARE thread — which defaults to `quick_advice` — executes the
+/// steps tenant B chose. That is what this asserts.
+///
+/// ⚠️ The vocabulary is closed (`STEP_KINDS`), so the override cannot introduce
+/// a verb. `["solicit", "decide"]` is a legal profile whose point is what it
+/// REMOVES: `synthesize` is gone from every tenant's default deliberation.
+#[tokio::test]
+async fn a_foreign_tenant_cannot_rewrite_the_default_workflow() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    // Two enrolments, two tenants: `human_principals.principal_id` carries one
+    // `tenant_id` each, so a second enrolment is a second tenant by construction.
+    let (status, alice) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "wfo-alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "alice enrols: {alice}");
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    let alice_tenant = alice["tenant_id"].as_str().unwrap().to_string();
+
+    let (status, mallory) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "wfo-mallory" }),
+    )
+    .await;
+    assert_eq!(status, 200, "mallory enrols: {mallory}");
+    let mallory_id = mallory["principal_id"].as_str().unwrap().to_string();
+    let mallory_tenant = mallory["tenant_id"].as_str().unwrap().to_string();
+    assert_ne!(
+        alice_tenant, mallory_tenant,
+        "the two enrolments must be two tenants, or this control measures nothing"
+    );
+
+    // Mallory holds tenant authority in her OWN tenant and no site grant at all.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/workflow-profiles",
+        &mallory_id,
+        &json!({
+            "profile_id": "quick_advice",
+            "steps": ["solicit", "decide"],
+            "reason": "shorten the default deliberation",
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 403,
+        "an enrolled principal without the site capability registers no profile: {refused}"
+    );
+    assert_eq!(
+        refused["code"],
+        json!("site_authority_required"),
+        "{refused}"
+    );
+
+    // The default is unchanged — the `.1` half of the acceptance, asserted from
+    // the RESOLUTION rather than from the table, because the resolution is what
+    // a thread actually runs.
+    let (status, created) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &alice_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "wfo-create",
+            "body": {
+                "tenant_id": alice_tenant,
+                "subject": "wfo",
+                "objective": "a bare thread takes the default profile",
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "alice's bare thread is created: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+
+    let (status, thread) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}?tenant_id={alice_tenant}"),
+        &alice_id,
+    )
+    .await;
+    assert_eq!(status, 200, "alice reads her thread: {thread}");
+    assert_eq!(
+        thread["state"]["workflow_profile"],
+        json!("quick_advice"),
+        "{thread}"
+    );
+    assert_eq!(
+        thread["state"]["workflow_steps"],
+        json!(["solicit", "synthesize", "decide"]),
+        "the shipped built-in steps survive a foreign registration attempt: {thread}"
+    );
+}
+
+/// The POSITIVE arm, without which the repair above is indistinguishable from
+/// deleting the route: an operator-issued `workflow_register` grant still
+/// registers a profile, the receipt is audited, and a thread naming it runs it.
+#[tokio::test]
+async fn the_workflow_register_capability_still_registers_and_resolves() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "wfc-operator" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the operator enrols: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::WorkflowRegister],
+    )
+    .await;
+
+    let response = client
+        .post(format!("{base}/v1/workflow-profiles"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({
+            "profile_id": "wfc_reviewed",
+            "steps": ["solicit", "critique", "decide"],
+            "reason": "the review lane needs a critique step",
+        }))
+        .send()
+        .await
+        .expect("register request");
+    assert_eq!(
+        response.status().as_u16(),
+        200,
+        "the capable operator registers"
+    );
+    assert!(
+        response.headers().contains_key("x-reasonbraid-site-audit"),
+        "a site act carries its audit id"
+    );
+    let registered: Value = response.json().await.unwrap();
+    assert_eq!(
+        registered["profile_id"],
+        json!("wfc_reviewed"),
+        "{registered}"
+    );
+    assert_eq!(registered["version"], json!(1), "{registered}");
+
+    // The registration is REACHABLE, not merely stored.
+    let (status, created) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &human_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "wfc-create",
+            "body": {
+                "tenant_id": tenant_id,
+                "subject": "wfc",
+                "objective": "the registered profile runs",
+                "workflow_profile": "wfc_reviewed",
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the thread names the new profile: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    let (_, thread) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}?tenant_id={tenant_id}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(
+        thread["state"]["workflow_steps"],
+        json!(["solicit", "critique", "decide"]),
+        "{thread}"
+    );
+
+    // ⛔ The capability is for THIS action only: the same grant does not become
+    // site-wide authority. A registry inspection with a workflow-only grant is
+    // refused, so the repair widened one verb rather than the boundary.
+    let (status, refused) = get(&client, &base, "/v1/admin/adapters", &human_id).await;
+    assert_eq!(
+        status, 403,
+        "a workflow_register grant inspects no registry: {refused}"
+    );
+
+    sqlx::query("DELETE FROM workflow_profiles WHERE profile_id = 'wfc_reviewed' AND NOT built_in")
+        .execute(&pool)
+        .await
+        .expect("drop the fixture profile");
 }

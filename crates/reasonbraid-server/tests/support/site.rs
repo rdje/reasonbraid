@@ -16,6 +16,7 @@ pub const ALL: &[Action] = &[
     Action::RegionPair,
     Action::RegionUnpair,
     Action::EvidenceExpire,
+    Action::WorkflowRegister,
 ];
 
 pub async fn provision(pool: &PgPool, principal: &str, actions: &[Action]) -> (String, String) {

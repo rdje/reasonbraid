@@ -767,9 +767,15 @@ def self_test() -> int:
     # ⛔ the published pair is DERIVED from the baseline rows, never carried
     #    beside them, so the file and the number cannot disagree.
     precise = [r for r in live_rows if r["site_global"] and r["arm"] == "walk"]
-    arms.append(("the published 42/33 are derived from the rows, not stored",
-                 len(precise) == 42
-                 and sum(1 for r in precise if r["admission"] == "identity only") == 33))
+    # ⛔ 42/33 until `SIGNOFF-REPAIR.7.1.2.1`, and the movement has ONE cause
+    # rather than a recount: `POST /v1/workflow-profiles` was repaired into a
+    # site act, so it left the precise walk (its handler now delegates across a
+    # module boundary) AND left `identity only`. The other seven routes the same
+    # leaf relabelled `site authority` were already `module-reach`, so they were
+    # never in `precise` and neither figure moved for them.
+    arms.append(("the published 41/32 are derived from the rows, not stored",
+                 len(precise) == 41
+                 and sum(1 for r in precise if r["admission"] == "identity only") == 32))
 
     # ── The live corpus ──────────────────────────────────────────────────────
     try:

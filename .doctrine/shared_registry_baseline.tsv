@@ -15,15 +15,23 @@
 #
 # Recorded by `SIGNOFF-REPAIR.7.1.1.1`. Refresh only with an adjudication:
 #     python3 -B scripts/census_shared_registry_writes.py --check
-POST /v1/admin/adapters	identity only	recruitment_offers,site_audit	module-reach
-POST /v1/admin/adapters/{adapter_id}/revoke	identity only	recruitment_offers,site_audit	module-reach
+#
+# ⭐ `site authority` JOINED THE VOCABULARY at `SIGNOFF-REPAIR.7.1.2.1`. All TEN
+# routes reaching a site-authority response had been classified `identity only`
+# — the weakest label — because every one reaches `resolve_principal` and none
+# of the other needles. Eight are mutating and appear below. The published
+# figures moved 42 → 41 and 33 → 32 for ONE reason: `POST /v1/workflow-profiles`
+# was repaired and left both sets; the other seven were already `module-reach`,
+# so they were never in the precise count, only mislabelled in this file.
+POST /v1/admin/adapters	site authority	recruitment_offers,site_audit	module-reach
+POST /v1/admin/adapters/{adapter_id}/revoke	site authority	recruitment_offers,site_audit	module-reach
 POST /v1/admin/boundaries/{boundary_id}/revoke	guarded transaction	recruitment_offers	module-reach
 POST /v1/admin/breakers	guarded transaction	recruitment_offers	module-reach
 POST /v1/admin/breakers/reset	guarded transaction	recruitment_offers	module-reach
 POST /v1/admin/grants/{grant_id}/revoke	guarded transaction	recruitment_offers	module-reach
-POST /v1/admin/regions	identity only	recruitment_offers,site_audit	module-reach
-POST /v1/admin/regions/{from}/pair/{to}	identity only	recruitment_offers,site_audit	module-reach
-POST /v1/admin/regions/{from}/unpair/{to}	identity only	recruitment_offers,site_audit	module-reach
+POST /v1/admin/regions	site authority	recruitment_offers,site_audit	module-reach
+POST /v1/admin/regions/{from}/pair/{to}	site authority	recruitment_offers,site_audit	module-reach
+POST /v1/admin/regions/{from}/unpair/{to}	site authority	recruitment_offers,site_audit	module-reach
 POST /v1/calls	pool authorize	recruitment_offers	walk
 POST /v1/calls/{call_id}/close	pool tenant-admin	recruitment_panels	walk
 POST /v1/calls/{call_id}/respond	identity only	recruitment_responses	walk
@@ -76,10 +84,10 @@ POST /v1/resources/{resource_id}/resolve	identity only	derivations,evidence_snap
 POST /v1/routing/recommendations	identity only	routing_recommendations	walk
 POST /v1/routing/resolve	identity only	routing_resolutions	walk
 POST /v1/snapshots	identity only	evidence_snapshots,snapshot_objects	walk
-POST /v1/snapshots/expire-due	identity only	recruitment_offers,site_audit	module-reach
-POST /v1/snapshots/{snapshot_id}/tombstone	identity only	recruitment_offers,site_audit	module-reach
+POST /v1/snapshots/expire-due	site authority	recruitment_offers,site_audit	module-reach
+POST /v1/snapshots/{snapshot_id}/tombstone	site authority	recruitment_offers,site_audit	module-reach
 POST /v1/threads	guarded transaction	quota_events,resource_references,routing_resolutions	walk
 POST /v1/threads/auto	guarded transaction	quota_events,resource_references,routing_resolutions	walk
 POST /v1/threads/{thread_id}/commands	guarded transaction	quota_events,resource_references	walk
-POST /v1/workflow-profiles	identity only	workflow_profiles	walk
+POST /v1/workflow-profiles	site authority	recruitment_offers,site_audit,workflow_profiles	module-reach
 PUT /v1/profiles/{role_id}	identity only	agent_profiles,profile_versions	walk

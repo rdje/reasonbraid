@@ -50,6 +50,25 @@ VERB = re.compile(r"([a-z]+)\((\w+)\)")
 # Ordered most specific first: a route reaching several gates is named by the
 # strongest thing it reaches, because that is the gate that decides.
 GATES = [
+    # 🔴 FIRST, AND ADDED BY `SIGNOFF-REPAIR.7.1.2.1` AFTER IT MADE THIS CENSUS
+    # LIE ABOUT ITS OWN ROUTE. Every site-authority route reaches
+    # `resolve_principal` and none of the other needles, so all TEN of them fell
+    # through to `identity only` — the weakest label in the table — while each in
+    # fact requires an explicitly issued site grant evaluated against its actual
+    # boundary. Measured, not estimated: eight are mutating
+    # (`/v1/admin/adapters`, its revoke, `/v1/admin/regions` and its two pair
+    # verbs, `/v1/snapshots/expire-due`, the named tombstone, and
+    # `/v1/workflow-profiles`), and two are the audited registry reads.
+    #
+    # ⛔ It is FIRST because a site grant is the strongest admission this
+    # vocabulary knows; a route that reaches one is not described by any weaker
+    # label it also matches.
+    #
+    # ⚠️ The consequence is NOT confined to this file: `.7.1.1` published "33
+    # routes write site-global state on enrolment alone" over this classifier's
+    # output, and that figure is restated in five live documents.
+    # `SIGNOFF-REPAIR.7.1.2.1.1` owns re-deriving and correcting them.
+    ("site authority", ("site_receipt_response", "site_registry_response")),
     ("guarded transaction", ("authorize_in_tx", "_in_one_transaction", "enroll_in_guard")),
     ("command path", ("apply_authorized_command", "run_thread_command")),
     ("pool tenant-admin inspection", ("authorize_tenant_admin_inspection",)),

@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **THE DEFAULT WORKFLOW TAKEOVER IS OBSERVED AND REPAIRED (`.7.1.2.1`, REPAIR-0273).**
+
+`.7.1.2` named it from four source sites and owed a runtime reproduction. Observed: **Alice's thread, in Alice's own tenant, executed Mallory's steps** — `["solicit","decide"]` against the shipped `["solicit","synthesize","decide"]`. Mallory holds no authority in Alice's tenant and never touched her thread.
+
+- ✅ **`workflow_register` is now a site capability**, following `migrations/0063`'s precedent exactly (`0071` widens both CHECK constraints; the write, its authorization and its audit commit in one transaction).
+- ⭐ **The shape was decided by the code's own words** — `workflows::register`'s doc comment already read *"the operator's verb"*. Built-ins-only immutability was rejected as incomplete; tenant-scoping was rejected because it pre-empts `.6.1.5` for a second registry.
+- 🔎 **A third test failed in the RED run and it is evidence:** `workflow_profiles` is deliberately not purged between tests, so one registration silently changed an unrelated deliberation three tests later.
+- ⚠️ **Wire change, published:** `POST /v1/workflow-profiles` now requires a `reason`, like every other site act. `GET /v1/workflow-profiles` deliberately stays on enrolment.
+- ✅ **VERIFIED:** `profiles` **62/0**, `migration_upgrade` 4, `site_authority` 11, `site_registry_http` 8, `routing` 2, `site_operator_cli` 3 — 0 failed. Falsified in situ, three files restored byte-identical; the positive arm has three legs.
+
 🔴 **TEN OF THE SEVENTEEN SITE-GLOBAL TABLES ARE SHARED CONTROL SURFACES, AND ONE IS A LIVE CROSS-TENANT DEFECT (`.7.1.2`, DOC-0066).**
 
 `.7.1.1` published thirty site-global tables and judged none; DOC-0029 had already decided thirteen. The other seventeen are adjudicated **4 · 1 · 2 · 10**.
@@ -16,7 +26,7 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 - 🔴 **The nine `policy_*` are ONE chain:** `reviews::schedule_reviews` reads drift, outcomes and corrections with **no predicate at all** and schedules a review against another tenant's publication; `publications::stage` checks parentage and never ownership. ⛔ DOC-0029's *tenant-bound read* remedy reaches none of them — a control surface's problem is the WRITE.
 - ✅ `.6.1.5` answered by RE-SCOPING: from one table to ten, by name. ⛔ `.3.2`'s six site actions upheld as actions, **superseded as THE set** — they cover none of the thirty.
 - ⚠️ **Operator-visible limit, published rather than implied:** the workflow-profile registry is a trusted site-wide configuration surface today. Restrict enrolment accordingly until `.7.1.2.1` lands.
-- ✅ **VERIFIED:** `census_registry_read_reach.py --self-test` ok; `--check` rc=0 (`40 site-global tables, unchanged`), pinned in `.doctrine/registry_read_reach_baseline.tsv`; the write census unchanged at 42/33.
+- ✅ **VERIFIED:** `census_registry_read_reach.py --self-test` ok; `--check` rc=0 (`40 site-global tables, unchanged`), pinned in `.doctrine/registry_read_reach_baseline.tsv`; the write census **now 41/32** (was 42/33) — `.7.1.2.1` repaired `POST /v1/workflow-profiles` into a site act, so it left both sets, and `census_admission_paths.py` gained the `site authority` gate term it never had, which had made it call all ten site routes `identity only`.
 
 ✅ **THE TWO NUMBERS THAT FAILED THE STAND-BY-IT TEST ARE PAID FOR (`.7.1.1.1`, REPAIR-0272).**
 
@@ -28,7 +38,9 @@ Asked *do you trust your own findings*, two of `.7.1.1`'s failed `docs/CLAIM_VER
 - ✅ All three drift shapes observed RED in situ and restored byte-identical; an ABSENT baseline reports no drift rather than 68 vanished routes. ⛔ The refusal NAMES the five live documents that restate the count — `.13.4`'s corpus rule as a mechanism rather than a habit.
 - ⚠️ Cost unchanged at **1.82 s** for 40 arms (up from 33): the whole-tree derivations are memoized, so the new arms reuse them.
 
-🔴 **FORTY-TWO ROUTES WRITE SITE-GLOBAL STATE, THIRTY-THREE ON ENROLMENT ALONE (`.7.1.1`, REPAIR-0271).**
+🔴 **FORTY-ONE ROUTES WRITE SITE-GLOBAL STATE, THIRTY-TWO ON ENROLMENT ALONE (`.7.1.1`, REPAIR-0271; figures corrected by `.7.1.2.1`).**
+
+⚠️ Published as 42/33 and true then. `.7.1.2.1` repaired `POST /v1/workflow-profiles` into a site act, so it left the precise walk AND `identity only` together; the residue follows, 30 tables → **29**, 17 → **16**. ⛔ Seven other routes were relabelled `site authority` in the same change — the classifier had no term for it — but they were already `module-reach` and never entered the precise count.
 
 `.7.1`'s attached clause 2 named this census as the prerequisite to designing the resolver bind. **72 mutating routes; 42 write a table with no tenant dimension** — `identity only` **33** · `guarded transaction` 3 · `not-censused` 3 · `pool tenant-admin` 2 · `pool authorize` 1.
 

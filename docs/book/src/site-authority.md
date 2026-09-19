@@ -39,6 +39,8 @@ and the development HTTP principal header remains a development assumption.
 | `region_declare` | Declare a shared region. |
 | `region_pair` | Add a directed pair between two declared regions. |
 | `region_unpair` | Remove a directed pair. |
+| `evidence_expire` | Expire due evidence, or tombstone one named snapshot. |
+| `workflow_register` | Register a workflow profile version in the site-wide registry. |
 
 For example, Alice may administer tenant A but have no site grant. Her tenant
 grant does not authorize any of these service operations. A deployment operator
@@ -80,6 +82,7 @@ operator CLI below to issue the grant. There is no HTTP site-issuance endpoint.
 | `POST /v1/admin/regions` | `region_declare` | `{"region":"eu-site","reason":"qualified site"}` |
 | `POST /v1/admin/regions/{from}/pair/{to}` | `region_pair` | `{"reason":"approved route"}` |
 | `POST /v1/admin/regions/{from}/unpair/{to}` | `region_unpair` | `{"reason":"retire route"}` |
+| `POST /v1/workflow-profiles` | `workflow_register` | `{"profile_id":"reviewed","steps":["solicit","critique","decide"],"reason":"the review lane needs a critique step"}` |
 
 The JSON schemas reject unknown fields. Use `Content-Type: application/json` for
 mutations. Path names are percent-encoded URL components; the decoded names obey
@@ -298,9 +301,10 @@ python3 -B scripts/project_env.py target/debug/rb-site boundary revoke "$RB_SITE
 ```
 
 The site actions are `registry_inspect`, `adapter_allow`, `adapter_revoke`,
-`region_declare`, `region_pair`, `region_unpair` and `evidence_expire` — the
-last being the evidence retention sweep (see
-[Deployment](deployment.md)). Repeat `--action` to grant additional capabilities. A request to issue beyond the
+`region_declare`, `region_pair`, `region_unpair`, `evidence_expire` and
+`workflow_register` — `evidence_expire` being the evidence retention sweep (see
+[Deployment](deployment.md)) and `workflow_register` the workflow-profile
+registry described below. Repeat `--action` to grant additional capabilities. A request to issue beyond the
 parent's action set or window is refused and audited. Suspension cannot be undone
 by this tool: issue replacement authority when access must be restored. Repeated
 revocation returns `changed: false` and creates a no-op audit. There is no automatic
@@ -345,12 +349,11 @@ RB_DEMO=0 bash scripts/run_pg_tests.sh site_operator_cli site_authority
 
 ## What site authority does NOT cover yet
 
-The six site actions above — `registry_inspect`, `adapter_allow`, `adapter_revoke`,
-`region_declare`, `region_pair`, `region_unpair` — are each explicitly issued and
-audited. They are not, however, the complete set of site-global surfaces. A census
-derived from the producers rather than from a family name finds that **thirty
-tables carry no tenant dimension and are written by routes admitted on tenant
-enrolment alone**:
+The site actions above are each explicitly issued and audited. They are not,
+however, the complete set of site-global surfaces. A census derived from the
+producers rather than from a family name finds that **thirty tables carry no
+tenant dimension and are written by routes admitted on tenant enrolment
+alone**:
 
 ```bash
 python3 -B scripts/census_shared_registry_writes.py   # the writers, by admission
@@ -414,13 +417,26 @@ written by one tenant can schedule a review against another tenant's publication
 Whether one site-wide policy library is intended, or a policy belongs to a tenant,
 is an open decision owned by `SIGNOFF-REPAIR.6.1.5`.
 
-The workflow-profile registry has the same shape and a sharper consequence.
-`POST /v1/workflow-profiles` admits any enrolled principal and appends a new
-version under any profile identifier, including the eight built-in profiles;
-thread creation resolves a profile to its **highest** version site-wide. An
-operator should therefore treat the workflow registry as a trusted, site-wide
-configuration surface today, and restrict who is enrolled accordingly.
-`SIGNOFF-REPAIR.7.1.2.1` owns the repair.
+### The workflow-profile registry: repaired, and why it needed to be
+
+`POST /v1/workflow-profiles` used to admit any enrolled principal and append a
+new version under any profile identifier, including the eight built-in profiles.
+Thread creation resolves a profile to its **highest** version site-wide, and a
+bare thread resolves `quick_advice`. So one enrolled principal in any tenant
+could choose the steps every other tenant's next bare thread executed — not by
+introducing a new capability, because the step vocabulary is a closed set of
+thirteen kinds, but by choosing the deliberation's shape: dropping
+`blind_solicit` from the panel, or `critique` from the review.
+
+It now takes the `workflow_register` site capability, and the request body gained
+a required `reason` like every other site act. Reading the registry
+(`GET /v1/workflow-profiles`) deliberately still requires only enrolment: a
+tenant must be able to see which profiles exist in order to name one on a thread,
+and the rows carry no tenant data. The defect was the write.
+
+Appending a version to an existing profile is still possible for an operator who
+holds the capability — the registry is versioned by design, and forbidding that
+would have removed the feature rather than repaired the authority.
 
 The routing journals (`routing_resolutions`, `routing_recommendations`) are
 append-only audit rows read without a tenant predicate, so a caller sees every

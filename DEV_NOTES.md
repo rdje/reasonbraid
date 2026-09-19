@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — A doc comment can describe an authority the route does not require
+
+- `workflows::register` has said *"the operator's verb"* since PHASE-5.1.2. The route reaching it asked for tenant enrolment. Nobody had read those two lines together, and the gap between them was a cross-tenant control-plane takeover.
+- ⭐ **This is `a-claim-of-sameness-is-worth-its-call-graph` one level up.** That note is about a module claiming a BEHAVIOUR its call graph does not perform. This is a module claiming an AUTHORITY its route does not require — same defect, and the second form is harder to see, because a reader checking the comment against the code finds the function really does register profiles. What it does not do is *be* the operator's verb.
+- 🔎 **The RED run handed me a better argument than the one I had.** I expected two failures and got three: an unrelated synthesis test failed because `workflow_profiles` is deliberately not purged between tests, so the probe's `quick_advice` v2 was still the highest version several tests later. I nearly wrote it off as fixture contamination. It is the blast radius, demonstrated by accident and more convincingly than the control I designed — one registration silently changed a deliberation nobody connected to it.
+- ⛔ **The shape I nearly chose was the incomplete one.** "Make the built-ins immutable" is smaller, needs no migration, and closes the demo. It leaves tenant A's custom `my-review` hijackable by tenant B on exactly the same path. The demo is not the defect, and a repair scoped to the demo is scoped to the wrong thing.
+- ⚠️ And the shape I could not choose: tenant-scoping the registry. It is arguably better, and it answers `.6.1.5`'s open question for a second registry without deciding it. Two registries must be decided together or their difference stated, so this one took site-operator authority — which is what its own comment already claimed.
+- ⭐ **The positive arm earned its keep twice.** A gate that refuses everyone passes every negative test. Three legs: the holder registers, a thread RUNS the registered profile (reachable, not merely stored), and the same grant is refused at an unrelated registry — so the repair widened one verb rather than the boundary.
+- promotion: declined — the transferable half is `a-claim-of-sameness-is-worth-its-call-graph`, already in `docs/knowledge/`; the new wrinkle is that the claim was about AUTHORITY, and it is recorded at the leaf and at the verb itself.
+
 ## 2026-09-19 — "No tenant column" is a fact about the schema, not a verdict about ownership
 
 - I spent this leaf expecting to find seventeen variations on one defect. Four of them were not defects at all, and the reason I nearly missed that is worth writing down.

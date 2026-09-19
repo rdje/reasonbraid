@@ -2755,35 +2755,58 @@ async fn resolve_resource(
 
 // ── The workflow-profile registry (PHASE-5.1.2; backlog 36) ─────────────────────────
 
-/// `POST /v1/workflow-profiles` — register a custom profile (the
-/// operator's verb): the steps MUST pass the composition validation.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RegisterWorkflowProfileRequest {
+    profile_id: String,
+    steps: Vec<String>,
+    reason: Reason,
+}
+
+/// `POST /v1/workflow-profiles` — register a profile (the operator's verb):
+/// the steps MUST pass the composition validation.
+///
+/// 🔴 **A SITE act, not a tenant one (`.7.1.2.1`), and the doc comment said so
+/// before the code did.** This route admitted any enrolled principal and
+/// appended `MAX(version) + 1` under ANY `profile_id`, the eight §13.1 built-ins
+/// included, while `workflows::resolve` takes the highest version site-wide with
+/// no `built_in` filter — and a bare thread resolves `quick_advice` through it.
+/// So one enrolled principal chose the steps every other tenant's next bare
+/// thread executed. It now takes the `workflow_register` site capability and is
+/// audited like every other site-wide act.
+///
+/// ⚠️ The body gained a required `reason`, which is a wire change and is stated
+/// in `docs/book/src/site-authority.md`. Every site act is attributable: a
+/// registration that changes what the whole site deliberates is exactly the kind
+/// of act an operator must be able to explain afterwards.
+///
+/// ⛔ `GET /v1/workflow-profiles` deliberately stays on enrolment. The registry
+/// is site-wide configuration a tenant must be able to READ in order to name a
+/// profile on a thread, and the rows carry no tenant data — the defect was the
+/// write.
 async fn register_workflow_profile(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(body): Json<serde_json::Value>,
-) -> Result<Json<crate::workflows::ResolvedProfile>, ControlApiError> {
+    request: Result<Json<RegisterWorkflowProfileRequest>, axum::extract::rejection::JsonRejection>,
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
-        return Err(ControlApiError::unauthorized(
-            "an unenrolled principal registers no profile",
-        ));
-    }
-    let profile_id = body
-        .get("profile_id")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ControlApiError::invalid_command("the profile_id is required"))?;
-    let steps: Vec<String> = body
-        .get("steps")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| ControlApiError::invalid_command("the steps are required"))?
-        .iter()
-        .filter_map(|v| v.as_str().map(str::to_owned))
-        .collect();
-    match crate::workflows::register(&state.pool, profile_id, &steps).await {
-        Ok(resolved) => Ok(Json(resolved)),
-        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
-    }
+    let req = site_request(request)?;
+    // Before the gate, deliberately: the ADR-016 vocabulary is a published
+    // constant, so naming the rule that failed is an oracle over nothing, and
+    // every other site route bounds its input on extraction for the same reason.
+    crate::workflows::validate_steps(&req.steps)
+        .map_err(|error| ControlApiError::invalid_command(error.to_string()))?;
+    site_receipt_response(
+        site::register_profile(
+            &state.pool,
+            &principal,
+            &req.profile_id,
+            &req.steps,
+            &req.reason,
+        )
+        .await,
+        "a current site grant for this action and its actual boundary are required",
+    )
 }
 
 /// `GET /v1/workflow-profiles` — the registry's latest versions.

@@ -98,6 +98,52 @@ guards the next one rather than presenting a backlog.
   holds together), `.7.3.6.4` (the egress ladder's comparison direction) and
   `.7.3.6.5` (the undefined and misdescribed terms, including G4's open strand).
 
+## Amendment, 2026-09-19 — the fourteen unsettled lines, settled (`SIGNOFF-REPAIR.7.3.6.5`)
+
+The first census left **7 `undefined`** and **7 `misdescribed`**. All fourteen
+are now settled, and the split is the useful part: **thirteen were settled by
+defining a term and exactly one by correcting an advertisement.**
+
+**Defined, from the producer rather than invented:**
+
+- **`archive_policy`** — the axis is DEPTH. `ROADMAP.md` §16 lists the resolver
+  policies as *"…decompression, **archive-depth**, and total-work"*, so `deny`
+  means the pack does not expand an archive nested inside the container it
+  acquired. ⭐ That dissolves what the first census called its *sharpest
+  instance of a contradiction*: R2 advertises `deny` above a `media_types` list
+  containing zip and tar because it expands the container it was **given** and
+  refuses one **inside** it, by name (`nested_archive`). An undefined term and a
+  contradicted one look identical until the term is pinned.
+- **`egress_class: "listed"`** — the list is the §12.4 destination **classes**,
+  not a list of hosts. Migration `0025`'s own comment had said so since the pack
+  shipped; a definition in a migration comment is not one a caller can read.
+- **`javascript_policy: "allow-bounded"`** — four bounds, each with a mechanism:
+  external script subresources refused at the CDP `Fetch` domain, a wall-clock
+  budget and a step budget, a private per-render browser profile that is
+  discarded, and no credential of any kind reaching the browser.
+
+**Corrected — one line, and it is G4's open strand.** R3 advertised
+`sandbox_level: "vm_container"`, the top of the ADR-018 ladder, while its worker
+is an ordinary child process in an owned process group. A caller requiring
+`vm_container` was served it. It now reads `process`.
+`security_evidence`'s `container_required: true` stays and is now consistent:
+the level says what the **code** provides, that key what the **deployment** must
+add. ⭐ Nothing had ever *required* `vm_container` — **a rung nobody stands on
+holds any weight you like.**
+
+**One earlier verdict of this record's own was wrong and is corrected.** RX's
+`egress_class: "any"` was graded `misdescribed` on the ground that the pack
+performs no egress. That judged the wrong granularity: the class is the maximum
+of the **acquisition the pack delivers**, and an enrolled agent's reach is
+unbounded, so `any` is the honest ceiling. Re-graded `vacuous`.
+
+**Final tally across all 36 lines: `enforced` 6 · `unverified` 9 · `vacuous` 21
+— `undefined` 0, `misdescribed` 0.**
+
 Related: `[[2026-09-12_r2-acquisition-accept-set]]` — the decision `.7.3.6.2`
-found the upsert breaking; `[[a-claim-of-sameness-is-worth-its-call-graph]]` —
-the shape of an advertisement outrunning its call graph.
+found the upsert breaking;
+`[[2026-09-19_a-replace-is-complete-and-the-verb-does-not-perform-one]]` and
+`[[2026-09-19_the-egress-claim-is-a-ceiling-the-sandbox-claim-is-a-floor]]` —
+the two product repairs the census produced;
+`[[a-claim-of-sameness-is-worth-its-call-graph]]` — the shape of an
+advertisement outrunning its call graph.

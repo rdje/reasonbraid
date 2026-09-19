@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — A rung nobody stands on holds any weight you like
+
+- The R3 browser pack advertised `sandbox_level: "vm_container"` — the top of a four-rung isolation ladder — while spawning an ordinary child process. That survived from the pack's first commit through a gate record, a re-derivation of that record, and a census built specifically to find false advertisements.
+- 🔎 **The reason is the whole lesson, and it took a matrix to see it.** `git grep vm_container` returns the ladder constant, one SDK vocabulary test, and the advertisement. **No caller has ever required it.** The comparison `declared >= required` was therefore never once evaluated with `vm_container` on the right-hand side, so the claim was never tested by anything, ever. An unexercised value in an ordered vocabulary is unverified by construction — and it is the one a false claim will drift to, because claiming the top costs nothing until somebody asks for it.
+- ⭐ **This generalises past ladders.** Any enum whose values are ordered has rungs the product never demands. Those are exactly where an over-claim hides, and a census that reads only what the code *declares* cannot see it — you have to ask what the code is ever *asked for*.
+- ⛔ **And the sibling finding is the opposite mistake, mine.** The census graded `archive_policy: "deny"` on R2 as the sharpest contradiction in the set: `deny` sitting two fields above a `media_types` list containing zip and tar that the worker expands. It is not a contradiction. The roadmap says the axis is `archive-depth`, so `deny` means depth one, and R2 expands the container it was given and refuses one nested inside it, by name. **An undefined term and a contradicted one look identical from the outside; I called it the second because I had a reading in mind and the reading was not written down anywhere.**
+- 🔎 What separated them was going to the producer for the *term*, not for the value: `grep archive` over `ROADMAP.md` rather than over the code. The definition was two words in a policy list in §16.
+- promotion: pending — *a rung nobody stands on holds any weight you like* deserves its own note, and *an undefined term and a contradicted one look identical until the term is pinned* belongs with it.
+
 ## 2026-09-19 — One predicate, two populations that disagree about which end is safe
 
 - `resolvers::resolve` filtered two ADR-018 ladders with one test, `declared >= required`. It is correct for sandbox and inverted for egress, and the reason is not a typo: the two ladders are ordered by different things. Sandbox counts upward towards *more isolation*; egress counts upward towards *more reach*. A floor on the first is a safety guarantee. The same floor on the second is a guarantee pointed backwards.

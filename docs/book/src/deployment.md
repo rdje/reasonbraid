@@ -2010,17 +2010,53 @@ python3 -B scripts/census_advertised_policies.py --readers   # what consults the
 python3 -B scripts/census_advertised_policies.py --check     # the gate
 ```
 
-**Three of the thirty-six are enforced with a control that has been observed
-refusing.** The rest break down like this, and the verdict for every individual
-line, with its evidence, is in `.doctrine/advertised_policy_verdicts.tsv`:
+Every line carries a verdict, and the verdict for each one with its evidence is
+in `.doctrine/advertised_policy_verdicts.tsv`:
 
 | verdict | lines | what it means |
 | --- | --- | --- |
-| `enforced` | 3 | a mechanism refuses, and a control has been seen RED |
-| `unverified` | 5 | a mechanism is present and covered, but no RED is on record |
-| `vacuous` | 14 | the pack has no mechanism that could violate the line |
-| `misdescribed` | 7 | the word names something other than what the code does |
-| `undefined` | 7 | the word has no stated meaning anywhere in the repository |
+| `enforced` | 6 | a mechanism refuses, and a control has been seen RED |
+| `unverified` | 9 | a mechanism is present and covered, but no RED is on record |
+| `vacuous` | 21 | the pack has no mechanism that could violate the line |
+
+The first census of these lines returned **7 `undefined`** and **7
+`misdescribed`** as well. Those fourteen were settled by defining the terms
+below and correcting one advertisement; the table above is what is left.
+
+**What the words mean.** Three of the six fields had no stated meaning
+anywhere in this repository, so their lines were neither true nor false as
+written. Each is now defined from what the code does:
+
+- **`archive_policy`** — whether the pack expands an archive *nested inside*
+  the container it acquired. The roadmap's own phrasing is `archive-depth`, and
+  that is the reading: `deny` means depth one. This is why R2 advertises
+  `archive_policy: "deny"` two fields above a `media_types` list containing
+  `application/zip` and `application/x-tar` — it expands the archive it was
+  given and refuses one inside it, by name (`nested_archive`).
+- **`egress_class: "listed"`** — the list is the §12.4 destination **classes**,
+  not a list of hosts. The pack classifies every dial (public only; loopback,
+  private, link-local and reserved refused) rather than consulting an allowlist.
+- **`javascript_policy: "allow-bounded"` (R3)** — inline script runs, under four
+  bounds: external script subresources are refused at the browser's `Fetch`
+  domain, a wall-clock budget and a step budget bound the interaction, the
+  browser profile is private per render and discarded, and no credential of any
+  kind reaches the browser.
+
+**And one advertisement was corrected rather than implemented.** The R3 pack
+declared `sandbox_level: "vm_container"`, the top of the ADR-018 ladder, while
+its worker is an ordinary child process in an owned process group — rung one.
+A caller requiring `vm_container` was served it: `{"resolvers":
+["r3-browser-worker"], "unresolvable_now": false}`. That is the silent downgrade
+ADR-018 exists to prevent, performed by the one pack that executes untrusted
+JavaScript. The level now reads `process`, which is what the code provides, and
+a caller requiring more gets the explicit `unresolvable_now`.
+
+`security_evidence`'s `container_required: true` stays and is now consistent
+with it: the level says what the **code** provides, that key says what the
+**deployment** must add to reach the intended posture. The defect was one field
+claiming the other's content. Nothing in this repository had ever *required*
+`vm_container`, which is why a claim at the ladder's top went untested for so
+long — a rung nobody stands on holds any weight you like.
 
 **`vacuous` is not a synonym for safe, and that distinction is the point of
 publishing this table.** R0 advertises `javascript_policy: "deny"` and runs no

@@ -5,6 +5,18 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **G4'S OPEN STRAND IS DISCHARGED: THE R3 PACK STOPS CLAIMING A CONTAINER IT DOES NOT HAVE (`.7.3.6.5`, REPAIR-0270).**
+
+`.7.3.6` closes with all five children. **36 advertised policy lines: `enforced` 6 · `unverified` 9 · `vacuous` 21 — `undefined` 0, `misdescribed` 0.**
+
+- 🔴 R3 advertised `sandbox_level: "vm_container"` — the TOP of the ADR-018 ladder — while its worker is an ordinary child process in an owned process group. Reproduced: a caller requiring `vm_container` was served **`{"resolvers":["r3-browser-worker"],"unresolvable_now":false}`**. ⛔ The silent downgrade ADR-018 exists to prevent, by the one pack that executes untrusted JavaScript. Corrected to `process`.
+- ⭐ **Nothing had ever REQUIRED `vm_container` — a rung nobody stands on holds any weight you like.** Correcting it broke no test. ⚠️ `container_required: true` stays and is now consistent: the level says what the CODE provides, that key what the DEPLOYMENT must add.
+- ⭐ **13 of the 14 unsettled lines were settled by DEFINING a term, not correcting one.** `archive_policy`'s axis is DEPTH (§16: *archive-depth*), which dissolves R2's apparent self-contradiction — it expands the container it was given and refuses one nested inside, by name. `listed` means the §12.4 destination CLASSES; `allow-bounded` is its four actual bounds.
+- ⚠️ One earlier verdict corrected: RX's `any` is the honest MAXIMUM of the acquisition, not a misdescription.
+- 🔎 Book drift repaired: two pages disagreed about whether all five gate records were re-derived.
+- ⛔ **NOT claimed: that G4 is now Met.** The record's *G4 must be re-earned* verdict is unchanged; what closes is its last un-discharged strand.
+- ✅ **VERIFIED:** `profiles` **60 passed, 0 failed** (RED before: 59/1); census `--check` rc=0, `--self-test` 26/26; clippy rc=0; fmt rc=0.
+
 🔴 **THE EGRESS CLAIM IS A CEILING, THE SANDBOX CLAIM IS A FLOOR, AND ONE TEST SERVED BOTH (`.7.3.6.4`, REPAIR-0269).**
 
 `resolvers::resolve` filtered both ADR-018 classes with `declared >= required`. Sandbox goes up towards more ISOLATION (a floor is right); egress goes up towards more REACH, so the same test admitted a pack reaching further than the caller permitted.

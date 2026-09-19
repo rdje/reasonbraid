@@ -332,7 +332,28 @@ fn gated_advertises() -> Vec<ResolverAdvertise> {
             abilities: vec!["render".to_owned()],
             authentication_classes: vec!["none".to_owned()],
             egress_class: "listed".to_owned(),
-            sandbox_level: "vm_container".to_owned(),
+            // 🔴 `process`, CORRECTED FROM `vm_container` BY
+            // `SIGNOFF-REPAIR.7.3.6.5` — G4's open strand, closed by correcting
+            // the advertisement rather than by building a container.
+            //
+            // The worker is an ordinary child process in an owned process
+            // group (`reasonbraid-browse`), which is rung 1 of the ADR-018
+            // ladder. It advertised rung 3, the top. ⛔ ADR-018's exit clause
+            // is *the explicit failure, never the silent downgrade*, and
+            // satisfying a `vm_container` requirement with a bare process is
+            // that downgrade — performed by the one pack that executes
+            // untrusted JavaScript.
+            //
+            // ⭐ Nothing had ever REQUIRED `vm_container`, which is why a false
+            // claim at the ladder's top was never noticed: `git grep` returned
+            // the ladder constant, one SDK vocabulary test and this line. A
+            // rung nobody stands on holds any weight you like.
+            //
+            // ⚠️ `security_evidence`'s `container_required` stays and is now
+            // consistent: the level says what the CODE provides, and that key
+            // says what the DEPLOYMENT must add to reach the intended posture.
+            // The defect was one field claiming the other's content.
+            sandbox_level: "process".to_owned(),
             redirect_policy: "deny".to_owned(),
             archive_policy: "deny".to_owned(),
             subresource_policy: "deny".to_owned(),

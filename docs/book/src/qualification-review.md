@@ -241,11 +241,18 @@ review has reproduced — live, against supported surfaces — five separate
 cross-tenant defects inside that exact subject. All are repaired. The line has
 not been re-counted.
 
-Re-deriving all five records is tracked, split by record. **The first is done.**
+**All five records have now been re-derived**, line by line, each verdict
+carrying the command that produces it — G1–G2, G3, G4, G5 and G6–G7 — and
+blocker C2 is closed. ⛔ No record's conclusion changed: G6–G7 remains *not met*
+for Internet exposure and G3 remains blocked as binding use.
+
 Of G6–G7's seven shipped lines, **three must be re-earned, two are narrowed and
 two stand** — the [blockers page](blockers.md) carries the table, and the reasoning
-is in `docs/decisions/2026-09-15_g6g7-shipped-lines-re-derived.md`. The gate's
-conclusion does not change: it was already *not met* for Internet exposure.
+is in `docs/decisions/2026-09-15_g6g7-shipped-lines-re-derived.md`. G3's seven
+claims came out **three standing, one narrowed and three re-earned**; G4 must be
+re-earned and G5's three stand. G4's last un-discharged strand — the R3 pack
+advertising a `vm_container` sandbox it does not provide — is closed by the
+correction described under [what a pack advertises](deployment.md#what-a-pack-advertises-and-what-is-actually-behind-each-line).
 
 ⛔ One of the seven turned out to be an **open defect** rather than a repaired
 one. The product has two resource-acquisition packs, and they follow HTTP
@@ -283,9 +290,11 @@ is refused now says so, rather than returning an empty address list that surface
 as an ordinary connection failure. That was never a safety gap — it failed closed —
 but an operator could not tell it from an origin being down.
 
-Until the remaining four records are re-derived, **a gate record's "shipped" count
-should be read as a claim about the evidence available on its date, not as a
-current statement.**
+**A gate record's "shipped" count is a claim about the evidence available on its
+date, not a current statement.** That was written while four of the five were
+still un-re-derived; it stays because it remains the right way to read a dated
+record, and because the re-derivations confirmed it — across the five, more
+lines had to be re-earned or narrowed than stood unchanged.
 
 ### Two things the census found before re-deriving anything
 

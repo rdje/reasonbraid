@@ -51,49 +51,49 @@
 # lines. Re-derive: `python3 -B scripts/census_advertised_policies.py`.
 
 # ── r0-https-fetcher — in-process HTTPS acquisition; the bytes go to storage ──
-r0-https-fetcher	egress_class	listed	misdescribed	SIGNOFF-REPAIR.7.3.6.5	no list is consulted anywhere; fetcher.rs classifies a destination (public-only) per dial. ADR-018's vocabulary has no class for "bounded by classification", so `listed` is the closest word rather than a true one
+r0-https-fetcher	egress_class	listed	unverified	SIGNOFF-REPAIR.7.3.6.5	DEFINED by .7.3.6.5, and migration 0025's own comment already said it: the §12.4 public-only destination CLASSES are the list. The bound is real and enforced per dial by ssrf.rs; `listed` is a list of destination classes, not of hosts. No RED on record for R0's own loop
 r0-https-fetcher	sandbox_level	none	vacuous	SIGNOFF-REPAIR.7.3.6.1	`none` is the bottom of the ADR-018 ladder and claims no isolation; the fetcher runs in the server process
 r0-https-fetcher	redirect_policy	follow-classified	unverified	SIGNOFF-REPAIR.7.3.6.1	fetcher.rs follows hops manually (`reqwest::redirect::Policy::none()`, fetcher.rs:414) and re-classifies each; no RED observation on record for R0's own loop — .7.2.2's RED was R1's git.rs
-r0-https-fetcher	archive_policy	deny	undefined	SIGNOFF-REPAIR.7.3.6.5	the term is defined nowhere in the repository: the column, the struct field, the defaults, the binds and six literals are its ONLY occurrences
+r0-https-fetcher	archive_policy	deny	vacuous	SIGNOFF-REPAIR.7.3.6.5	DEFINED by .7.3.6.5 from ROADMAP.md §16's `archive-depth` policy: `deny` = the pack does not expand an archive NESTED inside the container it acquired. R0 expands nothing at all — the bytes go to storage
 r0-https-fetcher	subresource_policy	deny	vacuous	SIGNOFF-REPAIR.7.3.6.1	the fetcher acquires one URL's bytes into storage and parses no document, so no subresource request exists to refuse
 r0-https-fetcher	javascript_policy	deny	vacuous	SIGNOFF-REPAIR.7.3.6.1	no script engine: `grep -n "script\|javascript" crates/reasonbraid-server/src/fetcher.rs` returns nothing
 
 # ── r1-git-fetcher — in-process public-Git acquisition; no worktree ──────────
-r1-git-fetcher	egress_class	listed	misdescribed	SIGNOFF-REPAIR.7.3.6.5	as r0: git.rs classifies every dial, consults no list
+r1-git-fetcher	egress_class	listed	enforced	SIGNOFF-REPAIR.7.2.2	same definition; RED on record — `a_redirect_hop_to_an_ip_literal_is_classified_like_every_other_dial` failed with `Ok(200)`, the refused destination dialed AND answered
 r1-git-fetcher	sandbox_level	none	vacuous	SIGNOFF-REPAIR.7.3.6.1	`none` claims no isolation; the acquirer runs in the server process and materializes no worktree
 r1-git-fetcher	redirect_policy	follow-classified	enforced	SIGNOFF-REPAIR.7.2.2	REPAIR observed RED: with `Policy::limited(5)` restored, `a_redirect_hop_to_an_ip_literal_is_classified_like_every_other_dial` failed with `Ok(200)` — the refused destination was dialed AND answered
-r1-git-fetcher	archive_policy	deny	undefined	SIGNOFF-REPAIR.7.3.6.5	as r0 — the term has no definition
+r1-git-fetcher	archive_policy	deny	vacuous	SIGNOFF-REPAIR.7.3.6.5	as r0: the acquirer takes odb bytes with `no_checkout: true` and materializes no worktree, so no nested container is opened
 r1-git-fetcher	subresource_policy	deny	vacuous	SIGNOFF-REPAIR.7.3.6.1	a clone fetches the objects the protocol names; no document is parsed and no subresource is issued
 r1-git-fetcher	javascript_policy	deny	vacuous	SIGNOFF-REPAIR.7.3.6.1	the acquirer executes no repository code — no hooks, no filters, no external-diff drivers (migration 0026's own refusal list)
 
 # ── r2-extract-worker — a dedicated child process per extraction ─────────────
-r2-extract-worker	egress_class	listed	misdescribed	SIGNOFF-REPAIR.7.3.6.5	the worker performs NO egress: it reads bytes on stdin and its dependency graph carries no HTTP client. `listed` describes the R0 acquisition leg the PIPELINE borrows, advertised as a property of this pack
+r2-extract-worker	egress_class	listed	vacuous	SIGNOFF-REPAIR.7.3.6.5	the worker performs NO egress — stdin bytes, and no HTTP client in its dependency graph. The class describes the R0 acquisition leg the PIPELINE borrows, which carries its own row
 r2-extract-worker	sandbox_level	process	unverified	SIGNOFF-REPAIR.7.3.6.1	process-per-extraction is real (extraction.rs spawns the worker per call) and controls cover the budget kill; no RED observation on record that a non-spawning implementation fails them
 r2-extract-worker	redirect_policy	follow-classified	unverified	SIGNOFF-REPAIR.7.3.6.1	inherited verbatim from R0's loop, which this pack calls through `fetch_admitting`; same gap as r0
-r2-extract-worker	archive_policy	deny	undefined	SIGNOFF-REPAIR.7.3.6.5	⚠️ THE SHARPEST INSTANCE: this pack advertises `archive_policy: "deny"` and `media_types` including `application/zip` and `application/x-tar`, and its worker expands both. Under the natural reading the line is flatly contradicted by the pack's own advertisement two fields above it
+r2-extract-worker	archive_policy	deny	unverified	SIGNOFF-REPAIR.7.3.6.5	⭐ THE LINE THAT LOOKED SELF-CONTRADICTORY AND IS NOT, once the term is defined by depth. R2 expands the container it was GIVEN (its advertised zip/tar media types) and REFUSES one nested inside it — `nested_archive` at reasonbraid-extract/src/main.rs:342 and :415, asserted at :782. `deny` = depth one. No RED observation on record
 r2-extract-worker	subresource_policy	deny	vacuous	SIGNOFF-REPAIR.7.3.6.1	by dependency graph: crates/reasonbraid-extract/Cargo.toml carries no HTTP client (no reqwest, hyper, ureq or tokio::net), so a parsed document's external reference cannot be dialed
 r2-extract-worker	javascript_policy	deny	unverified	SIGNOFF-REPAIR.7.3.6.1	a real refusal — `pdf_javascript` at reasonbraid-extract/src/main.rs:220, asserted at :735 over a catalog carrying /JavaScript; no RED observation on record
 
 # ── r3-browser-worker — the only pack that executes the page's own code ──────
-r3-browser-worker	egress_class	listed	misdescribed	SIGNOFF-REPAIR.7.3.6.5	as r0: one pre-flight classification of the caller's URL, no list
-r3-browser-worker	sandbox_level	vm_container	misdescribed	SIGNOFF-REPAIR.7.3.6.5	🔴 G4's open strand. The worker is an ordinary child process in an owned process group; `security_evidence` emits `"container_required": true`, which is a requirement ON THE DEPLOYMENT, not a property the code establishes. An advertisement describing the operator's obligation as the product's behaviour is the defect class .7.3.5 repaired
+r3-browser-worker	egress_class	listed	unverified	SIGNOFF-REPAIR.7.3.6.5	same definition; the pre-flight classifies the caller's URL and .7.3.5's interception refuses every request the caller did not name, so the page cannot widen it. No RED on record for the pre-flight itself
+r3-browser-worker	sandbox_level	process	enforced	SIGNOFF-REPAIR.7.3.6.5	🔴 CORRECTED from `vm_container` to `process` — G4's open strand, closed by correcting the advertisement rather than building a container. RED on record: a caller requiring `vm_container` was served `{"resolvers":["r3-browser-worker"],"unresolvable_now":false}` by a pack running an ordinary child process. ⭐ Nothing had ever REQUIRED `vm_container`, which is why a claim at the ladder's top was never tested. `security_evidence`'s `container_required` stays and is now consistent: the level says what the CODE provides, that key what the DEPLOYMENT must add
 r3-browser-worker	redirect_policy	deny	enforced	SIGNOFF-REPAIR.7.3.5	REPAIR-0210, observed RED with a real browser: a document request for a URL nobody asked for fails with `BlockedByClient` at the CDP Fetch domain, and the refusal is named on the receipt
-r3-browser-worker	archive_policy	deny	undefined	SIGNOFF-REPAIR.7.3.6.5	as r0 — the term has no definition
+r3-browser-worker	archive_policy	deny	vacuous	SIGNOFF-REPAIR.7.3.6.5	the browser renders a page; no archive container is opened
 r3-browser-worker	subresource_policy	deny	enforced	SIGNOFF-REPAIR.7.3.5	REPAIR-0210, observed RED: `a_subresource_the_pack_advertises_as_denied_is_not_dialed` failed with the origin's own counter `left: 1, right: 0` before the repair — the page's `<img>` named 0.0.0.0 and the origin served it
-r3-browser-worker	javascript_policy	allow-bounded	undefined	SIGNOFF-REPAIR.7.3.6.5	nothing states what "bounded" MEANS and no control asserts any specific bound. ⚠️ .7.3.5 made this MORE ambiguous, not less: inline script still runs, while external script subresources are now denied
+r3-browser-worker	javascript_policy	allow-bounded	enforced	SIGNOFF-REPAIR.7.3.6.5	DEFINED by .7.3.6.5 from what actually bounds execution, enumerated from the producer: external script subresources are refused at the CDP Fetch domain (.7.3.5, RED on record); a wall-clock time budget and a step budget bound the interaction (BrowseLimits); the browser profile is private per render and discarded; and no credential of any kind reaches the browser (0 matches for credential/cookie/Authorization). `allow-bounded` = inline script runs, under those four bounds
 
 # ── r5-credential-broker — R0's fetcher with a per-request credential ────────
-r5-credential-broker	egress_class	listed	misdescribed	SIGNOFF-REPAIR.7.3.6.5	as r0 — it is r0's fetcher
+r5-credential-broker	egress_class	listed	unverified	SIGNOFF-REPAIR.7.3.6.5	as r0 — it is r0's fetcher
 r5-credential-broker	sandbox_level	none	vacuous	SIGNOFF-REPAIR.7.3.6.1	`none` claims no isolation; the authenticated fetch runs in the server process
 r5-credential-broker	redirect_policy	follow-classified	unverified	SIGNOFF-REPAIR.7.3.6.1	the hop is followed and re-classified by r0's loop. ⛔ .7.2.6's RED is NOT this line's: it observed the Authorization header reaching a second origin, which is credential binding, not hop classification
-r5-credential-broker	archive_policy	deny	undefined	SIGNOFF-REPAIR.7.3.6.5	as r0 — the term has no definition
+r5-credential-broker	archive_policy	deny	vacuous	SIGNOFF-REPAIR.7.3.6.5	as r0 — it is r0's fetcher
 r5-credential-broker	subresource_policy	deny	vacuous	SIGNOFF-REPAIR.7.3.6.1	as r0: bytes to storage, no document parsed
 r5-credential-broker	javascript_policy	deny	vacuous	SIGNOFF-REPAIR.7.3.6.1	as r0: no script engine
 
 # ── rx-agent-mediated — publishes a capability call and performs nothing ─────
-rx-agent-mediated	egress_class	any	misdescribed	SIGNOFF-REPAIR.7.3.6.4	🔴 the pack performs NO egress — api.rs:2430 emits an `AcquisitionCall` and returns. `any` is a claim about the ANSWERING AGENT, published as a property of the pack, and it has a consequence: `any` is the widest class, so a caller requiring `any` is served this pack and only this pack
+rx-agent-mediated	egress_class	any	vacuous	SIGNOFF-REPAIR.7.3.6.5	⚠️ VERDICT CORRECTED by .7.3.6.5, from `misdescribed`. REPAIR-0266 judged the in-product code path — the pack performs no egress — and that was the wrong granularity. The class is the MAXIMUM of the ACQUISITION the pack delivers, and an enrolled agent's reach is genuinely unbounded, so `any` is the honest ceiling. Nothing can violate `any`, hence vacuous. ⭐ .7.3.6.4 gives it teeth: a caller must now permit `any` to be served this pack
 rx-agent-mediated	sandbox_level	none	vacuous	SIGNOFF-REPAIR.7.3.6.1	`none` claims no isolation, and the pack runs nothing to isolate
 rx-agent-mediated	redirect_policy	deny	vacuous	SIGNOFF-REPAIR.7.3.6.1	no dial is performed, so no hop exists to follow or refuse
-rx-agent-mediated	archive_policy	deny	undefined	SIGNOFF-REPAIR.7.3.6.5	as r0 — the term has no definition
+rx-agent-mediated	archive_policy	deny	vacuous	SIGNOFF-REPAIR.7.3.6.5	the pack opens nothing
 rx-agent-mediated	subresource_policy	deny	vacuous	SIGNOFF-REPAIR.7.3.6.1	no document is fetched or parsed
 rx-agent-mediated	javascript_policy	deny	vacuous	SIGNOFF-REPAIR.7.3.6.1	nothing is executed in-product

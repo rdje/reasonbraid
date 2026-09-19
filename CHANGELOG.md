@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-19 — The terms are defined, and the R3 pack stops claiming a container it does not have (`SIGNOFF-REPAIR.7.3.6.5`)
+
+The last child of `.7.3.6`, and **G4's open strand closes with it**. All 36 advertised policy lines now carry a defined verdict: **`enforced` 6 · `unverified` 9 · `vacuous` 21 — `undefined` 0, `misdescribed` 0.**
+
+- 🔴 **THE R3 PACK ADVERTISED THE TOP OF THE ISOLATION LADDER AND RUNS AN ORDINARY CHILD PROCESS.** `sandbox_level: "vm_container"` against a worker in an owned process group — rung one. Reproduced: a caller requiring `vm_container` was served `{"resolvers":["r3-browser-worker"],"unresolvable_now":false}`. ⛔ That is the silent downgrade ADR-018's exit clause exists to prevent, performed by the one pack that executes untrusted JavaScript. The level now reads `process`.
+- ⭐ **Nothing had ever REQUIRED `vm_container`, which is why the claim survived.** `git grep` returns the ladder constant, one SDK vocabulary test and the advertisement — no caller, no control. **A rung nobody stands on holds any weight you like.** Correcting it broke no test.
+- ⚠️ **`security_evidence`'s `container_required: true` stays and is now consistent** rather than contradictory: the level says what the CODE provides, that key what the DEPLOYMENT must add. The defect was one field claiming the other's content.
+- ⭐ **Thirteen of the fourteen unsettled lines were settled by DEFINING a term, not by correcting anything.** `archive_policy`'s axis is DEPTH — `ROADMAP.md` §16 says *archive-depth* — so `deny` means the pack does not expand an archive nested inside the container it acquired. 🔴 That dissolves what the first census called its *sharpest instance of a contradiction*: R2 expands the zip or tar it was **given** and refuses one **inside** it, by name. **An undefined term and a contradicted one look identical until the term is pinned.**
+- ⭐ `egress_class: "listed"` means the §12.4 destination **classes** are the list — migration `0025`'s own comment had said so since the pack shipped, and a definition in a migration comment is not one a caller can read. `javascript_policy: "allow-bounded"` is defined by enumerating its four actual bounds.
+- ⚠️ **One of the first census's own verdicts was wrong and is corrected.** RX's `egress_class: "any"` was graded `misdescribed` because the pack performs no egress; that judged the wrong granularity. The class is the maximum of the **acquisition the pack delivers**, and an enrolled agent's reach is unbounded, so `any` is the honest ceiling — re-graded `vacuous`.
+- 🔎 **A book drift found and repaired in passing:** `blockers.md` said all five gate records were re-derived and C2 closed, while `qualification-review.md` — two pages of the same book — still said *"The first is done"*. REPAIR-0265 swept one page and not the other.
+- ⛔ **NOT claimed: that G4 is now Met.** What closes is the last un-discharged strand of its re-derivation; the record's *G4 must be re-earned* verdict is unchanged.
+- ✅ **VERIFIED:** `run_pg_tests.sh profiles` → **60 passed, 0 failed** (RED before: 59/1); census `--check` rc=0 and `--self-test` 26/26; clippy `-D warnings` rc=0; fmt rc=0; book rebuilt and links green.
+
 ## 2026-09-19 — The egress claim is a ceiling, the sandbox claim is a floor (`SIGNOFF-REPAIR.7.3.6.4`)
 
 `resolvers::resolve` filtered both ADR-018 isolation classes with the same test, `declared >= required` — one predicate for two ladders that run in opposite safety directions.

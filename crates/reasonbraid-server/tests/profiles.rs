@@ -2920,6 +2920,109 @@ async fn the_resolver_verb_refuses_to_replace_an_existing_advertise() {
         .expect("clear the probe rows");
 }
 
+/// `SIGNOFF-REPAIR.7.3.6.5`: a caller that requires VM or container isolation is
+/// not served an ordinary child process.
+///
+/// The R3 browser pack advertised `sandbox_level: "vm_container"` — the TOP of
+/// the ADR-018 ladder — while `crates/reasonbraid-browse` spawns an ordinary
+/// child process in an owned process group. `security_evidence` carried
+/// `"container_required": true`, which is a requirement ON THE DEPLOYMENT, not
+/// a property the code establishes.
+///
+/// ⭐ Nothing in this repository had ever REQUIRED `vm_container`, which is why
+/// a false claim at the ladder's top was never noticed: `git grep vm_container`
+/// returned the ladder constant, one SDK vocabulary test, and the advertisement
+/// itself. A rung nobody stands on holds any weight you like.
+///
+/// ⛔ ADR-018's exit clause is *the explicit failure, never the silent
+/// downgrade*. Satisfying a `vm_container` requirement with a bare process is
+/// that downgrade, performed silently, by the one pack that executes untrusted
+/// JavaScript.
+#[tokio::test]
+async fn a_caller_requiring_container_isolation_is_not_served_a_bare_process() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    reasonbraid_server::sync_gated_entries(&pool, true)
+        .await
+        .expect("open the gate so the R3 row exists");
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "sandbox-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+
+    let submitted: Value = client
+        .post(format!("{base}/v1/resources"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({
+            "original_locator": "https://example.org/rendered",
+            "scheme": "web+render",
+        }))
+        .send()
+        .await
+        .expect("submit request")
+        .json()
+        .await
+        .expect("submit json");
+    let resource_id = submitted["resource_id"].as_str().unwrap().to_string();
+
+    let resolve = |required: &'static str| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let resource_id = resource_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/resources/{resource_id}/resolve"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&json!({ "required_sandbox": required, "required_egress": "listed" }))
+                .send()
+                .await
+                .expect("resolve request");
+            let parsed: Value = response.json().await.expect("resolve json");
+            parsed
+        }
+    };
+
+    // THE CLAIM. A caller that requires isolation this deployment does not
+    // provide gets the explicit unresolvable-now, not the browser worker.
+    for required in ["vm_container", "constrained_process"] {
+        let refused = resolve(required).await;
+        assert_eq!(
+            refused["unresolvable_now"],
+            json!(true),
+            "requiring `{required}` must not be satisfied by a pack that runs an \
+             ordinary child process: {refused}",
+        );
+        assert!(
+            refused["resolvers"].as_array().unwrap().is_empty(),
+            "…and no resolver is ranked for it: {refused}",
+        );
+    }
+
+    // ⛔ A BOUND, NOT A BLACKOUT: the pack still resolves for a caller whose
+    // requirement it genuinely meets. `process` is what the worker is.
+    let served = resolve("process").await;
+    assert_eq!(
+        served["resolvers"],
+        json!(["r3-browser-worker"]),
+        "the pack still serves a caller requiring the isolation it actually \
+         provides: {served}",
+    );
+
+    reasonbraid_server::sync_gated_entries(&pool, false)
+        .await
+        .expect("close the gate again");
+}
+
 /// `SIGNOFF-REPAIR.7.3.6.4`: a caller that bounds a pack's egress is not served
 /// a pack that declares no bound.
 ///

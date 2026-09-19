@@ -23,6 +23,13 @@
 # figures moved 42 → 41 and 33 → 32 for ONE reason: `POST /v1/workflow-profiles`
 # was repaired and left both sets; the other seven were already `module-reach`,
 # so they were never in the precise count, only mislabelled in this file.
+#
+# ⭐ `POST /v1/policies` took the SAME step at `SIGNOFF-REPAIR.6.1.5.4`, for the
+# same reason and with the same two consequences in one change: the policy
+# LIBRARY became a `policy_register` site act, so the route left `identity only`
+# AND left the precise walk, because its handler now delegates across a module
+# boundary. The published figures move 26/17 → 25/16 — one movement, one cause,
+# and a defect population going DOWN because the defect was fixed.
 POST /v1/admin/adapters	site authority	recruitment_offers,site_audit	module-reach
 POST /v1/admin/adapters/{adapter_id}/revoke	site authority	recruitment_offers,site_audit	module-reach
 POST /v1/admin/boundaries/{boundary_id}/revoke	guarded transaction	recruitment_offers	module-reach
@@ -61,7 +68,7 @@ POST /v1/nodes/quarantine	guarded transaction	recruitment_offers	module-reach
 POST /v1/nodes/replay	guarded transaction	recruitment_offers	module-reach
 POST /v1/nodes/revoke	guarded transaction	recruitment_offers	module-reach
 POST /v1/nodes/rotate	not-censused	node_certificates	walk
-POST /v1/policies	identity only	policy_versions	walk
+POST /v1/policies	site authority	policy_versions,recruitment_offers,site_audit	module-reach
 POST /v1/policies/resolve	identity only	policy_versions,recruitment_offers	module-reach
 POST /v1/profiles/cards/import	guarded transaction	recruitment_offers	module-reach
 POST /v1/profiles/{role_id}/attest	guarded transaction	recruitment_offers	module-reach

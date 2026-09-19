@@ -788,9 +788,18 @@ def self_test() -> int:
     # anything about it is finished. `.6.1.5.3` owns the reads and pins its own
     # population, because a table with a tenant column is invisible to both of
     # these instruments while its readers stay site-wide.
-    arms.append(("the published 26/17 are derived from the rows, not stored",
-                 len(precise) == 26
-                 and sum(1 for r in precise if r["admission"] == "identity only") == 17))
+    #
+    # ⛔ 26/17 → 25/16 at `SIGNOFF-REPAIR.6.1.5.4`, and that movement has ONE
+    # cause, the same one `.7.1.2.1` had for the other registry: `POST
+    # /v1/policies` was repaired into a `policy_register` site act, so it left
+    # the precise walk (its handler now delegates across a module boundary) AND
+    # left `identity only` in the same change. ⚠️ `policy_versions` is STILL a
+    # site-global table and is meant to be — DOC-0071 decided the governance
+    # library is shared by design — so what left this population is the route's
+    # unguarded ADMISSION, never the table's reach.
+    arms.append(("the published 25/16 are derived from the rows, not stored",
+                 len(precise) == 25
+                 and sum(1 for r in precise if r["admission"] == "identity only") == 16))
 
     # ── The live corpus ──────────────────────────────────────────────────────
     try:

@@ -402,14 +402,22 @@ where
 /// `migrations/0004_authority.sql` declares the column `NOT NULL`, so that arm
 /// was dead, and copying it forward would keep teaching the next reader that
 /// the column is optional.
-pub(crate) async fn grant_is_live(pool: &PgPool, grant_id: &str) -> Result<bool, sqlx::Error> {
+/// ⚠️ Executor-generic since `SIGNOFF-REPAIR.6.1.5.4`, so the one definition
+/// serves both a pool and a CONNECTION. `policy::register` now runs inside the
+/// site act's transaction, and asking this question on a second connection would
+/// read the grants from outside the transaction that is about to commit the
+/// write it gates.
+pub(crate) async fn grant_is_live<'e, E>(executor: E, grant_id: &str) -> Result<bool, sqlx::Error>
+where
+    E: sqlx::PgExecutor<'e>,
+{
     let live: Option<bool> = sqlx::query_scalar(
         "SELECT EXISTS (SELECT 1 FROM authority_grants \
          WHERE grant_id = $1 AND status = 'active' \
          AND valid_from <= now() AND expires_at > now())",
     )
     .bind(grant_id)
-    .fetch_one(pool)
+    .fetch_one(executor)
     .await?;
     Ok(live.unwrap_or(false))
 }

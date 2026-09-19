@@ -6,6 +6,7 @@
 //! revocation, without depending on a particular grant-selection query plan.
 
 mod operator;
+mod policies;
 mod registry;
 mod retention;
 mod workflows;
@@ -13,6 +14,7 @@ mod workflows;
 pub use operator::{
     disable_boundary, disable_grant, inspect, issue_boundary, issue_grant, Collection,
 };
+pub use policies::register_policy;
 pub use registry::{execute, RegistryCommand};
 pub use retention::{expire_evidence, tombstone_evidence};
 pub use workflows::register_profile;
@@ -140,6 +142,16 @@ pub enum Action {
     /// chooses the steps every tenant's next bare thread executes. The module
     /// already called this "the operator's verb" and did not enforce it.
     WorkflowRegister,
+    /// Registering a policy version (`SIGNOFF-REPAIR.6.1.5.4`).
+    /// `policy_versions` is keyed `(policy_id, version)` with no tenant column,
+    /// so the registry is a FIRST-COME identifier namespace over the site's
+    /// shared governance library: the first caller to name a coordinate owns
+    /// it, every later caller is refused as a duplicate, and what the other
+    /// tenants then read under that id is the first caller's text. The library
+    /// is shared BY DESIGN (DOC-0071) and its ownership model is a grant, not a
+    /// tenant — so the repair is the authority the write always needed, and it
+    /// is deliberately the same shape [`Self::WorkflowRegister`] took.
+    PolicyRegister,
 }
 
 impl Action {
@@ -153,6 +165,7 @@ impl Action {
             Self::RegionUnpair => "region_unpair",
             Self::EvidenceExpire => "evidence_expire",
             Self::WorkflowRegister => "workflow_register",
+            Self::PolicyRegister => "policy_register",
         }
     }
 }

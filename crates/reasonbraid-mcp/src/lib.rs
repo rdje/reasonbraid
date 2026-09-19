@@ -350,6 +350,14 @@ mod pg_test_support;
 #[path = "../../reasonbraid-server/tests/support/cleanup.rs"]
 mod pg_cleanup;
 
+/// `SIGNOFF-REPAIR.6.1.5.4`: the live controls seed the governance LIBRARY, and
+/// registering a policy version is a site act since that leaf. The same fixture
+/// the server's own suites use, included the same way this file already includes
+/// the pool and the cleanup plan.
+#[cfg(test)]
+#[path = "../../reasonbraid-server/tests/support/site.rs"]
+mod site_fixture;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -508,6 +516,11 @@ mod tests {
         crate::pg_cleanup::delete_tables(
             &pool,
             &[
+                // `SIGNOFF-REPAIR.6.1.5.4`: registering a policy version is a
+                // site act, so these controls now write the site trail. Ahead of
+                // the policy tables because the audit row outlives the act it
+                // records.
+                "site_audit",
                 "policy_reviews",
                 "policy_outcomes",
                 "policy_corrections",
@@ -927,12 +940,22 @@ mod tests {
         );
 
         let grant_id = format!("grt_{human_id}");
+        // `SIGNOFF-REPAIR.6.1.5.4`: the library's WRITE is a site act. The
+        // proposal below is untouched by that — a proposal is its tenant's —
+        // which is the whole of DOC-0071's split, exercised here in one body.
+        site_fixture::provision(
+            &pool,
+            &human_id,
+            &[reasonbraid_server::site_authority::Action::PolicyRegister],
+        )
+        .await;
         let (status, registered) = post(
             &client,
             &base,
             "/v1/policies",
             &human_id,
             &serde_json::json!({
+                "reason": "the MCP tool control seeds the governance library",
                 "policy_id": "mcp-tool-pol",
                 "version": "1.0.0",
                 "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -1204,12 +1227,19 @@ mod tests {
         // same row to the same caller. Asserting it here makes the
         // site-global property OBSERVABLE, so `SIGNOFF-REPAIR.6.1.5` inherits
         // a demonstration rather than a description.
+        site_fixture::provision(
+            &pool,
+            &bob_id,
+            &[reasonbraid_server::site_authority::Action::PolicyRegister],
+        )
+        .await;
         let (status, registered) = post(
             &client,
             &base,
             "/v1/policies",
             &bob_id,
             &serde_json::json!({
+                "reason": "the site-global read control seeds one shared policy",
                 "policy_id": "mcp-read-site-pol",
                 "version": "1.0.0",
                 "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",

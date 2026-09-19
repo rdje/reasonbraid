@@ -14,6 +14,9 @@ mod pg_test_support;
 #[path = "support/cleanup.rs"]
 mod pg_cleanup;
 
+#[path = "support/site.rs"]
+mod site_fixture;
+
 use std::net::SocketAddr;
 use std::sync::OnceLock;
 
@@ -42,6 +45,10 @@ async fn pool() -> Option<PgPool> {
     pg_cleanup::delete_tables(
         &pool,
         &[
+            // `SIGNOFF-REPAIR.6.1.5.4`: registering a policy version is a site act,
+            // so this suite now writes the site trail. Ahead of the policy tables
+            // because the audit row outlives the act it records.
+            "site_audit",
             "policy_reviews",
             "policy_outcomes",
             "policy_corrections",
@@ -188,6 +195,29 @@ async fn post(
     (status, body)
 }
 
+/// `POST /v1/policies` — a SITE act since `SIGNOFF-REPAIR.6.1.5.4`, so every
+/// body carries the reason every site act carries.
+///
+/// ⭐ One helper rather than the same wire detail restated at twenty-six
+/// fixtures, and it adds NOTHING else: it does not issue the capability, so a
+/// caller that holds no `policy_register` grant is refused here exactly as it is
+/// in production. A fixture that means to register seeds the grant explicitly
+/// through `site_fixture::provision`, in its own body, where a reader can see
+/// it. That the reason is REQUIRED — not merely accepted — is asserted by
+/// `the_policy_library_takes_site_operator_authority`, which posts without one.
+async fn register_policy(
+    client: &reqwest::Client,
+    base: &str,
+    principal: &str,
+    body: &Value,
+) -> (u16, Value) {
+    let mut body = body.clone();
+    if body.get("reason").is_none() {
+        body["reason"] = json!("the fixture registers a policy version");
+    }
+    post(client, base, "/v1/policies", principal, &body).await
+}
+
 async fn get(client: &reqwest::Client, base: &str, path: &str, principal: &str) -> (u16, Value) {
     let response = client
         .get(format!("{base}{path}"))
@@ -244,6 +274,15 @@ async fn the_policy_registry_validates_the_digest_pinned_document() {
     .await;
     assert_eq!(status, 200, "the human enrolls: {human}");
     let human_id = human["principal_id"].as_str().unwrap().to_string();
+    // `SIGNOFF-REPAIR.6.1.5.4`: registering a policy version is a site act.
+    // This fixture seeds the governance library, so it holds the capability —
+    // issued through the deployment-controlled service, never by a row insert.
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
     // The dev enrollment's grant: `grt_<principal>` (the Phase-2 model) — the
     // policy's owning authority references it.
     let grant_id = format!("grt_{human_id}");
@@ -269,14 +308,8 @@ async fn the_policy_registry_validates_the_digest_pinned_document() {
     };
 
     // 1. The typed document registers; the row echoes the fields.
-    let (status, registered) = post(
-        &client,
-        &base,
-        "/v1/policies",
-        &human_id,
-        &policy("org-baseline", "1.0.0"),
-    )
-    .await;
+    let (status, registered) =
+        register_policy(&client, &base, &human_id, &policy("org-baseline", "1.0.0")).await;
     assert_eq!(status, 200, "the policy registers: {registered}");
     assert_eq!(registered["policy_id"], json!("org-baseline"));
     assert_eq!(registered["version"], json!("1.0.0"));
@@ -285,41 +318,38 @@ async fn the_policy_registry_validates_the_digest_pinned_document() {
     assert_eq!(registered["clauses"].as_array().unwrap().len(), 2);
 
     // 2. A NEW version of the same policy registers (the versioned registry).
-    let (status, upgraded) = post(
-        &client,
-        &base,
-        "/v1/policies",
-        &human_id,
-        &policy("org-baseline", "1.1.0"),
-    )
-    .await;
+    let (status, upgraded) =
+        register_policy(&client, &base, &human_id, &policy("org-baseline", "1.1.0")).await;
     assert_eq!(status, 200, "the new version registers: {upgraded}");
 
     // 3. The refusals: the duplicate version, the malformed digest, the
     // malformed semver, the unknown lifecycle, the duplicate clause ids, the
     // empty clauses, and the GHOST owning authority (the label grants
     // nothing).
-    let (status, refused) = post(
-        &client,
-        &base,
-        "/v1/policies",
-        &human_id,
-        &policy("org-baseline", "1.0.0"),
-    )
-    .await;
-    assert_eq!(status, 400, "the duplicate refuses: {refused}");
-    assert!(
-        refused["message"]
-            .as_str()
-            .unwrap()
-            .contains("already exists"),
+    let (status, refused) =
+        register_policy(&client, &base, &human_id, &policy("org-baseline", "1.0.0")).await;
+    // ⚠️ 403, not the 400 this was before `SIGNOFF-REPAIR.6.1.5.4`. Whether a
+    // coordinate is taken is a question about the DATABASE, so it is answered
+    // INSIDE the site gate as a domain refusal — audited `denied` with the
+    // grant and boundary attached, because the caller did hold the authority.
+    // Answering it before the gate would have handed a caller with no site
+    // authority an existence oracle over a registry it may not write.
+    assert_eq!(status, 403, "the duplicate refuses: {refused}");
+    assert_eq!(
+        refused["code"],
+        json!("that policy version is already registered"),
         "{refused}"
     );
+    assert!(
+        refused["audit_id"]
+            .as_str()
+            .is_some_and(|id| !id.is_empty()),
+        "a refused site act still records why it was refused: {refused}"
+    );
 
-    let (status, refused) = post(
+    let (status, refused) = register_policy(
         &client,
         &base,
-        "/v1/policies",
         &human_id,
         &json!({
             "policy_id": "bad-digest",
@@ -338,10 +368,9 @@ async fn the_policy_registry_validates_the_digest_pinned_document() {
         "{refused}"
     );
 
-    let (status, refused) = post(
+    let (status, refused) = register_policy(
         &client,
         &base,
-        "/v1/policies",
         &human_id,
         &json!({
             "policy_id": "bad-version",
@@ -363,10 +392,9 @@ async fn the_policy_registry_validates_the_digest_pinned_document() {
         "{refused}"
     );
 
-    let (status, refused) = post(
+    let (status, refused) = register_policy(
         &client,
         &base,
-        "/v1/policies",
         &human_id,
         &json!({
             "policy_id": "bad-lifecycle",
@@ -385,10 +413,9 @@ async fn the_policy_registry_validates_the_digest_pinned_document() {
         "{refused}"
     );
 
-    let (status, refused) = post(
+    let (status, refused) = register_policy(
         &client,
         &base,
-        "/v1/policies",
         &human_id,
         &json!({
             "policy_id": "dup-clauses",
@@ -410,10 +437,9 @@ async fn the_policy_registry_validates_the_digest_pinned_document() {
         "{refused}"
     );
 
-    let (status, refused) = post(
+    let (status, refused) = register_policy(
         &client,
         &base,
-        "/v1/policies",
         &human_id,
         &json!({
             "policy_id": "no-clauses",
@@ -428,10 +454,9 @@ async fn the_policy_registry_validates_the_digest_pinned_document() {
     .await;
     assert_eq!(status, 400, "the empty clauses refuse: {refused}");
 
-    let (status, refused) = post(
+    let (status, refused) = register_policy(
         &client,
         &base,
-        "/v1/policies",
         &human_id,
         &json!({
             "policy_id": "ghost-authority",
@@ -444,13 +469,14 @@ async fn the_policy_registry_validates_the_digest_pinned_document() {
         }),
     )
     .await;
-    assert_eq!(status, 400, "the ghost authority refuses: {refused}");
-    assert!(
-        refused["message"]
-            .as_str()
-            .unwrap()
-            .contains("label grants nothing"),
-        "{refused}"
+    // ⚠️ Also 403 since `.6.1.5.4`, and for the sharper of the two reasons:
+    // whether `grt_ghost` names a live grant is an existence question about the
+    // SITE'S OWN GRANTS, and the 400 that used to answer it answered anyone.
+    assert_eq!(status, 403, "the ghost authority refuses: {refused}");
+    assert_eq!(
+        refused["code"],
+        json!("the named owning authority is not an active, unexpired grant"),
+        "the audit trail tells the two domain refusals apart: {refused}"
     );
 
     // 4. The list: the two registered rows, newest first (the refusals
@@ -461,16 +487,13 @@ async fn the_policy_registry_validates_the_digest_pinned_document() {
     assert_eq!(policies.len(), 2, "{policies:?}");
     assert_eq!(policies[0]["version"], json!("1.1.0"), "newest first");
 
-    // 5. An unenrolled principal registers nothing.
-    let (status, _) = post(
-        &client,
-        &base,
-        "/v1/policies",
-        "hpr_ghost",
-        &policy("ghost", "1.0.0"),
-    )
-    .await;
-    assert_eq!(status, 401, "the unenrolled register refuses");
+    // 5. A malformed principal is refused at the header, before anything else.
+    // ⚠️ Since `.6.1.5.4` this leg proves the HEADER contract and no longer the
+    // enrolment gate, which the site gate replaced: a WELL-FORMED principal that
+    // is merely enrolled is now refused 403, and that is asserted where it
+    // belongs, in `the_policy_library_takes_site_operator_authority`.
+    let (status, _) = register_policy(&client, &base, "hpr_ghost", &policy("ghost", "1.0.0")).await;
+    assert_eq!(status, 401, "a malformed principal refuses at the header");
 }
 
 #[tokio::test]
@@ -489,13 +512,22 @@ async fn the_seven_step_resolution_fails_closed() {
     .await;
     assert_eq!(status, 200, "the human enrolls: {human}");
     let human_id = human["principal_id"].as_str().unwrap().to_string();
+    // `SIGNOFF-REPAIR.6.1.5.4`: registering a policy version is a site act.
+    // This fixture seeds the governance library, so it holds the capability —
+    // issued through the deployment-controlled service, never by a row insert.
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
     let grant_id = format!("grt_{human_id}");
 
     let register = |policy: Value| {
         let client = client.clone();
         let base = base.clone();
         let human_id = human_id.clone();
-        async move { post(&client, &base, "/v1/policies", &human_id, &policy).await }
+        async move { register_policy(&client, &base, &human_id, &policy).await }
     };
     let resolve = |request: Value| {
         let client = client.clone();
@@ -760,14 +792,22 @@ async fn the_proposal_and_the_decision_stay_separate_records() {
     .await;
     assert_eq!(status, 200, "the human enrolls: {human}");
     let human_id = human["principal_id"].as_str().unwrap().to_string();
+    // `SIGNOFF-REPAIR.6.1.5.4`: registering a policy version is a site act.
+    // This fixture seeds the governance library, so it holds the capability —
+    // issued through the deployment-controlled service, never by a row insert.
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
     let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
     let grant_id = format!("grt_{human_id}");
 
     // The policy the proposal targets.
-    let (status, _) = post(
+    let (status, _) = register_policy(
         &client,
         &base,
-        "/v1/policies",
         &human_id,
         &json!({
             "policy_id": "lc-policy",
@@ -1053,15 +1093,23 @@ async fn the_approval_carries_its_authority_proof() {
     .await;
     assert_eq!(status, 200, "the human enrolls: {human}");
     let human_id = human["principal_id"].as_str().unwrap().to_string();
+    // `SIGNOFF-REPAIR.6.1.5.4`: registering a policy version is a site act.
+    // This fixture seeds the governance library, so it holds the capability —
+    // issued through the deployment-controlled service, never by a row insert.
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
     let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
     let grant_id = format!("grt_{human_id}");
 
     // The chain: the policy → the thread + the verdict → the proposal →
     // the decision.
-    let (status, _) = post(
+    let (status, _) = register_policy(
         &client,
         &base,
-        "/v1/policies",
         &human_id,
         &json!({
             "policy_id": "ap-policy",
@@ -1360,6 +1408,15 @@ async fn the_projection_compiles_the_resolved_set_byte_identical() {
     .await;
     assert_eq!(status, 200, "the human enrolls: {human}");
     let human_id = human["principal_id"].as_str().unwrap().to_string();
+    // `SIGNOFF-REPAIR.6.1.5.4`: registering a policy version is a site act.
+    // This fixture seeds the governance library, so it holds the capability —
+    // issued through the deployment-controlled service, never by a row insert.
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
     let grant_id = format!("grt_{human_id}");
 
     // Two policies: the baseline (the c1/c2 clauses) + the shape policy
@@ -1378,10 +1435,9 @@ async fn the_projection_compiles_the_resolved_set_byte_identical() {
             json!([ { "id": "c3", "statement": "a control \u{0001} character" } ]),
         ),
     ] {
-        let (status, registered) = post(
+        let (status, registered) = register_policy(
             &client,
             &base,
-            "/v1/policies",
             &human_id,
             &json!({
                 "policy_id": policy_id,
@@ -1560,12 +1616,20 @@ async fn the_codex_and_claude_projections_ride_the_verb() {
     .await;
     assert_eq!(status, 200, "the human enrolls: {human}");
     let human_id = human["principal_id"].as_str().unwrap().to_string();
+    // `SIGNOFF-REPAIR.6.1.5.4`: registering a policy version is a site act.
+    // This fixture seeds the governance library, so it holds the capability —
+    // issued through the deployment-controlled service, never by a row insert.
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
     let grant_id = format!("grt_{human_id}");
 
-    let (status, _) = post(
+    let (status, _) = register_policy(
         &client,
         &base,
-        "/v1/policies",
         &human_id,
         &json!({
             "policy_id": "cc-policy",
@@ -1628,15 +1692,23 @@ async fn the_publication_stages_and_marks_its_typed_state() {
     .await;
     assert_eq!(status, 200, "the human enrolls: {human}");
     let human_id = human["principal_id"].as_str().unwrap().to_string();
+    // `SIGNOFF-REPAIR.6.1.5.4`: registering a policy version is a site act.
+    // This fixture seeds the governance library, so it holds the capability —
+    // issued through the deployment-controlled service, never by a row insert.
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
     let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
     let grant_id = format!("grt_{human_id}");
 
     // The chain: the policy → the thread + the verdict → the proposal →
     // the decision → the approval → the projection.
-    let (status, _) = post(
+    let (status, _) = register_policy(
         &client,
         &base,
-        "/v1/policies",
         &human_id,
         &json!({
             "policy_id": "pb-policy",
@@ -2047,15 +2119,23 @@ async fn the_publish_verb_drives_the_git_half() {
     .await;
     assert_eq!(status, 200, "the human enrolls: {human}");
     let human_id = human["principal_id"].as_str().unwrap().to_string();
+    // `SIGNOFF-REPAIR.6.1.5.4`: registering a policy version is a site act.
+    // This fixture seeds the governance library, so it holds the capability —
+    // issued through the deployment-controlled service, never by a row insert.
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
     let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
     let grant_id = format!("grt_{human_id}");
 
     // The chain: the policy → the thread + the verdict → the proposal →
     // the decision → the approval → the projection → the staged publication.
-    let (status, _) = post(
+    let (status, _) = register_policy(
         &client,
         &base,
-        "/v1/policies",
         &human_id,
         &json!({
             "policy_id": "pu-policy",
@@ -2652,16 +2732,24 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
     .await;
     assert_eq!(status, 200, "the human enrolls: {human}");
     let human_id = human["principal_id"].as_str().unwrap().to_string();
+    // `SIGNOFF-REPAIR.6.1.5.4`: registering a policy version is a site act.
+    // This fixture seeds the governance library, so it holds the capability —
+    // issued through the deployment-controlled service, never by a row insert.
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
     let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
     let grant_id = format!("grt_{human_id}");
 
     // The chain to the EFFECTIVE publication (the made-up object ids ride
     // the /effective verb — the git half is the `.4.3` lane's, already
     // proven).
-    let (status, _) = post(
+    let (status, _) = register_policy(
         &client,
         &base,
-        "/v1/policies",
         &human_id,
         &json!({
             "policy_id": "dp-policy",
@@ -3015,15 +3103,23 @@ async fn the_drift_corrections_and_outcomes_ride_the_records() {
     .await;
     assert_eq!(status, 200, "the human enrolls: {human}");
     let human_id = human["principal_id"].as_str().unwrap().to_string();
+    // `SIGNOFF-REPAIR.6.1.5.4`: registering a policy version is a site act.
+    // This fixture seeds the governance library, so it holds the capability —
+    // issued through the deployment-controlled service, never by a row insert.
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
     let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
     let grant_id = format!("grt_{human_id}");
 
     // The chain to the effective publication + the target + the assignment
     // (the same path the `.5.2` test drives).
-    let (status, _) = post(
+    let (status, _) = register_policy(
         &client,
         &base,
-        "/v1/policies",
         &human_id,
         &json!({
             "policy_id": "cr-policy",
@@ -3443,15 +3539,23 @@ async fn the_scheduled_reviews_evaluate_the_triggers() {
     .await;
     assert_eq!(status, 200, "the human enrolls: {human}");
     let human_id = human["principal_id"].as_str().unwrap().to_string();
+    // `SIGNOFF-REPAIR.6.1.5.4`: registering a policy version is a site act.
+    // This fixture seeds the governance library, so it holds the capability —
+    // issued through the deployment-controlled service, never by a row insert.
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
     let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
     let grant_id = format!("grt_{human_id}");
 
     // The chain to a STAGED publication (the outcomes only require the
     // existence).
-    let (status, _) = post(
+    let (status, _) = register_policy(
         &client,
         &base,
-        "/v1/policies",
         &human_id,
         &json!({
             "policy_id": "rv-policy",
@@ -3754,6 +3858,15 @@ async fn citing_an_authority_requires_holding_it() {
     .await;
     assert_eq!(status, 200, "alice enrolls: {alice}");
     let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    // `SIGNOFF-REPAIR.6.1.5.4`: registering a policy version is a site act.
+    // This fixture seeds the governance library, so it holds the capability —
+    // issued through the deployment-controlled service, never by a row insert.
+    site_fixture::provision(
+        &pool,
+        &alice_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
     let alice_grant = format!("grt_{alice_id}");
     let alice_tenant = alice["tenant_id"].as_str().unwrap().to_string();
 
@@ -3773,10 +3886,9 @@ async fn citing_an_authority_requires_holding_it() {
 
     // A publication for the correction to name, owned by ALICE's own grant so
     // that nothing but the cited authority distinguishes the legs below.
-    let (status, registered) = post(
+    let (status, registered) = register_policy(
         &client,
         &base,
-        "/v1/policies",
         &alice_id,
         &json!({
             "policy_id": "cite-pol",
@@ -4142,6 +4254,15 @@ async fn an_approval_is_bound_to_the_proposals_own_tenant() {
     .await;
     assert_eq!(status, 200, "alice enrols: {alice}");
     let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    // `SIGNOFF-REPAIR.6.1.5.4`: registering a policy version is a site act.
+    // This fixture seeds the governance library, so it holds the capability —
+    // issued through the deployment-controlled service, never by a row insert.
+    site_fixture::provision(
+        &pool,
+        &alice_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
     let alice_tenant = alice["tenant_id"].as_str().unwrap().to_string();
     let alice_grant = format!("grt_{alice_id}");
 
@@ -4164,10 +4285,9 @@ async fn an_approval_is_bound_to_the_proposals_own_tenant() {
         "two enrolments must be two tenants, or this control measures nothing"
     );
 
-    let (status, _) = post(
+    let (status, _) = register_policy(
         &client,
         &base,
-        "/v1/policies",
         &alice_id,
         &json!({
             "policy_id": "apt-policy",
@@ -4363,6 +4483,15 @@ async fn the_lifecycle_verbs_refuse_a_foreign_tenants_thread() {
     .await;
     assert_eq!(status, 200, "alice enrols: {alice}");
     let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    // `SIGNOFF-REPAIR.6.1.5.4`: registering a policy version is a site act.
+    // This fixture seeds the governance library, so it holds the capability —
+    // issued through the deployment-controlled service, never by a row insert.
+    site_fixture::provision(
+        &pool,
+        &alice_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
     let alice_tenant = alice["tenant_id"].as_str().unwrap().to_string();
     let alice_grant = format!("grt_{alice_id}");
 
@@ -4375,10 +4504,9 @@ async fn the_lifecycle_verbs_refuse_a_foreign_tenants_thread() {
     assert_eq!(status, 200, "mallory enrols: {mallory}");
     let mallory_id = mallory["principal_id"].as_str().unwrap().to_string();
 
-    let (status, _) = post(
+    let (status, _) = register_policy(
         &client,
         &base,
-        "/v1/policies",
         &alice_id,
         &json!({
             "policy_id": "lft-policy", "version": "1.0.0", "digest": DIGEST,
@@ -4554,6 +4682,15 @@ async fn the_lifecycle_row_carries_the_tenant_that_owns_it() {
     .await;
     assert_eq!(status, 200, "alice enrols: {alice}");
     let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    // `SIGNOFF-REPAIR.6.1.5.4`: registering a policy version is a site act.
+    // This fixture seeds the governance library, so it holds the capability —
+    // issued through the deployment-controlled service, never by a row insert.
+    site_fixture::provision(
+        &pool,
+        &alice_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
     let alice_tenant = alice["tenant_id"].as_str().unwrap().to_string();
     let alice_grant = format!("grt_{alice_id}");
 
@@ -4587,10 +4724,9 @@ async fn the_lifecycle_row_carries_the_tenant_that_owns_it() {
         }
     };
 
-    let (status, _) = post(
+    let (status, _) = register_policy(
         &client,
         &base,
-        "/v1/policies",
         &alice_id,
         &json!({
             "policy_id": "lto-policy", "version": "1.0.0", "digest": DIGEST,
@@ -4967,6 +5103,15 @@ async fn the_lifecycle_verbs_refuse_another_tenants_publication() {
     .await;
     assert_eq!(status, 200, "alice enrols: {alice}");
     let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    // `SIGNOFF-REPAIR.6.1.5.4`: registering a policy version is a site act.
+    // This fixture seeds the governance library, so it holds the capability —
+    // issued through the deployment-controlled service, never by a row insert.
+    site_fixture::provision(
+        &pool,
+        &alice_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
     let alice_tenant = alice["tenant_id"].as_str().unwrap().to_string();
     let alice_grant = format!("grt_{alice_id}");
 
@@ -4985,10 +5130,9 @@ async fn the_lifecycle_verbs_refuse_another_tenants_publication() {
         "two enrolments must be two tenants, or this control measures nothing"
     );
 
-    let (status, _) = post(
+    let (status, _) = register_policy(
         &client,
         &base,
-        "/v1/policies",
         &alice_id,
         &json!({
             "policy_id": "gtn-policy", "version": "1.0.0", "digest": DIGEST,
@@ -5521,6 +5665,15 @@ async fn every_lifecycle_read_is_bound_to_its_own_tenant() {
     };
     let (alice_id, alice_tenant) = enrol("rdb-alice").await;
     let (mallory_id, mallory_tenant) = enrol("rdb-mallory").await;
+    // `SIGNOFF-REPAIR.6.1.5.4`: registering a policy version is a site act.
+    // This fixture seeds the governance library, so it holds the capability —
+    // issued through the deployment-controlled service, never by a row insert.
+    site_fixture::provision(
+        &pool,
+        &alice_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
     assert_ne!(
         alice_tenant, mallory_tenant,
         "two enrolments must be two tenants, or this control measures nothing"
@@ -5530,10 +5683,9 @@ async fn every_lifecycle_read_is_bound_to_its_own_tenant() {
     // is the shared library by DOC-0071's decision, so a control that gave each
     // tenant its own policy would quietly assume the opposite of what this leaf
     // deliberately leaves unbound.
-    let (status, _) = post(
+    let (status, _) = register_policy(
         &client,
         &base,
-        "/v1/policies",
         &alice_id,
         &json!({
             "policy_id": "rdb-policy", "version": "1.0.0", "digest": DIGEST,
@@ -5828,4 +5980,332 @@ async fn every_lifecycle_read_is_bound_to_its_own_tenant() {
     }
 
     let _ = std::fs::remove_dir_all(&repo_root);
+}
+
+/// `SIGNOFF-REPAIR.6.1.5.4` — the policy LIBRARY takes site-operator authority.
+///
+/// 🔴 **Reproduced at runtime against the shipped server before the repair was
+/// written**, in all four legs this control now refuses: an enrolled principal
+/// in tenant B registered `red-org-baseline 1.0.0` (200), tenant A's own
+/// registration at that coordinate was refused 400 `already exists`, tenant A
+/// then READ tenant B's clause `"a publication needs no authority"` as the
+/// organization baseline, and tenant B appended a `2.0.0` that withdrew the
+/// authority clause — with no site authority of any kind.
+///
+/// ⚠️ **Stated at its real width.** Unlike the workflow registry
+/// (`SIGNOFF-REPAIR.7.1.2.1`), `policy::resolve` names an EXPLICIT
+/// `(policy_id, version)` pair, so a foreign registration does not silently
+/// re-shape someone else's deliberation. What it does is take a coordinate the
+/// rightful author then cannot use, and put text under a governance id that
+/// every enrolled principal reads. This control asserts that, and not more.
+#[tokio::test]
+async fn the_policy_library_takes_site_operator_authority() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, operator) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "lib-operator" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the operator enrols: {operator}");
+    let operator_id = operator["principal_id"].as_str().unwrap().to_string();
+    let (status, alice) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "lib-alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "alice enrols: {alice}");
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    let (status, mallory) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "lib-mallory" }),
+    )
+    .await;
+    assert_eq!(status, 200, "mallory enrols: {mallory}");
+    let mallory_id = mallory["principal_id"].as_str().unwrap().to_string();
+
+    // Only the operator holds the capability. Alice and Mallory are ordinary
+    // enrolled principals in two different tenants, exactly as before.
+    site_fixture::provision(
+        &pool,
+        &operator_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
+
+    let document = |who: &str, version: &str, statement: &str| {
+        json!({
+            "policy_id": "lib-org-baseline",
+            "version": version,
+            "digest": DIGEST,
+            "lifecycle": "active",
+            "title": "the organization baseline",
+            "owning_authority": format!("grt_{who}"),
+            "clauses": [ { "id": "c1", "statement": statement } ],
+        })
+    };
+
+    // The library's legitimate content, registered by the operator.
+    let (status, seeded) = register_policy(
+        &client,
+        &base,
+        &operator_id,
+        &document(
+            &operator_id,
+            "1.0.0",
+            "every publication names its authority",
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "the capable operator registers: {seeded}");
+
+    // ── THE REFUSAL ──────────────────────────────────────────────────────────
+    // Leg 1: Mallory cannot take a coordinate in the shared namespace.
+    let (status, refused) = register_policy(
+        &client,
+        &base,
+        &mallory_id,
+        &document(&mallory_id, "2.0.0", "the authority clause is withdrawn"),
+    )
+    .await;
+    assert_eq!(
+        status, 403,
+        "an enrolled principal with no site grant registers no policy: {refused}"
+    );
+    assert_eq!(
+        refused["code"],
+        json!("site_authority_required"),
+        "{refused}"
+    );
+    assert!(
+        refused["audit_id"]
+            .as_str()
+            .is_some_and(|id| !id.is_empty()),
+        "a refused site act still records that it was attempted: {refused}"
+    );
+
+    // Leg 2: and the refusal is a REFUSAL, not a silent success — the version
+    // Mallory asked for is absent from the library every tenant reads.
+    let (status, library) = get(&client, &base, "/v1/policies", &alice_id).await;
+    assert_eq!(status, 200, "the library answers Alice: {library}");
+    let rows: Vec<&Value> = library
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|p| p["policy_id"] == json!("lib-org-baseline"))
+        .collect();
+    assert_eq!(
+        rows.len(),
+        1,
+        "exactly the operator's version exists: {rows:?}"
+    );
+    assert_eq!(rows[0]["version"], json!("1.0.0"), "{rows:?}");
+    assert_eq!(
+        rows[0]["clauses"][0]["statement"],
+        json!("every publication names its authority"),
+        "the governance text is the operator's, not a foreign tenant's: {rows:?}"
+    );
+
+    // Leg 3: Alice is refused on exactly the same footing. ⛔ The gate is the
+    // CAPABILITY, never the tenant — a control in which Alice succeeded would be
+    // measuring tenancy and would pass under a repair that scoped the library
+    // per tenant, which DOC-0071 explicitly rejected.
+    let (status, refused) = register_policy(
+        &client,
+        &base,
+        &alice_id,
+        &document(&alice_id, "1.1.0", "alice's own amendment"),
+    )
+    .await;
+    assert_eq!(status, 403, "alice holds no capability either: {refused}");
+
+    // Leg 4: the reason is REQUIRED, not merely accepted — the helper injects
+    // one, so this is the single place the wire contract is proved.
+    let mut bodyless = document(&operator_id, "1.2.0", "no reason given");
+    bodyless.as_object_mut().unwrap().remove("reason");
+    let (status, rejected) = post(&client, &base, "/v1/policies", &operator_id, &bodyless).await;
+    assert_eq!(
+        status, 400,
+        "a site act without a reason is not a site act: {rejected}"
+    );
+
+    // ── THE READS ARE UNCHANGED, and the control says so out loud ────────────
+    // ⛔ DOC-0071 decided the library is READABLE by the tenants it governs. A
+    // later repair that bound these would fail here rather than silently reverse
+    // a recorded decision — the same guard `.6.1.5.3` put on the list read.
+    let request = json!({
+        "policies": [ { "policy_id": "lib-org-baseline", "version": "1.0.0" } ],
+        "target": { "layer": "organization", "target": "anything" },
+    });
+    for (reader, who) in [(&alice_id, "alice"), (&mallory_id, "mallory")] {
+        let (status, resolved) =
+            post(&client, &base, "/v1/policies/resolve", reader, &request).await;
+        assert_eq!(status, 200, "{who} resolves the shared library: {resolved}");
+        assert_eq!(
+            resolved["resolved"][0]["statement"],
+            json!("every publication names its authority"),
+            "{who} reads the governance it is governed by: {resolved}"
+        );
+        let (status, impact) = get(
+            &client,
+            &base,
+            "/v1/policies/lib-org-baseline/1.0.0/impact",
+            reader,
+        )
+        .await;
+        assert_eq!(status, 200, "{who} reads the impact map: {impact}");
+    }
+
+    sqlx::query("DELETE FROM policy_versions WHERE policy_id = 'lib-org-baseline'")
+        .execute(&pool)
+        .await
+        .expect("drop the fixture rows");
+}
+
+/// The POSITIVE arm, without which the repair above is indistinguishable from
+/// deleting the route: a `policy_register` holder still registers, the receipt
+/// is audited, the document is REACHABLE through every read, and the same grant
+/// is refused at an unrelated site verb — so one verb widened, not the boundary.
+#[tokio::test]
+async fn the_policy_register_capability_still_registers_and_resolves() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, operator) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "prc-operator" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the operator enrols: {operator}");
+    let operator_id = operator["principal_id"].as_str().unwrap().to_string();
+
+    site_fixture::provision(
+        &pool,
+        &operator_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
+
+    let body = json!({
+        "reason": "the review lane needs a published baseline",
+        "policy_id": "prc-baseline",
+        "version": "1.0.0",
+        "digest": DIGEST,
+        "lifecycle": "active",
+        "title": "the review baseline",
+        "owning_authority": format!("grt_{operator_id}"),
+        "clauses": [ { "id": "c1", "statement": "every review names its trigger" } ],
+        "applicability": [ { "layer": "organization", "target": "*" } ],
+    });
+    let response = client
+        .post(format!("{base}/v1/policies"))
+        .header(PRINCIPAL_HEADER, &operator_id)
+        .json(&body)
+        .send()
+        .await
+        .expect("register request");
+    assert_eq!(
+        response.status().as_u16(),
+        200,
+        "the capable operator registers"
+    );
+    assert!(
+        response.headers().contains_key("x-reasonbraid-site-audit"),
+        "a site act carries its audit id"
+    );
+    let registered: Value = response.json().await.unwrap();
+    assert_eq!(
+        registered["policy_id"],
+        json!("prc-baseline"),
+        "{registered}"
+    );
+    assert_eq!(registered["version"], json!("1.0.0"), "{registered}");
+
+    // ⚠️ Appending a version is deliberately still possible for a holder: the
+    // registry is versioned by design, and forbidding it would have removed the
+    // feature rather than repaired the authority. The defect was never that a
+    // policy can gain a version — only that anyone could give it one.
+    let (status, appended) = register_policy(
+        &client,
+        &base,
+        &operator_id,
+        &json!({
+            "policy_id": "prc-baseline",
+            "version": "1.1.0",
+            "digest": DIGEST,
+            "lifecycle": "active",
+            "title": "the review baseline",
+            "owning_authority": format!("grt_{operator_id}"),
+            "clauses": [ { "id": "c1", "statement": "every review names its trigger and its owner" } ],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "a holder still appends a version: {appended}");
+
+    // The registration is REACHABLE, not merely stored: an ORDINARY enrolled
+    // principal in another tenant reads it, resolves it and maps its impact.
+    let (status, reader) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "prc-reader" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the reader enrols: {reader}");
+    let reader_id = reader["principal_id"].as_str().unwrap().to_string();
+
+    let (status, library) = get(&client, &base, "/v1/policies", &reader_id).await;
+    assert_eq!(status, 200, "the library answers the reader: {library}");
+    assert_eq!(
+        library
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|p| p["policy_id"] == json!("prc-baseline"))
+            .count(),
+        2,
+        "both versions are readable by a principal who registered neither: {library}"
+    );
+
+    let (status, resolved) = post(
+        &client,
+        &base,
+        "/v1/policies/resolve",
+        &reader_id,
+        &json!({
+            "policies": [ { "policy_id": "prc-baseline", "version": "1.1.0" } ],
+            "target": { "layer": "organization", "target": "anything" },
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the reader resolves it: {resolved}");
+    assert_eq!(
+        resolved["resolved"][0]["statement"],
+        json!("every review names its trigger and its owner"),
+        "{resolved}"
+    );
+
+    // ⛔ The capability is for THIS action only: the same grant does not become
+    // site-wide authority. A registry inspection with a policy-only grant is
+    // refused, so the repair widened one verb rather than the boundary.
+    let (status, refused) = get(&client, &base, "/v1/admin/adapters", &operator_id).await;
+    assert_eq!(
+        status, 403,
+        "a policy_register grant inspects no registry: {refused}"
+    );
+
+    sqlx::query("DELETE FROM policy_versions WHERE policy_id = 'prc-baseline'")
+        .execute(&pool)
+        .await
+        .expect("drop the fixture rows");
 }

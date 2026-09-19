@@ -41,6 +41,7 @@ and the development HTTP principal header remains a development assumption.
 | `region_unpair` | Remove a directed pair. |
 | `evidence_expire` | Expire due evidence, or tombstone one named snapshot. |
 | `workflow_register` | Register a workflow profile version in the site-wide registry. |
+| `policy_register` | Register a policy version in the site-wide governance library. |
 
 For example, Alice may administer tenant A but have no site grant. Her tenant
 grant does not authorize any of these service operations. A deployment operator
@@ -83,6 +84,7 @@ operator CLI below to issue the grant. There is no HTTP site-issuance endpoint.
 | `POST /v1/admin/regions/{from}/pair/{to}` | `region_pair` | `{"reason":"approved route"}` |
 | `POST /v1/admin/regions/{from}/unpair/{to}` | `region_unpair` | `{"reason":"retire route"}` |
 | `POST /v1/workflow-profiles` | `workflow_register` | `{"profile_id":"reviewed","steps":["solicit","critique","decide"],"reason":"the review lane needs a critique step"}` |
+| `POST /v1/policies` | `policy_register` | The §15.1 policy document, plus `"reason":"the organization baseline is amended"` |
 
 The JSON schemas reject unknown fields. Use `Content-Type: application/json` for
 mutations. Path names are percent-encoded URL components; the decoded names obey
@@ -301,10 +303,11 @@ python3 -B scripts/project_env.py target/debug/rb-site boundary revoke "$RB_SITE
 ```
 
 The site actions are `registry_inspect`, `adapter_allow`, `adapter_revoke`,
-`region_declare`, `region_pair`, `region_unpair`, `evidence_expire` and
-`workflow_register` — `evidence_expire` being the evidence retention sweep (see
-[Deployment](deployment.md)) and `workflow_register` the workflow-profile
-registry described below. Repeat `--action` to grant additional capabilities. A request to issue beyond the
+`region_declare`, `region_pair`, `region_unpair`, `evidence_expire`,
+`workflow_register` and `policy_register` — `evidence_expire` being the evidence
+retention sweep (see [Deployment](deployment.md)), and the last two the two
+site-wide registries described below: the workflow profiles and the governance
+library. Repeat `--action` to grant additional capabilities. A request to issue beyond the
 parent's action set or window is refused and audited. Suspension cannot be undone
 by this tool: issue replacement authority when access must be restored. Repeated
 revocation returns `changed: false` and creates a no-op audit. There is no automatic
@@ -415,10 +418,10 @@ long time, and the answer turned out to be *both*, for different tables.
 governance document keyed by `(policy_id, version)` and owned by a *grant*, not
 by a tenant. A policy that only one tenant can read is not governance, so the
 library stays readable by every enrolled principal and nothing here will change
-that. What is still open is its *write*: `POST /v1/policies` admits any enrolled
-principal into a first-come identifier namespace. That is the same defect the
-workflow registry had, and it takes the same repair — a site capability — under
-`SIGNOFF-REPAIR.6.1.5.4`.
+that. Its *write* is a different question, and it used to admit any enrolled
+principal into a first-come identifier namespace. It now requires the
+`policy_register` site capability — the same repair the workflow registry took,
+described in full below.
 
 **The nine lifecycle tables belong to tenants.** The write side always knew it:
 registering a proposal refuses a thread outside the caller's tenant, and
@@ -466,11 +469,10 @@ else's. A row the upgrade could not attribute is returned to nobody, which is
 the same disposition as the frozen publication above and for the same reason.
 
 **The governance library stays open, deliberately.** `GET /v1/policies`,
-resolving a policy set and the MCP policy bundle all still answer any enrolled
-principal, because a policy only its author can read is not governance. What is
-still wrong there is the *write*: registering a policy admits any enrolled
-principal into a first-come identifier namespace, and that is
-`SIGNOFF-REPAIR.6.1.5.4`.
+resolving a policy set, the impact map and the MCP policy bundle all still answer
+any enrolled principal, because a policy only its author can read is not
+governance. Only the *write* changed, and it is described under
+[The governance library](#the-governance-library-the-same-repair-twice) below.
 
 Staging a publication also now requires the projection to be the caller's own.
 The check used to ask only whether the projection existed, so a publication
@@ -497,6 +499,55 @@ and the rows carry no tenant data. The defect was the write.
 Appending a version to an existing profile is still possible for an operator who
 holds the capability — the registry is versioned by design, and forbidding that
 would have removed the feature rather than repaired the authority.
+
+### The governance library: the same repair twice
+
+`POST /v1/policies` used to admit any enrolled principal into a first-come
+identifier namespace. `policy_versions` is keyed `(policy_id, version)` with no
+tenant column, so the first caller to name a coordinate owned it: the rightful
+author of an organization baseline could find `org-baseline 1.0.0` already taken
+by someone in another tenant, be refused as a duplicate, and then read that
+stranger's text as the baseline — because the library is shared, and shared is
+what makes it governance. The same principal could append a further version to a
+document an operator had published.
+
+It was reproduced in all four of those steps against the unrepaired server before
+anything was changed, and it now takes the `policy_register` site capability.
+Like every other site act, the request body gained a required `reason`: a caller
+who chooses what the whole site reads as governance is exactly the caller who
+must be able to explain it afterwards.
+
+**Two refusals moved from `400` to `403`, and this is the only place that
+difference is visible.** Naming an owning authority that is not a live grant, and
+naming a `(policy_id, version)` that already exists, are both questions about the
+database rather than about the submitted document. Answering either one before
+the capability is checked would tell a principal with no site authority which
+grants the site holds and which coordinates the registry has taken. They are now
+answered inside the gate, as refusals of an authorized operator's request, and
+each carries an audit identifier naming which of the two it was. The five rules
+that ask only about the *document* — the digest shape, the version shape, the
+lifecycle vocabulary, a non-empty clause list and clause identifiers that do not
+repeat — are unchanged and still answer `400` to anyone, because each is a rule
+over a constant this book publishes.
+
+**Reading the library did not change and deliberately will not.** `GET
+/v1/policies`, `POST /v1/policies/resolve`, the impact map and the MCP policy
+bundle all still answer any enrolled principal. A policy only its author can read
+is not governance, and the test suite asserts that openness rather than leaving
+it implicit, so a future change that bound one of these reads fails a control
+instead of quietly reversing the decision behind it.
+
+**Appending a version is still possible for a capability holder**, exactly as it
+is for a workflow profile. The registry is versioned by design; the defect was
+never that a policy can gain a version, only that anyone could give it one.
+
+This is the third time the same template has been applied — the evidence
+retention sweep, the workflow-profile registry, and now the governance library —
+and the sameness is the point rather than a coincidence. Each is a store with no
+tenant column whose write was admitted on enrolment alone. The decision record
+that settled the policy library required it and the workflow registry to be
+decided consistently or for the difference to be stated; they are consistent, and
+this paragraph is the record of it.
 
 ### The routing journals: bound to their own tenant
 

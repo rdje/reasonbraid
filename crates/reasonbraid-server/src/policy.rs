@@ -34,9 +34,18 @@ pub struct ClauseStatement {
 /// digest is the DECLARED ADR-011 digest over the canonical document bytes
 /// (the `.4.2` corpus precedent — the consumer re-derives at use time); the
 /// owning authority is a grant id that must EXIST.
+///
+/// ⚠️ `reason` is a WIRE field of the submission and not a column of the
+/// document (`SIGNOFF-REPAIR.6.1.5.4`). Registering a policy is a site act, and
+/// every site act is attributable: a caller who chooses what the whole site
+/// reads as governance is exactly the kind of caller who must be able to explain
+/// it afterwards. [`register`] therefore never reads it —
+/// [`crate::site_authority::register_policy`] passes it to the authorization
+/// record, which is where a reason belongs.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PolicyVersionInput {
+    pub reason: crate::site_authority::Reason,
     pub policy_id: String,
     pub version: String,
     pub digest: String,
@@ -156,11 +165,24 @@ fn is_semver(version: &str) -> bool {
             .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
 }
 
-/// Register one policy version (the typed, validated registry row).
-pub async fn register(
-    pool: &PgPool,
-    input: &PolicyVersionInput,
-) -> Result<RegisteredPolicy, PolicyError> {
+/// Validate the SUBMISSION — every rule that asks only about the document.
+///
+/// ⭐ Split out of [`register`] by `SIGNOFF-REPAIR.6.1.5.4` so the HTTP layer
+/// can run it BEFORE the site-authority gate, which is the order
+/// `SIGNOFF-REPAIR.7.1.2.1` established for `validate_steps` and stated its
+/// reasons for: each rule here is over a PUBLISHED constant — the ADR-011
+/// digest shape, the semantic-version shape, the [`LIFECYCLES`] vocabulary the
+/// book enumerates, and clause ids that are stable anchors — so naming the one
+/// that failed is an oracle over nothing, and every site route already bounds
+/// its input on extraction.
+///
+/// ⛔ The two refusals that consult the DATABASE — a ghost owning authority and
+/// a taken `(policy_id, version)` — are deliberately NOT here. Answering either
+/// before the gate would hand a principal with no site authority an existence
+/// oracle over the site's grants and over a registry it may not write.
+///
+/// [`register`] calls this regardless of who called it first.
+pub fn validate(input: &PolicyVersionInput) -> Result<(), PolicyError> {
     if !is_sha256_hex(&input.digest) {
         return Err(PolicyError::MalformedDigest(input.digest.clone()));
     }
@@ -179,6 +201,34 @@ pub async fn register(
             return Err(PolicyError::DuplicateClause(clause.id.clone()));
         }
     }
+    Ok(())
+}
+
+/// Register one policy version (the typed, validated registry row).
+///
+/// ⚠️ Takes a CONNECTION rather than the pool (`SIGNOFF-REPAIR.6.1.5.4`), which
+/// is what lets [`crate::site_authority::register_policy`] run the write, its
+/// authorization and its audit record in ONE transaction — the same change
+/// `SIGNOFF-REPAIR.7.1.2.1` made to [`crate::workflows::register`], and for the
+/// same reason.
+///
+/// ⛔ And it returns the TWO-LEVEL result for the reason `authorized`'s own doc
+/// comment gives: *a domain refusal is separate from a SQL error, and an
+/// unavailable database must never masquerade as one*. That matters here in a
+/// way it did not before, because this refusal is now an AUDIT RECORD: the
+/// shipped code turned every failed INSERT into [`PolicyError::Duplicate`] and
+/// every failed grant lookup into [`PolicyError::GhostAuthority`], so an outage
+/// would have written *"that policy version is already registered"* into an
+/// operator's trail — a statement about what happened that nothing established.
+/// The inner `Err` is a refusal the caller made; the outer one is the database
+/// failing to answer, and the act rolls back with nothing recorded.
+pub async fn register(
+    conn: &mut sqlx::PgConnection,
+    input: &PolicyVersionInput,
+) -> Result<Result<RegisteredPolicy, PolicyError>, sqlx::Error> {
+    if let Err(refusal) = validate(input) {
+        return Ok(Err(refusal));
+    }
     // The ownership = the authority binding (ADR-019): the owning authority
     // must be a LIVE grant — a label-only policy fails at registration.
     //
@@ -193,18 +243,27 @@ pub async fn register(
     // grant the REGISTRAR holds. A policy may legitimately be owned by an
     // authority other than the caller's, so that binding is a semantic
     // question and stays `SIGNOFF-REPAIR.9.1`'s.
-    if !crate::authority::grant_is_live(pool, &input.owning_authority)
-        .await
-        .map_err(|_| PolicyError::GhostAuthority(input.owning_authority.clone()))?
-    {
-        return Err(PolicyError::GhostAuthority(input.owning_authority.clone()));
+    if !crate::authority::grant_is_live(&mut *conn, &input.owning_authority).await? {
+        return Ok(Err(PolicyError::GhostAuthority(
+            input.owning_authority.clone(),
+        )));
     }
+    // ⛔ `ON CONFLICT DO NOTHING` rather than letting the unique violation
+    // raise, and the reason is `SIGNOFF-REPAIR.6.1.5.4`'s alone: this INSERT now
+    // runs inside the site act's transaction, and in PostgreSQL a failed
+    // statement ABORTS that transaction — so the audit record `authorized`
+    // writes next would itself fail with *current transaction is aborted* and
+    // the caller would see a 500 instead of an audited refusal. The control
+    // caught exactly that before this line existed. The constraint still
+    // arbitrates: `rows_affected() == 0` is the coordinate already being taken,
+    // and it is the only thing that produces zero.
     let inserted = sqlx::query(
         "INSERT INTO policy_versions \
          (policy_id, version, digest, lifecycle, title, intent, rationale, domain, risk_class, \
           owning_authority, clauses, applicability, non_applicability, dependencies, conflicts, \
           precedence_hints, exceptions, provenance) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)",
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) \
+         ON CONFLICT (policy_id, version) DO NOTHING",
     )
     .bind(&input.policy_id)
     .bind(&input.version)
@@ -224,34 +283,34 @@ pub async fn register(
     .bind(serde_json::to_value(&input.precedence_hints).expect("the precedence serializes"))
     .bind(serde_json::to_value(&input.exceptions).expect("the exceptions serialize"))
     .bind(serde_json::to_value(&input.provenance).expect("the provenance serializes"))
-    .execute(pool)
-    .await;
-    match inserted {
-        Ok(_) => Ok(RegisteredPolicy {
-            policy_id: input.policy_id.clone(),
-            version: input.version.clone(),
-            digest: input.digest.clone(),
-            lifecycle: input.lifecycle.clone(),
-            title: input.title.clone(),
-            intent: input.intent.clone(),
-            rationale: input.rationale.clone(),
-            domain: input.domain.clone(),
-            risk_class: input.risk_class.clone(),
-            owning_authority: input.owning_authority.clone(),
-            clauses: input.clauses.clone(),
-            applicability: input.applicability.clone(),
-            non_applicability: input.non_applicability.clone(),
-            dependencies: input.dependencies.clone(),
-            conflicts: input.conflicts.clone(),
-            precedence_hints: input.precedence_hints.clone(),
-            exceptions: input.exceptions.clone(),
-            provenance: input.provenance.clone(),
-        }),
-        Err(_) => Err(PolicyError::Duplicate(format!(
+    .execute(&mut *conn)
+    .await?;
+    if inserted.rows_affected() == 0 {
+        return Ok(Err(PolicyError::Duplicate(format!(
             "policy `{}` version {}",
             input.policy_id, input.version
-        ))),
+        ))));
     }
+    Ok(Ok(RegisteredPolicy {
+        policy_id: input.policy_id.clone(),
+        version: input.version.clone(),
+        digest: input.digest.clone(),
+        lifecycle: input.lifecycle.clone(),
+        title: input.title.clone(),
+        intent: input.intent.clone(),
+        rationale: input.rationale.clone(),
+        domain: input.domain.clone(),
+        risk_class: input.risk_class.clone(),
+        owning_authority: input.owning_authority.clone(),
+        clauses: input.clauses.clone(),
+        applicability: input.applicability.clone(),
+        non_applicability: input.non_applicability.clone(),
+        dependencies: input.dependencies.clone(),
+        conflicts: input.conflicts.clone(),
+        precedence_hints: input.precedence_hints.clone(),
+        exceptions: input.exceptions.clone(),
+        provenance: input.provenance.clone(),
+    }))
 }
 
 /// The stored policy row (a FromRow struct — the 18 columns exceed the

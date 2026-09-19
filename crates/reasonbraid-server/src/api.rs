@@ -3191,22 +3191,50 @@ async fn list_routing_recommendations(
 /// `POST /v1/policies` — register one policy version (the typed,
 /// validated, digest-pinned document; the owning authority must be an
 /// ACTIVE grant — the label grants nothing).
+///
+/// 🔴 **A SITE act, not a tenant one (`.6.1.5.4`).** This route admitted any
+/// enrolled principal into a FIRST-COME identifier namespace: `policy_versions`
+/// is keyed `(policy_id, version)` with no tenant column, so the first caller to
+/// name a coordinate owned it and every later caller — including the rightful
+/// author — was refused as a duplicate, while the text the other tenants then
+/// read under that governance id was the first caller's. It now takes the
+/// `policy_register` site capability and is audited like every other site act.
+///
+/// ⚠️ The body gained a required `reason`, and two refusals moved from 400 to
+/// 403 with an audit id — a ghost owning authority and a taken coordinate. Both
+/// are wire changes and both are stated in `docs/book/src/site-authority.md`.
+/// They moved because each is a question about the DATABASE, and answering
+/// either before the gate would hand a caller with no site authority an
+/// existence oracle over the site's grants and over a registry it may not write.
+/// The five refusals that ask only about the SUBMISSION stay a typed 400.
+///
+/// ⛔ `GET /v1/policies`, `POST /v1/policies/resolve`, the impact map and the MCP
+/// policy bundle deliberately stay on enrolment. The library is shared BY DESIGN
+/// (DOC-0071) — a policy only its author can read is not governance — and
+/// `.6.1.5.3`'s control asserts it, so a later repair that bound a read would
+/// fail there rather than silently reverse a recorded decision. The defect was
+/// the write.
 async fn register_policy(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(input): Json<crate::policy::PolicyVersionInput>,
-) -> Result<Json<crate::policy::RegisteredPolicy>, ControlApiError> {
+    request: Result<
+        Json<crate::policy::PolicyVersionInput>,
+        axum::extract::rejection::JsonRejection,
+    >,
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
-        return Err(ControlApiError::unauthorized(
-            "an unenrolled principal registers no policy",
-        ));
-    }
-    match crate::policy::register(&state.pool, &input).await {
-        Ok(row) => Ok(Json(row)),
-        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
-    }
+    let input = site_request(request)?;
+    // Before the gate, deliberately: the ADR-011 digest shape, the semantic
+    // version, the published `LIFECYCLES` vocabulary and the stable clause ids
+    // are rules over published constants, so naming the one that failed is an
+    // oracle over nothing — and every other site route bounds its input on
+    // extraction for the same reason.
+    crate::policy::validate(&input)
+        .map_err(|error| ControlApiError::invalid_command(error.to_string()))?;
+    site_receipt_response(
+        site::register_policy(&state.pool, &principal, &input, &input.reason).await,
+        "a current site grant for this action and its actual boundary are required",
+    )
 }
 
 /// `GET /v1/policies` — the registered policy versions, newest first.

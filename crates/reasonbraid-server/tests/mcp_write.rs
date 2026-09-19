@@ -20,6 +20,9 @@ mod pg_test_support;
 #[path = "support/cleanup.rs"]
 mod pg_cleanup;
 
+#[path = "support/site.rs"]
+mod site_fixture;
+
 use std::net::SocketAddr;
 use std::sync::OnceLock;
 
@@ -46,6 +49,10 @@ async fn pool() -> Option<PgPool> {
     pg_cleanup::delete_tables(
         &pool,
         &[
+            // `SIGNOFF-REPAIR.6.1.5.4`: registering a policy version is a site act,
+            // so this suite now writes the site trail. Ahead of the policy tables
+            // because the audit row outlives the act it records.
+            "site_audit",
             "policy_reviews",
             "policy_outcomes",
             "policy_corrections",
@@ -615,13 +622,25 @@ async fn the_join_call_decline_and_the_proposal_ride_the_same_handlers() {
 
     // The policy: the human registers the document; the role's proposal
     // rides the lifecycle registration through the gate.
+    //
+    // `SIGNOFF-REPAIR.6.1.5.4`: registering the document is a SITE act and the
+    // body carries the reason every site act carries. The role's PROPOSAL below
+    // is untouched by that — a proposal is its tenant's, which is the whole of
+    // DOC-0071's split, and this fixture exercises both halves in one body.
     let grant_id = format!("grt_{human_id}");
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
     let (status, registered) = post(
         &client,
         &base,
         "/v1/policies",
         &human_id,
         &json!({
+            "reason": "the MCP write fixture seeds the governance library",
             "policy_id": "mcp-pol",
             "version": "1.0.0",
             "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

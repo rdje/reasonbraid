@@ -1,5 +1,41 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — I went looking for a missing state and found a wrong one
+
+The census said `transport_received` had zero hits in `crates/`, so I opened the
+leaf expecting to decide whether the §10.6 delivery ladder owed two more states.
+Reading §10.6 to quote it properly, the sentence after the ladder stopped me:
+
+> Transport receipt does not mean an agent read or acted. Acknowledgement
+> semantics are explicit per event type.
+
+Then the obvious question: what does the shipped `acknowledged` state actually
+record? Not what the column is called — what writes it. The node's reconcile
+journals every inbound command at step 4 and calls `channel.acknowledge` at step
+7, so `acknowledged_at` means *the node process durably holds this*. That is
+§10.6's `transport_received`, exactly. And the cursor ack covers every row up to
+a cursor whatever their event types, so it cannot be the state §10.6 defines as
+explicit per event type — a second reason, independent of the first.
+
+So a published field was using one of a specification's words for the fact that
+specification gives the other word to, under the sentence written to keep them
+apart. Renamed, wire break stated, decision recorded.
+
+Two things worth keeping:
+
+- **A vocabulary borrowed from a specification must be checked against that
+  specification's own distinctions, not against the borrower's intent.** The
+  migration that named the state was honest about which states it derived; what
+  nobody did was compare the WORD to §10.6's meaning of the word. Recorded, not
+  promoted — one instance.
+- **The state whose name was wrong was the one state the suite never asserted.**
+  Three of four were covered. I do not think that is a coincidence: a state you
+  write an assertion for is a state you have to say out loud what it means.
+
+And the shape of the find is worth noticing on its own. The question was *is the
+promised thing there?* — and it found a defect in the thing that IS there. A
+census of absences is also a reason to look at the presences.
+
 ## 2026-09-19 — Two words for one fact, and a census cannot tell
 
 Classifying twelve goal items my own census flagged, eight turned out to be

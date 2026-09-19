@@ -233,6 +233,12 @@ eligibility before ranking. Dependence indicators, never an independence score.
       (`the_offline_known_distinction_and_the_operator_enumeration`,
       node_channel 23) runs on every guard pass. The
       offline-delivery expiry + max age stay the `.5` lane's (named).
+      ⚠️ **Annotated by `SIGNOFF-REPAIR.11.24.1.1`
+      (REPAIR-0297): `.5` closed without them.**
+      `git grep -ci "max_age|offline_expiry|delivery_expiry"
+      -- crates` returns **0 files**, and §10.6's
+      `expired` terminal has no producer either.
+      Owned now by `SIGNOFF-REPAIR.11.24.1.1.2`.
       Frontier → `.2.3`.
     Acceptance: the offline-known vs unknown distinction is measured
       (the expired-lease node reads offline-with-expiry; the unknown
@@ -558,6 +564,29 @@ eligibility before ranking. Dependence indicators, never an independence score.
     Acceptance: the ladder is one source of truth (the state column
       and the existing columns agree, measured); no regression.
 
+    Annotated by `SIGNOFF-REPAIR.11.24.1.1`
+      (REPAIR-0297); the Done list is
+      byte-unchanged because it never claimed the
+      states it did not derive:
+    - 🔴 **THE GOAL LINE PROMISES FIVE LADDER STATES
+      AND THE VIEW DERIVES THREE.**
+      `transport_received` had **0** hits in
+      `crates/` and `offered` no producer. ⭐ The
+      migration's own header draws the shipped ladder
+      honestly, so a reader of the CODE is not misled
+      and a reader of this line is.
+    - 🔴 **AND ONE OF THE THREE WAS NAMED WRONGLY.**
+      `acknowledged_at` records a TRANSPORT RECEIPT —
+      the node journals every inbound command at step
+      4 and acks the cursor at step 7 — while the view
+      published it as §10.6's `acknowledged`, whose
+      definition is *explicit per event type* and
+      which a cursor ack cannot be. `migrations/0075`
+      renames it `transport_received`.
+    - ⚪ `offered` and a per-event-type
+      `acknowledged` are owed at
+      `SIGNOFF-REPAIR.11.24.1.1.1`; `expired` and
+      `revoked` at `.11.24.1.1.2`.
   - ID: `PHASE-3.5.2`
     Status: `done`
     Goal: the subscriptions + the wake policies — the profile's

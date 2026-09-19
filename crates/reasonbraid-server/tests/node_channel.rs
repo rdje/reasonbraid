@@ -1911,7 +1911,8 @@ async fn the_delivery_ladder_reads_through_the_inbox_state_view() {
         "INSERT INTO node_inbox (node_id, cursor, command_id, tenant_id, thread_id, payload) \
          VALUES ($1, 1, 'cmd_queued', $2, 'thr_00000000-0000-7000-8000-000000000001', '{}'), \
                 ($1, 2, 'cmd_consumed', $2, 'thr_00000000-0000-7000-8000-000000000001', '{}'), \
-                ($1, 3, 'cmd_dead', $2, 'thr_00000000-0000-7000-8000-000000000001', '{}')",
+                ($1, 3, 'cmd_dead', $2, 'thr_00000000-0000-7000-8000-000000000001', '{}'), \
+                ($1, 4, 'cmd_received', $2, 'thr_00000000-0000-7000-8000-000000000001', '{}')",
     )
     .bind(&node_id)
     .bind(&tenant)
@@ -1922,7 +1923,7 @@ async fn the_delivery_ladder_reads_through_the_inbox_state_view() {
     // The consumed rung: the ack + the work-result receipt.
     sqlx::query(
         "UPDATE node_inbox SET acknowledged_at = now() \
-         WHERE node_id = $1 AND command_id = 'cmd_consumed'",
+         WHERE node_id = $1 AND command_id IN ('cmd_consumed', 'cmd_received')",
     )
     .bind(&node_id)
     .execute(&pool)
@@ -1959,7 +1960,7 @@ async fn the_delivery_ladder_reads_through_the_inbox_state_view() {
     assert_eq!(response.status().as_u16(), 200, "the inspection reads");
     let body: Value = response.json().await.unwrap();
     let rows = body["rows"].as_array().expect("the rows");
-    assert_eq!(rows.len(), 3, "{body}");
+    assert_eq!(rows.len(), 4, "{body}");
     let state_of = |command: &str| {
         rows.iter()
             .find(|r| r["command_id"] == json!(command))
@@ -1969,6 +1970,21 @@ async fn the_delivery_ladder_reads_through_the_inbox_state_view() {
     assert_eq!(state_of("cmd_queued"), "queued", "{body}");
     assert_eq!(state_of("cmd_consumed"), "consumed", "{body}");
     assert_eq!(state_of("cmd_dead"), "dead_lettered", "{body}");
+    // ⛔ THE STATE THIS SUITE NEVER ASSERTED, and it was the one whose name was
+    // wrong (`SIGNOFF-REPAIR.11.24.1.1`). `acknowledged_at` records that the
+    // NODE PROCESS durably holds the command — its reconcile journals every
+    // inbound command before it acks the cursor — so §10.6 calls that state
+    // `transport_received`, and reserves `acknowledged` for semantics that are
+    // explicit per event type. The cursor ack covers every row up to a cursor
+    // whatever their types, so it cannot be that state. The view called it
+    // `acknowledged` for a migration's worth of commits and nothing compared
+    // the word to §10.6's meaning of it.
+    //
+    // ⭐ The row is also the discriminator between the two states that share a
+    // column: `cmd_received` and `cmd_consumed` are BOTH acknowledged, and only
+    // the second has a `work_result` event. Asserting one without the other
+    // would pass against a view that ignored the event entirely.
+    assert_eq!(state_of("cmd_received"), "transport_received", "{body}");
 
     server.crash();
 }

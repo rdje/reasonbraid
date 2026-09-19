@@ -5,6 +5,18 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **THE DELIVERY STATE WAS CALLING A TRANSPORT RECEIPT AN ACKNOWLEDGEMENT (`.11.24.1.1`, REPAIR-0297).**
+
+The leaf opened on a MISSING state and found a WRONG one, which is the better finding.
+
+- 🔴 **`acknowledged_at` records a transport receipt and the view published it as an acknowledgement** — in a field `GET /v1/nodes/inbox` and the MCP `list_inbox` tool both return, under the one `ROADMAP.md` §10.6 sentence written to keep those two apart: *Transport receipt does not mean an agent read or acted.*
+- ⭐ **The evidence is the PRODUCER, not the column's name.** The node's reconcile journals every inbound command at step 4 and only calls `channel.acknowledge(max_cursor)` at step 7, so the column means *the node process durably holds this*. And a second, independent reason it cannot be §10.6's `acknowledged`: the cursor ack covers every row up to a cursor **whatever their event types**, while that state is defined as the one whose semantics are explicit per event type.
+- ✅ **`migrations/0075` renames it.** The derived ladder becomes `queued → transport_received → consumed ↘ dead_lettered` — a true SUBSET of §10.6 in which every name means what §10.6 says. ⛔ No state with no producer is added: a state nothing can report is an advertisement, not a fact.
+- 🔴 **The state whose name was wrong was the one state the suite never asserted.** The control now carries it, and the new row also DISCRIMINATES the two states that share a column — `cmd_received` and `cmd_consumed` are both acknowledged and differ only in the `work_result` event.
+- ⚠️ **A wire-visible vocabulary change, taken deliberately.** A client matching `acknowledged` sees `transport_received`. The test applied: could the old name mislead a decision? Yes — a client reading a receipt as an acknowledgement skips a re-offer it should make.
+- ⚪ **Four §10.6 states stay underived WITH dispositions and leaves**: `offered` and a per-event-type `acknowledged` (`.11.24.1.1.1` — the second is a DESIGN commitment before an implementation), `expired` and `revoked` (`.11.24.1.1.2`, which absorbs `PHASE-3.2.2`'s deferred offline-delivery expiry).
+- ✅ **VERIFIED:** `node_channel` **40 passed, 0 failed** (39 before); FALSIFIED in situ — reverting the one literal gives `left: "acknowledged"`, `39 passed; 1 failed`, restored byte-identical; `make book` renders the new delivery-state table (6 tables · 27 rows · 0 padded); `cargo fmt --all --check` rc=0; doctrine gate green.
+
 🔴 **EIGHTEEN DEFERRALS AND TWELVE GOAL ITEMS ADJUDICATED, AND SEVEN WERE STRANDED (`.11.24.1`, REPAIR-0296).**
 
 Five of the seven were unknown before this leaf. Every verdict carries the command that decided it, and no verdict rests on a reading of the task tree alone.

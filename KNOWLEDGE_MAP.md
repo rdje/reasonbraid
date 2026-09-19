@@ -191,6 +191,7 @@
 - [`2026-09-18_node-presence-is-read-by-its-own-tenant.md`](docs/decisions/2026-09-18_node-presence-is-read-by-its-own-tenant.md)
 - [`2026-09-18_retained-fixtures-keep-receipts-not-payload.md`](docs/decisions/2026-09-18_retained-fixtures-keep-receipts-not-payload.md)
 - [`2026-09-19_a-replace-is-complete-and-the-verb-does-not-perform-one.md`](docs/decisions/2026-09-19_a-replace-is-complete-and-the-verb-does-not-perform-one.md)
+- [`2026-09-19_a-transport-receipt-is-not-an-acknowledgement.md`](docs/decisions/2026-09-19_a-transport-receipt-is-not-an-acknowledgement.md)
 - [`2026-09-19_acceptance-debt-is-counted-not-backfilled.md`](docs/decisions/2026-09-19_acceptance-debt-is-counted-not-backfilled.md)
 - [`2026-09-19_an-advertised-line-carries-an-adjudicated-verdict.md`](docs/decisions/2026-09-19_an-advertised-line-carries-an-adjudicated-verdict.md)
 - [`2026-09-19_an-offered-replay-is-not-a-covered-gap.md`](docs/decisions/2026-09-19_an-offered-replay-is-not-a-covered-gap.md)

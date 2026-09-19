@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-19 — The policy library is shared by design; the lifecycle is its tenants', by omission (`SIGNOFF-REPAIR.6.1.5`)
+
+`.6.1.5` had asked, since `.6.1.1` opened it, whether the policy registry is site-global by design or by omission. DOC-0066 re-scoped it from one table to ten. The answer is both, for different tables, and the code proves which is which.
+
+- ⭐ **THE QUESTION HAD ONE NAME AND TWO SUBJECTS.** `policy_versions` is a governance **LIBRARY**: keyed `(policy_id, version)`, its ownership model is `owning_authority` — a GRANT, not a tenant — and a policy only one tenant can read is not governance. **Site-wide by design.** The nine **LIFECYCLE** tables start, directly or transitively, in a tenant's THREAD. **Tenant-owned by omission.**
+- 🔎 **THE MEASUREMENT THAT SETTLES IT: the lifecycle already KNOWS the tenant and simply does not keep it.** `lifecycle::register_proposal` takes a `tenant_id` and runs its thread check under `crate::rls::with_tenant_claim`, its own doc comment stating *"a proposal may only name a thread of the caller's tenant — the RLS layer enforces the read"* (`.1.3.1`); `record_decision` does the same for its verdict event. ⛔ Then the `INSERT` stores no tenant, so every downstream read is site-wide. **A system that did not intend proposals to be tenant work would not have written an RLS claim to enforce it.**
+- ⭐ **AND THAT IS WHY THE TRAP THIS LEAF WAS OPENED AROUND DOES NOT APPLY.** `.6.1.5` forbade a tenant-scoped read over an unscoped write, because it would hide rows from their own author. The lifecycle's write is NOT unscoped: storing the tenant RECORDS a binding the write already performs. ⚠️ The trap does still apply to `policy_versions`, which is why that table is not tenant-scoped.
+- 🔴 **THE WEAKEST LINK, FOUND WHILE MEASURING:** `record_approval` takes `&principal` and no tenant, where both its siblings take one. So an approval is the one lifecycle write with no tenant enforcement of any kind — and `publications::stage` reads approvals to decide whether a publication may be staged, which makes a disclosure-shaped defect a control-surface consequence. `.6.1.5.1` owns it, first in the chain.
+- **The population is 47 SQL sites — 32 reads, 15 writes — across ten tables.** The six the leaf was opened over were `policy_versions` alone. Both counts are re-derived by command in the record rather than listed by hand.
+- ✅ **DOC-0029's deferral is DISCHARGED.** `policy_publications` joins the lifecycle (its tenant is its proposal's). `deployment_assignments` is tenant-owned **by its PUBLICATION, not by its target** — a target is site-wide by design, and the tenant comes from the side that has one.
+- ⚠️ **Routed, not pre-empted:** whether `owning_authority` must be a grant the REGISTRAR holds stays `.9.1`'s, exactly as `policy.rs`'s own comment routes it.
+- ✅ **Falsifiable, and the refutation is named:** the claim turns on one observable — `git grep -n "with_tenant_claim" -- crates/reasonbraid-server/src/lifecycle.rs`. Remove those two claims and the OPPOSITE decision becomes correct, which is what makes this evidence rather than preference. The same command found the counter-example the decision now owns.
+- Split into `.6.1.5.1`–`.4`, each carrying its own acceptance (`.11.13`). No code changed: this leaf decides and splits.
+
 ## 2026-09-19 — The routing journal is read by its own tenant (`SIGNOFF-REPAIR.7.1.2.2`)
 
 `.7.1.2` classified both routing journals as shared, disclosure-only rows whose READ must name the tenant — DOC-0029's remedy, fitting exactly. This binds them.

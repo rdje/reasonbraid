@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — When a question has been open for a long time, suspect it of being two questions
+
+- `.6.1.5` sat open since `.6.1.1` measured it. It is phrased as a single choice — one site-wide library, or a policy belongs to a tenant — and every time I looked at it, both answers had good arguments. That is the tell, and I did not read it as one until today.
+- ⭐ **Both answers were good because both were right, about different tables.** `policy_versions` is a governance document with a grant for an owner. `policy_proposals` is a record of a tenant deliberating in its own thread. Forcing one verdict onto both is what kept the question unanswerable.
+- 🔎 **The evidence was in the code the whole time and it is not subtle.** `register_proposal` runs its thread check under `rls::with_tenant_claim`, and its doc comment says why: a proposal may only name a thread of the caller's tenant. The write already derives the tenant, already enforces it, and then stores none of it. I had read that function before without reading the `INSERT` two screens below it.
+- ⛔ **That also dissolves the objection the leaf was built around.** It forbids a tenant-scoped read over an unscoped write, because rows get hidden from their own author. Correct in general — and simply not the situation here, because the write is not unscoped. A rule stated as a general principle is worth re-testing against the specific case before it is obeyed.
+- 🔴 **Measuring the symmetry found the asymmetry.** I checked all three lifecycle write verbs expecting to confirm they behaved alike. Two take a tenant; the third tests it with `.is_some()` and throws it away. The finding came from looking for sameness, which is the opposite of how I expected to find it.
+- ⚠️ And the scope was six sites in the leaf's own acceptance. It is 47. A number written into an acceptance clause ages exactly as badly as a number written into a document, and for the same reason: nothing re-derived it.
+- promotion: pending — *a question that stays open while both answers keep sounding right is probably two questions wearing one name* deserves a note; the 6-versus-47 half belongs with the existing derived-constant rule.
+
 ## 2026-09-19 — Two tables that look identical can owe their history different answers
 
 - Both routing journals are append-only audit rows with no tenant column, read without a predicate. Same defect, same repair, and I nearly gave them the same disposition for their stored rows.

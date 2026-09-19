@@ -198,6 +198,7 @@
 - [`2026-09-19_system-one-classifiers-are-an-enhancement-not-a-repair.md`](docs/decisions/2026-09-19_system-one-classifiers-are-an-enhancement-not-a-repair.md)
 - [`2026-09-19_the-database-clock-owns-the-lease.md`](docs/decisions/2026-09-19_the-database-clock-owns-the-lease.md)
 - [`2026-09-19_the-egress-claim-is-a-ceiling-the-sandbox-claim-is-a-floor.md`](docs/decisions/2026-09-19_the-egress-claim-is-a-ceiling-the-sandbox-claim-is-a-floor.md)
+- [`2026-09-19_the-policy-library-is-shared-the-lifecycle-is-its-tenants.md`](docs/decisions/2026-09-19_the-policy-library-is-shared-the-lifecycle-is-its-tenants.md)
 - [`2026-09-19_the-policy-registry-is-a-shared-control-surface.md`](docs/decisions/2026-09-19_the-policy-registry-is-a-shared-control-surface.md)
 
 ## Promoted lessons

@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE POLICY REGISTRY QUESTION IS ANSWERED, AND IT WAS TWO QUESTIONS (`.6.1.5`, DOC-0071).**
+
+Open since `.6.1.1` measured it. `policy_versions` is a governance **LIBRARY** — site-wide BY DESIGN, its ownership model a GRANT. The nine **LIFECYCLE** tables are **tenant-owned BY OMISSION**.
+
+- 🔎 **The omission is provable, not inferred:** `register_proposal` takes a `tenant_id` and runs its thread check under `rls::with_tenant_claim` — *"a proposal may only name a thread of the caller's tenant"* — then stores no tenant at all.
+- ⭐ **Which is why the leaf's own trap does not apply:** storing the tenant records a binding the write already performs, so no row is hidden from its author.
+- 🔴 **`record_approval` discards the tenant its two siblings keep**, and `publications::stage` reads approvals to decide whether a publication may be staged. `.6.1.5.1` owns it, first.
+- **47 SQL sites, not the six the leaf was opened over.** ✅ DOC-0029's deferral discharged; the `owning_authority` question routed to `.9.1` by name.
+- ⚠️ **NOT a repair.** Split into `.6.1.5.1`–`.4`, each with its own acceptance. No code changed.
+
 🔴 **THE ROUTING JOURNAL LEAK CARRIED THE OTHER TENANT'S PRINCIPAL, AND IS REPAIRED (`.7.1.2.2`, REPAIR-0274).**
 
 `GET /v1/routing/resolutions` and `/recommendations` returned every tenant's routing trail to any enrolled caller. Observed: Alice's list holding Bob's row in full — his case class, his arm, and his principal id.

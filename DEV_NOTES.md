@@ -1,5 +1,94 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — A write that covers a range, a read that covers a filtered set
+
+The previous leaf put two new terminals above `transport_received` in the derived
+delivery state, and the reason was a fact I met while writing its control rather
+than while designing it: `acknowledge` marks every row up to the acknowledged
+cursor, withheld rows included. I routed that out to its own leaf instead of
+widening a migration into an acknowledgement repair. This is that leaf.
+
+**Reproduce first.** The control came before the fix, and it runs entirely
+through the public surface: quarantine row 2 of three, handshake, assert the tail
+carries 1 and 3 and withholds 2, acknowledge cursor 3, read row 2's
+`acknowledged_at`. It failed exactly as predicted. Worth noting why the scenario
+is not contrived: the node's cursor is 3 *because* 3 is the last row it was
+given, so it cannot acknowledge around the hole — the false receipt is what the
+ordinary path produces.
+
+**Why it matters is already written down.** I did not have to argue that a wrong
+timestamp is harmful, because `.4.2.4` had argued it for the same shape in a
+different place: `acknowledged_at` is the retention prune's `DELETE` predicate,
+so a stale acknowledgement *makes work the new session is still holding eligible
+for deletion*. My case is the same sentence with a different subject — a row the
+tail withheld rather than a row a fenced session held.
+
+The quarantine case looked shielded, because the prune also requires
+`quarantined_at IS NULL`. Then I read the replay verb: it clears
+`quarantined_at`, refreshes `decided_at` and the epoch, re-sequences the cursor —
+and does not touch `acknowledged_at`. So the shield is removed by the very verb an
+operator uses to recover the command, and the replayed row reads
+`transport_received` without ever having been delivered. That is the second half
+of the control and the reason this is data loss rather than a cosmetic column.
+
+**The premise I opened with was wrong, in the useful direction.** The leaf said
+this must argue against a recorded decision, `.1.2.3`, and that the prune depends
+on the behaviour. Both are false and I checked rather than assumed. `git log -S`
+dates the sentence to `0e47b27` — `PHASE-1.2.3`'s own commit — and it lives in
+`replay`'s doc comment; that leaf's goal and acceptance say *a quarantined command
+is never re-delivered* and nothing about acknowledgement, and `grep` over `docs/`
+finds the claim in no task-tree record. So it is a comment describing what the
+code did. And the prune never depended on it: quarantined rows are excluded
+outright, so marking them bought the prune nothing at all.
+
+**Where I drew the line, and why it is not where the leaf expected.** The obvious
+repair is "make the acknowledgement mirror the tail". That is wrong. `replay`
+withholds for four reasons, and two of them are about the NODE — no usable
+certificate, zero declared concurrency — not about any row. A node can
+acknowledge during the lease tail after its certificate has lapsed, and those
+rows really are in its journal. Mirroring the tail would suppress true receipts.
+So the exclusion is the per-ROW reasons only: quarantine, and ended authority.
+Those are the rows about which the server has positive knowledge that this tail
+did not carry them.
+
+**The residual error, stated rather than hidden.** A row offered at T, quarantined
+at T+1, acknowledged at T+2 goes unmarked although the node does hold it. Without
+`offered` — `.11.24.1.1.1`'s work — the server cannot tell *withheld now* from
+*withheld when offered*, so some approximation is unavoidable. The question is
+which direction to err in, and it has a clear answer: an unrecorded receipt costs
+a redelivery, which the channel is built for (`migrations/0003`: the server
+replays, the node's journal deduplicates by command id). A recorded receipt that
+never happened costs the command. I took the redelivery.
+
+**One statement, two call sites.** `acknowledge` and `acknowledge_in_tx` carried
+the same SQL twice. They now bind one `ACKNOWLEDGE_SQL` constant, for the reason
+`.9.3.1` gives about `grant_is_live`: a predicate spelled twice is a predicate
+that will eventually be spelled differently.
+
+**What I did not do.** The acceptance said the prune's eligibility rule should
+move if the column stops being written. It does not move, and the obstacle turned
+out not to be the one I expected. I went looking for a timestamp to age
+authority-terminal rows by and found one — `decided_at`, from `migrations/0013`.
+The real obstacle is semantic: `POST /v1/nodes/inbox/prune` says, in its body, its
+doc and its control, that it deletes *delivered* rows, and its receipt is read by
+an operator as a retention statement about work that was handed over. Widening it
+to delete never-delivered rows changes what that receipt means, and an authority
+terminal is evidence — *this command was queued for you and your authority ended*
+is precisely what the previous leaf made visible. Deleting it on an age window
+takes it away again. That is `.11.24.1.1.2.1.1`, with the three honest answers
+named.
+
+**Validation.** `node_inbox` 9/9 (8 at `60affee`, counted on both sides),
+`node_work` 10/10 with its revoked control extended — the view's precedence keeps
+that row `revoked` whether or not the column is written, so the state assertion
+alone never touched this predicate and the column assertion was needed to cover
+the authority half. `node_channel` 40/40, `quarantine` 1/1, `node_replacement`
+2/2, `mcp_listen` 6/6, `node_result_ordering` 6/6. Falsified once per clause,
+each alone, each restored byte-identical. And one thing measured rather than
+assumed before narrowing a published count: nothing consumes
+`AckResponse.acknowledged` — `git grep -n "\.acknowledged\b"` over the node and
+server sources returns no hit.
+
 ## 2026-09-20 — The ladder had two terminals and no clock, and the clock was already in the schema
 
 `SIGNOFF-REPAIR.11.24.1.1.2` opened on a sentence that sounds like a design

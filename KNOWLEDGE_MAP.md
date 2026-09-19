@@ -204,6 +204,7 @@
 - [`2026-09-19_the-policy-registry-is-a-shared-control-surface.md`](docs/decisions/2026-09-19_the-policy-registry-is-a-shared-control-surface.md)
 - [`2026-09-19_the-write-quota-counts-calls-not-effects.md`](docs/decisions/2026-09-19_the-write-quota-counts-calls-not-effects.md)
 - [`2026-09-20_a-command-cannot-outlive-its-authority.md`](docs/decisions/2026-09-20_a-command-cannot-outlive-its-authority.md)
+- [`2026-09-20_an-acknowledgement-covers-a-range-and-the-tail-does-not.md`](docs/decisions/2026-09-20_an-acknowledgement-covers-a-range-and-the-tail-does-not.md)
 
 ## Promoted lessons
 

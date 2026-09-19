@@ -78,6 +78,49 @@ pub const CHANNEL_VERSION: u32 = 5;
 /// heartbeating is visibly `offline` within a minute.
 pub const LEASE_TTL: ChronoDuration = ChronoDuration::seconds(60);
 
+/// The cursor acknowledgement, as ONE statement both call sites bind
+/// (`SIGNOFF-REPAIR.11.24.1.1.2.1`).
+///
+/// `acknowledged_at` means *the node process durably holds this command*
+/// (`migrations/0075`). A cursor ack covers a RANGE, and [`NodeChannelState::
+/// replay`] withholds rows the node must not receive — so the plain
+/// `cursor <= $2` this used to be wrote that receipt for rows the transport
+/// never carried. Reproduced through the public surface: quarantine row 2 of
+/// three, let the tail hand the node 1 and 3, and row 2 gains an
+/// `acknowledged_at` when the node acks cursor 3.
+///
+/// ⛔ Not a cosmetic column. `acknowledged_at` is the retention prune's DELETE
+/// predicate, and `a_fenced_acknowledgement_cannot_mark_another_sessions_
+/// delivery` (`.4.2.4`) already recorded that harm model for the same shape: a
+/// false receipt makes work that was never delivered eligible for deletion. The
+/// quarantine case is shielded by that predicate's `quarantined_at IS NULL` —
+/// but `POST /v1/nodes/replay` clears the quarantine and leaves the false
+/// receipt behind, taking the shield with it.
+///
+/// ⚠️ **The exclusion is the PER-ROW withholding reasons only, and that line is
+/// argued rather than convenient.** `replay` also withholds for two per-NODE
+/// facts — no usable certificate (`.4.1.3.1`), and a profile declaring zero
+/// concurrency. Those describe the node's standing NOW, not whether any row was
+/// carried, so including them would suppress TRUE receipts for rows the node
+/// demonstrably holds. The per-row reasons are the ones about which the server
+/// has positive knowledge that this tail did not carry the row.
+///
+/// ⭐ **The residual error is the safe one, and the design already tolerates
+/// it.** Without an `offered` column (`.11.24.1.1.1`) the server cannot tell
+/// *withheld now* from *withheld when it was offered*, so a row offered before
+/// its quarantine and acked after it goes unmarked. That under-records a
+/// receipt; the row is simply re-delivered on the next replay and the node's
+/// journal deduplicates by command id, which is what `migrations/0003` says the
+/// channel relies on. Over-recording, the behaviour this replaces, destroys
+/// work instead.
+const ACKNOWLEDGE_SQL: &str = "UPDATE node_inbox SET acknowledged_at = $3 \
+     WHERE node_id = $1 AND cursor <= $2 AND acknowledged_at IS NULL \
+       AND quarantined_at IS NULL \
+       AND NOT EXISTS (SELECT 1 FROM authorization_records r \
+                         JOIN authority_grants g ON g.grant_id = r.grant_id \
+                        WHERE r.record_id = node_inbox.authz_ref \
+                          AND (g.status <> 'active' OR g.expires_at <= now()))";
+
 /// `LEASE_TTL` as the `double precision` seconds `make_interval(secs => …)`
 /// takes, so the two lease writers bind the constant instead of spelling `60`
 /// into their SQL — a second copy of a number nothing derives is how the
@@ -790,16 +833,13 @@ impl NodeChannelState {
         ack_cursor: i64,
         now: DateTime<Utc>,
     ) -> Result<i64, sqlx::Error> {
-        Ok(sqlx::query(
-            "UPDATE node_inbox SET acknowledged_at = $3 \
-             WHERE node_id = $1 AND cursor <= $2 AND acknowledged_at IS NULL",
-        )
-        .bind(node_id)
-        .bind(ack_cursor)
-        .bind(now)
-        .execute(&mut **tx)
-        .await?
-        .rows_affected() as i64)
+        Ok(sqlx::query(ACKNOWLEDGE_SQL)
+            .bind(node_id)
+            .bind(ack_cursor)
+            .bind(now)
+            .execute(&mut **tx)
+            .await?
+            .rows_affected() as i64)
     }
 
     /// Mark every inbox row up to `ack_cursor` acknowledged (idempotent). Returns the
@@ -810,16 +850,13 @@ impl NodeChannelState {
         ack_cursor: i64,
         now: DateTime<Utc>,
     ) -> Result<i64, sqlx::Error> {
-        Ok(sqlx::query(
-            "UPDATE node_inbox SET acknowledged_at = $3 \
-             WHERE node_id = $1 AND cursor <= $2 AND acknowledged_at IS NULL",
-        )
-        .bind(node_id)
-        .bind(ack_cursor)
-        .bind(now)
-        .execute(&self.pool)
-        .await?
-        .rows_affected() as i64)
+        Ok(sqlx::query(ACKNOWLEDGE_SQL)
+            .bind(node_id)
+            .bind(ack_cursor)
+            .bind(now)
+            .execute(&self.pool)
+            .await?
+            .rows_affected() as i64)
     }
 
     /// Record a node event receipt. The event_id primary key is the dedupe key, so a

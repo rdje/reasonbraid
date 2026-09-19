@@ -1250,3 +1250,139 @@ async fn inspect_inbox(
     let text = response.text().await.unwrap_or_default();
     (status, serde_json::from_str(&text).unwrap_or(Value::Null))
 }
+
+/// One inbox row's raw columns, read as the operator's inspection surface
+/// returns them plus the derived state (`SIGNOFF-REPAIR.11.24.1.1.2.1`).
+async fn row_facts(pool: &PgPool, command_id: &str) -> (Option<chrono::DateTime<Utc>>, String) {
+    sqlx::query_as(
+        "SELECT acknowledged_at, delivery_state FROM node_inbox_state WHERE command_id = $1",
+    )
+    .bind(command_id)
+    .fetch_one(pool)
+    .await
+    .expect("read the row's facts")
+}
+
+/// 🔴 THE DEFECT (`SIGNOFF-REPAIR.11.24.1.1.2.1`): a cursor acknowledgement
+/// records a transport receipt for a row the transport never carried.
+///
+/// `acknowledge` marks EVERY row up to the acked cursor — `WHERE cursor <= $2`
+/// — and `replay` withholds rows the node must not receive. The two predicates
+/// disagree, so a withheld row gains an `acknowledged_at` the moment the node
+/// acks a LATER row it really did receive. `migrations/0075` defines that
+/// column as *the node process durably holds this command*, and for a withheld
+/// row that is false.
+///
+/// ⛔ It is not merely a wrong column. `a_fenced_acknowledgement_cannot_mark_
+/// another_sessions_delivery` already established the harm model for this exact
+/// shape: `acknowledged_at` is the retention prune's DELETE predicate, so a
+/// false receipt makes work that was never delivered eligible for deletion. The
+/// quarantine case is shielded by `quarantined_at IS NULL` in that predicate —
+/// but the operator replay clears the quarantine and leaves the false receipt
+/// behind, and the shield goes with it.
+#[tokio::test]
+async fn a_cursor_ack_does_not_receipt_a_row_the_tail_withheld() {
+    let _g = guard().await;
+    let Some(pool) = pool().await else { return };
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let node_id = "nod_00000000-0000-7000-8000-000000000207";
+    let (tenant, alice) = bootstrap_admin(&client, &base).await;
+    let (cert_hex, key_hex) = seed_node_in(&pool, node_id, &tenant).await;
+    for i in 1..=3 {
+        enqueue_in(&state, node_id, &format!("cmd_ack_{i}"), &tenant).await;
+    }
+
+    let (status, _, _) = inbox_post(
+        &client,
+        &base,
+        "/v1/nodes/quarantine",
+        &alice,
+        json!({
+            "tenant_id": tenant,
+            "node_id": node_id,
+            "command_id": "cmd_ack_2",
+            "reason": "poison payload from the adapter",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the middle command is quarantined");
+
+    // THE POSITIVE CONTROL: the tail really does withhold it, so what follows
+    // is about a row the node was never offered — not about a delivery failure.
+    let hs = handshake(&client, &base, node_id, &cert_hex, &key_hex).await;
+    let replayed: Vec<&str> = hs["replay"]
+        .as_array()
+        .expect("a replay array")
+        .iter()
+        .map(|c| c["command_id"].as_str().expect("a command id"))
+        .collect();
+    assert_eq!(
+        replayed,
+        vec!["cmd_ack_1", "cmd_ack_3"],
+        "the tail carries 1 and 3 and withholds 2"
+    );
+
+    // The node acknowledges what it holds. Its cursor is 3, because 3 is the
+    // last row it was actually given — the node cannot ack around the hole.
+    let response = client
+        .post(format!("{base}/v1/nodes/ack"))
+        .json(&json!({
+            "channel_version": CHANNEL_VERSION,
+            "node_id": node_id,
+            "ack_cursor": 3,
+            "fencing_token": hs["fencing_token"].as_str().expect("a fencing token"),
+            "lease_epoch": hs["lease_epoch"].as_i64().expect("a lease epoch"),
+        }))
+        .send()
+        .await
+        .expect("ack request");
+    assert_eq!(response.status().as_u16(), 200, "the ack is accepted");
+
+    let (delivered_ack, _) = row_facts(&pool, "cmd_ack_3").await;
+    assert!(
+        delivered_ack.is_some(),
+        "the row the node DID receive carries its receipt"
+    );
+
+    let (withheld_ack, withheld_state) = row_facts(&pool, "cmd_ack_2").await;
+    assert_eq!(
+        withheld_state, "dead_lettered",
+        "the withheld row is still dead-lettered"
+    );
+    assert!(
+        withheld_ack.is_none(),
+        "a row the tail withheld carries NO transport receipt: the node never \
+         held it, and `acknowledged_at` means that it did (migrations/0075)"
+    );
+
+    // ⛔ THE CONSEQUENCE, and the reason this is not a cosmetic column. The
+    // operator replays the dead-lettered command: the quarantine clears, and
+    // with it the `quarantined_at IS NULL` shield that kept the prune off the
+    // row. A false receipt left behind here makes a command that was NEVER
+    // delivered read as received and eligible for deletion.
+    let (status, _, _) = inbox_post(
+        &client,
+        &base,
+        "/v1/nodes/replay",
+        &alice,
+        json!({ "tenant_id": tenant, "node_id": node_id, "command_id": "cmd_ack_2" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the dead-lettered command replays");
+
+    let (after_replay_ack, after_replay_state) = row_facts(&pool, "cmd_ack_2").await;
+    assert_eq!(
+        after_replay_state, "queued",
+        "a replayed command is QUEUED — it is waiting to be delivered, not held \
+         by a node that has never seen it"
+    );
+    assert!(
+        after_replay_ack.is_none(),
+        "and it carries no receipt, so the retention prune cannot delete work \
+         that was never delivered"
+    );
+}

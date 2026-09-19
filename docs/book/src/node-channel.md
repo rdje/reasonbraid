@@ -253,6 +253,24 @@ what the retention prune below is allowed to delete. A stale acknowledgement
 would therefore make work the *new* session is still holding eligible for
 deletion, leaving the node's ledger and the server's permanently disagreed.
 
+⛔ **An acknowledgement covers a range, and the tail does not.** `ack` names a
+cursor and marks every row up to it; the replay tail withholds rows the node
+must not receive. Those two disagree, so the acknowledgement **skips the rows
+the tail withheld for a reason about that row** — a quarantine, or authority
+that has ended. Otherwise `acknowledged_at` would record *the node durably holds
+this command* for a command the node was never handed, and the retention prune
+would then be entitled to delete it.
+
+⚠️ The two *per-node* reasons a tail can be empty — no usable certificate, or a
+profile declaring zero concurrency — are deliberately **not** part of that
+exclusion. They describe the node's standing now rather than whether any row was
+carried, and excluding them would suppress true receipts for rows the node
+demonstrably holds. The residual gap is a row offered before its quarantine and
+acknowledged after it: that receipt goes unrecorded, the row is re-delivered on
+the next replay, and the node's journal deduplicates it by command id — which is
+what the channel relies on anyway. Recording a receipt that never happened
+destroys work; failing to record one costs a redelivery.
+
 `poll` deliberately keeps the plain check and is **not** wrapped, because it
 writes nothing: it reads the cursor, the replay tail and the revocation epoch,
 and a fenced session that receives a stale tail leaves no trace — the rows stay

@@ -1741,6 +1741,23 @@ async fn a_revoked_grant_makes_its_undelivered_command_revoked_and_withholds_it(
         "a cursor acknowledgement does not move a revoked row into `transport_received` — \
          the row was never offered, and a terminal a sweep can leave is not a terminal"
     );
+
+    // ⛔ AND THE COLUMN UNDERNEATH IT IS NOT WRITTEN EITHER
+    // (`SIGNOFF-REPAIR.11.24.1.1.2.1`). The precedence above keeps the STATE
+    // honest; this keeps the FACT honest. `acknowledged_at` means the node
+    // durably holds the command, and it never received this one — and that
+    // column is the retention prune's DELETE predicate, so a false receipt here
+    // makes work that was never delivered eligible for deletion.
+    let receipt: Option<chrono::DateTime<chrono::Utc>> =
+        sqlx::query_scalar("SELECT acknowledged_at FROM node_inbox WHERE node_id = $1")
+            .bind(&role)
+            .fetch_one(&pool)
+            .await
+            .expect("read the row's receipt");
+    assert!(
+        receipt.is_none(),
+        "the withheld row carries no transport receipt: {receipt:?}"
+    );
 }
 
 /// THE §10.6 `expired` TERMINAL (`SIGNOFF-REPAIR.11.24.1.1.2`).

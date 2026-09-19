@@ -403,19 +403,55 @@ and is therefore bound to the caller's own tenant: there, a foreign answer would
 be an existence oracle. Set-valued directory questions and identity-valued
 presence questions are bounded differently, and on purpose.
 
-### The policy and workflow registries are shared CONTROL surfaces
+### The policy registry: one name, two subjects
 
-These are the open items, and they are recorded here rather than implied.
+The ten policy tables form one chain — a version, a proposal, a decision, an
+approval, a projection, a publication, then drift, outcomes, corrections and
+reviews — and each stage reads the previous stage's row in order to decide. The
+question of whether a policy belongs to a tenant or to the site was open for a
+long time, and the answer turned out to be *both*, for different tables.
 
-The ten policy lifecycle tables form one chain — a version, a proposal, a
-decision, an approval, a projection, a publication, then drift, outcomes,
-corrections and reviews. Each stage reads the previous stage's row in order to
-decide, every row is keyed on an opaque identifier with no tenant, and every write
-admits on enrolment alone. The review scheduler in particular reads drift,
-outcomes and corrections across the entire site with no predicate, so a record
-written by one tenant can schedule a review against another tenant's publication.
-Whether one site-wide policy library is intended, or a policy belongs to a tenant,
-is an open decision owned by `SIGNOFF-REPAIR.6.1.5`.
+**`policy_versions` — the library — is site-wide by design.** A policy is a
+governance document keyed by `(policy_id, version)` and owned by a *grant*, not
+by a tenant. A policy that only one tenant can read is not governance, so the
+library stays readable by every enrolled principal and nothing here will change
+that. What is still open is its *write*: `POST /v1/policies` admits any enrolled
+principal into a first-come identifier namespace. That is the same defect the
+workflow registry had, and it takes the same repair — a site capability — under
+`SIGNOFF-REPAIR.6.1.5.4`.
+
+**The nine lifecycle tables belong to tenants.** The write side always knew it:
+registering a proposal refuses a thread outside the caller's tenant, and
+recording a decision refuses a verdict from one. The row simply did not store
+what the write had already checked. It does now — every lifecycle row carries the
+tenant that owns it.
+
+Owning is not the same as writing, and the two differ for five of the nine. A
+proposal, a decision, an approval and a projection belong to the caller. A
+publication belongs to its **proposal's** tenant, and drift, corrections,
+outcomes and reviews belong to their **publication's** — because a record about
+someone else's publication concerns that someone else, and stamping it with its
+author's tenant would hide it from the only party it is about.
+
+Two things remain open and are recorded here rather than implied:
+
+- **The reads are still site-wide.** Listing proposals, decisions, approvals,
+  projections, publications, drift, outcomes, corrections or reviews still
+  returns every tenant's rows to any enrolled caller. Binding them is
+  `SIGNOFF-REPAIR.6.1.5.3`, and it is deliberately a separate step: narrowing a
+  read before every write records an owner would hide rows from their own
+  authors.
+- **Five writes still admit any enrolled principal.** Staging a publication,
+  recording drift, a correction or an outcome, and scheduling reviews can each
+  be performed against another tenant's records. The rows are now labelled
+  correctly, which is what makes the gap visible; closing it is
+  `SIGNOFF-REPAIR.6.1.5.2.1`. The review scheduler is the sharpest of the five:
+  it reads drift, outcomes and corrections across the whole site, so one
+  tenant's request materialises review rows for every tenant's publications.
+
+Until those two land, treat enrolment in this deployment as a trust boundary for
+the policy lifecycle: any enrolled principal can read the whole site's
+governance trail and can act on another tenant's publication.
 
 ### The workflow-profile registry: repaired, and why it needed to be
 

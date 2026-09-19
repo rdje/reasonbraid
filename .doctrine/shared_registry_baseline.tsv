@@ -63,19 +63,6 @@ POST /v1/nodes/revoke	guarded transaction	recruitment_offers	module-reach
 POST /v1/nodes/rotate	not-censused	node_certificates	walk
 POST /v1/policies	identity only	policy_versions	walk
 POST /v1/policies/resolve	identity only	policy_versions,recruitment_offers	module-reach
-POST /v1/policy-approvals	identity only	policy_approvals,policy_proposals	walk
-POST /v1/policy-corrections	identity only	policy_corrections	walk
-POST /v1/policy-decisions	identity only	policy_decisions,policy_proposals	walk
-POST /v1/policy-drift	identity only	policy_drift	walk
-POST /v1/policy-outcomes	identity only	policy_outcomes	walk
-POST /v1/policy-projections	identity only	policy_projections	walk
-POST /v1/policy-proposals	identity only	policy_proposals	walk
-POST /v1/policy-publications	identity only	policy_publications	walk
-POST /v1/policy-publications/{publication_id}/effective	identity only	policy_publications	walk
-POST /v1/policy-publications/{publication_id}/failed	identity only	policy_publications	walk
-POST /v1/policy-publications/{publication_id}/publish	identity only	policy_publications	walk
-POST /v1/policy-reviews/schedule	identity only	policy_reviews	walk
-POST /v1/policy-reviews/{review_id}/done	identity only	policy_reviews	walk
 POST /v1/profiles/cards/import	guarded transaction	recruitment_offers	module-reach
 POST /v1/profiles/{role_id}/attest	guarded transaction	recruitment_offers	module-reach
 POST /v1/resolvers	pool tenant-admin	resolver_capabilities	walk

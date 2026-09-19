@@ -48,6 +48,7 @@ async fn pool() -> Option<PgPool> {
             "site_grants",
             "site_boundaries",
             "adapter_allowlist",
+            "policy_reviews",
             "policy_outcomes",
             "policy_corrections",
             "policy_drift",

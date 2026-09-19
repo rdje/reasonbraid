@@ -5,6 +5,18 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE POLICY LIFECYCLE NOW STORES THE TENANT IT ALREADY DERIVED, AND FIVE OF THE NINE ROWS TAKE THEIR PARENT'S (`.6.1.5.2`, REPAIR-0278).**
+
+`migrations/0073` gives the nine lifecycle tables a `tenant_id`. `policy_versions` — the shared library — deliberately gets none.
+
+- 🔴 **The leaf's own two framings were measured WRONG first.** *"15 write sites"* is 1 library INSERT + **9** lifecycle INSERTs + **5** UPDATEs that fill nothing; and *"from the authenticated caller"* is right for four. `policy_publications` takes its PROPOSAL's tenant, and drift, corrections, outcomes and reviews take their PUBLICATION's — a row about Alice's publication carrying Mallory's tenant would vanish from the only party it concerns.
+- 🔎 **`policy_projections` has NO ancestor**, so its tenant is its AUTHOR's and its history derives from nothing. DOC-0071's verdict stands; its stated reason (*"each starts in a tenant's thread"*) does not reach this one table.
+- ✅ **Backfill coverage MEASURED, not asserted:** `policy_proposals` **1/3**, `policy_projections` **0/2**, the other seven 1/2. The refusals are an orphaned chain, a thread present under TWO tenants, and every projection. ⛔ Removing `HAVING count(*) = 1` takes 1/3 to **2/3**, so the ambiguity clause is load-bearing.
+- ⚠️ **This LABELS rows; it does not GATE writes**, and the control asserts as much: Mallory still stages Alice's proposal and still records drift against Alice's publication. Owned by `.6.1.5.2.1`. ⛔ The reads are asserted UNCHANGED, so the leaf cannot have delivered `.6.1.5.3` by accident.
+- ✅ **The censuses follow the repair: writes 39/30 → 26/17, reads 40 site-global tables → 29.** 13 rows left and 0 joined; 9 tables left and 0 joined. 🔎 That is also a COVERAGE LOSS — the read census watches tables *without* a tenant dimension, so all nine left it with their 28 readers still unbound. The population is pinned by name in `.6.1.5.3`.
+- ✅ **VERIFIED:** `policy` **17/0**, `migration_upgrade` **5/0**, `mcp_write` 5/0, plus twenty-seven suites whose purge plans the migration touched — 0 failed. Clippy rc=0; fmt rc=0; gate green; book + links rc=0. Falsified seven times and restored byte-identical; the decisive arm proves the control measures the ANCHOR, failing `left: Some(mallory) / right: Some(alice)` against a caller-derived implementation.
+- 🔎 **Found by the regression run and OWNED, not reported:** `routing evaluation` in that order fails `evaluation` 2/1, the reverse passes both. `tests/evaluation.rs` asserts the content of `evaluation_trials` and never purges it. Independent of this leaf; `.7.1.2.2.2`.
+
 🔴 **TWENTY SUITES COULD NOT START, AND THE DOCTRINE GATE FOR EXACTLY THAT FAILURE WAS GREEN (`.7.1.2.2.1`, REPAIR-0277).**
 
 Measured on a clean tree at `8f32631`, before any repair: `administrative_effects` → **`0 passed; 25 failed`**, every one `MissingDependency { parent: "tenants", child: "public.routing_recommendations" }`. `check_fixture_plan_children.py` returned **rc=0** over the same tree.

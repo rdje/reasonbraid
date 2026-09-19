@@ -156,13 +156,23 @@ pub async fn stage(
             input.manifest_digest.clone(),
         ));
     }
-    let proposal: Option<String> =
-        sqlx::query_scalar("SELECT status FROM policy_proposals WHERE proposal_id = $1")
+    // ⛔ `tenant_id` joins the read `SIGNOFF-REPAIR.6.1.5.2`: a publication's
+    // tenant is its PROPOSAL's, not its caller's. The publication is staged FROM
+    // this proposal — every reference below is checked against it — so stamping
+    // the caller's tenant on a publication of another tenant's proposal would
+    // hide it from the only party it concerns, which is `.6.1.5`'s own trap
+    // re-entered from the write side.
+    //
+    // ⚠️ This LABELS the row; it does not GATE the write. `stage` still admits
+    // any enrolled principal to stage another tenant's approved proposal —
+    // measured, and owned by `.6.1.5.2.1` rather than quietly widened here.
+    let proposal: Option<(String, Option<String>)> =
+        sqlx::query_as("SELECT status, tenant_id FROM policy_proposals WHERE proposal_id = $1")
             .bind(&input.proposal_id)
             .fetch_optional(pool)
             .await
             .map_err(|_| PublicationError::UnknownProposal(input.proposal_id.clone()))?;
-    let Some(status) = proposal else {
+    let Some((status, tenant_id)) = proposal else {
         return Err(PublicationError::UnknownProposal(input.proposal_id.clone()));
     };
     if status != "approved" {
@@ -220,7 +230,7 @@ pub async fn stage(
     let inserted = sqlx::query(
         "INSERT INTO policy_publications \
          (publication_id, proposal_id, decision_id, approval_id, projection_id, state, \
-          manifest_digest) VALUES ($1, $2, $3, $4, $5, 'staged', $6)",
+          manifest_digest, tenant_id) VALUES ($1, $2, $3, $4, $5, 'staged', $6, $7)",
     )
     .bind(&input.publication_id)
     .bind(&input.proposal_id)
@@ -228,6 +238,7 @@ pub async fn stage(
     .bind(&input.approval_id)
     .bind(&input.projection_id)
     .bind(&input.manifest_digest)
+    .bind(&tenant_id)
     .execute(pool)
     .await;
     if inserted.is_err() {

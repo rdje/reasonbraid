@@ -108,13 +108,33 @@ pub async fn schedule_reviews(pool: &PgPool) -> Result<Vec<StoredReview>, sqlx::
             continue;
         }
         let review_id = format!("rev_{}_{}", publication_id, trigger.replace('_', "-"));
+        // `SIGNOFF-REPAIR.6.1.5.2`: a review belongs to the PUBLICATION it
+        // reviews, never to whoever posted the schedule verb. This function
+        // reads outcomes, drift and corrections with no predicate at all, so a
+        // single caller materialises rows for every tenant's publications —
+        // stamping that caller's tenant on all of them would attribute each
+        // tenant's review trail to one stranger.
+        //
+        // ⚠️ The lookup conflates two absences deliberately: a publication that
+        // does not exist and one staged before `migrations/0073` both yield
+        // NULL, and both are unattributable. ⛔ It does not REFUSE the first —
+        // that would change which review rows exist, which is `.6.1.5.3`'s
+        // question about this same function, not this leaf's.
+        let tenant_id: Option<String> = sqlx::query_scalar(
+            "SELECT tenant_id FROM policy_publications WHERE publication_id = $1",
+        )
+        .bind(&publication_id)
+        .fetch_optional(pool)
+        .await?
+        .flatten();
         let inserted = sqlx::query(
-            "INSERT INTO policy_reviews (review_id, publication_id, trigger, status) \
-             VALUES ($1, $2, $3, 'due')",
+            "INSERT INTO policy_reviews (review_id, publication_id, trigger, status, tenant_id) \
+             VALUES ($1, $2, $3, 'due', $4)",
         )
         .bind(&review_id)
         .bind(&publication_id)
         .bind(&trigger)
+        .bind(&tenant_id)
         .execute(pool)
         .await;
         if inserted.is_ok() {

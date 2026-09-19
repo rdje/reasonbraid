@@ -570,3 +570,268 @@ async fn bootstrap_request_upgrade_preserves_legacy_rows_and_enforces_binding_co
         Some("23503")
     );
 }
+
+/// `SIGNOFF-REPAIR.6.1.5.2` — `migrations/0073` derives a stored lifecycle row's
+/// tenant by LINEAGE, and leaves NULL everything lineage cannot reach.
+///
+/// The leaf's acceptance asks for the backfill's coverage as a MEASURED count
+/// rather than an assertion, so this control seeds three chains whose answers
+/// are known in advance and publishes what the migration attributed:
+///
+///   * attributable — a proposal on a thread that exists under exactly one
+///     tenant, and the decision, approval, publication, drift, correction,
+///     outcome and review descended from it;
+///   * orphaned — the same chain on a `thread_id` present in no aggregate, so
+///     nothing downstream can be attributed either;
+///   * ambiguous — a `thread_id` present under TWO tenants. ⛔ `aggregate_state`
+///     is keyed `(tenant_id, aggregate_id)`, so an aggregate id is unique per
+///     tenant and not globally; the migration's `HAVING count(*) = 1` is what
+///     makes this a derivation rather than a coin toss, and this arm is the only
+///     thing that proves the clause is load-bearing.
+///
+/// ⛔ `policy_projections` is seeded and attributed by NOTHING, deliberately: a
+/// projection has no ancestor, so its tenant is its author's, and an authorship
+/// the old schema never recorded cannot be recovered from it.
+#[tokio::test]
+async fn policy_lifecycle_tenant_upgrade_derives_by_lineage_and_leaves_the_rest_null() {
+    let _g = guard().await;
+    let Some(pool) = pg_test_support::pool().await else {
+        return;
+    };
+    let migrator =
+        Migrator::new(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../migrations"))
+            .await
+            .unwrap();
+    recreate_public_schema(&pool).await;
+    let through = |version| Migrator {
+        migrations: std::borrow::Cow::Owned(
+            migrator
+                .migrations
+                .iter()
+                .filter(|m| m.version <= version)
+                .cloned()
+                .collect(),
+        ),
+        ignore_missing: false,
+        no_tx: false,
+        locking: true,
+    };
+    assert!(migrator.migrations.iter().any(|m| m.version == 73));
+    through(72).run(&pool).await.unwrap();
+
+    let owner = "ten_00000000-0000-7000-8000-000000000173";
+    let other = "ten_00000000-0000-7000-8000-000000000174";
+    for tenant in [owner, other] {
+        sqlx::query("INSERT INTO tenants (tenant_id) VALUES ($1)")
+            .bind(tenant)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+    // `thr-one` exists under exactly one tenant; `thr-both` under two.
+    for (tenant, thread) in [(owner, "thr-one"), (owner, "thr-both"), (other, "thr-both")] {
+        sqlx::query(
+            "INSERT INTO aggregate_state \
+             (tenant_id, aggregate_id, aggregate_type, aggregate_version, state) \
+             VALUES ($1, $2, 'thread', 1, '{}'::jsonb)",
+        )
+        .bind(tenant)
+        .bind(thread)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    // `thr-gone` is in no aggregate at all — the orphaned chain's root.
+    for (proposal, thread) in [
+        ("prop-owned", "thr-one"),
+        ("prop-orphan", "thr-gone"),
+        ("prop-ambiguous", "thr-both"),
+    ] {
+        sqlx::query(
+            "INSERT INTO policy_proposals \
+             (proposal_id, policy_id, policy_version, thread_id, status) \
+             VALUES ($1, 'pol', '1.0.0', $2, 'approved')",
+        )
+        .bind(proposal)
+        .bind(thread)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    // The owned and the orphaned chains carry one row per lifecycle table; the
+    // ambiguous one stops at its proposal, so the two refusal reasons stay
+    // distinguishable in the counts below.
+    for (suffix, proposal) in [("owned", "prop-owned"), ("orphan", "prop-orphan")] {
+        let decision = format!("dec-{suffix}");
+        let approval = format!("app-{suffix}");
+        let publication = format!("pub-{suffix}");
+        sqlx::query(
+            "INSERT INTO policy_decisions \
+             (decision_id, proposal_id, rule, electorate, verdict_event_id) \
+             VALUES ($1, $2, 'majority', '{\"participants\":[\"p\"]}'::jsonb, 'evt')",
+        )
+        .bind(&decision)
+        .bind(proposal)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO policy_approvals \
+             (approval_id, proposal_id, decision_id, approver, grant_id, quorum) \
+             VALUES ($1, $2, $3, 'p', 'grt_p', '{\"participants\":[\"p\"]}'::jsonb)",
+        )
+        .bind(&approval)
+        .bind(proposal)
+        .bind(&decision)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO policy_publications \
+             (publication_id, proposal_id, decision_id, approval_id, projection_id, state, \
+              manifest_digest) VALUES ($1, $2, $3, $4, 'proj', 'effective', 'deadbeef')",
+        )
+        .bind(&publication)
+        .bind(proposal)
+        .bind(&decision)
+        .bind(&approval)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO policy_drift \
+             (drift_id, target_id, publication_id, category, desired_digest) \
+             VALUES ($1, 'tgt', $2, 'pending_rollout', 'deadbeef')",
+        )
+        .bind(format!("drift-{suffix}"))
+        .bind(&publication)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO policy_corrections \
+             (correction_id, publication_id, operation, authority_grant, reason) \
+             VALUES ($1, $2, 'retraction', 'grt_p', 'historical')",
+        )
+        .bind(format!("corr-{suffix}"))
+        .bind(&publication)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO policy_outcomes (outcome_id, publication_id, kind, note) \
+             VALUES ($1, $2, 'incident', 'historical')",
+        )
+        .bind(format!("out-{suffix}"))
+        .bind(&publication)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO policy_reviews (review_id, publication_id, trigger, status) \
+             VALUES ($1, $2, 'drift', 'due')",
+        )
+        .bind(format!("rev-{suffix}"))
+        .bind(&publication)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    for projection in ["proj-one", "proj-two"] {
+        sqlx::query(
+            "INSERT INTO policy_projections \
+             (projection_id, target, digest, bytes, unrepresentable) \
+             VALUES ($1, 'generic', 'deadbeef', 'bytes', '[]'::jsonb)",
+        )
+        .bind(projection)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    let before: Vec<Value> =
+        sqlx::query_scalar("SELECT to_jsonb(p) FROM policy_proposals p ORDER BY proposal_id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+
+    through(73).run(&pool).await.unwrap();
+
+    // ── THE COVERAGE, MEASURED ────────────────────────────────────────────────
+    let mut coverage = Vec::new();
+    for table in [
+        "policy_proposals",
+        "policy_decisions",
+        "policy_approvals",
+        "policy_projections",
+        "policy_publications",
+        "policy_drift",
+        "policy_corrections",
+        "policy_outcomes",
+        "policy_reviews",
+    ] {
+        let (total, attributed): (i64, i64) =
+            sqlx::query_as(&format!("SELECT count(*), count(tenant_id) FROM {table}"))
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        coverage.push((table, total, attributed));
+    }
+    let published = coverage
+        .iter()
+        .map(|(t, total, got)| format!("{t} {got}/{total}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    assert_eq!(
+        coverage,
+        vec![
+            ("policy_proposals", 3, 1),
+            ("policy_decisions", 2, 1),
+            ("policy_approvals", 2, 1),
+            // ⛔ 0 of 2, and it is the decision rather than a shortfall: nothing
+            // in the schema can attribute a projection to an author.
+            ("policy_projections", 2, 0),
+            ("policy_publications", 2, 1),
+            ("policy_drift", 2, 1),
+            ("policy_corrections", 2, 1),
+            ("policy_outcomes", 2, 1),
+            ("policy_reviews", 2, 1),
+        ],
+        "backfill coverage: {published}"
+    );
+
+    // The one attributed row per table is the one descended from `thr-one`, and
+    // the refusals are the orphan and the ambiguous thread — not an arbitrary row.
+    let attributed: Vec<String> =
+        sqlx::query_scalar("SELECT proposal_id FROM policy_proposals WHERE tenant_id = $1")
+            .bind(owner)
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(attributed, vec!["prop-owned".to_string()]);
+    let unattributed: Vec<String> = sqlx::query_scalar(
+        "SELECT proposal_id FROM policy_proposals WHERE tenant_id IS NULL ORDER BY proposal_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        unattributed,
+        vec!["prop-ambiguous".to_string(), "prop-orphan".to_string()],
+        "a thread under two tenants derives nothing, exactly as a vanished one does"
+    );
+
+    // ⛔ The upgrade INVENTS no history: every pre-existing column is untouched
+    // and the row count is unchanged.
+    let after: Vec<Value> =
+        sqlx::query_scalar("SELECT to_jsonb(p) FROM policy_proposals p ORDER BY proposal_id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(after.len(), before.len(), "the upgrade retains every row");
+    for (old, mut upgraded) in before.into_iter().zip(after) {
+        upgraded.as_object_mut().unwrap().remove("tenant_id");
+        assert_eq!(upgraded, old, "every historical field survives unchanged");
+    }
+}

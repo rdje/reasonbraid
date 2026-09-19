@@ -35,15 +35,6 @@ node_events	-	event_id_for_operation!
 node_keys	node_keys→nodes	-
 node_leases	node_leases→nodes	verify_fencing!,verify_fencing_in_tx!,classify_renewal_refusal!
 node_proof_nonces	-	consume_proof_nonce!
-policy_approvals	-	list_approvals!,stage!
-policy_corrections	-	list_corrections!,schedule_reviews!
-policy_decisions	-	list_decisions!,record_approval!,stage!
-policy_drift	-	list_drift!,schedule_reviews!
-policy_outcomes	-	list_outcomes!,schedule_reviews!
-policy_projections	-	load!,list!,stage!
-policy_proposals	-	record_decision!,list_proposals!,record_approval!,stage!
-policy_publications	-	publication_exists!,assign!,mark_effective!,mark_failed!,load!,list!
-policy_reviews	-	schedule_reviews!,mark_done!,mark_done!,list_reviews!
 policy_versions	-	register_proposal!,list!,resolve!,impact!
 profile_versions	profile_versions→agent_roles	list_node_presence,create_thread_auto!,open_recruitment_call,respondent_candidate!,directory_match!,directory_presence,replay,presence,current_profile!,version_at!,version_list!,current_profile_in_tx!
 quota_events	quota_events→usage_quotas	check_in_tx!

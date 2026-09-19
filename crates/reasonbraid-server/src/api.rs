@@ -3381,13 +3381,16 @@ async fn project_policies(
     Json(request): Json<crate::projections::ProjectionRequest>,
 ) -> Result<Json<crate::projections::StoredProjection>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    // `SIGNOFF-REPAIR.6.1.5.2`: the tenant is BOUND, not tested with `is_some()`
+    // and dropped — the `.6.1.5` shape this repair programme has now found at a
+    // dozen sites. The projection records its AUTHOR, because it has no other
+    // tenant to record.
+    let Some(tenant_id) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal projects no policy",
         ));
-    }
-    match crate::projections::project(&state.pool, &request).await {
+    };
+    match crate::projections::project(&state.pool, &tenant_id, &request).await {
         Ok(row) => Ok(Json(row)),
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }

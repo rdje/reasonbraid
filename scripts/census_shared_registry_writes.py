@@ -779,9 +779,18 @@ def self_test() -> int:
     # module boundary) AND left `identity only`. The other seven routes the same
     # leaf relabelled `site authority` were already `module-reach`, so they were
     # never in `precise` and neither figure moved for them.
-    arms.append(("the published 39/30 are derived from the rows, not stored",
-                 len(precise) == 39
-                 and sum(1 for r in precise if r["admission"] == "identity only") == 30))
+    #
+    # ⛔ 39/30 → 26/17 at `SIGNOFF-REPAIR.6.1.5.2`, and that movement has ONE
+    # cause: `migrations/0073` gave the nine policy LIFECYCLE tables a
+    # `tenant_id`, so all thirteen routes writing them left the site-global
+    # population in a single step. ⚠️ Their READS are still unbound — this
+    # census watches the WRITE side, and a table leaving it is not a claim that
+    # anything about it is finished. `.6.1.5.3` owns the reads and pins its own
+    # population, because a table with a tenant column is invisible to both of
+    # these instruments while its readers stay site-wide.
+    arms.append(("the published 26/17 are derived from the rows, not stored",
+                 len(precise) == 26
+                 and sum(1 for r in precise if r["admission"] == "identity only") == 17))
 
     # ── The live corpus ──────────────────────────────────────────────────────
     try:

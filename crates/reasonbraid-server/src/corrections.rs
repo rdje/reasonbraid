@@ -149,20 +149,34 @@ impl std::fmt::Display for CorrectionError {
     }
 }
 
-async fn publication_exists(pool: &PgPool, publication_id: &str) -> Result<(), CorrectionError> {
-    let exists: Option<bool> = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM policy_publications WHERE publication_id = $1)",
+/// The publication must exist — and the check RETURNS ITS TENANT, which is the
+/// tenant every record about it carries (`SIGNOFF-REPAIR.6.1.5.2`).
+///
+/// ⛔ The drift, the correction and the outcome are all observations ABOUT a
+/// publication, so their owner is the publication's owner and not the caller: a
+/// drift row about Alice's publication stamped with Mallory's tenant would be
+/// invisible to Alice while she is the only party it concerns.
+///
+/// ⚠️ `Option<String>`, not `String`. A publication staged before
+/// `migrations/0073` carries no tenant, and a record about it inherits that
+/// absence rather than being given an owner it never had.
+async fn publication_tenant(
+    pool: &PgPool,
+    publication_id: &str,
+) -> Result<Option<String>, CorrectionError> {
+    let row: Option<(String, Option<String>)> = sqlx::query_as(
+        "SELECT publication_id, tenant_id FROM policy_publications WHERE publication_id = $1",
     )
     .bind(publication_id)
-    .fetch_one(pool)
+    .fetch_optional(pool)
     .await
     .map_err(|_| CorrectionError::UnknownPublication(publication_id.to_string()))?;
-    if !exists.unwrap_or(false) {
+    let Some((_, tenant_id)) = row else {
         return Err(CorrectionError::UnknownPublication(
             publication_id.to_string(),
         ));
-    }
-    Ok(())
+    };
+    Ok(tenant_id)
 }
 
 /// The cited authority must be one the CALLER HOLDS, not merely one that
@@ -211,10 +225,15 @@ pub async fn record_drift(pool: &PgPool, input: &DriftInput) -> Result<(), Corre
             input.target_id, input.publication_id
         )));
     }
+    // ⚠️ The assignment check above proves the (target, publication) pair is
+    // deployed; it says nothing about who owns it. The tenant comes from the
+    // publication (`SIGNOFF-REPAIR.6.1.5.2`), and this LABELS the row without
+    // gating the write — `.6.1.5.2.1` owns the gate.
+    let tenant_id = publication_tenant(pool, &input.publication_id).await?;
     let inserted = sqlx::query(
         "INSERT INTO policy_drift \
-         (drift_id, target_id, publication_id, category, desired_digest, observed_digest) \
-         VALUES ($1, $2, $3, $4, $5, $6)",
+         (drift_id, target_id, publication_id, category, desired_digest, observed_digest, \
+          tenant_id) VALUES ($1, $2, $3, $4, $5, $6, $7)",
     )
     .bind(&input.drift_id)
     .bind(&input.target_id)
@@ -222,6 +241,7 @@ pub async fn record_drift(pool: &PgPool, input: &DriftInput) -> Result<(), Corre
     .bind(&input.category)
     .bind(&input.desired_digest)
     .bind(&input.observed_digest)
+    .bind(&tenant_id)
     .execute(pool)
     .await;
     match inserted {
@@ -243,7 +263,7 @@ pub async fn record_correction(
     if !CORRECTION_OPERATIONS.contains(&input.operation.as_str()) {
         return Err(CorrectionError::UnknownOperation(input.operation.clone()));
     }
-    publication_exists(pool, &input.publication_id).await?;
+    let tenant_id = publication_tenant(pool, &input.publication_id).await?;
     authority_holds(pool, &input.authority_grant, principal).await?;
     match input.operation.as_str() {
         "suspension" | "waiver" => {
@@ -255,7 +275,10 @@ pub async fn record_correction(
             let Some(supersedes) = input.supersedes.as_deref() else {
                 return Err(CorrectionError::MissingSupersedes);
             };
-            publication_exists(pool, supersedes).await?;
+            // The superseded publication must exist; its tenant is not the
+            // correction's — the correction belongs to the publication it
+            // corrects, which is `input.publication_id` above.
+            publication_tenant(pool, supersedes).await?;
         }
         _ => {}
     }
@@ -274,8 +297,8 @@ pub async fn record_correction(
     let inserted = sqlx::query(
         "INSERT INTO policy_corrections \
          (correction_id, publication_id, operation, authority_grant, supersedes, expires_at, \
-          reason, evidence, remediation) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+          reason, evidence, remediation, tenant_id) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
     )
     .bind(&input.correction_id)
     .bind(&input.publication_id)
@@ -286,6 +309,7 @@ pub async fn record_correction(
     .bind(&input.reason)
     .bind(serde_json::to_value(&input.evidence).expect("the evidence serializes"))
     .bind(&input.remediation)
+    .bind(&tenant_id)
     .execute(pool)
     .await;
     match inserted {
@@ -322,16 +346,18 @@ pub async fn record_outcome(pool: &PgPool, input: &OutcomeInput) -> Result<(), C
             )));
         }
     }
-    publication_exists(pool, &input.publication_id).await?;
+    let tenant_id = publication_tenant(pool, &input.publication_id).await?;
     let inserted = sqlx::query(
         "INSERT INTO policy_outcomes \
-         (outcome_id, publication_id, kind, review_trigger, note) VALUES ($1, $2, $3, $4, $5)",
+         (outcome_id, publication_id, kind, review_trigger, note, tenant_id) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(&input.outcome_id)
     .bind(&input.publication_id)
     .bind(&input.kind)
     .bind(&input.review_trigger)
     .bind(&input.note)
+    .bind(&tenant_id)
     .execute(pool)
     .await;
     match inserted {

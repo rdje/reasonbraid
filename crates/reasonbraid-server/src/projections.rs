@@ -52,8 +52,19 @@ impl std::fmt::Display for ProjectionError {
 }
 
 /// Project one resolved set: the resolve → the compile → the record.
+///
+/// ⛔ `tenant_id` is the AUTHOR's, and it is the one lifecycle tenant that is
+/// authorship rather than lineage (`SIGNOFF-REPAIR.6.1.5.2`). A projection has
+/// no ancestor: `ProjectionRequest` names a target, a resolution over the
+/// SITE-WIDE library, and a lock — no thread, no proposal, no tenant. It is
+/// still tenant work, because `bytes` and `unrepresentable` are a function of
+/// the caller's own resolution request, so the row discloses which policies its
+/// author compiled for which target. ⚠️ Which is also why `migrations/0073`
+/// backfills every lifecycle table but this one: an authorship the old schema
+/// never recorded cannot be recovered from it.
 pub async fn project(
     pool: &PgPool,
+    tenant_id: &str,
     request: &ProjectionRequest,
 ) -> Result<StoredProjection, ProjectionError> {
     let resolution = crate::policy::resolve(pool, &request.resolution)
@@ -80,13 +91,15 @@ pub async fn project(
         serde_json::to_value(&artifact.unrepresentable).expect("the unrepresentables serialize");
     let inserted = sqlx::query(
         "INSERT INTO policy_projections \
-         (projection_id, target, digest, bytes, unrepresentable) VALUES ($1, $2, $3, $4, $5)",
+         (projection_id, target, digest, bytes, unrepresentable, tenant_id) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(&request.projection_id)
     .bind(&artifact.target)
     .bind(&artifact.digest)
     .bind(&artifact.bytes)
     .bind(&unrepresentable)
+    .bind(tenant_id)
     .execute(pool)
     .await;
     if inserted.is_err() {

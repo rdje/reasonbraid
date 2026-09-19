@@ -51,6 +51,7 @@ async fn pool() -> Option<PgPool> {
             "region_pairs",
             "site_regions",
             "adapter_allowlist",
+            "policy_reviews",
             "policy_outcomes",
             "policy_corrections",
             "policy_drift",

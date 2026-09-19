@@ -42,6 +42,7 @@ async fn pool() -> Option<PgPool> {
     pg_cleanup::delete_tables(
         &pool,
         &[
+            "policy_reviews",
             "policy_outcomes",
             "policy_corrections",
             "policy_drift",
@@ -4500,5 +4501,395 @@ async fn the_lifecycle_verbs_refuse_a_foreign_tenants_thread() {
     assert_eq!(
         status, 200,
         "alice still decides on her own verdict: {decided}"
+    );
+}
+
+/// `SIGNOFF-REPAIR.6.1.5.2` — every lifecycle row carries the tenant that OWNS
+/// it, and for five of the nine that is not the tenant that wrote it.
+///
+/// ⭐ **The sharp half is the second arm.** Mallory records drift, an outcome and
+/// a correction against ALICE's publication, and schedules the reviews. Each row
+/// must come back stamped `alice`: a row about Alice's publication carrying
+/// Mallory's tenant would vanish from the only party it concerns the moment
+/// `.6.1.5.3` binds the reads — `.6.1.5`'s own trap, re-entered from the write
+/// side.
+///
+/// ⚠️ **This leaf LABELS rows; it does not GATE writes.** Mallory is admitted
+/// throughout, and the control asserts that she is: the gate is `.6.1.5.2.1`'s,
+/// and a control that expected a refusal here would be testing that leaf's work
+/// rather than this one's.
+///
+/// ⛔ **The reads are asserted UNCHANGED**, so this leaf cannot accidentally
+/// deliver `.6.1.5.3`.
+#[tokio::test]
+async fn the_lifecycle_row_carries_the_tenant_that_owns_it() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let (repo_root, object_ids) = seeded_publication_repository("lto");
+    let server = TestServer::start_with_publication_root(&pool, &repo_root).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, alice) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "lto-alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "alice enrols: {alice}");
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    let alice_tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    let alice_grant = format!("grt_{alice_id}");
+
+    let (status, mallory) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "lto-mallory" }),
+    )
+    .await;
+    assert_eq!(status, 200, "mallory enrols: {mallory}");
+    let mallory_id = mallory["principal_id"].as_str().unwrap().to_string();
+    let mallory_tenant = mallory["tenant_id"].as_str().unwrap().to_string();
+    let mallory_grant = format!("grt_{mallory_id}");
+    assert_ne!(
+        alice_tenant, mallory_tenant,
+        "two enrolments must be two tenants, or this control measures nothing"
+    );
+
+    // The tenant a stored row actually carries. ⛔ Read straight from the table:
+    // the READ verbs are still site-wide by design until `.6.1.5.3`, so they
+    // could not tell these rows apart even if the column were wrong.
+    let stored = |table: &'static str, key: &'static str, id: String| {
+        let pool = pool.clone();
+        async move {
+            sqlx::query_scalar::<_, Option<String>>(&format!(
+                "SELECT tenant_id FROM {table} WHERE {key} = $1"
+            ))
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .expect("the row exists")
+        }
+    };
+
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policies",
+        &alice_id,
+        &json!({
+            "policy_id": "lto-policy", "version": "1.0.0", "digest": DIGEST,
+            "lifecycle": "draft", "title": "lto", "owning_authority": alice_grant,
+            "clauses": [ { "id": "c1", "statement": "the owned clause" } ],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the policy registers");
+
+    let (_status, created) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &alice_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "lto-create",
+            "body": {
+                "tenant_id": alice_tenant, "subject": "lto", "objective": "probe",
+                "workflow_profile": "independent_panel",
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    let command = |key: &'static str, operation: &'static str, body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let alice_id = alice_id.clone();
+        let thread_id = thread_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/threads/{thread_id}/commands"))
+                .header(PRINCIPAL_HEADER, &alice_id)
+                .json(&json!({
+                    "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                    "operation": operation,
+                    "request_id": reasonbraid_core::RequestId::new().to_string(),
+                    "idempotency_key": key,
+                    "body": body,
+                    "client_context": {},
+                }))
+                .send()
+                .await
+                .expect("command request");
+            let text = response.text().await.expect("command body");
+            serde_json::from_str::<Value>(&text).unwrap_or_else(|_| json!({ "raw": text }))
+        }
+    };
+    let _ = command(
+        "lto-advance",
+        "thread.advance_round",
+        json!({ "tenant_id": alice_tenant }),
+    )
+    .await;
+    let verdict = command(
+        "lto-verdict",
+        "thread.contribute",
+        json!({
+            "tenant_id": alice_tenant, "content": "judged", "kind": "verdict",
+            "verdict": { "target_digest": "sha256:00", "rule": "majority", "outcome": "accepted_by_rule" },
+        }),
+    )
+    .await;
+    let verdict_event = verdict["event_id"].as_str().unwrap().to_string();
+
+    // ── ARM 1: the four rows whose tenant is the CALLER's ─────────────────────
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-proposals",
+        &alice_id,
+        &json!({
+            "proposal_id": "lto-prop", "policy_id": "lto-policy",
+            "policy_version": "1.0.0", "thread_id": thread_id,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "alice's proposal registers");
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-decisions",
+        &alice_id,
+        &json!({
+            "decision_id": "lto-dec", "proposal_id": "lto-prop", "rule": "majority",
+            "electorate": { "participants": [alice_id], "denominator": 1, "abstentions": [] },
+            "verdict_event_id": verdict_event,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "alice's decision records");
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-approvals",
+        &alice_id,
+        &json!({
+            "approval_id": "lto-app", "proposal_id": "lto-prop", "decision_id": "lto-dec",
+            "approver": alice_id, "grant_id": alice_grant,
+            "quorum": { "participants": [alice_id], "denominator": 1, "abstentions": [] },
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "alice's approval records");
+
+    for (table, key, id) in [
+        ("policy_proposals", "proposal_id", "lto-prop"),
+        ("policy_decisions", "decision_id", "lto-dec"),
+        ("policy_approvals", "approval_id", "lto-app"),
+    ] {
+        assert_eq!(
+            stored(table, key, id.to_string()).await,
+            Some(alice_tenant.clone()),
+            "{table} carries the caller's tenant"
+        );
+    }
+
+    // ── ARM 2: the projection's tenant is its AUTHOR's, because it has no
+    //    ancestor to inherit from. Mallory's own projection is Mallory's. ──────
+    let (status, alice_projection) = post(
+        &client,
+        &base,
+        "/v1/policy-projections",
+        &alice_id,
+        &json!({
+            "projection_id": "lto-proj", "target": "generic",
+            "resolution": {
+                "policies": [ { "policy_id": "lto-policy", "version": "1.0.0" } ],
+                "target": { "layer": "organization", "target": "*" },
+            },
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "alice's projection records: {alice_projection}"
+    );
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-projections",
+        &mallory_id,
+        &json!({
+            "projection_id": "lto-proj-m", "target": "generic",
+            "resolution": {
+                "policies": [ { "policy_id": "lto-policy", "version": "1.0.0" } ],
+                "target": { "layer": "organization", "target": "*" },
+            },
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "mallory projects the shared library too");
+    assert_eq!(
+        stored("policy_projections", "projection_id", "lto-proj".into()).await,
+        Some(alice_tenant.clone()),
+        "a projection is its author's"
+    );
+    assert_eq!(
+        stored("policy_projections", "projection_id", "lto-proj-m".into()).await,
+        Some(mallory_tenant.clone()),
+        "and the OTHER author's projection is hers — the library is shared, the \
+         compiled artifact records who asked for it"
+    );
+
+    // ── ARM 3: the five rows whose tenant is their PARENT's. Mallory writes
+    //    every one of them against ALICE's records, and is admitted. ───────────
+    let (status, staged) = post(
+        &client,
+        &base,
+        "/v1/policy-publications",
+        &mallory_id,
+        &json!({
+            "publication_id": "lto-pub", "proposal_id": "lto-prop",
+            "decision_id": "lto-dec", "approval_id": "lto-app",
+            "projection_id": "lto-proj", "manifest_digest": alice_projection["digest"],
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "mallory stages alice's approved proposal — admitted today, and `.6.1.5.2.1` \
+         owns the gate: {staged}"
+    );
+    assert_eq!(
+        stored("policy_publications", "publication_id", "lto-pub".into()).await,
+        Some(alice_tenant.clone()),
+        "a publication is its PROPOSAL's, not its stager's"
+    );
+
+    let (status, _) = post(
+        &client,
+        &base,
+        &format!("/v1/policy-publications/{}/effective", "lto-pub"),
+        &alice_id,
+        &json!({ "git_object_ids": object_ids.clone(), "repo_path": "live", "owning_authority": alice_grant }),
+    )
+    .await;
+    assert_eq!(status, 200, "the publication marks effective");
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/deployment-targets",
+        &alice_id,
+        &json!({ "target_id": "lto-target", "target_type": "repository", "owning_authority": alice_grant }),
+    )
+    .await;
+    assert_eq!(status, 200, "the target registers");
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/deployments",
+        &alice_id,
+        &json!({
+            "target_id": "lto-target", "publication_id": "lto-pub", "wave": 1,
+            "desired_ref": "live", "desired_digest": DIGEST,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the assignment records");
+
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-drift",
+        &mallory_id,
+        &json!({
+            "drift_id": "lto-drift", "target_id": "lto-target", "publication_id": "lto-pub",
+            "category": "pending_rollout", "desired_digest": DIGEST, "observed_digest": null,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "mallory records drift on alice's publication");
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-corrections",
+        &mallory_id,
+        &json!({
+            "correction_id": "lto-corr", "publication_id": "lto-pub", "operation": "waiver",
+            "authority_grant": mallory_grant, "expires_at": "2030-01-01T00:00:00Z",
+            "reason": "the foreign waiver",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "mallory waives alice's publication");
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-outcomes",
+        &mallory_id,
+        &json!({
+            "outcome_id": "lto-out", "publication_id": "lto-pub", "kind": "incident",
+            "review_trigger": "adverse_threshold", "note": "the foreign outcome",
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "mallory records an outcome on alice's publication"
+    );
+    let (status, scheduled) = post(
+        &client,
+        &base,
+        "/v1/policy-reviews/schedule",
+        &mallory_id,
+        &json!({}),
+    )
+    .await;
+    assert_eq!(status, 200, "mallory schedules the reviews: {scheduled}");
+    assert!(
+        !scheduled.as_array().unwrap().is_empty(),
+        "the schedule materialised rows, or the next assertion is vacuous: {scheduled}"
+    );
+
+    for (table, key, id) in [
+        ("policy_drift", "drift_id", "lto-drift"),
+        ("policy_corrections", "correction_id", "lto-corr"),
+        ("policy_outcomes", "outcome_id", "lto-out"),
+    ] {
+        assert_eq!(
+            stored(table, key, id.to_string()).await,
+            Some(alice_tenant.clone()),
+            "{table} is its PUBLICATION's, though mallory wrote it"
+        );
+    }
+    let review_tenants: Vec<Option<String>> =
+        sqlx::query_scalar("SELECT tenant_id FROM policy_reviews ORDER BY review_id")
+            .fetch_all(&pool)
+            .await
+            .expect("the reviews are readable");
+    assert!(
+        !review_tenants.is_empty()
+            && review_tenants
+                .iter()
+                .all(|t| t.as_deref() == Some(alice_tenant.as_str())),
+        "every scheduled review is its publication's, never the scheduler's: {review_tenants:?}"
+    );
+
+    // ── THE READS ARE UNCHANGED, which is what keeps this leaf out of
+    //    `.6.1.5.3`'s. Mallory still sees Alice's proposal today. ──────────────
+    let (status, proposals) = get(&client, &base, "/v1/policy-proposals", &mallory_id).await;
+    assert_eq!(status, 200, "mallory reads the proposals: {proposals}");
+    assert!(
+        proposals
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["proposal_id"] == json!("lto-prop")),
+        "the lifecycle reads are still site-wide — binding them is `.6.1.5.3`'s, and \
+         a leaf that bound them here would have delivered it by accident: {proposals}"
     );
 }

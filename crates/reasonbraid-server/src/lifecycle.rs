@@ -164,15 +164,20 @@ pub async fn register_proposal(
     if !thread.unwrap_or(false) {
         return Err(LifecycleError::UnknownThread(input.thread_id.clone()));
     }
+    // `SIGNOFF-REPAIR.6.1.5.2`: the tenant is STORED, not merely checked. The
+    // predicate above has just proved this thread is the caller's, so the column
+    // records a binding this write already performs rather than inventing one
+    // for a read — which is why `.6.1.5`'s trap does not reach it.
     let inserted = sqlx::query(
         "INSERT INTO policy_proposals \
-         (proposal_id, policy_id, policy_version, thread_id, status) \
-         VALUES ($1, $2, $3, $4, 'draft')",
+         (proposal_id, policy_id, policy_version, thread_id, status, tenant_id) \
+         VALUES ($1, $2, $3, $4, 'draft', $5)",
     )
     .bind(&input.proposal_id)
     .bind(&input.policy_id)
     .bind(&input.policy_version)
     .bind(&input.thread_id)
+    .bind(tenant_id)
     .execute(pool)
     .await;
     match inserted {
@@ -250,16 +255,20 @@ pub async fn record_decision(
             input.verdict_event_id.clone(),
         ));
     }
+    // `SIGNOFF-REPAIR.6.1.5.2`: the CALLER's tenant, and it is the proposal's by
+    // construction — the predicate above admits only a verdict event of this
+    // tenant, in the PROPOSAL's own thread, so the two cannot differ here.
     let inserted = sqlx::query(
         "INSERT INTO policy_decisions \
-         (decision_id, proposal_id, rule, electorate, verdict_event_id) \
-         VALUES ($1, $2, $3, $4, $5)",
+         (decision_id, proposal_id, rule, electorate, verdict_event_id, tenant_id) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(&input.decision_id)
     .bind(&input.proposal_id)
     .bind(&input.rule)
     .bind(&input.electorate)
     .bind(&input.verdict_event_id)
+    .bind(tenant_id)
     .execute(pool)
     .await;
     if inserted.is_err() {
@@ -494,10 +503,12 @@ pub async fn record_approval(
             &input.approver,
         ));
     }
+    // `SIGNOFF-REPAIR.6.1.5.2`: the CALLER's tenant, which `.6.1.5.1`'s predicate
+    // above has just proved owns the proposal's thread.
     let inserted = sqlx::query(
         "INSERT INTO policy_approvals \
-         (approval_id, proposal_id, decision_id, approver, grant_id, quorum) \
-         VALUES ($1, $2, $3, $4, $5, $6)",
+         (approval_id, proposal_id, decision_id, approver, grant_id, quorum, tenant_id) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
     )
     .bind(&input.approval_id)
     .bind(&input.proposal_id)
@@ -505,6 +516,7 @@ pub async fn record_approval(
     .bind(&input.approver)
     .bind(&input.grant_id)
     .bind(&input.quorum)
+    .bind(tenant_id)
     .execute(pool)
     .await;
     if inserted.is_err() {

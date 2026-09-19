@@ -1,5 +1,16 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — The tenant of a derived record is its parent's, not its author's
+
+- The leaf said *store the tenant the write already derives*, and I nearly did exactly that at all nine sites. Four of them would have been right.
+- ⛔ **A drift observation is not a thing its writer owns. It is an assertion ABOUT a publication**, and the party it concerns is that publication's tenant. Stamping it with the writer's tenant would have been the `.6.1.5` trap re-entered from the other side: the row would have been hidden from the only person who needs it, by a repair advertised as making ownership explicit.
+- ⭐ **The test that settles which anchor is right is: who is harmed if this row becomes invisible to everyone but the tenant it names?** For a proposal, the author. For drift on someone else's publication, the publication's owner. The anchor follows the harm, not the keystrokes.
+- 🔎 **And the control has to be able to tell the two apart, which is a design constraint on the control rather than on the code.** Mine has Mallory perform every parent-derived write against Alice's records and asserts the stored tenant is Alice's. Against a caller-derived implementation it fails `left: Some(mallory), right: Some(alice)` — so it measures the ANCHOR, not merely that a column is populated. I proved that by writing the caller-derived version and watching it fail.
+- 🔴 **`policy_projections` broke the rule I had just written down, and the decision record's reason was the thing that was wrong.** DOC-0071 justified all nine tables with *"each starts, directly or transitively, in a tenant's thread"*. A projection starts nowhere: it is compiled from the shared library out of a target and a lock. The verdict survives — the compiled bytes disclose which policies its author chose — but by authorship, not lineage, and that is precisely why it is the one table whose history cannot be backfilled.
+- ⚠️ **Storing an owner makes an ungated write VISIBLE, not safe.** After this change a foreign caller's drift row appears correctly labelled in the owner's trail, having been authorized by nothing. That is better than the old state and it is not a fix; writing it down as a fix would have been the comfortable error.
+- 🔎 **The instrument that was watching the surface stopped watching it, because the repair changed the surface's category.** The read census enumerates tables with no tenant dimension; the nine acquired one and vanished from it, with all 28 readers still unbound. A census whose population is defined by the property you are repairing will always congratulate you by going quiet. Pin the list somewhere the census cannot take it back.
+- promotion: pending — *the tenant of a derived record is its parent's wherever the record is an assertion about the parent*, plus the corollary about a census whose population is defined by the property under repair.
+
 ## 2026-09-19 — An instrument that refuses what it cannot read has a blind spot the size of its model
 
 - I was about to write `ALTER TABLE policy_proposals ADD COLUMN tenant_id TEXT REFERENCES tenants (tenant_id)` and went looking for which test purge plans that new foreign key would break. I expected to find a handful to sweep.

@@ -116,6 +116,30 @@ says a lesson must not be.
 leaf. Reading it back and asking *"what else could name this object?"* costs one
 sentence — and it is the sentence neither census contained.
 
+## The deletion side: a safeguard protects against the deleter it knows about
+
+`SIGNOFF-REPAIR.11.4.3.1.8` had to retire a 174 GiB build tree, and its own
+prescription was *"a whole-tree `cargo clean`"*. `cargo clean` removes the entire
+`CARGO_TARGET_DIR` — which on this project also holds three directories of
+**retained evidence**, cited by 38 tracked files, one of them held back by
+`scripts/census_retained_fixtures.py` *because* it is cited.
+
+⭐ That census works. It simply protects against the reaper it was written for.
+`cargo clean` is a different broom with a different idea of what it owns, and no
+amount of care inside the fixture census reaches it.
+
+⛔ **Before a bulk deletion, census on the IDENTIFIER you are about to remove,
+not on the thing you meant to remove:**
+
+```bash
+git grep -nE "target/(debug|release)/"   # does anything CITE what this verb will take?
+```
+
+Every hit here was a build output that regenerates, so a deletion scoped to
+`target/debug` dangled nothing — and the unscoped verb would have taken the
+evidence. The question is not *is this big?* but *what does this verb consider
+its own?*
+
 ## Related
 
 - [[an-absence-claim-is-a-census-over-the-corpus]] — the same discipline aimed at

@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — A cleanup verb's blast radius is the directory it owns, not the bytes you meant
+
+- The leaf offered three dispositions for a 174 GiB build tree, and option (b) read *"a whole-tree `cargo clean`, accepted as a measured rebuild cost"*. The director chose it. Running it as written would have deleted `target/pg-tests`, `target/ci-browser` and `target/browser-lifetime-controls` — **38 tracked citations between them**, including a fixture the project's own census deliberately holds back *because* it is cited.
+- ⭐ **The protection I had in mind was pointed the wrong way.** `scripts/census_retained_fixtures.py` exists precisely to stop those directories being reaped, and it works — against the reaper it was written for. `cargo clean` is a different broom with a different idea of what it owns, and no amount of care inside the fixture census reaches it. **A safeguard protects against the deleter it knows about.**
+- 🔎 The tell was cheap and I nearly skipped it: `git grep -nE "target/(debug|release)/"` over tracked files, asking not *"is this big?"* but *"does anything cite what I am about to remove?"*. Every hit was a build OUTPUT — CI's `test -x target/debug/…`, the Makefile's release binaries — so the scoped deletion dangles nothing. Two minutes to run, and it is the difference between a cleanup and an incident.
+- ⚠️ **The recovery figure had to come from `df`, not `du`.** The leaf inherited that caveat verbatim and it was right to: on a cloning filesystem logical bytes are not recovered bytes. Manifest 182,302,640 KiB logical; volume 666,182,692 → 483,578,156 KiB. Publish the one the filesystem reports.
+- ⛔ **And the thing I did NOT claim is the one everybody wants:** that this makes builds faster. No experiment was run. What was measured this session says the cause is elsewhere — `syspolicyd` at 44% CPU and swap at 6,151 of 7,168 MB during a 68m 16s rebuild. Deleting the tree guarantees the next build is cold; it does not make the one after that quick.
+- promotion: declined for a new record — this is `[[a-census-is-as-wide-as-its-key]]` seen from the deletion side (the key being *what does this verb consider its own*), and the note gains the instance.
+
 ## 2026-09-19 — Build the instrument, then make it answer a question you already know
 
 - Re-deriving G4 and G5 meant resolving `profiles 23` and `routing 2` against two commits. My first counter matched every `fn`, so `routing 2` came back as `pool` — a helper. Nothing in the output said so; the number was simply wrong and perfectly well-formed.

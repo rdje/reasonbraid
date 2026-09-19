@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-19 — The debug build tree is retired, and `cargo clean` would have taken the evidence with it (`SIGNOFF-REPAIR.11.4.3.1.8`)
+
+**Option (b), taken by the director**: *"if `target/debug/deps` is taking way too much space please delete, I don't mind long build time from time to time."* The leaf had left "measured and not worth acting on" open as a legitimate third outcome; the instruction forecloses it by accepting the rebuild cost explicitly.
+
+- 🔴 **Executing option (b) literally would have destroyed cited evidence, and that is the finding.** The leaf writes (b) as *"a whole-tree `cargo clean`"* — and `cargo clean` removes the entire `CARGO_TARGET_DIR`. Three of its subdirectories are retained evidence, not build output: `target/pg-tests` (**309,444 KiB / 8,583 files**, named by **26** tracked files), `target/ci-browser` (**554,732 KiB / 397 files**, **7**) and `target/browser-lifetime-controls` (**384 KiB / 96 files**, **5**) — including `run-9_ueev0t`, which the fixture census holds back *because* it is cited. ⭐ The census that protects those directories from the fixture reaper does not protect them from cargo's own broom. The retirement was scoped to `target/debug`.
+- ✅ **Frozen manifest → retirement → residue census**, the shape `.11.4.3.1.6` set. Before: **182,302,640 KiB logical / 1,826,894 files**. After: `target/debug` absent, `find target -maxdepth 1 -name 'debug*'` returns **0**, and all three evidence directories report their pre-retirement byte and file counts unchanged.
+- ⚠️ **The `CLAIM_VERIFICATION` caveat is inherited verbatim and it bites**: `du` figures are logical bytes and do not establish physical space recovered on a cloning filesystem. The published recovery figure is the volume's own — **≈174 GiB by `df`** — against 173.9 GiB logical.
+- ⛔ **NOT claimed: that builds get faster.** The leaf forbade that causal claim without an experiment and none was run. What the session did measure is that the build-time cause is a HOST property: `syspolicyd` at 44% CPU during a 68m 16s rebuild, with swap at 6,151 of 7,168 MB.
+- ⭐ A no-cost prophylactic shipped alongside: `target/.metadata_never_index` and `.project-data/.metadata_never_index`, after `mdfind -onlyin target` measured **573,057** indexed items. ⚠️ Not asserted to have taken effect — the marker is documented for volume roots and the reliable mechanism is the Spotlight Privacy list.
+- ⛔ Gatekeeper's Developer Tools exemption was **described wrongly** in the session that proposed it and is corrected here: it takes **applications**, not volumes or paths, so it exempts everything spawned by that terminal. It is a real defence-in-depth reduction, it cannot be set from a CLI, and it remains the director's decision.
+
 ## 2026-09-19 — G4 and G5 re-derived, and blocker C2 closes (`SIGNOFF-REPAIR.11.4.7.4`)
 
 ✅ **All five gate records now re-derive, line by line, each verdict carrying the command that produces it.** G1–G2 (REPAIR-0198), G6–G7 (REPAIR-0195), G3 (REPAIR-0264), G4+G5 here. **3 stand · 1 must be re-earned.** ⛔ No record's CONCLUSION changed: G6–G7 remains NOT MET for Internet exposure, G3 remains blocked as binding use.

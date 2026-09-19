@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE DEBUG BUILD TREE IS RETIRED, AND `cargo clean` WOULD HAVE TAKEN THE EVIDENCE WITH IT (`.11.4.3.1.8`, DOC-0060).**
+
+Option **(b)**, taken by the director on 2026-09-19 — the rebuild cost accepted explicitly, which forecloses the leaf's third outcome ("measured and not worth acting on"). **≈174 GiB recovered by `df`** (666,182,692 → 483,578,156 KiB used).
+
+- 🔴 **The finding is the blast radius, not the bytes.** The leaf wrote option (b) as *"a whole-tree `cargo clean`"*, and `cargo clean` removes the entire `CARGO_TARGET_DIR` — including `target/pg-tests` (**26** tracked citations), `target/ci-browser` (**7**) and `target/browser-lifetime-controls` (**5**). ⭐ The census that protects those from the fixture reaper does not protect them from cargo's own broom. Scoped to `target/debug`.
+- ✅ Frozen manifest → retirement → residue census: **182,302,640 KiB / 1,826,894 files** before; `target/debug` absent after, all three evidence directories byte- and file-identical, `run-9_ueev0t` present.
+- ⚠️ `du` is logical bytes and does not establish physical recovery on a cloning filesystem — the published figure is the volume's own `df`.
+- ⛔ **Not claimed: faster builds.** No experiment was run, and the measured cause is a HOST property (`syspolicyd` at 44% CPU, swap 6,151/7,168 MB during a 68m 16s rebuild).
+
 ✅ **BLOCKER C2 IS CLOSED — ALL FIVE GATE RECORDS RE-DERIVE (`.11.4.7`, REPAIR-0265).**
 
 G1–G2, G3, G4, G5 and G6–G7, line by line, each verdict from `stands`/`narrowed`/`must be re-earned` with the command that produces it. ⛔ **No record's conclusion changed**: G6–G7 stays NOT MET for Internet exposure and G3 stays blocked as binding use.

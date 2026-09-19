@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-19 — The question was already adjudicated for thirteen of the thirty, and the census did not check (`SIGNOFF-REPAIR.7.1.2`, re-scope)
+
+`SIGNOFF-REPAIR.7.1.1` published 42 site-global writers and routed the 33 admitted by enrolment alone to `.7.1.2` for adjudication. Opening `.7.1.2` found most of that adjudication already done.
+
+- 🔴 **`SIGNOFF-REPAIR.11.14` is `done`** — *the site-global data model is a design position nobody has taken* — and `docs/decisions/2026-09-16_evidence-is-shared-the-read-is-tenant-bound.md` (DOC-0029) already decides it: the evidence chain is content-addressed **by design**, **no table is decided tenant-owned**, and what §16.8 requires is that the DISCLOSURE names the tenant rather than that every table carry a `tenant_id`. ⛔ `docs/CLAIM_VERIFICATION.md` leg 2 — the cheapest oracle is the project's own history, and an earlier ruling wins unless the difference is named. `.7.1.1` did not check, and the omission is the same shape as `.7.3.6.4` not searching the tree for `egress`.
+- ⭐ **The difference is real and it is a number: `.11.14` decided TWELVE tables; a census run from the WRITE side finds THIRTY, and 17 are not named in the decision record.** Nine of the ten `policy_*` (only `policy_publications` is named), both `routing_*`, plus `workflow_profiles`, `agent_profiles`, `profile_versions`, `recruitment_responses`, `quota_events` and `evaluation_trial_results`.
+- ⛔ **The cause is the shape this session keeps finding.** `.11.14`'s census was *"of the twelve policy, evaluation, deployment and evidence tables"* — a population scoped by FAMILY NAME and taken as given. Derived from the producers instead — every mutating route, every table it writes, every migration — it is 30. **A family-scoped census answers a question about the family, not about the surface.**
+- ⭐ **And the residue is not more of the same class.** DOC-0029's remedy is *the read is tenant-bound*, which fits shared EVIDENCE. It does not fit a shared CONTROL surface — a table another tenant's resolution, routing or policy decision reads — because a control surface's problem is the WRITE. `policy_*` and `routing_*` are the sharp end by that test, and neither is an accident: `.6.1.5` is open on exactly whether the policy registry is site-global by design or by omission, and `.9.1`'s goal line already says *tenant-scope all material records*.
+- ✅ `.7.1.2` is re-scoped from 30 tables to 17 before any classification, with the reconciliation question stated per table and `.11.14`'s own unmet acceptance clause — that `.6.1.5` be answered by the same record or deferred to it by name — carried forward. `.7.1.1`'s record, `LIVE_STATUS.md` and `MEMORY.md` carry the correction.
+
 ## 2026-09-19 — Forty-two routes write site-global state, thirty-three on enrolment alone (`SIGNOFF-REPAIR.7.1.1`)
 
 `SIGNOFF-REPAIR.7.1`'s attached clause 2 — two reviewers, one finding — names this census as the PREREQUISITE to designing the resolver bind, because `SIGNOFF-REPAIR.3.2` designed one without it and closed `done` while two shared registries sat outside its six site actions.

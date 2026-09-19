@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — I checked the code, the ADR and the schema, and not the one place that had already answered
+
+- I built a census, found 42 routes writing site-global state, published the population, and routed 33 of them for adjudication. Then I opened the adjudicating leaf and discovered `SIGNOFF-REPAIR.11.14` — *the site-global data model is a design position nobody has taken* — closed, with a decision record covering the question.
+- 🔎 **This is the second time in one session.** `.7.3.6.4` decided the egress comparison's direction after reading the source and ADR-018, while `.7.1`'s attached clause 3 had been sitting in the task tree asking exactly that question. Both times I searched the artefact and not the ledger.
+- ⭐ **The rule I keep re-deriving the hard way is already written down**: *the cheapest oracle is your own project's history — before publishing a finding, check whether a case of the same shape has already been adjudicated*. What makes it easy to skip is that the code search feels like the rigorous one. Reading `resolvers.rs` and `ADR-018` end to end is real work; `grep -rn egress docs/tasks/` takes four seconds and feels like cheating.
+- ⛔ **The correction is cheap only if you make it before publishing.** Both findings survived — the egress comparison really was inverted, and 17 of the 30 tables really are outside DOC-0029 — but in both cases the leaf had to be re-scoped after the fact, and one of them had already shipped a commit that named no prior ruling.
+- ⭐ **And the difference, once named, was better than the original finding.** "33 routes write site-global state on enrolment alone" is a population. "`.11.14` decided twelve tables by family name; a census derived from the producers finds thirty, and seventeen are unnamed" is a *defect in how the earlier decision was scoped* — sharper, smaller, and it tells the next leaf exactly what to do.
+- promotion: pending — *search the ledger before the source, because the source search feels rigorous and the ledger search feels like cheating* belongs with the existing history-oracle rule rather than beside it.
+
 ## 2026-09-19 — An instrument used outside its corpus gives a confident wrong answer, not a missing one
 
 - I needed "how is this route admitted" and an instrument already answered it, so I imported it and ran it over every file with a route registration. Two node-channel routes came back admitted by **nothing** — writing site-global state, unadmitted. That is a serious finding and it was false. Both call `verify_fencing(node_id, fencing_token, lease_epoch)`.

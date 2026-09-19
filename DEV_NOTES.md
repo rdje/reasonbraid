@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — Two of your own findings can point in opposite directions, and the older one usually wins
+
+- The finding was clean: `register`'s upsert writes 6 of the 18 columns it inserts, two doc comments promise a replace, so complete the replace. I had the control RED and the one-line fix half-written.
+- ⭐ **The acceptance clause that saved it was the boring one** — *the 2026-09-12 accept-set decision is re-read and either upheld or superseded*. Re-reading it led to `.11.9.1.1.1`, which had measured a year of this project ago that `resolver_capabilities` has no tenant column and any tenant administrator can address any row, the built-in packs' included. That finding says the upsert's reach is **too large**. Mine said it was too small. Both are true, and only one of them had already been adjudicated.
+- 🔎 **The tell I nearly walked past:** `git grep` for the table name turned up a leaf discussing the same `ON CONFLICT` clause for a completely different reason. It cost two minutes to read and it changed the repair from "write all 18 columns" to "write all 18 in the product's path, refuse in the route's" — because widening a site-global write from 6 columns to 17 to satisfy a doc comment is not a repair, it is a bigger version of somebody else's open problem.
+- ⛔ **The general form, which is `CLAIM_VERIFICATION` leg 2 stated as a habit rather than a rule:** before repairing, search for the thing you are about to change, not for the bug you found. The bug's name finds your own reasoning back. The mechanism's name finds everyone else's.
+- ⚠️ **And a split by caller is a real answer, not a fudge.** One function served a boot path (trusted, must apply) and a request path (unbound, must not) and the upsert's accidental column list had been acting as the privilege boundary between them. Nobody chose those six columns; they were whatever the original author typed. An undocumented boundary that happens to be load-bearing is worse than either of the two boundaries you could design on purpose.
+- promotion: declined for a new record — the transferable sentence is in the decision (*do not widen a site-global write to satisfy a doc comment; check whether the row has a tenant column first*), and the search habit belongs to `[[a-claim-of-sameness-is-worth-its-call-graph]]`, which gains the writer-side instance.
+
 ## 2026-09-19 — The instrument you build to catch a class of defect is written by someone who has that defect
 
 - I built a census to find advertised claims nothing enforces, keyed its verdict ledger on `(pack, field)`, adjudicated all 36 lines, and watched it go green. Then I flipped R3's `subresource_policy` from `deny` to `allow` in the producer — the exact line `.7.3.5` had repaired — and the gate stayed **green**, still printing `enforced — SIGNOFF-REPAIR.7.3.5` beside a word that now said the opposite.

@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **A REPLACE IS COMPLETE, AND THE HTTP VERB DOES NOT PERFORM ONE (`.7.3.6.2`, REPAIR-0267).**
+
+`resolvers::register` INSERTed 18 columns and updated **6** on conflict, so a corrected advertisement never reached an existing row. Reproduced at runtime, both halves: the boot sync left drift in place (`left: "allow"`, `right: "deny"`), and the verb answered a narrowing re-registration `{"registered":true}` — **`left: 200`, `right: 409`**.
+
+- ⚠️ **The re-read the acceptance demanded changed the repair.** `.11.9.1.1.1` had already measured that `resolver_capabilities` has **no tenant column**, so any tenant administrator addresses any row including `r0-https-fetcher`'s. ⛔ Writing all 18 columns would have handed that unbound principal eleven more on a site-global row — rejected.
+- ✅ **Split by caller:** `sync_gated_entries` at boot replaces **completely** (`registered_at` excepted); `POST /v1/resolvers` **refuses** an already-registered id by name (409). ⭐ This NARROWS `.7.1` and does not discharge it — creating a new site-global resolver on a tenant-admin grant is untouched, and that is the larger half.
+- ✅ **VERIFIED:** `profiles` **58 passed, 0 failed**, all 56 pre-existing unchanged; clippy `-D warnings` rc=0; fmt rc=0.
+- 🔎 **After a debug-tree retirement, run `cargo build --workspace --bins --locked` before the pg suites** — two R2 controls refuse to report without `target/debug/reasonbraid-extract`, which is correct of them and is a consequence DOC-0060 did not name.
+- ⚠️ **Citation corrected at five sites:** the *in the same act* promise is `resolvers.rs:211`'s doc comment, not the 2026-09-12 decision record. The finding is unchanged.
+
 🔴 **THREE OF THE THIRTY-SIX ADVERTISED POLICY LINES ARE ENFORCED (`.7.3.6.1`, REPAIR-0266).**
 
 A resolver pack publishes six policy fields to every caller that reads the §12.2 registry; six packs ship, so **36 lines**. Adjudicated: **`enforced` 3 · `unverified` 5 · `vacuous` 14 · `misdescribed` 7 · `undefined` 7** — every verdict with its evidence in `.doctrine/advertised_policy_verdicts.tsv`. Re-derive with `python3 -B scripts/census_advertised_policies.py`; never read the numbers from this line.

@@ -18,8 +18,30 @@ use sqlx::PgPool;
 
 pub use reasonbraid_adapter::resolver::{ResolverAdvertise, EGRESS_CLASSES, SANDBOX_LEVELS};
 
-/// Register (or replace) one resolver's advertise — the operator's verb (the
-/// future packs call it at their install).
+/// Register (or replace) one resolver's advertise — the PRODUCT's own verb.
+///
+/// ⛔ A REPLACE HERE IS COMPLETE: every advertised column the insert writes,
+/// the update writes too. It did not used to be. The upsert wrote **6 of the
+/// 18** columns it inserted — `schemes`, `egress_class`, `sandbox_level`,
+/// `version`, `security_evidence`, `max_bytes` — and silently kept the other
+/// eleven, so a corrected advertisement never reached an existing row
+/// (`SIGNOFF-REPAIR.7.3.6.2`). `media_types` was among them, and
+/// `advertised_media_types` below promises that narrowing a pack's
+/// advertisement narrows what it may acquire *in the same act*; that promise
+/// could not be kept through this function.
+///
+/// ⭐ `registered_at` is deliberately NOT updated: it is when the resolver
+/// first appeared, and a re-registration does not make it new.
+///
+/// ⚠️ THIS FUNCTION IS THE PRODUCT'S, NOT AN OPERATOR'S. `sync_gated_entries`
+/// calls it at boot, where the advertisement compiled into the binary IS the
+/// truth and must win over whatever the row holds. The HTTP verb
+/// (`POST /v1/resolvers`) deliberately does not reach this replace path — see
+/// `api::register_resolver`, which refuses to modify an existing row, because
+/// `resolver_capabilities` has no tenant column and any tenant administrator
+/// can address the built-in packs' rows (`SIGNOFF-REPAIR.11.9.1.1.1`, owned by
+/// `.7.1`). Completing the replace there would have handed an unbound
+/// principal eleven more columns on a site-global row.
 pub async fn register(pool: &PgPool, advertise: &ResolverAdvertise) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO resolver_capabilities \
@@ -28,8 +50,12 @@ pub async fn register(pool: &PgPool, advertise: &ResolverAdvertise) -> Result<()
           archive_policy, subresource_policy, javascript_policy, snapshot_formats, \
           derivation_formats, latency_range_ms, version, security_evidence) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) \
-         ON CONFLICT (resolver_id) DO UPDATE SET schemes = $2, egress_class = $8, \
-           sandbox_level = $9, version = $17, security_evidence = $18, max_bytes = $5",
+         ON CONFLICT (resolver_id) DO UPDATE SET schemes = $2, locator_patterns = $3, \
+           media_types = $4, max_bytes = $5, abilities = $6, authentication_classes = $7, \
+           egress_class = $8, sandbox_level = $9, redirect_policy = $10, \
+           archive_policy = $11, subresource_policy = $12, javascript_policy = $13, \
+           snapshot_formats = $14, derivation_formats = $15, latency_range_ms = $16, \
+           version = $17, security_evidence = $18",
     )
     .bind(&advertise.resolver_id)
     .bind(serde_json::to_value(&advertise.schemes).expect("schemes serialize"))

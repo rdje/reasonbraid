@@ -2040,9 +2040,27 @@ async fn list_node_presence(
 
 // ── The resolver capability registry (PHASE-4.1.3; backlog 31) ──────────────────────
 
-/// `POST /v1/resolvers` — the operator registers (or replaces) one resolver's
-/// §12.2 advertise (the tenant_admin gate; the future packs call it at their
+/// `POST /v1/resolvers` — the operator registers one resolver's §12.2
+/// advertise (the tenant_admin gate; the future packs call it at their
 /// install).
+///
+/// ⛔ IT REGISTERS; IT DOES NOT REPLACE, and the doc comment used to say
+/// "registers (or replaces)" while the underlying upsert wrote 6 of its 18
+/// columns. That combination is the worst of the three available answers: a
+/// caller narrowing a pack's `media_types` — the documented use of the field —
+/// received `200 {"registered": true}` and the registry kept serving the wide
+/// set (`SIGNOFF-REPAIR.7.3.6.2`).
+///
+/// ⚠️ COMPLETING THE REPLACE HERE WAS THE REJECTED OPTION, and the reason is a
+/// finding this leaf did not make: `resolver_capabilities` has no tenant column
+/// and a single-column `resolver_id` key, so ANY tenant's administrator can
+/// address ANY row, the built-in `r0-https-fetcher` included
+/// (`SIGNOFF-REPAIR.11.9.1.1.1`; binding that authority is `.7.1`'s). Widening
+/// the upsert to satisfy this doc comment would have handed that unbound
+/// principal eleven more columns — `media_types`, all four advertised
+/// policies, the abilities and the authentication classes — on a site-global
+/// row. A silent no-op is a defect; a loud refusal is not, and it is the only
+/// one of the three that does not grow the surface `.7.1` has to bind.
 async fn register_resolver(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -2062,6 +2080,24 @@ async fn register_resolver(
     .await?;
     if let Some(error) = advertise.isolation_error() {
         return Err(ControlApiError::invalid_command(error));
+    }
+    // The refusal is BEFORE the write and names the row, so a caller who meant
+    // to narrow an advertisement learns that nothing happened. Checked rather
+    // than inferred from the upsert's result: `ON CONFLICT DO UPDATE` reports
+    // the same success for an insert and a replace, which is how the silent
+    // no-op survived.
+    let exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM resolver_capabilities WHERE resolver_id = $1)",
+    )
+    .bind(&advertise.resolver_id)
+    .fetch_one(&state.pool)
+    .await?;
+    if exists {
+        return Err(ControlApiError::invalid_transition(format!(
+            "the resolver `{}` is already registered; this verb registers a new \
+             resolver and does not replace an existing advertise",
+            advertise.resolver_id
+        )));
     }
     crate::resolvers::register(&state.pool, &advertise).await?;
     Ok(Json(json!({

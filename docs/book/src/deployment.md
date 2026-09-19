@@ -1981,6 +1981,44 @@ line is adjudicated — the census is registered as a doctrine gate and joins ea
 advertised line to its verdict **at its current value**, so a verdict cannot
 outlive the word that earned it.
 
+### Registering a resolver, and why the verb does not replace one
+
+`POST /v1/resolvers` registers a resolver's advertise. It **refuses an
+already-registered `resolver_id`**, by name, with `invalid_transition` (409).
+
+It used to describe itself as *registers (or replaces)*, over an upsert that
+wrote six of the eighteen columns it inserts. The other twelve — `media_types`,
+all four advertised policies, the abilities, the authentication classes, the
+locator patterns, the snapshot and derivation formats and the latency range —
+silently kept their old values. So the documented use of the verb, narrowing a
+pack's advertised formats, answered `200 {"registered": true}` and changed
+nothing at all. **A silent no-op with a success response is the worst of the
+available answers**, because the operator has no way to find out.
+
+Completing the replace was the rejected option, and the reason is worth stating
+because it is not about this verb. `resolver_capabilities` has no tenant column
+and a single-column primary key, while the route admits on the caller's own
+`tenant_admin` grant — so any tenant's administrator can address any row,
+including the built-in packs'. Binding that authority is still open work on the
+[Blockers](blockers.md) page's `.7.1` line. Widening the upsert would have
+handed that unbound principal eleven more columns on a site-global row,
+`media_types` and every advertised policy among them.
+
+| answer | fixes the silent no-op | site-global columns a tenant admin can rewrite |
+| --- | --- | --- |
+| leave it | no | 6 |
+| complete the replace at the route | yes | **17** |
+| **refuse at the route** | yes | **0 on an existing row** |
+
+To change a registered advertise, remove the row and register it again — a
+deliberate two-step rather than an accidental one.
+
+**The product's own path is the opposite, and completely replaces.** The gated
+R3/R5/RX rows are written at every boot by the startup sync, where the
+advertisement compiled into the binary is the truth: a row that has drifted is
+restored, every column of it. `registered_at` is the single exception and keeps
+the first registration's instant.
+
 ### Where a credential goes, and where it stops
 
 The R5 pack acquires a resource with a credential the broker resolves for one

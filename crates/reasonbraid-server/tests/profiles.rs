@@ -2742,6 +2742,184 @@ async fn the_r0_resolver_resolves_https_and_the_execution_names_the_refused_clas
     assert!(strict["resolvers"].as_array().unwrap().is_empty());
 }
 
+/// `SIGNOFF-REPAIR.7.3.6.2`: a replace is COMPLETE, and the HTTP verb does not
+/// perform one.
+///
+/// `resolvers::register` INSERTed 18 columns and its `ON CONFLICT DO UPDATE`
+/// wrote 6, silently keeping the other eleven — every advertised policy,
+/// `media_types`, the abilities, the authentication classes. So a corrected
+/// advertisement never reached an existing row, while `advertised_media_types`
+/// promises that narrowing a pack's advertisement narrows what it may acquire
+/// *in the same act*.
+///
+/// The two halves are asserted separately because they are two callers with
+/// two different trusts:
+///
+/// 1. **The product's own path must replace completely.** `sync_gated_entries`
+///    runs at every boot, and the advertisement compiled into the binary is the
+///    truth; drift in the row loses to it. Driven here by writing drift into the
+///    row and re-running the sync.
+/// 2. **The HTTP verb must not replace at all.** `resolver_capabilities` has no
+///    tenant column, so any tenant administrator can address the built-in
+///    packs' rows (`SIGNOFF-REPAIR.11.9.1.1.1`, owned by `.7.1`). It refuses an
+///    existing id BY NAME rather than reporting a success it did not perform.
+#[tokio::test]
+async fn a_replace_is_complete_and_the_http_verb_does_not_perform_one() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    // ⛔ No server and no principal: this half is about the PRODUCT's own boot
+    // path, which takes neither. The HTTP verb is the sibling test.
+
+    // ── The product's own path replaces COMPLETELY ───────────────────────────
+    // Open the gate so the R3 row exists, then write drift into the columns the
+    // old upsert did not touch, then re-run the sync. The advertisement in the
+    // binary must win.
+    reasonbraid_server::sync_gated_entries(&pool, true)
+        .await
+        .expect("open the gate");
+    sqlx::query(
+        "UPDATE resolver_capabilities SET subresource_policy = 'allow', \
+         javascript_policy = 'allow', media_types = '[\"application/x-drift\"]'::jsonb, \
+         abilities = '[\"drift\"]'::jsonb WHERE resolver_id = 'r3-browser-worker'",
+    )
+    .execute(&pool)
+    .await
+    .expect("write drift into the row");
+    reasonbraid_server::sync_gated_entries(&pool, true)
+        .await
+        .expect("re-run the startup sync");
+    let (subresource, javascript, media, abilities): (String, String, Value, Value) =
+        sqlx::query_as(
+            "SELECT subresource_policy, javascript_policy, media_types, abilities \
+             FROM resolver_capabilities WHERE resolver_id = 'r3-browser-worker'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("read the R3 row back");
+    assert_eq!(
+        subresource, "deny",
+        "the startup sync restores the advertised subresource policy — a \
+         corrected advertisement that cannot reach the row is an advertisement \
+         the registry does not carry",
+    );
+    assert_eq!(javascript, "allow-bounded", "…and the javascript policy");
+    assert_eq!(
+        media,
+        json!([]),
+        "…and `media_types`, which decides what the acquisition leg admits",
+    );
+    assert_eq!(abilities, json!(["render"]), "…and the abilities");
+    reasonbraid_server::sync_gated_entries(&pool, false)
+        .await
+        .expect("close the gate again");
+}
+
+/// The other half of `SIGNOFF-REPAIR.7.3.6.2`, as its own test so its RED is
+/// observed rather than hidden behind the first one's panic.
+///
+/// `POST /v1/resolvers` said "registers (or replaces)" over an upsert that
+/// wrote 6 of 18 columns, so the documented use of the verb — narrowing a
+/// pack's `media_types` — answered `200 {"registered": true}` and changed
+/// nothing. Completing the replace here was REJECTED: the table has no tenant
+/// column, so any tenant administrator addresses any row including the
+/// built-in packs' (`SIGNOFF-REPAIR.11.9.1.1.1`, owned by `.7.1`), and
+/// widening the upsert would have handed that unbound principal eleven more
+/// columns. The verb refuses instead, by name.
+#[tokio::test]
+async fn the_resolver_verb_refuses_to_replace_an_existing_advertise() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "replace-verb-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+
+    let register = |body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/resolvers"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&body)
+                .send()
+                .await
+                .expect("register request");
+            let status = response.status().as_u16();
+            let text = response.text().await.expect("register body");
+            let parsed = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+            (status, parsed)
+        }
+    };
+    let advertise = |media: Value, policy: &str| {
+        json!({
+            "resolver_id": "rsv-replace-probe",
+            "schemes": ["https"],
+            "media_types": media,
+            "egress_class": "listed",
+            "sandbox_level": "process",
+            "subresource_policy": policy,
+            "version": "0.1.0",
+        })
+    };
+    let (status, first) =
+        register(advertise(json!(["text/html", "application/pdf"]), "allow")).await;
+    assert_eq!(status, 200, "a new resolver registers: {first}");
+
+    let (status, refused) = register(advertise(json!(["text/html"]), "deny")).await;
+    assert_eq!(
+        status, 409,
+        "the narrowing re-registration is REFUSED, not silently ignored: {refused}",
+    );
+    assert_eq!(refused["code"], json!("invalid_transition"));
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("rsv-replace-probe"),
+        "the refusal names the row so the caller knows nothing happened: {refused}",
+    );
+
+    // And the row is untouched — a refusal that half-applied would be worse
+    // than the no-op it replaces.
+    let (media, policy): (Value, String) = sqlx::query_as(
+        "SELECT media_types, subresource_policy FROM resolver_capabilities \
+         WHERE resolver_id = 'rsv-replace-probe'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("read the probe row");
+    assert_eq!(media, json!(["text/html", "application/pdf"]));
+    assert_eq!(policy, "allow");
+
+    // ⛔ The refusal is a bound, not a blackout: a DIFFERENT resolver still
+    // registers, so this has not turned the verb off.
+    let (status, other) = register(json!({
+        "resolver_id": "rsv-replace-probe-2",
+        "schemes": ["https"],
+        "egress_class": "listed",
+        "sandbox_level": "process",
+        "version": "0.1.0",
+    }))
+    .await;
+    assert_eq!(status, 200, "a different resolver still registers: {other}");
+
+    sqlx::query("DELETE FROM resolver_capabilities WHERE resolver_id = ANY($1::text[])")
+        .bind(["rsv-replace-probe", "rsv-replace-probe-2"])
+        .execute(&pool)
+        .await
+        .expect("clear the probe rows");
+}
+
 /// The built-in R1 pack (PHASE-4.3.3): the seeded `git` entry resolves the
 /// git references under its own claimed classes, the acquisition runs under
 /// the real policy — the loopback literal refuses with the class NAMED (the

@@ -1656,11 +1656,24 @@ pub(crate) async fn inbox_inspection(
     })
 }
 
-/// The `POST /v1/nodes/inbox/prune` body: the retention window — DELIVERED
-/// rows (acknowledged by the node) at least this old are deleted. A
-/// QUARANTINED row is never prunable (§16.11, `.1.3.3`): the preservation
-/// survives the disposition. Cleanup is an explicit, measured operator
-/// action; nothing sweeps on its own.
+/// The `POST /v1/nodes/inbox/prune` body: the retention window. TWO classes of
+/// row at least this old are deleted, and the response reports them separately
+/// (`SIGNOFF-REPAIR.11.24.1.1.2.1.1`):
+///
+/// 1. **delivered** rows, acknowledged by the node, aged by `acknowledged_at`;
+/// 2. rows that were **never delivered** and reached §10.6's `expired` — the
+///    admitting grant passed its own `expires_at` — aged by that same instant,
+///    which is exactly when the row entered the terminal.
+///
+/// A QUARANTINED row is never prunable (§16.11, `.1.3.3`): the preservation
+/// survives the disposition. Cleanup is an explicit, measured operator action;
+/// nothing sweeps on its own.
+///
+/// ⛔ A `revoked` row is not prunable either, and that is measured rather than
+/// an oversight: `authority_grants` records no `revoked_at`, so nothing says
+/// WHEN the grant was withdrawn, and a window aged by any other column would
+/// delete work the operator was told they could still see
+/// (`.11.24.1.1.2.1.1.1`).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PruneInboxRequest {
@@ -1669,9 +1682,17 @@ pub struct PruneInboxRequest {
     pub min_age_seconds: i64,
 }
 
+/// ⚠️ **`deleted` is the TOTAL, and its meaning widened with the verb.** It used
+/// to be reachable only by delivered rows, so a client reading it as *delivered
+/// rows removed* was accidentally right; it is now the sum of both classes, and
+/// the breakdown beside it is what keeps an operator's retention statement true.
+/// Pre-1.0, development profile, and the alternative is a receipt that says
+/// *delivered* about work that was never handed over.
 #[derive(Debug, Clone, Serialize)]
 pub struct PruneInboxResponse {
     pub deleted: i64,
+    pub deleted_delivered: i64,
+    pub deleted_expired: i64,
     pub before: i64,
     pub after: i64,
     pub cutoff_at: String,
@@ -1714,11 +1735,15 @@ async fn prune_node_inbox(
         // what was removed, and zero is an answer.
         authority::PruneResult::Pruned {
             deleted,
+            deleted_delivered,
+            deleted_expired,
             before,
             after,
             cutoff,
         } => Json(PruneInboxResponse {
             deleted,
+            deleted_delivered,
+            deleted_expired,
             before,
             after,
             cutoff_at: cutoff.to_rfc3339(),
@@ -1730,6 +1755,8 @@ async fn prune_node_inbox(
             cutoff,
         } => Json(PruneInboxResponse {
             deleted: 0,
+            deleted_delivered: 0,
+            deleted_expired: 0,
             before,
             after,
             cutoff_at: cutoff.to_rfc3339(),

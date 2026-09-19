@@ -1819,3 +1819,166 @@ async fn an_expired_grant_makes_its_undelivered_command_expired_and_withholds_it
         "an expired command is withheld from the tail: {view}"
     );
 }
+
+/// `POST /v1/nodes/inbox/prune` as the operator calls it.
+async fn prune_inbox(
+    client: &reqwest::Client,
+    base: &str,
+    principal: &str,
+    tenant: &str,
+    node_id: &str,
+    min_age_seconds: i64,
+) -> (u16, Value) {
+    let response = client
+        .post(format!("{base}/v1/nodes/inbox/prune"))
+        .header(PRINCIPAL_HEADER, principal)
+        .json(&json!({
+            "tenant_id": tenant,
+            "node_id": node_id,
+            "min_age_seconds": min_age_seconds,
+        }))
+        .send()
+        .await
+        .expect("prune request");
+    let status = response.status().as_u16();
+    (status, response.json().await.expect("prune json"))
+}
+
+/// THE RETENTION ANSWER FOR §10.6's `expired` (`SIGNOFF-REPAIR.11.24.1.1.2.1.1`).
+///
+/// A row that reached `expired` was never delivered, so it carries no
+/// `acknowledged_at` and the prune's delivered predicate could never reach it —
+/// which left it permanently unprunable once `.11.24.1.1.2.1` stopped the cursor
+/// ack writing a receipt it had not earned. The window that reaches it is the
+/// admitting grant's OWN `expires_at`: the exact instant the row entered the
+/// terminal, so `min_age_seconds` measures time IN that state.
+///
+/// ⚠️ The grant is aged with direct SQL, this suite's one fixture mutation: the
+/// alternative is waiting out the dev grant's 365-day lifetime.
+#[tokio::test]
+async fn an_expired_undelivered_command_prunes_on_its_own_window_and_the_receipt_says_so() {
+    let _g = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (tenant, human, role, _thread, _cert_hex, _key_hex) =
+        dispatch_one_work_item(&client, &server.base(), "key-prn").await;
+
+    let grant = role_grant(&pool, &tenant).await;
+    sqlx::query(
+        "UPDATE authority_grants SET expires_at = now() - interval '2 hours' WHERE grant_id = $1",
+    )
+    .bind(&grant)
+    .execute(&pool)
+    .await
+    .expect("age the admitting grant two hours past its own expiry");
+    assert_eq!(
+        delivery_state(&pool, &role).await,
+        "expired",
+        "the undelivered command is in the terminal this prune is about"
+    );
+
+    // THE WINDOW IS RESPECTED, and this arm comes FIRST: without it a deletion
+    // below would prove only that the row can be destroyed, not that the
+    // operator's retention window governs when.
+    let (status, held) = prune_inbox(&client, &server.base(), &human, &tenant, &role, 86_400).await;
+    assert_eq!(status, 200, "the prune is admitted: {held}");
+    assert_eq!(
+        held["deleted"],
+        json!(0),
+        "a row whose grant expired two hours ago is NOT old enough for a one-day \
+         window — the age measured is time in the terminal: {held}"
+    );
+    assert_eq!(held["after"], json!(1), "the row is still there: {held}");
+
+    // Inside the window it goes, and the receipt names WHICH class it removed.
+    let (status, pruned) = prune_inbox(&client, &server.base(), &human, &tenant, &role, 60).await;
+    assert_eq!(status, 200, "the prune is admitted: {pruned}");
+    assert_eq!(pruned["deleted"], json!(1), "the row is removed: {pruned}");
+    assert_eq!(
+        pruned["deleted_expired"],
+        json!(1),
+        "and the receipt attributes it to the EXPIRED class: {pruned}"
+    );
+    assert_eq!(
+        pruned["deleted_delivered"],
+        json!(0),
+        "⛔ the operator is NOT told a never-delivered command was delivered: {pruned}"
+    );
+    assert_eq!(pruned["after"], json!(0), "the inbox is empty: {pruned}");
+}
+
+/// THE OMISSION, DRIVEN RATHER THAN ASSERTED IN PROSE
+/// (`SIGNOFF-REPAIR.11.24.1.1.2.1.1`).
+///
+/// A `revoked` row is deliberately NOT prunable: `authority/revocation.rs` writes
+/// `SET status = 'revoked'` and `authority_grants` has no `revoked_at`, so
+/// nothing records WHEN the grant was withdrawn. Ageing those rows by any other
+/// column would delete work an operator was told they could still see. This
+/// control is what keeps that a decision rather than a gap nobody notices.
+#[tokio::test]
+async fn a_revoked_command_is_not_prunable_because_nothing_records_when_authority_was_withdrawn() {
+    let _g = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (tenant, human, role, _thread, _cert_hex, _key_hex) =
+        dispatch_one_work_item(&client, &server.base(), "key-prv").await;
+
+    let grant = role_grant(&pool, &tenant).await;
+    let (status, revoked) = admin_revoke(
+        &client,
+        &server.base(),
+        &format!("/v1/admin/grants/{grant}/revoke"),
+        &human,
+        &tenant,
+    )
+    .await;
+    assert_eq!(status, 200, "the revocation succeeds: {revoked}");
+    assert_eq!(
+        delivery_state(&pool, &role).await,
+        "revoked",
+        "the undelivered command is in the terminal this control is about"
+    );
+
+    // ⛔ AND THE GRANT IS AGED PAST ITS OWN EXPIRY TOO, which is the arm that
+    // actually drives the prune's `g.status = 'active'` clause. A revocation
+    // does not move `expires_at`, so a merely-revoked grant is excluded by the
+    // window alone and the clause would be dead code — measured, by removing it
+    // and watching this control stay green. A grant that is BOTH revoked and
+    // expired is the case where the two differ: the view calls the row
+    // `revoked` (the act outranks the lapse), and the prune must agree with the
+    // view rather than delete it as an expiry.
+    sqlx::query(
+        "UPDATE authority_grants SET expires_at = now() - interval '2 hours' WHERE grant_id = $1",
+    )
+    .bind(&grant)
+    .execute(&pool)
+    .await
+    .expect("age the revoked grant past its own expiry as well");
+    assert_eq!(
+        delivery_state(&pool, &role).await,
+        "revoked",
+        "a grant that is both revoked and expired reads REVOKED — the act outranks the lapse"
+    );
+
+    // The widest window an operator can ask for.
+    let (status, answer) = prune_inbox(&client, &server.base(), &human, &tenant, &role, 0).await;
+    assert_eq!(status, 200, "the prune is admitted: {answer}");
+    assert_eq!(
+        answer["deleted"],
+        json!(0),
+        "a revoked row survives even a zero-second window, because no column \
+         says when its authority was withdrawn: {answer}"
+    );
+    assert_eq!(
+        answer["after"],
+        json!(1),
+        "and it is still inspectable: {answer}"
+    );
+    assert_eq!(
+        delivery_state(&pool, &role).await,
+        "revoked",
+        "still reporting why it was never delivered"
+    );
+}

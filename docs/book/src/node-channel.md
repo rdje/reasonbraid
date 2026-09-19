@@ -210,8 +210,11 @@ Neither state introduces a number. **The ceiling on how long an undelivered
 command may wait is the admitting grant's own `expires_at`** — a bound the
 issuing tenant already set when it issued the grant. Before `migrations/0076` a
 command queued for a node that never came back was held forever: the only
-removal path the server has is the operator prune, and that deletes *delivered*
-rows only.
+removal path the server has is the operator prune, and that then deleted
+*delivered* rows only. It now also removes rows that reached `expired`, aged by
+the grant's own expiry and reported as their own class — see
+[Administering a node's inbox](authority.md). A `revoked` row is still retained,
+because nothing records when a grant was withdrawn.
 
 ⛔ **A row in either terminal is withheld from delivery, and that is what keeps
 the terminal terminal.** The handshake replay and the poll read the tail through

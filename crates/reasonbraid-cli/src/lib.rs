@@ -1303,9 +1303,17 @@ pub async fn run_inspect_node_inbox(
     Ok(out)
 }
 
-/// Prune DELIVERED inbox rows older than `min_age_seconds` (`.1.2.3`): an
+/// Prune finished inbox rows older than `min_age_seconds` (`.1.2.3`): an
 /// explicit, measured operator action — the response carries the deleted count
 /// and the before/after census.
+///
+/// ⚠️ TWO classes are removed since `SIGNOFF-REPAIR.11.24.1.1.2.1.1`: rows the
+/// node acknowledged holding, and rows that were NEVER delivered because the
+/// grant that admitted them passed its own expiry (§10.6's `expired`). This
+/// summary names both, because *pruned N delivered rows* was a true sentence
+/// only while the second class could not be reached — and saying "delivered"
+/// about work that was never handed over is the mistake the receipt's own
+/// breakdown exists to prevent.
 pub async fn run_prune_node_inbox(
     cfg: &Config,
     principal: &PrincipalRef,
@@ -1329,9 +1337,12 @@ pub async fn run_prune_node_inbox(
         return or_json(&response, true);
     }
     Ok(format!(
-        "pruned {} delivered row(s) from node {}'s inbox (before {}, after {}, cutoff {})",
+        "pruned {} row(s) from node {}'s inbox — {} delivered, {} expired undelivered \
+         (before {}, after {}, cutoff {})",
         response["deleted"].as_i64().unwrap_or(0),
         node_id,
+        response["deleted_delivered"].as_i64().unwrap_or(0),
+        response["deleted_expired"].as_i64().unwrap_or(0),
         response["before"].as_i64().unwrap_or(0),
         response["after"].as_i64().unwrap_or(0),
         response["cutoff_at"].as_str().unwrap_or("?"),

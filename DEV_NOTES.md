@@ -1,5 +1,75 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — Two terminals, one window, and only one clock
+
+The previous commit stopped the cursor acknowledgement writing receipts it had
+not earned. That was right, and it left a hole I had already named in its leaf: a
+row in `expired` or `revoked` was never delivered, so it has no
+`acknowledged_at`, and the prune deletes on exactly that. No operator verb could
+remove one.
+
+The framing that settled it, and I want it written down because it is the whole
+argument: **solving *held forever* for delivery and recreating it for storage is
+not a repair.** Two commits ago I fixed a queued command that never resolved. If
+the fix leaves the row immortal instead, I have moved the problem rather than
+solved it.
+
+**The rule.** A retention window measures time in the state being retained. When
+an operator says "delete anything older than seven days" they are saying how long
+they want to be able to *see* a finished row. Age it by anything else and you
+delete rows they were told they could still look at.
+
+**The rule gives two different answers, and that is the interesting part.** I
+went in expecting to widen the prune to both terminals. `expired` is easy: the
+row entered the terminal at the admitting grant's `expires_at`, which is an exact
+instant, so `g.expires_at <= cutoff` measures precisely the right quantity.
+
+`revoked` is not. `authority/revocation.rs` mutates with `SET status =
+'revoked'` and nothing else; `authority_grants` has no `revoked_at`. I went
+looking for a substitute and found one — `node_inbox.decided_at`, from migration
+0013 — and then had to reject it, which is the part I would have got wrong if I
+had been in a hurry. `decided_at` records when the row was *created*. Age by it
+and a command queued thirty days ago under a grant revoked this morning
+disappears under a seven-day window on the day it enters the terminal. The
+operator sees it for zero seconds. So the obstacle was never a missing column; it
+was that the available column answers a different question.
+
+**What the operator is told.** `deleted` became the total, with
+`deleted_delivered` and `deleted_expired` beside it. Its meaning widened —
+before, only delivered rows could reach it, so a client reading it as "delivered
+rows removed" was accidentally right. Then I censused the corpus for the field
+names and found `run_prune_node_inbox` printing *pruned N delivered row(s)*. That
+sentence is now false, and it is a CLI surface rather than a Markdown one, which
+is the only reason I nearly missed it. `.13.4`'s corpus rule is not about
+Markdown.
+
+**The falsification found a gap instead of confirming me.** I wrote `AND
+g.status = 'active'` into the new statement so that a revoked grant's row would
+not be deleted as an expiry. Then I removed it to check the control noticed —
+and the control stayed green. A revocation does not move `expires_at`, so a
+merely-revoked grant was already excluded by the window, and my clause was dead
+code that read as if it were doing something. The case where the two differ is a
+grant that is *both* revoked and expired: the view calls that row `revoked`
+(`.11.24.1.1.2`'s precedence — the act outranks the lapse) and the prune has to
+agree with the view rather than delete it as an expiry. The control now ages the
+revoked grant past its expiry too, and with that arm the clause discriminates.
+A prune and a view that disagree about which class a row is in are exactly the
+second-copy drift this tree keeps finding.
+
+**One thing I nearly published wrong.** I wrote the promotion line claiming
+`.7.4.3` as this rule's second instance, and checked before committing. That leaf
+is about *who supplies the clock* — the evidence sweep's cutoff moving from the
+caller's request body to the database's own `clock_timestamp()`. Same family,
+different mechanism. `.6.2.3.1`'s standard is that a promotion needs a mechanism
+match, so it stays recorded, not promoted. The check cost a minute; the claim
+would have sat in `TOOLBOX.md` indefinitely.
+
+**Validation.** `node_work` 12/12 (10 at `71dccb0`, counted on both sides),
+`node_inbox` 9/9, `node_channel` 40/40, `quarantine` 1/1, `mcp_listen` 6/6,
+`cli_end_to_end` 5/5, `administrative_effects` 25/25. The window arm runs before
+the deletion arm on purpose: a deletion that passes on its own proves the row can
+be destroyed, not that the operator's window governs when.
+
 ## 2026-09-20 — A write that covers a range, a read that covers a filtered set
 
 The previous leaf put two new terminals above `transport_received` in the derived

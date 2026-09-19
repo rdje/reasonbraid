@@ -793,7 +793,7 @@ presence, the lease that is not cut — is unchanged and documented in
 
 Three operator verbs act on one node's durable inbox: **quarantine** marks one
 command so it is never re-delivered, **replay** reverses that quarantine and
-re-sequences the command to the tail, and **prune** deletes delivered rows older
+re-sequences the command to the tail, and **prune** deletes finished rows older
 than a window. Each now runs one transaction under the tenant's **shared**
 authority guard, holding the admission, a tenant-bound row selection, the
 mutation and the final effect record.
@@ -860,6 +860,21 @@ race the lock no longer permits.
 
 The retention rule is unchanged: prune never deletes a **quarantined** row, so an
 age-based sweep cannot destroy quarantine evidence.
+
+**Prune removes two classes of row, and its receipt names them separately.**
+Rows the node acknowledged holding are aged by that acknowledgement. Rows that
+were never delivered because the grant admitting them passed its own expiry —
+§10.6's `expired` — are aged by that expiry, which is the exact instant the row
+entered the terminal, so the window measures time *in* the state being retained.
+The response carries `deleted_delivered` and `deleted_expired` beside the total,
+because a receipt saying *delivered* about work that was never handed over is a
+false retention statement.
+
+⛔ **A `revoked` row is not prunable, and that is a measured omission rather than
+an oversight.** Revoking a grant writes `status = 'revoked'` and nothing else:
+`authority_grants` has no `revoked_at`, so nothing records *when* the authority
+was withdrawn. A window aged by any other column would delete work the operator
+was told they could still see. Those rows are retained until that column exists.
 
 Which decision facts a replay refreshes is deliberately not changed here — that
 remains `SIGNOFF-REPAIR.3.4`. Only the transaction they are refreshed in, the

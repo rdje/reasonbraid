@@ -508,7 +508,14 @@ pub enum ReplayResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PruneResult {
     Pruned {
+        /// Every row this call removed — the two classes below, summed.
         deleted: i64,
+        /// Rows the node acknowledged holding, aged by `acknowledged_at`.
+        deleted_delivered: i64,
+        /// Rows that were NEVER delivered and reached §10.6's `expired`,
+        /// aged by the admitting grant's own `expires_at`
+        /// (`SIGNOFF-REPAIR.11.24.1.1.2.1.1`).
+        deleted_expired: i64,
         before: i64,
         after: i64,
         cutoff: DateTime<Utc>,
@@ -818,7 +825,7 @@ pub(crate) async fn prune_node_inbox_in_one_transaction(
             .bind(tenant_id.to_string())
             .fetch_one(&mut *conn)
             .await?;
-            let deleted = sqlx::query(
+            let deleted_delivered = sqlx::query(
                 "DELETE FROM node_inbox \
                  WHERE node_id = $1 AND tenant_id = $2 \
                    AND acknowledged_at IS NOT NULL AND acknowledged_at <= $3 \
@@ -830,6 +837,43 @@ pub(crate) async fn prune_node_inbox_in_one_transaction(
             .execute(&mut *conn)
             .await?
             .rows_affected() as i64;
+
+            // The SECOND class, and the reason it is a second statement rather
+            // than an `OR` (`SIGNOFF-REPAIR.11.24.1.1.2.1.1`): it is aged by a
+            // DIFFERENT clock, and the operator's receipt reports it separately.
+            //
+            // A row that reached §10.6's `expired` was never delivered, so it
+            // carries no `acknowledged_at` and the delivered statement above can
+            // never reach it — which is what left it permanently unprunable once
+            // `.11.24.1.1.2.1` stopped the cursor ack writing a receipt it had
+            // not earned. Its window is the ADMITTING GRANT'S OWN `expires_at`:
+            // the exact instant the row entered the terminal, so `min_age_seconds`
+            // measures time IN that state, which is what a retention window means.
+            //
+            // ⛔ `revoked` is NOT included, and the omission is measured rather
+            // than an oversight: `authority/revocation.rs` writes
+            // `SET status = 'revoked'` and `authority_grants` has no `revoked_at`,
+            // so nothing records WHEN a grant was revoked. Ageing those rows by
+            // any other column would delete work an operator was told they could
+            // still see. The trigger is that column — `.11.24.1.1.2.1.1.1`.
+            let deleted_expired = sqlx::query(
+                "DELETE FROM node_inbox \
+                 WHERE node_id = $1 AND tenant_id = $2 \
+                   AND acknowledged_at IS NULL \
+                   AND quarantined_at IS NULL \
+                   AND EXISTS (SELECT 1 FROM authorization_records r \
+                                 JOIN authority_grants g ON g.grant_id = r.grant_id \
+                                WHERE r.record_id = node_inbox.authz_ref \
+                                  AND g.status = 'active' \
+                                  AND g.expires_at <= $3)",
+            )
+            .bind(&node_id)
+            .bind(tenant_id.to_string())
+            .bind(cutoff)
+            .execute(&mut *conn)
+            .await?
+            .rows_affected() as i64;
+            let deleted = deleted_delivered + deleted_expired;
             let after: i64 = sqlx::query_scalar(
                 "SELECT COUNT(*) FROM node_inbox WHERE node_id = $1 AND tenant_id = $2",
             )
@@ -842,6 +886,8 @@ pub(crate) async fn prune_node_inbox_in_one_transaction(
                 (
                     PruneResult::Pruned {
                         deleted,
+                        deleted_delivered,
+                        deleted_expired,
                         before,
                         after,
                         cutoff,
@@ -857,7 +903,9 @@ pub(crate) async fn prune_node_inbox_in_one_transaction(
                     },
                     AdministrativeOutcome::NoOp {
                         detail: bounded_detail(
-                            "no delivered row in this tenant was older than the window".to_owned(),
+                            "no delivered row, and no row whose authority expired, was older \
+                             than the window in this tenant"
+                                .to_owned(),
                         ),
                     },
                 )

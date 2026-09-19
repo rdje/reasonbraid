@@ -52,9 +52,13 @@ Two questions, in this order:
 ## The trap on the other side
 
 Widening the key to *any* record in the durable layer is the obvious fix and it
-is worse. Scanning all 170 decision records returned residue 0 too — but a bare
-table name is an ordinary word, so `derivations` matched **nine** records and
-`resource_references` **twelve**, most about something else entirely. That is
+is worse. Scanning **every** record in `docs/decisions/` returned residue 0 too —
+but a bare table name is an ordinary word, so `derivations` matched **nine**
+records and `resource_references` **twelve**, most about something else entirely.
+(The corpus size is deliberately not quoted here: it is a number that grows every
+time anyone writes a record, and quoting it would make this note an instance of
+the very failure it describes — which is exactly what happened to its first
+draft.) That is
 [`a-census-is-as-wide-as-its-key`](a-census-is-as-wide-as-its-key.md) in the
 direction that MANUFACTURES a clean answer, which is the more dangerous one: a
 residue of 0 that nothing could have made non-zero.

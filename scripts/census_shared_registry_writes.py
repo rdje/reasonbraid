@@ -499,6 +499,13 @@ RESTATING_DOCUMENTS = (
     "MEMORY.md",
     "docs/TASK_TREE.md",
     "docs/tasks/SIGNOFF-REPAIR.md",
+    # ⛔ THE RETRIEVABLE LAYER RESTATES THESE FIGURES TOO, and `SIGNOFF-REPAIR.13.4`'s
+    # corpus definition did not reach it (`.13.4.1`). This note carries the
+    # lineage table — 30/17, 29/16, 27/14 — as its worked example, so a movement
+    # in the census is a movement in the note. ⚠️ A stale number in a
+    # `docs/knowledge/` note is worse than one in a dated ledger: a ledger is
+    # history and is correct as history, while a note exists to be CONSULTED.
+    "docs/knowledge/a-metric-scoped-to-one-record-ages-silently.md",
 )
 
 

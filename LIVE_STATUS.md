@@ -5,6 +5,18 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **SIXTEEN PUBLISHED FIGURES RE-DERIVED; FIFTEEN HOLD (`.13.4.1`, REPAIR-0291).**
+
+The director's *ensure the findings hold*, applied to eight leaves. Each figure re-derived by a route that did not produce it.
+
+- ⭐ **The sharpest route is the COMPILER.** *Nothing calls `mcp_listen`* rested on a `git grep`; re-derived by DELETING `mod mcp_listen;` and building the workspace — **0 errors**. A grep cannot settle reachability; a build can.
+- ⭐ **Today's instrument, run in worktrees at the historical commits**, re-derived **30 · 29 · 27 tables** from SOURCE rather than from the pinned baseline — matching every published value.
+- ✅ Also holding: seven suite counts (static `#[test]` attributes vs runtime `N passed`), `25/16 · 17 tables · residue 0` recomputed without the census module, `derivations` 9 and `resource_references` 12, and the three cleanup plans that gained `site_audit`.
+- 🔴 **The one that failed is mine and went stale INSIDE the session:** *all 170 decision records* was 170 at its commit and 171 two commits later, because REPAIR-0286 added one. ⛔ And it was standing in `docs/knowledge/` — the layer `.13.4`'s corpus rule does not reach — **in the note about figures going stale.**
+- ✅ **The repair is mechanical:** the note and this file stop quoting a corpus size (the argument rests on the nine and the twelve, which do not grow), and `RESTATING_DOCUMENTS` now names the note.
+- 🔎 **A sharpening:** the residue figures were not *aged* — DOC-0066 already existed when 16 and 14 were published, so they were already behind a record on the day they were written.
+- ⚠️ **Scope:** published FIGURES, not every sentence.
+
 ✅ **THE MCP LISTEN CURSOR IS A HIGH-WATER MARK, AND THE LATE DELIVERY IS STILL APPLIED (`.6.2.2`, REPAIR-0289).**
 
 - 🔴 **RED:** recording cursor 100 then cursor 5 left it at **5**, and `resume_plan` reads that as the resume point — so one out-of-order delivery re-offered everything above it on the next reconnect.
@@ -50,7 +62,7 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 - ✅ **The figure is exactly right.** `29 tables → 27` is the **distinct site-global tables over the baseline rows that are both `identity only` and `walk`** — the tables behind the pair's second number. Both refuted hypotheses had conditioned on the ARM and never on the ADMISSION. Every value ever published re-derives from the baseline pinned at its own commit: **30/17 → 29/16 → 27/14 → 18/6 → 17/0**.
 - 🔴 **The defect is the DEFINITION, not any number.** `residue` was written against **DOC-0029 alone**, when that was the only record deciding these tables; DOC-0066 and DOC-0071 have since adjudicated the same population. Measured the old way today it reads **5**, and all five are decided in full by DOC-0066. ⛔ **A metric naming ONE record ages the moment a second is written**, and nothing says so, because the number keeps moving plausibly.
 - ✅ **Restated, and the answer is real: residue is 0.** Every site-global table still written on enrolment alone is named by an adjudicating decision record.
-- ⛔ **Rejected with its measurement:** scanning all 170 decision records also returns 0, for the wrong reason — `derivations` matches nine and `resource_references` twelve, because a bare table name is an ordinary word.
+- ⛔ **Rejected with its measurement:** scanning **every** record in `docs/decisions/` also returns 0, for the wrong reason — `derivations` matches nine and `resource_references` twelve, because a bare table name is an ordinary word. ⚠️ The corpus SIZE is deliberately not quoted: it grows whenever anyone writes a record, and the figure first published here went stale two commits later (`.13.4.1`).
 - ✅ **VERIFIED:** `--check` prints `25 site-global writers (16 on identity alone) across 17 tables, residue 0`, rc=0; `--self-test` **45/45** (from 40). Falsified three ways, each RED by name, restored byte-identical. `make gate` green. No product code changed.
 
 ✅ **THE GOVERNANCE LIBRARY TAKES THE OPERATOR'S AUTHORITY, AND `.6.1.5` IS FULLY DISCHARGED (`.6.1.5.4`, REPAIR-0283).**

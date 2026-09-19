@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-19 — Sixteen published figures re-derived, fifteen hold, and the one that went stale was in the note about going stale (`SIGNOFF-REPAIR.13.4.1`)
+
+The director's *"ensure the findings hold"*, applied to eight leaves (REPAIR-0283…0290). Every published figure was re-derived by a route that did not produce it.
+
+- ⭐ **THE SHARPEST ROUTE IS THE COMPILER.** `.6.2.3.1` claimed *nothing calls `mcp_listen`* on the strength of a `git grep`. Re-derived by deleting `mod mcp_listen;` outright and running `cargo build --workspace --lib`: **0 errors**. Nothing in any crate calls it, including the server's own `src/` — which a grep cannot settle and a compiler can.
+- ⭐ **ROUTE D re-derived the lineage from historical SOURCE, not from the pinned file.** Today's census, run in a worktree at `e4604ad` / `4c36840` / `d1ba384`, returns **30 · 29 · 27 tables** — matching every published value by re-deriving the routes rather than trusting the baseline that recorded them.
+- ✅ **Also holding:** the suite counts (a static `#[test]` attribute count at seven parent commits against seven runtime `N passed`); `25/16`, `17 tables`, `residue 0` recomputed without the census module; `derivations` 9 and `resource_references` 12; the three cleanup plans that gained `site_audit`, from the commit's own diff; and every current-state check at HEAD.
+- 🔴 **THE ONE THAT FAILED IS MINE AND IT WENT STALE INSIDE THE SAME SESSION.** *"Scanning ALL of `docs/decisions/` — over **170** records"* was **170** at the commit that published it and **171** two commits later, because REPAIR-0286 added a decision record. I published a corpus size and then grew the corpus.
+- ⛔ **AND IT WAS SITTING IN THE RETRIEVABLE LAYER.** `.13.4` defines the live-document corpus as `README.md`, `LIVE_STATUS.md`, `MEMORY.md` and `docs/book/src/*.md`; `docs/knowledge/` is in neither that set nor the dated-ledger set, so nothing said to sweep it — and the stale figure sat in **the note whose entire subject is figures that go stale**. A stale number in a ledger is history and correct as history; in a note it is wrong every time the note is consulted.
+- ✅ **The repair is mechanical, not a correction.** The note and `LIVE_STATUS.md` stop quoting a corpus size — the argument rests on the nine and the twelve, which do not grow — and the note names its own first draft as the instance. `RESTATING_DOCUMENTS` now includes that note, so the next movement in these figures names it by construction.
+- 🔎 **A SHARPENING, and it is unkind to an earlier sentence of mine.** `.7.1.2.2.3` wrote *a metric naming ONE record ages the moment a second is written.* Measured at the commits: residue is 16 vs DOC-0029 alone and **0** vs DOC-0029 + DOC-0066 at `4c36840`, 14 and **0** at `d1ba384` — and **DOC-0066 already existed at both.** The metric did not age; it was already behind a record on the day each figure was published.
+- ⚠️ **Scope stated:** this verified published FIGURES — sixteen numeric or enumerable claims — not every sentence. Prose judgements are decisions with reasons recorded at their leaves.
+
 ## 2026-09-19 — A malformed dedup window fails closed and keeps the evidence, and the lane's defects turn out to be latent (`SIGNOFF-REPAIR.6.2.3`)
 
 - **THE DECISION: FAIL CLOSED.** A malformed `dedup_window` is a typed `ListenError::MalformedWindow` naming the subscription, and the delivery is refused. ⛔ Refusing costs one subscription's deliveries until an operator looks at it; continuing costs every delivery on that subscription being applicable twice, invisibly — and this module exists to prevent the second, so it may not trade it for the first. ⭐ The same position `quota.rs` takes for an unconfigured scope, cited rather than re-argued.

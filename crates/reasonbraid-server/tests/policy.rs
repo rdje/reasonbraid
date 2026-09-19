@@ -2516,12 +2516,19 @@ async fn the_publication_verbs_require_an_authority_the_caller_holds() {
     // by `the_publish_verb_drives_the_git_half`; re-deriving it here would put
     // the thing under test — the authority binding — behind a second copy of
     // that pipeline (the shape `citing_an_authority_requires_holding_it` uses).
+    // ⛔ `tenant_id` is seeded too, because `.6.1.5.2` makes the real `stage`
+    // store it and `.6.1.5.2.1` makes every later verb require it. A publication
+    // with no owner is advanced by NOBODY, so a fixture that omitted it would
+    // refuse alice as loudly as it refuses bob and this control would pass for
+    // the wrong reason.
     sqlx::query(
         "INSERT INTO policy_publications \
-         (publication_id, proposal_id, decision_id, approval_id, projection_id, state, manifest_digest) \
-         VALUES ('pa-pub', 'pa-prp', 'pa-dec', 'pa-app', 'pa-proj', 'staged', $1)",
+         (publication_id, proposal_id, decision_id, approval_id, projection_id, state, \
+          manifest_digest, tenant_id) \
+         VALUES ('pa-pub', 'pa-prp', 'pa-dec', 'pa-app', 'pa-proj', 'staged', $1, $2)",
     )
     .bind(DIGEST)
+    .bind(alice["tenant_id"].as_str().unwrap())
     .execute(&pool)
     .await
     .expect("the staged publication seeds");
@@ -3797,10 +3804,13 @@ async fn citing_an_authority_requires_holding_it() {
     // the thing under test — the authority binding — behind it.
     sqlx::query(
         "INSERT INTO policy_publications \
-         (publication_id, proposal_id, decision_id, approval_id, projection_id, state, manifest_digest) \
-         VALUES ('cite-pub-1', 'cite-prp', 'cite-dec', 'cite-app', 'cite-proj', 'published', $1)",
+         (publication_id, proposal_id, decision_id, approval_id, projection_id, state, \
+          manifest_digest, tenant_id) \
+         VALUES ('cite-pub-1', 'cite-prp', 'cite-dec', 'cite-app', 'cite-proj', 'published', \
+                 $1, $2)",
     )
     .bind(DIGEST)
+    .bind(&alice_tenant)
     .execute(&pool)
     .await
     .expect("seed the publication the correction names");
@@ -3947,9 +3957,11 @@ async fn citing_an_authority_requires_holding_it() {
     .await
     .expect("the fixture's thread exists, as `.6.1.5.1` requires of a real proposal");
     sqlx::query(
-        "INSERT INTO policy_proposals (proposal_id, policy_id, policy_version, thread_id, status) \
-         VALUES ('cite-prp-1', 'cite-pol', '1.0.0', 'cite-thread', 'decided')",
+        "INSERT INTO policy_proposals \
+         (proposal_id, policy_id, policy_version, thread_id, status, tenant_id) \
+         VALUES ('cite-prp-1', 'cite-pol', '1.0.0', 'cite-thread', 'decided', $1)",
     )
+    .bind(&alice_tenant)
     .execute(&pool)
     .await
     .expect("seed the decided proposal");
@@ -3969,9 +3981,11 @@ async fn citing_an_authority_requires_holding_it() {
     // was found — a positive leg that can only pass when the negative leg
     // already did is measuring them jointly.
     sqlx::query(
-        "INSERT INTO policy_proposals (proposal_id, policy_id, policy_version, thread_id, status) \
-         VALUES ('cite-prp-2', 'cite-pol', '1.0.0', 'cite-thread', 'decided')",
+        "INSERT INTO policy_proposals \
+         (proposal_id, policy_id, policy_version, thread_id, status, tenant_id) \
+         VALUES ('cite-prp-2', 'cite-pol', '1.0.0', 'cite-thread', 'decided', $1)",
     )
+    .bind(&alice_tenant)
     .execute(&pool)
     .await
     .expect("seed the second decided proposal");
@@ -3988,9 +4002,11 @@ async fn citing_an_authority_requires_holding_it() {
     // other's outcome. Invisible while the repair holds and immediately
     // visible under falsification — which is where it was found.
     sqlx::query(
-        "INSERT INTO policy_proposals (proposal_id, policy_id, policy_version, thread_id, status) \
-         VALUES ('cite-prp-3', 'cite-pol', '1.0.0', 'cite-thread', 'decided')",
+        "INSERT INTO policy_proposals \
+         (proposal_id, policy_id, policy_version, thread_id, status, tenant_id) \
+         VALUES ('cite-prp-3', 'cite-pol', '1.0.0', 'cite-thread', 'decided', $1)",
     )
+    .bind(&alice_tenant)
     .execute(&pool)
     .await
     .expect("seed the third decided proposal");
@@ -4550,7 +4566,6 @@ async fn the_lifecycle_row_carries_the_tenant_that_owns_it() {
     assert_eq!(status, 200, "mallory enrols: {mallory}");
     let mallory_id = mallory["principal_id"].as_str().unwrap().to_string();
     let mallory_tenant = mallory["tenant_id"].as_str().unwrap().to_string();
-    let mallory_grant = format!("grt_{mallory_id}");
     assert_ne!(
         alice_tenant, mallory_tenant,
         "two enrolments must be two tenants, or this control measures nothing"
@@ -4745,13 +4760,25 @@ async fn the_lifecycle_row_carries_the_tenant_that_owns_it() {
          compiled artifact records who asked for it"
     );
 
-    // ── ARM 3: the five rows whose tenant is their PARENT's. Mallory writes
-    //    every one of them against ALICE's records, and is admitted. ───────────
+    // ── ARM 3: the five rows whose tenant is their PARENT's. ─────────────────
+    //
+    // ⚠️ ALICE writes these, and the reason is a consequence of `.6.1.5.2.1`
+    // worth stating: once every one of these verbs requires the caller to own
+    // the parent, caller and owner ALWAYS coincide, so no black-box control can
+    // any longer tell parent-derivation from caller-derivation at this surface.
+    // This arm proves the column carries the owner; the LINEAGE is measured
+    // where it is still observable — the backfill coverage in
+    // `tests/migration_upgrade.rs` — and the gate that makes the two coincide is
+    // `the_lifecycle_verbs_refuse_another_tenants_publication`.
+    //
+    // ⭐ The anchor stays PARENT rather than caller, deliberately: a gate can be
+    // wrong, and a row derived from its parent cannot be mislabelled by a caller
+    // that a faulty gate admitted. Defence in depth, not decoration.
     let (status, staged) = post(
         &client,
         &base,
         "/v1/policy-publications",
-        &mallory_id,
+        &alice_id,
         &json!({
             "publication_id": "lto-pub", "proposal_id": "lto-prop",
             "decision_id": "lto-dec", "approval_id": "lto-app",
@@ -4761,13 +4788,12 @@ async fn the_lifecycle_row_carries_the_tenant_that_owns_it() {
     .await;
     assert_eq!(
         status, 200,
-        "mallory stages alice's approved proposal — admitted today, and `.6.1.5.2.1` \
-         owns the gate: {staged}"
+        "alice stages her own approved proposal: {staged}"
     );
     assert_eq!(
         stored("policy_publications", "publication_id", "lto-pub".into()).await,
         Some(alice_tenant.clone()),
-        "a publication is its PROPOSAL's, not its stager's"
+        "a publication carries its PROPOSAL's tenant"
     );
 
     let (status, _) = post(
@@ -4805,32 +4831,32 @@ async fn the_lifecycle_row_carries_the_tenant_that_owns_it() {
         &client,
         &base,
         "/v1/policy-drift",
-        &mallory_id,
+        &alice_id,
         &json!({
             "drift_id": "lto-drift", "target_id": "lto-target", "publication_id": "lto-pub",
             "category": "pending_rollout", "desired_digest": DIGEST, "observed_digest": null,
         }),
     )
     .await;
-    assert_eq!(status, 200, "mallory records drift on alice's publication");
+    assert_eq!(status, 200, "alice records drift on her own publication");
     let (status, _) = post(
         &client,
         &base,
         "/v1/policy-corrections",
-        &mallory_id,
+        &alice_id,
         &json!({
             "correction_id": "lto-corr", "publication_id": "lto-pub", "operation": "waiver",
-            "authority_grant": mallory_grant, "expires_at": "2030-01-01T00:00:00Z",
+            "authority_grant": alice_grant, "expires_at": "2030-01-01T00:00:00Z",
             "reason": "the foreign waiver",
         }),
     )
     .await;
-    assert_eq!(status, 200, "mallory waives alice's publication");
+    assert_eq!(status, 200, "alice waives her own publication");
     let (status, _) = post(
         &client,
         &base,
         "/v1/policy-outcomes",
-        &mallory_id,
+        &alice_id,
         &json!({
             "outcome_id": "lto-out", "publication_id": "lto-pub", "kind": "incident",
             "review_trigger": "adverse_threshold", "note": "the foreign outcome",
@@ -4839,17 +4865,17 @@ async fn the_lifecycle_row_carries_the_tenant_that_owns_it() {
     .await;
     assert_eq!(
         status, 200,
-        "mallory records an outcome on alice's publication"
+        "alice records an outcome on her own publication"
     );
     let (status, scheduled) = post(
         &client,
         &base,
         "/v1/policy-reviews/schedule",
-        &mallory_id,
+        &alice_id,
         &json!({}),
     )
     .await;
-    assert_eq!(status, 200, "mallory schedules the reviews: {scheduled}");
+    assert_eq!(status, 200, "alice schedules her own reviews: {scheduled}");
     assert!(
         !scheduled.as_array().unwrap().is_empty(),
         "the schedule materialised rows, or the next assertion is vacuous: {scheduled}"
@@ -4863,7 +4889,7 @@ async fn the_lifecycle_row_carries_the_tenant_that_owns_it() {
         assert_eq!(
             stored(table, key, id.to_string()).await,
             Some(alice_tenant.clone()),
-            "{table} is its PUBLICATION's, though mallory wrote it"
+            "{table} carries its PUBLICATION's tenant"
         );
     }
     let review_tenants: Vec<Option<String>> =
@@ -4892,4 +4918,540 @@ async fn the_lifecycle_row_carries_the_tenant_that_owns_it() {
         "the lifecycle reads are still site-wide — binding them is `.6.1.5.3`'s, and \
          a leaf that bound them here would have delivered it by accident: {proposals}"
     );
+}
+
+/// `SIGNOFF-REPAIR.6.1.5.2.1` — every mutating lifecycle verb refuses a record
+/// that is not the caller's, and the owning tenant still performs all eleven.
+///
+/// ⛔ **ELEVEN, not the five the leaf was opened with.** `.6.1.5.2` touched five
+/// write sites and noticed the gap at those five; the question is which verbs act
+/// on a record named off the wire without checking it is the caller's, and the
+/// answer is every mutating verb over a publication or a proposal.
+///
+/// ⛔ **The three `held_publication_authority` verbs are the sharpest, because
+/// they look guarded and are not.** `.9.2.1.2` made them require a grant the
+/// CALLER HOLDS — a real check answering a different question: *may this
+/// principal act on publications at all*, never *is this publication theirs*.
+/// Mallory holds her own live grant here, so she passes that gate and every
+/// other one on the path; the control measures the tenant binding and nothing
+/// else, exactly as `.6.1.5.1`'s did.
+///
+/// ⚠️ A foreign record answers exactly as an ABSENT one
+/// (`docs/decisions/2026-09-18_node-presence-is-read-by-its-own-tenant.md`), so
+/// the arms assert the refusal names the record rather than the tenant.
+#[tokio::test]
+async fn the_lifecycle_verbs_refuse_another_tenants_publication() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let (repo_root, object_ids) = seeded_publication_repository("gtn");
+    let server = TestServer::start_with_publication_root(&pool, &repo_root).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, alice) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "gtn-alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "alice enrols: {alice}");
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    let alice_tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    let alice_grant = format!("grt_{alice_id}");
+
+    let (status, mallory) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "gtn-mallory" }),
+    )
+    .await;
+    assert_eq!(status, 200, "mallory enrols: {mallory}");
+    let mallory_id = mallory["principal_id"].as_str().unwrap().to_string();
+    let mallory_grant = format!("grt_{mallory_id}");
+    assert_ne!(
+        alice_tenant,
+        mallory["tenant_id"].as_str().unwrap(),
+        "two enrolments must be two tenants, or this control measures nothing"
+    );
+
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policies",
+        &alice_id,
+        &json!({
+            "policy_id": "gtn-policy", "version": "1.0.0", "digest": DIGEST,
+            "lifecycle": "draft", "title": "gtn", "owning_authority": alice_grant,
+            "clauses": [ { "id": "c1", "statement": "the gated clause" } ],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the policy registers");
+
+    let (_status, created) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &alice_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "gtn-create",
+            "body": {
+                "tenant_id": alice_tenant, "subject": "gtn", "objective": "probe",
+                "workflow_profile": "independent_panel",
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    let command = |key: &'static str, operation: &'static str, body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let alice_id = alice_id.clone();
+        let thread_id = thread_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/threads/{thread_id}/commands"))
+                .header(PRINCIPAL_HEADER, &alice_id)
+                .json(&json!({
+                    "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                    "operation": operation,
+                    "request_id": reasonbraid_core::RequestId::new().to_string(),
+                    "idempotency_key": key,
+                    "body": body,
+                    "client_context": {},
+                }))
+                .send()
+                .await
+                .expect("command request");
+            let text = response.text().await.expect("command body");
+            serde_json::from_str::<Value>(&text).unwrap_or_else(|_| json!({ "raw": text }))
+        }
+    };
+    let _ = command(
+        "gtn-advance",
+        "thread.advance_round",
+        json!({ "tenant_id": alice_tenant }),
+    )
+    .await;
+    let verdict = command(
+        "gtn-verdict",
+        "thread.contribute",
+        json!({
+            "tenant_id": alice_tenant, "content": "judged", "kind": "verdict",
+            "verdict": { "target_digest": "sha256:00", "rule": "majority", "outcome": "accepted_by_rule" },
+        }),
+    )
+    .await;
+    let verdict_event = verdict["event_id"].as_str().unwrap().to_string();
+
+    // ⭐ THREE publications, because three of the eleven verbs consume a STAGED
+    // one and a staged publication can be spent exactly once: `failed` and
+    // `publish` each end the stage, so sharing a publication would make one
+    // verb's positive arm depend on another's — the coupling
+    // `citing_an_authority_requires_holding_it` records finding the hard way.
+    let stage_chain = |n: u8| {
+        let client = client.clone();
+        let base = base.clone();
+        let alice_id = alice_id.clone();
+        let alice_grant = alice_grant.clone();
+        let thread_id = thread_id.clone();
+        let verdict_event = verdict_event.clone();
+        async move {
+            let prop = format!("gtn-prop-{n}");
+            let dec = format!("gtn-dec-{n}");
+            let app = format!("gtn-app-{n}");
+            let proj = format!("gtn-proj-{n}");
+            let publication = format!("gtn-pub-{n}");
+            let (status, _) = post(
+                &client,
+                &base,
+                "/v1/policy-proposals",
+                &alice_id,
+                &json!({ "proposal_id": prop, "policy_id": "gtn-policy",
+                         "policy_version": "1.0.0", "thread_id": thread_id }),
+            )
+            .await;
+            assert_eq!(status, 200, "proposal {n} registers");
+            let (status, _) = post(
+                &client, &base, "/v1/policy-decisions", &alice_id,
+                &json!({ "decision_id": dec, "proposal_id": prop, "rule": "majority",
+                         "electorate": { "participants": [alice_id], "denominator": 1, "abstentions": [] },
+                         "verdict_event_id": verdict_event }),
+            ).await;
+            assert_eq!(status, 200, "decision {n} records");
+            let (status, _) = post(
+                &client, &base, "/v1/policy-approvals", &alice_id,
+                &json!({ "approval_id": app, "proposal_id": prop, "decision_id": dec,
+                         "approver": alice_id, "grant_id": alice_grant,
+                         "quorum": { "participants": [alice_id], "denominator": 1, "abstentions": [] } }),
+            ).await;
+            assert_eq!(status, 200, "approval {n} records");
+            let (status, projection) = post(
+                &client, &base, "/v1/policy-projections", &alice_id,
+                &json!({ "projection_id": proj, "target": "generic",
+                         "resolution": { "policies": [ { "policy_id": "gtn-policy", "version": "1.0.0" } ],
+                                         "target": { "layer": "organization", "target": "*" } } }),
+            ).await;
+            assert_eq!(status, 200, "projection {n} records");
+            (
+                prop,
+                dec,
+                app,
+                proj,
+                publication,
+                projection["digest"].clone(),
+            )
+        }
+    };
+
+    // ── ARM 1: `POST /v1/policy-publications` — stage another tenant's proposal
+    let (prop1, dec1, app1, proj1, pub1, digest1) = stage_chain(1).await;
+    let staging = |who: String,
+                   prop: String,
+                   dec: String,
+                   app: String,
+                   proj: String,
+                   publication: String,
+                   digest: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            post(
+                &client,
+                &base,
+                "/v1/policy-publications",
+                &who,
+                &json!({ "publication_id": publication, "proposal_id": prop,
+                          "decision_id": dec, "approval_id": app,
+                          "projection_id": proj, "manifest_digest": digest }),
+            )
+            .await
+        }
+    };
+    let (status, refused) = staging(
+        mallory_id.clone(),
+        prop1.clone(),
+        dec1.clone(),
+        app1.clone(),
+        proj1.clone(),
+        pub1.clone(),
+        digest1.clone(),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "a foreign tenant stages no publication: {refused}"
+    );
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains(&prop1),
+        "the refusal names the PROPOSAL as an absent one would: {refused}"
+    );
+    let (status, staged) = staging(
+        alice_id.clone(),
+        prop1.clone(),
+        dec1.clone(),
+        app1.clone(),
+        proj1.clone(),
+        pub1.clone(),
+        digest1.clone(),
+    )
+    .await;
+    assert_eq!(status, 200, "the owner still stages: {staged}");
+
+    // ── ARM 2: `/effective` — Mallory holds her OWN live grant, so she is past
+    //    `.9.2.1.2`'s authority gate and only the tenant binding refuses her.
+    let effective_body = |grant: &str| {
+        json!({
+            "git_object_ids": object_ids.clone(), "repo_path": "live", "owning_authority": grant,
+        })
+    };
+    let (status, refused) = post(
+        &client,
+        &base,
+        &format!("/v1/policy-publications/{pub1}/effective"),
+        &mallory_id,
+        &effective_body(&mallory_grant),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "a foreign tenant marks nothing effective: {refused}"
+    );
+    assert!(
+        !refused["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("HOLDS"),
+        "mallory is PAST the authority gate — the refusal must be the tenant one: {refused}"
+    );
+
+    // ── ARM 3: `/failed`, on the second publication, still staged.
+    let (prop2, dec2, app2, proj2, pub2, digest2) = stage_chain(2).await;
+    let (status, _) = staging(
+        alice_id.clone(),
+        prop2,
+        dec2,
+        app2,
+        proj2,
+        pub2.clone(),
+        digest2,
+    )
+    .await;
+    assert_eq!(status, 200, "the second publication stages");
+    let (status, refused) = post(
+        &client,
+        &base,
+        &format!("/v1/policy-publications/{pub2}/failed"),
+        &mallory_id,
+        &json!({ "reason": "the foreign failure" }),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "a foreign tenant marks nothing failed: {refused}"
+    );
+    let (status, failed) = post(
+        &client,
+        &base,
+        &format!("/v1/policy-publications/{pub2}/failed"),
+        &alice_id,
+        &json!({ "reason": "the owner's failure" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the owner still marks failed: {failed}");
+    assert_eq!(failed["state"], json!("failed"), "{failed}");
+
+    // ── ARM 4: `/publish`, on the third publication, still staged.
+    let (prop3, dec3, app3, proj3, pub3, digest3) = stage_chain(3).await;
+    let (status, _) = staging(
+        alice_id.clone(),
+        prop3,
+        dec3,
+        app3,
+        proj3,
+        pub3.clone(),
+        digest3,
+    )
+    .await;
+    assert_eq!(status, 200, "the third publication stages");
+    // ⛔ THIS ARM ASSERTS THE REPOSITORY, NOT ONLY THE STATUS, AND IT HAD TO.
+    // Falsification found it passing for an unrelated reason: with the handler's
+    // ownership check removed, the publish still ended at `mark_effective`,
+    // whose own check refused Mallory — so the status was 400 while
+    // `publisher::publish` had ALREADY written `refs/rb/publications/…` into the
+    // git repository. A 400 after a completed side effect is not a refusal, and
+    // only the repository tells the two apart
+    // (`docs/knowledge/a-control-that-passes-for-an-unrelated-reason.md`).
+    let published_ref = repo_root
+        .join("live")
+        .join("refs/rb/publications")
+        .join(&pub3);
+    let (status, refused) = post(
+        &client,
+        &base,
+        &format!("/v1/policy-publications/{pub3}/publish"),
+        &mallory_id,
+        &json!({ "repo_path": "live", "owning_authority": mallory_grant }),
+    )
+    .await;
+    assert_eq!(status, 400, "a foreign tenant publishes nothing: {refused}");
+    assert!(
+        !published_ref.exists(),
+        "and writes NOTHING to the repository — a 400 after the ref was written \
+         is not a refusal: {}",
+        published_ref.display()
+    );
+    let (status, published) = post(
+        &client,
+        &base,
+        &format!("/v1/policy-publications/{pub3}/publish"),
+        &alice_id,
+        &json!({ "repo_path": "live", "owning_authority": alice_grant }),
+    )
+    .await;
+    assert_eq!(status, 200, "the owner still publishes: {published}");
+    assert!(
+        published_ref.exists(),
+        "the owner's publish DOES write the ref, or the assertion above passes \
+         because nothing ever writes it: {}",
+        published_ref.display()
+    );
+
+    // The owner completes ARM 2's positive half, which also makes `pub1`
+    // effective so the deployment arms have something to deploy.
+    let (status, marked) = post(
+        &client,
+        &base,
+        &format!("/v1/policy-publications/{pub1}/effective"),
+        &alice_id,
+        &effective_body(&alice_grant),
+    )
+    .await;
+    assert_eq!(status, 200, "the owner still marks effective: {marked}");
+
+    // ── ARMS 5 and 6: the deployment assignment and its receipt.
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/deployment-targets",
+        &alice_id,
+        &json!({ "target_id": "gtn-target", "target_type": "repository",
+                 "owning_authority": alice_grant }),
+    )
+    .await;
+    assert_eq!(status, 200, "the target registers");
+    let assignment = json!({
+        "target_id": "gtn-target", "publication_id": pub1, "wave": 1,
+        "desired_ref": "live", "desired_digest": DIGEST,
+    });
+    let (status, refused) = post(&client, &base, "/v1/deployments", &mallory_id, &assignment).await;
+    assert_eq!(status, 400, "a foreign tenant deploys nothing: {refused}");
+    let (status, assigned) = post(&client, &base, "/v1/deployments", &alice_id, &assignment).await;
+    assert_eq!(status, 200, "the owner still deploys: {assigned}");
+    let receipt = json!({ "observed_digest": DIGEST, "observed_state": "applied" });
+    let receipt_path = format!("/v1/deployments/gtn-target/{pub1}/receipt");
+    let (status, refused) = post(&client, &base, &receipt_path, &mallory_id, &receipt).await;
+    assert_eq!(status, 400, "a foreign tenant files no receipt: {refused}");
+    let (status, filed) = post(&client, &base, &receipt_path, &alice_id, &receipt).await;
+    assert_eq!(status, 200, "the owner still files a receipt: {filed}");
+
+    // ── ARMS 7, 8 and 9: drift, correction and outcome.
+    let drift = json!({
+        "drift_id": "gtn-drift", "target_id": "gtn-target", "publication_id": pub1,
+        "category": "pending_rollout", "desired_digest": DIGEST, "observed_digest": null,
+    });
+    let (status, refused) = post(&client, &base, "/v1/policy-drift", &mallory_id, &drift).await;
+    assert_eq!(status, 400, "a foreign tenant records no drift: {refused}");
+    let (status, ok) = post(&client, &base, "/v1/policy-drift", &alice_id, &drift).await;
+    assert_eq!(status, 200, "the owner still records drift: {ok}");
+
+    let correction = |id: &str, grant: &str| {
+        json!({
+            "correction_id": id, "publication_id": pub1, "operation": "waiver",
+            "authority_grant": grant, "expires_at": "2030-01-01T00:00:00Z",
+            "reason": "the waiver",
+        })
+    };
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-corrections",
+        &mallory_id,
+        &correction("gtn-corr-foreign", &mallory_grant),
+    )
+    .await;
+    assert_eq!(status, 400, "a foreign tenant corrects nothing: {refused}");
+    let (status, ok) = post(
+        &client,
+        &base,
+        "/v1/policy-corrections",
+        &alice_id,
+        &correction("gtn-corr-own", &alice_grant),
+    )
+    .await;
+    assert_eq!(status, 200, "the owner still corrects: {ok}");
+
+    let outcome = |id: &str| {
+        json!({
+            "outcome_id": id, "publication_id": pub1, "kind": "incident",
+            "review_trigger": "adverse_threshold", "note": "the outcome",
+        })
+    };
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-outcomes",
+        &mallory_id,
+        &outcome("gtn-out-foreign"),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "a foreign tenant records no outcome: {refused}"
+    );
+    let (status, ok) = post(
+        &client,
+        &base,
+        "/v1/policy-outcomes",
+        &alice_id,
+        &outcome("gtn-out-own"),
+    )
+    .await;
+    assert_eq!(status, 200, "the owner still records an outcome: {ok}");
+
+    // ── ARM 10: the review SCHEDULE, which names no id and so cannot refuse —
+    //    it SCOPES. Mallory's schedule must materialise nothing at all, and the
+    //    assertion is about the TABLE rather than the response, because a verb
+    //    that silently wrote and returned nothing would pass a response check.
+    let (status, scheduled) = post(
+        &client,
+        &base,
+        "/v1/policy-reviews/schedule",
+        &mallory_id,
+        &json!({}),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "a foreign tenant's schedule is admitted: {scheduled}"
+    );
+    assert_eq!(
+        scheduled,
+        json!([]),
+        "and schedules NOTHING, because it reads only its own drift and outcomes: {scheduled}"
+    );
+    let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM policy_reviews")
+        .fetch_one(&pool)
+        .await
+        .expect("the reviews are countable");
+    assert_eq!(
+        rows, 0,
+        "a foreign schedule materialises no row for anyone — the response alone \
+         would not have caught a write it did not report"
+    );
+    let (status, scheduled) = post(
+        &client,
+        &base,
+        "/v1/policy-reviews/schedule",
+        &alice_id,
+        &json!({}),
+    )
+    .await;
+    assert_eq!(status, 200, "the owner still schedules: {scheduled}");
+    let scheduled = scheduled.as_array().unwrap().clone();
+    assert!(
+        !scheduled.is_empty(),
+        "the owner's schedule materialises her reviews, or ARM 11 is vacuous"
+    );
+
+    // ── ARM 11: closing a review.
+    let review_id = scheduled[0]["review_id"].as_str().unwrap().to_string();
+    let (status, refused) = post(
+        &client,
+        &base,
+        &format!("/v1/policy-reviews/{review_id}/done"),
+        &mallory_id,
+        &json!({}),
+    )
+    .await;
+    assert_eq!(status, 400, "a foreign tenant closes no review: {refused}");
+    let (status, done) = post(
+        &client,
+        &base,
+        &format!("/v1/policy-reviews/{review_id}/done"),
+        &alice_id,
+        &json!({}),
+    )
+    .await;
+    assert_eq!(status, 200, "the owner still closes her review: {done}");
+    assert_eq!(done["status"], json!("done"), "{done}");
+
+    let _ = std::fs::remove_dir_all(&repo_root);
 }

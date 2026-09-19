@@ -163,6 +163,7 @@ impl std::fmt::Display for CorrectionError {
 async fn publication_tenant(
     pool: &PgPool,
     publication_id: &str,
+    tenant_id: &str,
 ) -> Result<Option<String>, CorrectionError> {
     let row: Option<(String, Option<String>)> = sqlx::query_as(
         "SELECT publication_id, tenant_id FROM policy_publications WHERE publication_id = $1",
@@ -171,12 +172,23 @@ async fn publication_tenant(
     .fetch_optional(pool)
     .await
     .map_err(|_| CorrectionError::UnknownPublication(publication_id.to_string()))?;
-    let Some((_, tenant_id)) = row else {
+    let Some((_, owner)) = row else {
         return Err(CorrectionError::UnknownPublication(
             publication_id.to_string(),
         ));
     };
-    Ok(tenant_id)
+    // ⛔ `SIGNOFF-REPAIR.6.1.5.2.1`: the publication must be the CALLER's.
+    // `.6.1.5.2` labelled these rows correctly and gated nothing, so a foreign
+    // tenant's drift, waiver or incident report landed in the owner's own trail,
+    // authorized by nothing. ⚠️ A foreign publication answers exactly as an
+    // ABSENT one, and a publication with no owner is actionable by nobody — the
+    // reasoning is recorded once, at `publications::owned_by`.
+    if owner.as_deref() != Some(tenant_id) {
+        return Err(CorrectionError::UnknownPublication(
+            publication_id.to_string(),
+        ));
+    }
+    Ok(owner)
 }
 
 /// The cited authority must be one the CALLER HOLDS, not merely one that
@@ -206,7 +218,11 @@ async fn authority_holds(
 }
 
 /// Record one drift observation (the categorized pair).
-pub async fn record_drift(pool: &PgPool, input: &DriftInput) -> Result<(), CorrectionError> {
+pub async fn record_drift(
+    pool: &PgPool,
+    tenant_id: &str,
+    input: &DriftInput,
+) -> Result<(), CorrectionError> {
     if !DRIFT_CATEGORIES.contains(&input.category.as_str()) {
         return Err(CorrectionError::UnknownCategory(input.category.clone()));
     }
@@ -229,7 +245,7 @@ pub async fn record_drift(pool: &PgPool, input: &DriftInput) -> Result<(), Corre
     // deployed; it says nothing about who owns it. The tenant comes from the
     // publication (`SIGNOFF-REPAIR.6.1.5.2`), and this LABELS the row without
     // gating the write — `.6.1.5.2.1` owns the gate.
-    let tenant_id = publication_tenant(pool, &input.publication_id).await?;
+    let tenant_id = publication_tenant(pool, &input.publication_id, tenant_id).await?;
     let inserted = sqlx::query(
         "INSERT INTO policy_drift \
          (drift_id, target_id, publication_id, category, desired_digest, observed_digest, \
@@ -258,12 +274,13 @@ pub async fn record_drift(pool: &PgPool, input: &DriftInput) -> Result<(), Corre
 pub async fn record_correction(
     pool: &PgPool,
     principal: &GrantSubject,
+    caller_tenant: &str,
     input: &CorrectionInput,
 ) -> Result<Value, CorrectionError> {
     if !CORRECTION_OPERATIONS.contains(&input.operation.as_str()) {
         return Err(CorrectionError::UnknownOperation(input.operation.clone()));
     }
-    let tenant_id = publication_tenant(pool, &input.publication_id).await?;
+    let tenant_id = publication_tenant(pool, &input.publication_id, caller_tenant).await?;
     authority_holds(pool, &input.authority_grant, principal).await?;
     match input.operation.as_str() {
         "suspension" | "waiver" => {
@@ -278,7 +295,9 @@ pub async fn record_correction(
             // The superseded publication must exist; its tenant is not the
             // correction's — the correction belongs to the publication it
             // corrects, which is `input.publication_id` above.
-            publication_tenant(pool, supersedes).await?;
+            // The superseded publication must be the caller's too: one tenant
+            // does not supersede another's.
+            publication_tenant(pool, supersedes, caller_tenant).await?;
         }
         _ => {}
     }
@@ -332,7 +351,11 @@ pub async fn record_correction(
 }
 
 /// Record one outcome (the §15.11 link).
-pub async fn record_outcome(pool: &PgPool, input: &OutcomeInput) -> Result<(), CorrectionError> {
+pub async fn record_outcome(
+    pool: &PgPool,
+    tenant_id: &str,
+    input: &OutcomeInput,
+) -> Result<(), CorrectionError> {
     if !OUTCOME_KINDS.contains(&input.kind.as_str()) {
         return Err(CorrectionError::UnknownKind(input.kind.clone()));
     }
@@ -346,7 +369,7 @@ pub async fn record_outcome(pool: &PgPool, input: &OutcomeInput) -> Result<(), C
             )));
         }
     }
-    let tenant_id = publication_tenant(pool, &input.publication_id).await?;
+    let tenant_id = publication_tenant(pool, &input.publication_id, tenant_id).await?;
     let inserted = sqlx::query(
         "INSERT INTO policy_outcomes \
          (outcome_id, publication_id, kind, review_trigger, note, tenant_id) \

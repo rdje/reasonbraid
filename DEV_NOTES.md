@@ -1,5 +1,16 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — A refusal that arrives after the side effect is not a refusal
+
+- Eleven arms, all green on the first run. That is the moment to be suspicious, and the falsification harness earned its keep: ten arms went red at their own assertion, and one did not move at all.
+- 🔴 **ARM 4, the publish verb.** I removed its ownership check and the control still passed. The status was still 400 — because the request ran all the way to `mark_effective`, whose own check refused the foreign caller *after* `publisher::publish` had written `refs/rb/publications/…` into the git repository.
+- ⛔ **So the arm was asserting that the caller was told no, while the thing the caller wanted had already happened.** A status code cannot distinguish "refused" from "done, then reported as refused". Only the side effect can, and the control now asserts the ref's absence on the negative arm and its presence on the positive one.
+- ⭐ **The generalisation is sharper than the lesson I already had.** `a-control-that-passes-for-an-unrelated-reason` says a negative arm needs a degenerate implementation to fail against. This adds: for any verb with an external effect, the arm must observe the EFFECT, not the answer. A verb that writes a file, a ref, a row or a message and then returns an error is a verb that did the thing.
+- 🔎 **And it explains why the check's position mattered so much.** I first put ownership beside the authority check, before path resolution, which broke the containment control's three legs — they need a path escape reported as a path escape. Moving it after containment and before the publication is read satisfies both controls, and the falsification is what proved the final position actually stops the write rather than merely changing the error text.
+- ⚠️ **Eleven neutralization runs, one gate site each, and that was not fussiness.** The suite stops at the first failing assertion, so neutralizing "the fix" would have shown one red arm and I would have written "eleven arms falsified" on the strength of it. This is the third time in this repair programme that a shared neutralization hid the arms behind it.
+- 🔎 **A smaller thing worth keeping: three fixtures seeded publications by raw SQL with no tenant.** Once an ownerless publication became actionable by nobody, those fixtures refused their own owner. The honest fix is the row carrying what the real write stores — not a gate relaxed to accommodate a fixture that was tidier than the input it stands for.
+- promotion: pending — *a refusal that arrives after the side effect is not a refusal, and a status-code assertion cannot tell the two apart*.
+
 ## 2026-09-19 — Run the falsification both ways round, or you will not know what you fixed
 
 - Two plans were wrong and I fixed both. The tidy write-up would have been *"the suites polluted each other; both now purge; green"*. It would also have been wrong about which change mattered.

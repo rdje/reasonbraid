@@ -433,25 +433,41 @@ outcomes and reviews belong to their **publication's** — because a record abou
 someone else's publication concerns that someone else, and stamping it with its
 author's tenant would hide it from the only party it is about.
 
-Two things remain open and are recorded here rather than implied:
+**Every mutating verb over a publication now requires the caller to own it.**
+Staging a publication, marking it effective or failed, publishing it, recording
+drift, a correction or an outcome against it, deploying it, filing its receipt,
+and closing one of its reviews are all refused for a caller in another tenant.
+Scheduling reviews names no identifier at all, so it is scoped rather than
+refused: a request materialises review rows for the caller's own publications and
+for nobody else's.
+
+A foreign record answers exactly as an absent one. That is deliberate: a refusal
+that distinguished *not yours* from *no such thing* would let any enrolled
+principal enumerate every other tenant's publication identifiers.
+
+Three of those verbs already required the caller to hold a publication authority.
+That check asks whether a principal may act on publications at all; it never
+asked whose publication this was, so a principal holding their own grant could
+advance another tenant's publication. Holding an authority and owning a record
+are two different questions and both are now asked.
+
+> **Operator note — an unattributable publication is frozen.** The migration that
+> gave these rows an owner derives it from the publication's own lineage and
+> leaves it empty where that lineage is broken. A publication with no owner can
+> now be advanced by nobody: not marked effective, not failed, not published, not
+> deployed, not corrected. This is deliberate — an unowned governance record that
+> anyone may advance is worse than one that is frozen — but it means an upgraded
+> deployment should check for rows with no owner before relying on them.
+
+One thing remains open and is recorded here rather than implied:
 
 - **The reads are still site-wide.** Listing proposals, decisions, approvals,
   projections, publications, drift, outcomes, corrections or reviews still
   returns every tenant's rows to any enrolled caller. Binding them is
   `SIGNOFF-REPAIR.6.1.5.3`, and it is deliberately a separate step: narrowing a
   read before every write records an owner would hide rows from their own
-  authors.
-- **Five writes still admit any enrolled principal.** Staging a publication,
-  recording drift, a correction or an outcome, and scheduling reviews can each
-  be performed against another tenant's records. The rows are now labelled
-  correctly, which is what makes the gap visible; closing it is
-  `SIGNOFF-REPAIR.6.1.5.2.1`. The review scheduler is the sharpest of the five:
-  it reads drift, outcomes and corrections across the whole site, so one
-  tenant's request materialises review rows for every tenant's publications.
-
-Until those two land, treat enrolment in this deployment as a trust boundary for
-the policy lifecycle: any enrolled principal can read the whole site's
-governance trail and can act on another tenant's publication.
+  authors. Until it lands, treat enrolment as a disclosure boundary for the
+  governance trail — it is no longer a control boundary.
 
 ### The workflow-profile registry: repaired, and why it needed to be
 

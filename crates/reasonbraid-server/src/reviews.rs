@@ -63,19 +63,36 @@ impl std::fmt::Display for ReviewError {
 /// Evaluate the DUE reviews: the outcomes' named triggers (where the
 /// trigger is in the vocabulary) + the drift occurrences + the repeated
 /// waivers — one due review per (publication, trigger), the dedupe.
-pub async fn schedule_reviews(pool: &PgPool) -> Result<Vec<StoredReview>, sqlx::Error> {
+/// ⛔ `SIGNOFF-REPAIR.6.1.5.2.1`: SCOPED to the caller's tenant, not gated by a
+/// refusal, because this verb names no id at all — one POST used to materialise
+/// review rows for EVERY tenant's publications, so a stranger decided which of
+/// your publications were under review.
+///
+/// ⭐ The write gate and the read binding are ONE change here, which is why this
+/// function belongs to this leaf rather than to `.6.1.5.3`: narrowing these
+/// three reads is what stops the write, and splitting them would leave two
+/// leaves editing one body.
+pub async fn schedule_reviews(
+    pool: &PgPool,
+    tenant_id: &str,
+) -> Result<Vec<StoredReview>, sqlx::Error> {
     let outcome_rows: Vec<(String, String)> = sqlx::query_as(
         "SELECT publication_id, review_trigger FROM policy_outcomes \
-         WHERE review_trigger IS NOT NULL",
+         WHERE review_trigger IS NOT NULL AND tenant_id = $1",
     )
+    .bind(tenant_id)
     .fetch_all(pool)
     .await?;
-    let drift_rows: Vec<String> = sqlx::query_scalar("SELECT publication_id FROM policy_drift")
-        .fetch_all(pool)
-        .await?;
+    let drift_rows: Vec<String> =
+        sqlx::query_scalar("SELECT publication_id FROM policy_drift WHERE tenant_id = $1")
+            .bind(tenant_id)
+            .fetch_all(pool)
+            .await?;
     let waiver_rows: Vec<String> = sqlx::query_scalar(
-        "SELECT publication_id FROM policy_corrections WHERE operation = 'waiver'",
+        "SELECT publication_id FROM policy_corrections \
+         WHERE operation = 'waiver' AND tenant_id = $1",
     )
+    .bind(tenant_id)
     .fetch_all(pool)
     .await?;
 
@@ -150,16 +167,25 @@ pub async fn schedule_reviews(pool: &PgPool) -> Result<Vec<StoredReview>, sqlx::
 }
 
 /// Mark one review DONE (the due → done transition).
-pub async fn mark_done(pool: &PgPool, review_id: &str) -> Result<StoredReview, ReviewError> {
-    let row: Option<String> =
-        sqlx::query_scalar("SELECT status FROM policy_reviews WHERE review_id = $1")
+pub async fn mark_done(
+    pool: &PgPool,
+    tenant_id: &str,
+    review_id: &str,
+) -> Result<StoredReview, ReviewError> {
+    let row: Option<(String, Option<String>)> =
+        sqlx::query_as("SELECT status, tenant_id FROM policy_reviews WHERE review_id = $1")
             .bind(review_id)
             .fetch_optional(pool)
             .await
             .map_err(|_| ReviewError::UnknownReview(review_id.to_string()))?;
-    let Some(status) = row else {
+    let Some((status, owner)) = row else {
         return Err(ReviewError::UnknownReview(review_id.to_string()));
     };
+    // ⛔ `SIGNOFF-REPAIR.6.1.5.2.1`: a foreign review answers as an absent one,
+    // and a review with no owner is closed by nobody.
+    if owner.as_deref() != Some(tenant_id) {
+        return Err(ReviewError::UnknownReview(review_id.to_string()));
+    }
     if status != "due" {
         return Err(ReviewError::WrongStatus {
             review_id: review_id.to_string(),

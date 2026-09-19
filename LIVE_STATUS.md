@@ -5,6 +5,18 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **ELEVEN LIFECYCLE VERBS ACTED ON ANOTHER TENANT'S RECORD, AND ARE NOW GATED (`.6.1.5.2.1`, REPAIR-0280).**
+
+Not the five the leaf was opened with: every mutating verb over a publication or a proposal — stage, effective, failed, publish, drift, correction, outcome, schedule, review-done, deploy, receipt.
+
+- ⛔ **The three `held_publication_authority` verbs looked guarded and were not.** A grant the CALLER HOLDS answers *may this principal act on publications at all*, never *is this publication theirs*. Mallory holds her own live grant and passed every gate but that one — `.6.1.5.1`'s finding, a second time.
+- ✅ The anchor is the caller's **tenant** at ten of the eleven; `schedule_reviews` SCOPES rather than refuses, because it names no id, and its three source reads move here from `.6.1.5.3`. ⚠️ A foreign record answers exactly as an ABSENT one, or the refusal enumerates every other tenant's publication ids.
+- 🔴 **ARM 4 PASSED FOR AN UNRELATED REASON AND ONLY FALSIFICATION SAID SO.** With the publish verb's check removed the status was still 400 — because `mark_effective` refused **after** `publisher::publish` had written `refs/rb/publications/…` into the git repository. ⛔ A 400 after a completed side effect is not a refusal. The arm now asserts the REF.
+- 🔎 Three fixtures seeded publications and proposals by raw SQL with no tenant; each is repaired rather than worked around, because an ownerless publication now refuses its own owner too.
+- ⚠️ **Operator-visible:** an unattributable publication is **FROZEN** — advanced, deployed or corrected by nobody. Deliberate, and in `docs/book/src/site-authority.md`.
+- ⛔ **Still open: the READS.** Every tenant's governance trail is still listed to any enrolled caller. Enrolment is no longer a control boundary here; it is still a disclosure one. `.6.1.5.3`.
+- ✅ **VERIFIED:** `policy` **18/0**; 15 further suites, 0 failed. Clippy rc=0; fmt rc=0; gate green; book + links rc=0. Falsified **eleven times, one gate site per run**, restored byte-identical after each — because the suite stops at the first failing assertion and one neutralization would have claimed ten arms on the strength of one.
+
 ✅ **A SUITE PURGES WHAT IT ASSERTS OVER AND WHAT IT WRITES, AND ONLY THE SECOND IS MECHANIZABLE (`.7.1.2.2.2`, REPAIR-0279).**
 
 `routing evaluation` failed `evaluation` **2/1**; `evaluation routing` passed both. `tests/evaluation.rs` asserts the content of `evaluation_trials` and never purged it; `tests/routing.rs` has written that table since REPAIR-0274 and never purged it either.

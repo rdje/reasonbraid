@@ -3420,13 +3420,16 @@ async fn stage_publication(
     Json(input): Json<crate::publications::PublicationInput>,
 ) -> Result<Json<crate::publications::StoredPublication>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    // `SIGNOFF-REPAIR.6.1.5.2.1`: the tenant is BOUND, not tested with
+    // `is_some()` and dropped. `.6.1.5.2` gave every lifecycle row an owner and
+    // deliberately gated nothing, so this verb still acted on another tenant's
+    // record until here.
+    let Some(caller_tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal stages no publication",
         ));
-    }
-    match crate::publications::stage(&state.pool, &input).await {
+    };
+    match crate::publications::stage(&state.pool, &caller_tenant, &input).await {
         Ok(row) => Ok(Json(row)),
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }
@@ -3463,12 +3466,15 @@ async fn mark_publication_effective(
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<crate::publications::StoredPublication>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    // `SIGNOFF-REPAIR.6.1.5.2.1`: the tenant is BOUND, not tested with
+    // `is_some()` and dropped. `.6.1.5.2` gave every lifecycle row an owner and
+    // deliberately gated nothing, so this verb still acted on another tenant's
+    // record until here.
+    let Some(caller_tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal marks nothing effective",
         ));
-    }
+    };
     // `.9.2.1.2`: authorized BEFORE anything is parsed out of the body or
     // looked up, so an unauthorized caller learns nothing about the request
     // they were not entitled to make.
@@ -3489,6 +3495,7 @@ async fn mark_publication_effective(
             .map_err(publication_repository_refused)?;
     match crate::publications::mark_effective(
         &state.pool,
+        &caller_tenant,
         &publication_id,
         git_object_ids,
         &repository,
@@ -3509,17 +3516,22 @@ async fn mark_publication_failed(
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<crate::publications::StoredPublication>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    // `SIGNOFF-REPAIR.6.1.5.2.1`: the tenant is BOUND, not tested with
+    // `is_some()` and dropped. `.6.1.5.2` gave every lifecycle row an owner and
+    // deliberately gated nothing, so this verb still acted on another tenant's
+    // record until here.
+    let Some(caller_tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal marks nothing failed",
         ));
-    }
+    };
     let reason = body
         .get("reason")
         .and_then(|v| v.as_str())
         .ok_or_else(|| ControlApiError::invalid_command("the reason is required"))?;
-    match crate::publications::mark_failed(&state.pool, &publication_id, reason).await {
+    match crate::publications::mark_failed(&state.pool, &caller_tenant, &publication_id, reason)
+        .await
+    {
         Ok(row) => Ok(Json(row)),
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }
@@ -3606,12 +3618,15 @@ async fn publish_publication(
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<crate::publications::StoredPublication>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    // `SIGNOFF-REPAIR.6.1.5.2.1`: the tenant is BOUND, not tested with
+    // `is_some()` and dropped. `.6.1.5.2` gave every lifecycle row an owner and
+    // deliberately gated nothing, so this verb still acted on another tenant's
+    // record until here.
+    let Some(caller_tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal publishes nothing",
         ));
-    }
+    };
     // `.9.2.1.2`: authorized BEFORE the path is resolved or the publication is
     // loaded — an unauthorized caller reaches neither the filesystem nor the
     // database.
@@ -3638,6 +3653,20 @@ async fn publish_publication(
             })
         })
         .transpose()?;
+    // ⛔ `SIGNOFF-REPAIR.6.1.5.2.1`: the publication must be the caller's, and the
+    // check sits HERE rather than beside the authority check above, because the
+    // ordering is load-bearing in both directions. `.9.2.1.2` requires the
+    // AUTHORITY to answer before a path is resolved; the containment control
+    // requires a path escape to be reported as a path escape rather than as a
+    // missing record — its positive arm is *an inside location reaches the
+    // lookup*. So ownership answers after containment and before the publication
+    // is read, which is the first point at which this verb learns anything about
+    // the record. ⚠️ A non-owner reaches only path validation, which discloses
+    // nothing about the publication and is already reachable by any authority
+    // holder regardless of ownership.
+    crate::publications::owned_by(&state.pool, &publication_id, &caller_tenant)
+        .await
+        .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
     let publication = crate::publications::load(&state.pool, &publication_id)
         .await
         .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
@@ -3670,6 +3699,7 @@ async fn publish_publication(
     let git_object_ids = vec![refs.publication_ref_id, refs.effective_ref_id];
     let row = crate::publications::mark_effective(
         &state.pool,
+        &caller_tenant,
         &publication_id,
         git_object_ids,
         &repo_path,
@@ -3737,13 +3767,16 @@ async fn assign_deployment(
     Json(input): Json<crate::deployments::AssignmentInput>,
 ) -> Result<Json<crate::deployments::StoredAssignment>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    // `SIGNOFF-REPAIR.6.1.5.2.1`: the tenant is BOUND, not tested with
+    // `is_some()` and dropped. `.6.1.5.2` gave every lifecycle row an owner and
+    // deliberately gated nothing, so this verb still acted on another tenant's
+    // record until here.
+    let Some(caller_tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal assigns nothing",
         ));
-    }
-    match crate::deployments::assign(&state.pool, &input).await {
+    };
+    match crate::deployments::assign(&state.pool, &caller_tenant, &input).await {
         Ok(row) => Ok(Json(row)),
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }
@@ -3775,13 +3808,23 @@ async fn record_deployment_receipt(
     Json(input): Json<crate::deployments::ReceiptInput>,
 ) -> Result<Json<crate::deployments::StoredAssignment>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    // `SIGNOFF-REPAIR.6.1.5.2.1`: the tenant is BOUND, not tested with
+    // `is_some()` and dropped. `.6.1.5.2` gave every lifecycle row an owner and
+    // deliberately gated nothing, so this verb still acted on another tenant's
+    // record until here.
+    let Some(caller_tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal records no receipt",
         ));
-    }
-    match crate::deployments::record_receipt(&state.pool, &target_id, &publication_id, &input).await
+    };
+    match crate::deployments::record_receipt(
+        &state.pool,
+        &caller_tenant,
+        &target_id,
+        &publication_id,
+        &input,
+    )
+    .await
     {
         Ok(row) => Ok(Json(row)),
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
@@ -3796,13 +3839,16 @@ async fn record_policy_drift(
     Json(input): Json<crate::corrections::DriftInput>,
 ) -> Result<Json<serde_json::Value>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    // `SIGNOFF-REPAIR.6.1.5.2.1`: the tenant is BOUND, not tested with
+    // `is_some()` and dropped. `.6.1.5.2` gave every lifecycle row an owner and
+    // deliberately gated nothing, so this verb still acted on another tenant's
+    // record until here.
+    let Some(caller_tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal records no drift",
         ));
-    }
-    match crate::corrections::record_drift(&state.pool, &input).await {
+    };
+    match crate::corrections::record_drift(&state.pool, &caller_tenant, &input).await {
         Ok(()) => Ok(Json(json!({ "drift_id": input.drift_id }))),
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }
@@ -3831,13 +3877,18 @@ async fn record_policy_correction(
     Json(input): Json<crate::corrections::CorrectionInput>,
 ) -> Result<Json<serde_json::Value>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    // `SIGNOFF-REPAIR.6.1.5.2.1`: the tenant is BOUND, not tested with
+    // `is_some()` and dropped. `.6.1.5.2` gave every lifecycle row an owner and
+    // deliberately gated nothing, so this verb still acted on another tenant's
+    // record until here.
+    let Some(caller_tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal records no correction",
         ));
-    }
-    match crate::corrections::record_correction(&state.pool, &principal, &input).await {
+    };
+    match crate::corrections::record_correction(&state.pool, &principal, &caller_tenant, &input)
+        .await
+    {
         Ok(row) => Ok(Json(row)),
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }
@@ -3868,13 +3919,16 @@ async fn record_policy_outcome(
     Json(input): Json<crate::corrections::OutcomeInput>,
 ) -> Result<Json<serde_json::Value>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    // `SIGNOFF-REPAIR.6.1.5.2.1`: the tenant is BOUND, not tested with
+    // `is_some()` and dropped. `.6.1.5.2` gave every lifecycle row an owner and
+    // deliberately gated nothing, so this verb still acted on another tenant's
+    // record until here.
+    let Some(caller_tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal records no outcome",
         ));
-    }
-    match crate::corrections::record_outcome(&state.pool, &input).await {
+    };
+    match crate::corrections::record_outcome(&state.pool, &caller_tenant, &input).await {
         Ok(()) => Ok(Json(json!({ "outcome_id": input.outcome_id }))),
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }
@@ -3903,13 +3957,18 @@ async fn schedule_policy_reviews(
     headers: HeaderMap,
 ) -> Result<Json<Vec<crate::reviews::StoredReview>>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    // `SIGNOFF-REPAIR.6.1.5.2.1`: the tenant is BOUND, not tested with
+    // `is_some()` and dropped. `.6.1.5.2` gave every lifecycle row an owner and
+    // deliberately gated nothing, so this verb still acted on another tenant's
+    // record until here.
+    let Some(caller_tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal schedules no reviews",
         ));
-    }
-    Ok(Json(crate::reviews::schedule_reviews(&state.pool).await?))
+    };
+    Ok(Json(
+        crate::reviews::schedule_reviews(&state.pool, &caller_tenant).await?,
+    ))
 }
 
 /// `GET /v1/policy-reviews` — the reviews, newest first.
@@ -3934,13 +3993,16 @@ async fn mark_policy_review_done(
     headers: HeaderMap,
 ) -> Result<Json<crate::reviews::StoredReview>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    // `SIGNOFF-REPAIR.6.1.5.2.1`: the tenant is BOUND, not tested with
+    // `is_some()` and dropped. `.6.1.5.2` gave every lifecycle row an owner and
+    // deliberately gated nothing, so this verb still acted on another tenant's
+    // record until here.
+    let Some(caller_tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal marks nothing done",
         ));
-    }
-    match crate::reviews::mark_done(&state.pool, &review_id).await {
+    };
+    match crate::reviews::mark_done(&state.pool, &caller_tenant, &review_id).await {
         Ok(row) => Ok(Json(row)),
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }

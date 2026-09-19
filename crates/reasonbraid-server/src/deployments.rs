@@ -176,6 +176,7 @@ pub async fn register_target(
 /// pair). The publication must be EFFECTIVE.
 pub async fn assign(
     pool: &PgPool,
+    tenant_id: &str,
     input: &AssignmentInput,
 ) -> Result<StoredAssignment, DeploymentError> {
     if !is_sha256_hex(&input.desired_digest) {
@@ -192,17 +193,28 @@ pub async fn assign(
     if !target.unwrap_or(false) {
         return Err(DeploymentError::UnknownTarget(input.target_id.clone()));
     }
-    let publication: Option<String> =
-        sqlx::query_scalar("SELECT state FROM policy_publications WHERE publication_id = $1")
-            .bind(&input.publication_id)
-            .fetch_optional(pool)
-            .await
-            .map_err(|_| DeploymentError::UnknownPublication(input.publication_id.clone()))?;
-    let Some(state) = publication else {
+    // ⛔ `SIGNOFF-REPAIR.6.1.5.2.1`: an assignment is tenant-owned by its
+    // PUBLICATION (DOC-0071), and until now any enrolled principal could deploy
+    // another tenant's effective publication to a site target. ⚠️ A foreign
+    // publication answers exactly as an absent one; the reasoning is recorded
+    // once, at `publications::owned_by`.
+    let publication: Option<(String, Option<String>)> = sqlx::query_as(
+        "SELECT state, tenant_id FROM policy_publications WHERE publication_id = $1",
+    )
+    .bind(&input.publication_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| DeploymentError::UnknownPublication(input.publication_id.clone()))?;
+    let Some((state, owner)) = publication else {
         return Err(DeploymentError::UnknownPublication(
             input.publication_id.clone(),
         ));
     };
+    if owner.as_deref() != Some(tenant_id) {
+        return Err(DeploymentError::UnknownPublication(
+            input.publication_id.clone(),
+        ));
+    }
     if state != "effective" {
         return Err(DeploymentError::NotEffective(input.publication_id.clone()));
     }
@@ -238,6 +250,7 @@ pub async fn assign(
 /// Record the receipt (the OBSERVED digest + the state — the attestation).
 pub async fn record_receipt(
     pool: &PgPool,
+    tenant_id: &str,
     target_id: &str,
     publication_id: &str,
     input: &ReceiptInput,
@@ -250,12 +263,19 @@ pub async fn record_receipt(
     if !OBSERVED_STATES.contains(&input.observed_state.as_str()) {
         return Err(DeploymentError::UnknownState(input.observed_state.clone()));
     }
+    // ⛔ `SIGNOFF-REPAIR.6.1.5.2.1`: `deployment_assignments` carries no tenant
+    // column by DOC-0071's decision — it is tenant-owned BY ITS PUBLICATION, and
+    // a target is site-wide by design — so the join is the ownership check, and
+    // an assignment whose publication is not the caller's answers as an absent
+    // assignment does.
     let exists: Option<bool> = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM deployment_assignments \
-         WHERE target_id = $1 AND publication_id = $2)",
+        "SELECT EXISTS (SELECT 1 FROM deployment_assignments a \
+         JOIN policy_publications p ON p.publication_id = a.publication_id \
+         WHERE a.target_id = $1 AND a.publication_id = $2 AND p.tenant_id = $3)",
     )
     .bind(target_id)
     .bind(publication_id)
+    .bind(tenant_id)
     .fetch_one(pool)
     .await
     .map_err(|_| DeploymentError::UnknownAssignment {

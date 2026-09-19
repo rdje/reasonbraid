@@ -147,8 +147,46 @@ type PublicationRow = (
 /// Stage one publication (the §15.7 steps 1–4's record half): the
 /// references must resolve AND belong to the proposal; the proposal must be
 /// APPROVED (the publication follows the approval — the ADR-032 chain).
+/// The publication must be one the caller's tenant OWNS
+/// (`SIGNOFF-REPAIR.6.1.5.2.1`).
+///
+/// ⛔ `.6.1.5.2` gave every publication a tenant and deliberately gated nothing,
+/// so until now any enrolled principal could mark another tenant's publication
+/// effective, failed or published — the three `held_publication_authority` sites
+/// being the sharpest, because a grant the CALLER holds answers *may this
+/// principal act on publications at all*, never *is this publication theirs*.
+///
+/// ⚠️ A foreign publication answers exactly as an ABSENT one
+/// (`docs/decisions/2026-09-18_node-presence-is-read-by-its-own-tenant.md`), or
+/// the refusal is an existence oracle over every other tenant's publication ids.
+///
+/// ⛔ A publication whose `tenant_id` is NULL is owned by NOBODY and may be
+/// advanced by nobody. `migrations/0073` leaves a row NULL only when its lineage
+/// is unattributable, and an unowned governance record that anyone may advance
+/// is worse than one that is frozen — `.7.1.2.2`'s disposition for an
+/// unattributable audit row, applied to a control surface.
+pub async fn owned_by(
+    pool: &PgPool,
+    publication_id: &str,
+    tenant_id: &str,
+) -> Result<(), PublicationError> {
+    let owner: Option<Option<String>> =
+        sqlx::query_scalar("SELECT tenant_id FROM policy_publications WHERE publication_id = $1")
+            .bind(publication_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|_| PublicationError::UnknownProposal(publication_id.to_string()))?;
+    match owner.flatten() {
+        Some(owner) if owner == tenant_id => Ok(()),
+        _ => Err(PublicationError::UnknownProposal(
+            publication_id.to_string(),
+        )),
+    }
+}
+
 pub async fn stage(
     pool: &PgPool,
+    tenant_id: &str,
     input: &PublicationInput,
 ) -> Result<StoredPublication, PublicationError> {
     if !is_sha256_hex(&input.manifest_digest) {
@@ -172,9 +210,15 @@ pub async fn stage(
             .fetch_optional(pool)
             .await
             .map_err(|_| PublicationError::UnknownProposal(input.proposal_id.clone()))?;
-    let Some((status, tenant_id)) = proposal else {
+    let Some((status, proposal_tenant)) = proposal else {
         return Err(PublicationError::UnknownProposal(input.proposal_id.clone()));
     };
+    // ⛔ `SIGNOFF-REPAIR.6.1.5.2.1`: the proposal must be the caller's. A foreign
+    // one answers as an absent one — see `owned_by` above for why.
+    if proposal_tenant.as_deref() != Some(tenant_id) {
+        return Err(PublicationError::UnknownProposal(input.proposal_id.clone()));
+    }
+    let tenant_id = proposal_tenant;
     if status != "approved" {
         return Err(PublicationError::WrongStage {
             publication_id: input.proposal_id.clone(),
@@ -264,6 +308,7 @@ pub async fn stage(
 /// staged → effective transition with the Git object ids recorded.
 pub async fn mark_effective(
     pool: &PgPool,
+    tenant_id: &str,
     publication_id: &str,
     git_object_ids: Vec<String>,
     repository: &crate::publisher::PublicationRepository,
@@ -271,6 +316,7 @@ pub async fn mark_effective(
     if git_object_ids.is_empty() {
         return Err(PublicationError::EmptyObjectIds);
     }
+    owned_by(pool, publication_id, tenant_id).await?;
     let row: Option<(String, String)> = sqlx::query_as(
         "SELECT state, publication_id FROM policy_publications WHERE publication_id = $1",
     )
@@ -322,9 +368,11 @@ pub async fn mark_effective(
 /// staged → failed transition with the reason.
 pub async fn mark_failed(
     pool: &PgPool,
+    tenant_id: &str,
     publication_id: &str,
     reason: &str,
 ) -> Result<StoredPublication, PublicationError> {
+    owned_by(pool, publication_id, tenant_id).await?;
     let row: Option<String> =
         sqlx::query_scalar("SELECT state FROM policy_publications WHERE publication_id = $1")
             .bind(publication_id)

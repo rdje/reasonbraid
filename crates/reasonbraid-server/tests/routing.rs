@@ -42,6 +42,7 @@ async fn pool() -> Option<PgPool> {
     pg_cleanup::delete_tables(
         &pool,
         &[
+            "evaluation_trials",
             "routing_recommendations",
             "routing_resolutions",
             "evaluation_runs",

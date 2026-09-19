@@ -1,5 +1,20 @@
 # CHANGELOG.md
 
+## 2026-09-19 — A suite purges what it asserts over and what it writes, and only the second is mechanizable (`SIGNOFF-REPAIR.7.1.2.2.2`)
+
+`.6.1.5.2`'s regression run was the first batch in which `evaluation` and `routing` could both start since `migrations/0072`, and it found an order-dependent failure.
+
+- 🔴 **`routing evaluation` failed `evaluation` `2 passed; 1 failed`; `evaluation routing` passed both.** `the_shadow_trials_record_the_seeded_assignment_and_the_cohorts` read five trials where it asserts three, the extra two being `rr-trial` and `rec-trial` — `routing.rs`'s own shadow-recommendation fixtures, which have cited a trial as their `evidence_ref` since REPAIR-0274.
+- 🔎 **Both plans were wrong, for two different reasons.** `tests/evaluation.rs` asserts the CONTENT of `evaluation_trials` and never purges it. `tests/routing.rs` writes that table and never purges it either.
+- ✅ **The rule adopted is BOTH halves, because they do different jobs:** purge-what-you-assert makes an assertion correct; purge-what-you-write stops a suite polluting anyone else. Only the second is derivable from the code.
+- 🔴 **WHICH HALF ACTUALLY FIXED IT WAS MEASURED, AND IT WAS NOT THE ONE THE LEAF WAS OPENED ON.** Removing `evaluation.rs`'s purge brings the `2/1` failure straight back. Removing `routing.rs`'s purge leaves **every suite green**. So the write-side sweep is hygiene, not the repair — and running the falsification both ways round is what produced that finding rather than confirming a guess.
+- ✅ **New instrument:** `scripts/census_fixture_write_reach.py`, wired into the doctrine gate. It takes the route-to-table reach from `census_shared_registry_writes.py` rather than re-deriving it, so the two cannot disagree, then matches each suite's route literals against its declared plan. At this commit: **29 plans, 0 refused, 2 exempt**. Five plans swept — `classification`, `evaluation`, `profiles`, `quota`, `routing`.
+- ⛔ **Its sharpest bound, stated rather than implied: it catches this defect only because the ASSERTING suite also posts to that route.** A suite asserting over a table it never writes stays invisible. No such case exists in the tree today; when one appears it needs a different instrument, not a wider regex.
+- ⚠️ **Two over-approximations, each pinned by a self-test arm** so narrowing either is a visible decision: it matches path literals rather than HTTP verbs, and a path no route serves charges nothing.
+- ⛔ **Exemptions carry their reason, and *"a migration INSERTs into it"* was rejected as the rule** — `usage_quotas` is migration-seeded and purged safely by eight plans. The rule is whether the PRODUCT depends on rows no test creates: `workflow_profiles` (the eight built-ins `quick_advice` resolves through) and `resolver_capabilities` (R0/R1/R2) qualify. A self-test arm refuses an exemption without a reason.
+- ⭐ **The two fixture gates compose:** adding the missing tables made `.7.1.2.2.1`'s foreign-key gate demand `evidence_snapshots` and `derivations` in two of the plans, each instrument answering its own question.
+- ✅ **VERIFIED:** `routing evaluation` now 4/0 then 3/0; the reverse stays green; `classification` 1, `profiles` 62, `quota` 1 — 0 failed. `--self-test` 11 controls; `check_fixture_plan_children` rc=0 and 15/15; fmt rc=0; `make gate` green. Falsified both ways round, restored byte-identical after each.
+
 ## 2026-09-19 — The lifecycle stores the tenant it already derived, and five of the nine rows take their parent's (`SIGNOFF-REPAIR.6.1.5.2`)
 
 `.6.1.5` decided the nine policy lifecycle tables are tenant-owned by omission: the write already derives the caller's tenant, checks a thread or a verdict event against it, and then stores nothing. `migrations/0073` stores it.

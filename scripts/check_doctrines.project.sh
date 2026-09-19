@@ -196,6 +196,19 @@ if ! python3 -B scripts/check_fixture_plan_children.py >/dev/null 2>&1; then
     exit 1
 fi
 
+# A suite's cleanup plan must also name every table its own HTTP calls WRITE
+# (`SIGNOFF-REPAIR.7.1.2.2.2`). The check above answers a foreign-key question;
+# this one answers a pollution question no foreign key can express, and the two
+# are different classes. `tests/routing.rs` has posted to `/v1/evaluations/trials`
+# since REPAIR-0274 and never purged `evaluation_trials`, so `routing evaluation`
+# failed `evaluation` 2/1 while `evaluation routing` passed both — a row left
+# behind never hurts the suite that left it, only whichever later suite asserts
+# over the same table, which is why it reads as a flake in someone else's file.
+if ! python3 -B scripts/census_fixture_write_reach.py >/dev/null 2>&1; then
+    python3 -B scripts/census_fixture_write_reach.py >&2
+    exit 1
+fi
+
 # A positional source reference must name a file a reader can find
 # (`SIGNOFF-REPAIR.11.17`). `CLAIM_VERIFICATION.md` §4.1 grades a NAMED INSTANCE
 # as exact with no tolerance band, and a BARE BASENAME is exact only when it

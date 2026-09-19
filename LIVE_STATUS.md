@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **A SUITE PURGES WHAT IT ASSERTS OVER AND WHAT IT WRITES, AND ONLY THE SECOND IS MECHANIZABLE (`.7.1.2.2.2`, REPAIR-0279).**
+
+`routing evaluation` failed `evaluation` **2/1**; `evaluation routing` passed both. `tests/evaluation.rs` asserts the content of `evaluation_trials` and never purged it; `tests/routing.rs` has written that table since REPAIR-0274 and never purged it either.
+
+- 🔴 **Which half actually fixed it was MEASURED, and it was not the one the leaf was opened on.** Removing `evaluation.rs`'s purge brings the failure straight back; removing `routing.rs`'s leaves every suite green. The write-side sweep is hygiene, not the repair.
+- ✅ **New gate `scripts/census_fixture_write_reach.py`**, wired into the doctrine enforcer, taking its route-to-table reach from `census_shared_registry_writes.py` rather than re-deriving it. **29 plans, 0 refused, 2 exempt**; five plans swept.
+- ⛔ **Its sharpest bound, stated rather than implied:** it catches this defect only because the ASSERTING suite also posts to that route. A suite asserting over a table it never writes stays invisible — no instance today, and a different instrument when one appears.
+- ⛔ **Exemptions carry a reason, and *"a migration INSERTs into it"* was REJECTED as the rule:** `usage_quotas` is migration-seeded and purged safely by eight plans. The test is whether the product depends on rows no test creates — `workflow_profiles` and `resolver_capabilities` qualify.
+- ✅ **VERIFIED:** `routing evaluation` now 4/0 then 3/0, the reverse still green; `classification` 1, `profiles` 62, `quota` 1 — 0 failed. `--self-test` 11 controls; the FK gate rc=0 and 15/15; fmt rc=0; gate green. Falsified both ways round and restored byte-identical after each.
+
 ✅ **THE POLICY LIFECYCLE NOW STORES THE TENANT IT ALREADY DERIVED, AND FIVE OF THE NINE ROWS TAKE THEIR PARENT'S (`.6.1.5.2`, REPAIR-0278).**
 
 `migrations/0073` gives the nine lifecycle tables a `tenant_id`. `policy_versions` — the shared library — deliberately gets none.

@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — Run the falsification both ways round, or you will not know what you fixed
+
+- Two plans were wrong and I fixed both. The tidy write-up would have been *"the suites polluted each other; both now purge; green"*. It would also have been wrong about which change mattered.
+- ⭐ **Removing `evaluation.rs`'s purge brings the failure straight back. Removing `routing.rs`'s leaves every suite green.** The assert-side purge is the repair; the write-side purge is hygiene against a defect that has not happened yet. One line of evidence separates those two claims and I only have it because I neutralized each side separately instead of neutralizing "the fix".
+- 🔎 **The general shape: when a repair touches two places, neutralizing both at once tells you the pair is load-bearing and nothing else.** It is the same trap as `.6.1.5.1.1`'s shared predicate text, arriving from the other direction — there a single edit opened three sites, here a single claim covered two edits.
+- ⛔ **And the gate I built enforces the half that did not fix it**, which is a strange sentence to write down and the honest one. The assert-side rule — *a control that asserts over a whole table owns emptying it* — needs to know what an `assert_eq!` over a `Vec<Value>` quantifies over, and that is not derivable from the source. The write-side rule is derivable, is a superset of the tables a suite can pollute, and in this instance happens to demand the assert-side purge too, because the asserting suite also writes the table.
+- ⚠️ **That coincidence is the gate's real bound and it belongs in the header rather than in my head.** A suite asserting over a table it never writes is invisible to this instrument. There is no such case in the tree today; writing down that there could be is cheaper than someone rediscovering it.
+- 🔎 **One rejected rule worth recording: "a migration INSERTs into it" is not what makes a table reference data.** `usage_quotas` is seeded by `migrations/0068` and eight plans purge it safely, because the application re-creates a tenant's rows on enrolment. The test is whether the PRODUCT depends on rows no test creates — `workflow_profiles`' built-ins do, and `quick_advice` resolves through them.
+- promotion: pending — *a suite's cleanup plan owes the tables it asserts over and the tables it writes, for two different reasons; only the second is derivable, and a gate enforcing the second catches the first only by coincidence*.
+
 ## 2026-09-19 — The tenant of a derived record is its parent's, not its author's
 
 - The leaf said *store the tenant the write already derives*, and I nearly did exactly that at all nine sites. Four of them would have been right.

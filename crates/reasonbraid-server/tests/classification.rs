@@ -47,6 +47,8 @@ async fn pool() -> Option<PgPool> {
     pg_cleanup::delete_tables(
         &pool,
         &[
+            "derivations",
+            "claim_assessments",
             "quota_events",
             "usage_quotas",
             "federation_agreements",
@@ -86,7 +88,9 @@ async fn pool() -> Option<PgPool> {
             "recruitment_responses",
             "recruitment_calls",
             "evidence_citations",
+            "evidence_snapshots",
             "reference_registrations",
+            "resource_references",
             "routing_recommendations",
             "routing_resolutions",
             "policy_reviews",

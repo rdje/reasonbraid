@@ -5,6 +5,17 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **THREE OF THE THIRTY-SIX ADVERTISED POLICY LINES ARE ENFORCED (`.7.3.6.1`, REPAIR-0266).**
+
+A resolver pack publishes six policy fields to every caller that reads the §12.2 registry; six packs ship, so **36 lines**. Adjudicated: **`enforced` 3 · `unverified` 5 · `vacuous` 14 · `misdescribed` 7 · `undefined` 7** — every verdict with its evidence in `.doctrine/advertised_policy_verdicts.tsv`. Re-derive with `python3 -B scripts/census_advertised_policies.py`; never read the numbers from this line.
+
+- 🔴 **Four of the six fields are consumed by NOTHING** — `redirect_policy`, `archive_policy`, `subresource_policy`, `javascript_policy`: **34 field mentions on 32 lines, 0 reads**, every one a declaration, a write or a comment. ⭐ Enumerated in BOTH directions — an occurrence no rule explains defaults to `read`, so the finding can only be under-stated. ⇒ `.7.3.5` repaired the BEHAVIOUR of two lines without connecting the advertisement to the enforcement.
+- ⚠️ **`vacuous` is 14 and is not a synonym for safe.** R0 advertises `javascript_policy: "deny"` and runs no script engine: true today, guarded by nothing, false the day R0 gains one — exactly how `.7.3.5`'s two lines behaved until the pack started executing pages.
+- 🔴 **`archive_policy` is defined nowhere in the repository**, and R2 advertises it `deny` two fields above a `media_types` list containing `application/zip` and `application/x-tar` that its own worker expands.
+- 🔴 **The instrument carried the defect it was built to find.** Keyed by pack and field alone, flipping R3's `subresource_policy` `deny` → `allow` in the producer left the census GREEN at `enforced — .7.3.5`. The advertised VALUE is now part of the verdict's key; measured in situ, restored byte-identical, replayed against the repair.
+- ✅ Registered as a doctrine gate — 0.044 s, self-test 26/26 in 0.067 s, `make gate` 21 checks green. ⚠️ Calibrated over all **594** commits, not a 300 window that returns a survivorship 0: **4 (0.7%)**, all four commits that ADDED a pack.
+- ⛔ **No product code changed.** Four defects routed OUT with their own acceptance — `.7.3.6.2` (the upsert writes 6 of 18 columns), `.7.3.6.3` (advertisement and enforcement are two constants a comment holds together), `.7.3.6.4` (the egress ladder admits a wider pack than the caller asked for), `.7.3.6.5` (the undefined and misdescribed terms, **G4's open strand among them**).
+
 ✅ **THE DEBUG BUILD TREE IS RETIRED, AND `cargo clean` WOULD HAVE TAKEN THE EVIDENCE WITH IT (`.11.4.3.1.8`, DOC-0060).**
 
 Option **(b)**, taken by the director on 2026-09-19 — the rebuild cost accepted explicitly, which forecloses the leaf's third outcome ("measured and not worth acting on"). **≈174 GiB recovered by `df`** (666,182,692 → 483,578,156 KiB used).
@@ -18,7 +29,7 @@ Option **(b)**, taken by the director on 2026-09-19 — the rebuild cost accepte
 
 G1–G2, G3, G4, G5 and G6–G7, line by line, each verdict from `stands`/`narrowed`/`must be re-earned` with the command that produces it. ⛔ **No record's conclusion changed**: G6–G7 stays NOT MET for Internet exposure and G3 stays blocked as binding use.
 
-- 🔴 **G4 must be re-earned and is NOT fully discharged.** Three defects landed inside its own clause (REPAIR-0224, REPAIR-0227, `.11.14.3.12`), all repaired. ⚠️ **One strand stays open**: the R3 `vm_container` deferral is a claim *about the deployment*, not an enforced property, and `.7.3.6` owns it — now frontier row 1.
+- 🔴 **G4 must be re-earned and is NOT fully discharged.** Three defects landed inside its own clause (REPAIR-0224, REPAIR-0227, `.11.14.3.12`), all repaired. ⚠️ **One strand stays open**: the R3 `vm_container` deferral is a claim *about the deployment*, not an enforced property, and `.7.3.6` owned it — since split by `.7.3.6.1`, the strand is `.7.3.6.5`.
 - 🔴 **4 of 6 evidence pointers moved** (`profiles.rs` 23→56; `profiles 23` was G4's only citation). ⛔ The numbering instrument was wrong first — it counted helpers — and was rebuilt with a self-check before any conclusion.
 - ✅ **G5's three stand**, on a positive-controlled census: the first pattern returned 0 and was wrong; corrected it finds 3 hits, all withdrawals. H1 null preserved, no new benchmark evidence.
 - `profiles` 56/56 · `evaluation` 3/3 · `routing` 2/2 — **61 tests, 0 failures**.

@@ -236,4 +236,38 @@ if ! python3 -B scripts/census_broken_tables.py --check >/dev/null 2>&1; then
     exit 1
 fi
 
+# Every policy line a resolver pack ADVERTISES carries an adjudicated verdict
+# (`SIGNOFF-REPAIR.7.3.6.1`). A pack publishes six of them to every caller that
+# reads the §12.2 registry, and a caller CHOOSING a pack reads all six.
+# `SIGNOFF-REPAIR.7.3.5` found the R3 pack advertising `redirect_policy: "deny"`
+# and `subresource_policy: "deny"` and enforcing NEITHER — a claim in a
+# REGISTRY, which is worse than one in a module header, because a module header
+# is read by maintainers and an advertisement is read by callers.
+#
+# ⭐ The gate is the JOIN, not the count: the census enumerates the lines from
+# their two producers (the Rust literals in `resolvers.rs::gated_advertises` and
+# the `INSERT INTO resolver_capabilities` rows in `migrations/`) and refuses any
+# line `.doctrine/advertised_policy_verdicts.tsv` does not cover AT ITS CURRENT
+# VALUE. A new pack arrives unadjudicated; a changed word invalidates the
+# verdict earned for the old one.
+#
+# 🔴 THE VALUE IS IN THE KEY BECAUSE THE INSTRUMENT SHIPPED WITHOUT IT AND
+# CARRIED THE EXACT DEFECT IT WAS BUILT TO FIND. Keyed by pack and field alone,
+# flipping R3's `subresource_policy` from `deny` to `allow` in the producer left
+# the census GREEN, still reporting `enforced — .7.3.5` for a line advertising
+# the opposite of what that leaf repaired. Measured in situ, restored
+# byte-identical, then replayed against the repair.
+#
+# ⚠️ Calibrated over the FULL history before registering, because the instance
+# is older than any 300-commit window (`docs/knowledge/calibrate-over-the-
+# history-that-contains-the-instance.md`): 4 of 594 commits (0.7%) would have
+# been blocked, and all four are the commits that ADDED a pack — exactly the
+# moment the adjudication is owed. No commit has ever MOVED a value, so the
+# stale-verdict arm guards the next one rather than presenting a backlog. The
+# standing population was discharged to 0 first, so it ships green.
+if ! python3 -B scripts/census_advertised_policies.py --check >/dev/null 2>&1; then
+    python3 -B scripts/census_advertised_policies.py --check >&2
+    exit 1
+fi
+
 exit 0

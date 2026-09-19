@@ -1920,6 +1920,67 @@ itself carries. Denying every request including the navigation is *not* the
 policy — a control asserts that the requested page still loads, so a repair that
 blacked the browser out would fail it.
 
+### What a pack advertises, and what is actually behind each line
+
+A resolver pack publishes six policy fields to every caller that reads the
+§12.2 capability registry — `egress_class`, `sandbox_level`, `redirect_policy`,
+`archive_policy`, `subresource_policy` and `javascript_policy`. A caller
+choosing a pack reads all six. The section above describes two of them being
+repaired; this one says what is behind the other thirty-four.
+
+Six packs ship, so there are **36 advertised lines**. They come from two
+different places and are counted separately, because a Rust literal can be
+traced to a call graph and a database row cannot: the three gated packs
+(R3/R5/RX) exist only as literals in `resolvers.rs::gated_advertises`, and the
+three built-in packs (R0/R1/R2) only as rows installed by migrations `0025`,
+`0026` and `0027`.
+
+```bash
+python3 -B scripts/census_advertised_policies.py            # the 36 lines
+python3 -B scripts/census_advertised_policies.py --readers   # what consults them
+python3 -B scripts/census_advertised_policies.py --check     # the gate
+```
+
+**Three of the thirty-six are enforced with a control that has been observed
+refusing.** The rest break down like this, and the verdict for every individual
+line, with its evidence, is in `.doctrine/advertised_policy_verdicts.tsv`:
+
+| verdict | lines | what it means |
+| --- | --- | --- |
+| `enforced` | 3 | a mechanism refuses, and a control has been seen RED |
+| `unverified` | 5 | a mechanism is present and covered, but no RED is on record |
+| `vacuous` | 14 | the pack has no mechanism that could violate the line |
+| `misdescribed` | 7 | the word names something other than what the code does |
+| `undefined` | 7 | the word has no stated meaning anywhere in the repository |
+
+**`vacuous` is not a synonym for safe, and that distinction is the point of
+publishing this table.** R0 advertises `javascript_policy: "deny"` and runs no
+script engine at all — true today, guarded by nothing, and false the moment R0
+gains one. The two lines the section above describes were vacuous in exactly
+that way right up until the pack they described started executing pages.
+
+**Four of the six fields are read by nothing.** `redirect_policy`,
+`archive_policy`, `subresource_policy` and `javascript_policy` occur 34 times
+across the tracked Rust sources — on 32 lines, because one line names three of
+them at once — and every one of those occurrences is a declaration, a write or a
+comment. Only `egress_class` and `sandbox_level` are
+consulted: once to validate them against the ADR-018 vocabulary, and once by the
+resolution filter. So the R3 worker denies subresources because a person read
+the advertisement and wrote the behaviour, not because anything compares the
+two — and flipping the advertised word today would change what callers are told
+without changing what the browser does.
+
+**`archive_policy` has no definition anywhere in this repository**, and its
+sharpest instance is a contradiction a reader can see without leaving the row:
+the R2 extraction pack advertises `archive_policy: "deny"` two fields above a
+`media_types` list containing `application/zip` and `application/x-tar`, both of
+which its worker expands.
+
+A new pack, or a changed word in an existing one, fails the commit until the
+line is adjudicated — the census is registered as a doctrine gate and joins each
+advertised line to its verdict **at its current value**, so a verdict cannot
+outlive the word that earned it.
+
 ### Where a credential goes, and where it stops
 
 The R5 pack acquires a resource with a credential the broker resolves for one

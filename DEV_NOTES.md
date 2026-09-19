@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — The instrument you build to catch a class of defect is written by someone who has that defect
+
+- I built a census to find advertised claims nothing enforces, keyed its verdict ledger on `(pack, field)`, adjudicated all 36 lines, and watched it go green. Then I flipped R3's `subresource_policy` from `deny` to `allow` in the producer — the exact line `.7.3.5` had repaired — and the gate stayed **green**, still printing `enforced — SIGNOFF-REPAIR.7.3.5` beside a word that now said the opposite.
+- ⭐ **The verdict was a claim about a VALUE and I had keyed it on the value's ADDRESS.** That is the same mistake in a different register as the thing being audited: `.7.3.5` made the browser deny what the registry advertises, and joined the two with a comment. I made a ledger grade what a pack advertises, and joined them with a field name. Both hold until somebody edits one side.
+- 🔎 **What caught it was running the second falsification after the first had already passed.** Injecting a whole new pack fired the gate loudly, six lines named with source positions, and that was enough to feel finished. The flip is the cheaper and nastier case — nothing is added, nothing is missing, one word changes — and it is the one a real deployment produces.
+- ⛔ **A third defect came from an arm rather than a probe**, which is the argument for writing arms you expect to pass: asserting that a five-column ledger row is *dropped* rather than read failed, because the loader was reading the pre-value-column shape with every field shifted by one — turning a verdict into a value. I had not tested it because I had just changed the format and "obviously" nothing used the old one.
+- ⚠️ **And the calibration nearly lied by window.** 300 commits returned `0 of 300`, which reads like "this gate never fires". The packs were introduced 300+ commits ago; over the full 594 the answer is 4, and all four are the commits where the adjudication was actually owed. A replay window that excludes the instance measures the absence of the instance.
+- promotion: declined for a new record — this is `[[a-control-that-passes-for-an-unrelated-reason]]` and `[[calibrate-over-the-history-that-contains-the-instance]]` meeting in one instrument, and both notes gain it. The transferable sentence is in the decision record: **a judgement about a word is gated on the word, or it is a comment saying *do not edit by hand*.**
+
 ## 2026-09-19 — A cleanup verb's blast radius is the directory it owns, not the bytes you meant
 
 - The leaf offered three dispositions for a 174 GiB build tree, and option (b) read *"a whole-tree `cargo clean`, accepted as a measured rebuild cost"*. The director chose it. Running it as written would have deleted `target/pg-tests`, `target/ci-browser` and `target/browser-lifetime-controls` — **38 tracked citations between them**, including a fixture the project's own census deliberately holds back *because* it is cited.

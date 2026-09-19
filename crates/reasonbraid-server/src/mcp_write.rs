@@ -147,6 +147,16 @@ pub async fn gate(
 /// the `thread_contribute` grant → the domain → the audit). The tool's
 /// payload is the ContributeBody WITHOUT the tenant (the tenant rides the
 /// tool's argument — the seam injects it; the dev-profile trust shape).
+///
+/// 🔴 **The body is CHECKED before it is indexed (`SIGNOFF-REPAIR.6.1.3`).**
+/// This function is `pub` through `crate::mcp_write_internal` and takes a
+/// `serde_json::Value`, and it used to write `body["tenant_id"] = …` straight
+/// into it. `IndexMut<&str>` for `Value` PANICS on a string, a number, a bool
+/// or an array, so a caller that kept the signature's promise and handed it a
+/// `Value` could unwind the task rather than be refused. ⚠️ Not reachable
+/// through the MCP tool, which serializes a typed `ContributePayload` — but a
+/// signature is a promise the body must keep (`SIGNOFF-REPAIR.4.2.7`), and the
+/// guard belongs where the promise is made, not at one of its callers.
 pub async fn respond(
     pool: &PgPool,
     tenant_id: &str,
@@ -165,7 +175,28 @@ pub async fn respond(
             "thread_id is malformed: {e}"
         )))
     })?;
+    // ⛔ BEFORE the index, and it must stay a check rather than a conversion.
+    // The body feeds `request_hash` three lines down, which derives the
+    // idempotency KEY — so round-tripping it through a typed struct could change
+    // the bytes, change the key, and make an old call contribute AGAIN instead
+    // of replaying. That is the failure the comment below already guards against
+    // for a different reason, and it is why this leaf refuses the shape rather
+    // than retyping the body: `join_call` and `propose_policy_change` do parse
+    // into their typed inputs, and they can, because neither feeds a hash.
+    //
+    // ⚠️ `null` is refused with the rest, deliberately. It was the one non-object
+    // that did NOT panic — serde_json silently replaces a `Null` with an empty
+    // object — so it reached the downstream parse and refused there naming the
+    // missing fields rather than the real problem. Fabricating an object out of
+    // a caller's `null` is not a service to anybody.
     let mut body = body;
+    if !body.is_object() {
+        return Err(WriteRefused::handler(
+            crate::api::ControlApiError::invalid_command(
+                "the contribution body must be a JSON object carrying the contribution's fields",
+            ),
+        ));
+    }
     body["tenant_id"] = serde_json::json!(tenant_id);
     // The idempotency key is DETERMINISTIC over (thread, principal, body) —
     // the same call replays the original result (the tool is a replay

@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-19 — The write seam refuses the body it cannot index, and a check rather than a retype because the body feeds a hash (`SIGNOFF-REPAIR.6.1.3`)
+
+- 🔴 **OBSERVED RED AGAINST THE SHIPPED SEAM, and the panic is inside the dependency:** `panicked at serde_json-1.0.151/src/value/index.rs:102:18: cannot access key "tenant_id" in JSON string`. `mcp_write::respond` is `pub` through `mcp_write_internal`, takes a `serde_json::Value`, and wrote `body["tenant_id"] = …` straight into it — and `IndexMut<&str>` panics on a string, a number, a bool or an array.
+- ⚠️ **Bounded honestly:** not reachable through the MCP tool, which serializes a typed `ContributePayload`. But a signature is a promise the body must keep (`SIGNOFF-REPAIR.4.2.7`), and the guard belongs where the promise is made rather than at one of its callers. This is that rule's third recorded instance.
+- ⭐ **THE REPAIR IS A CHECK, NOT A RETYPE, AND THE REASON IS THREE LINES BELOW IT.** `body` feeds `request_hash`, which derives the idempotency KEY — re-serializing it through a typed struct could change the bytes, change the key, and make an old call CONTRIBUTE AGAIN instead of replaying. ⛔ That is also why `join_call` and `propose_policy_change` legitimately DO parse into typed inputs: neither feeds a hash. The three seams differ for a reason, and making them look alike would have cost more than it bought.
+- ⚠️ **`null` is refused with the rest, and it was the one shape that did NOT panic.** serde_json silently replaces a `Null` with an empty object, so a `null` body refused downstream naming the MISSING FIELDS rather than the real problem. The outcome class is unchanged; the message now names what the caller actually did.
+- 🔎 **THE CENSUS BEHIND THE *ONLY SITE* CLAIM NEEDED A WIDER KEY.** Of **21** index-assign sites in the workspace, every one but this indexes a value the same function built — `json!({…})`, `to_value(&typed)`, or a clone of one. ⛔ The first key matched literal string subscripts only and missed three of the 21; the count rests on the wider one. `a-census-is-as-wide-as-its-key`, applied before publishing rather than after.
+- ✅ **VERIFIED:** `mcp_write` **6/0** (5 before); `mcp` 6, `command_api` 39 — 0 failed. Clippy rc=0, fmt rc=0, `make gate` green (21/21). Falsified in situ with no test edit: removing only the four-line guard reproduces the identical panic; `cmp -s` byte-identical after restore; 6/6.
+- ⚠️ **A FALSIFICATION THAT SILENTLY DID NOT APPLY IS RECORDED RATHER THAN QUIETLY REDONE.** The first neutralization's anchor no longer matched because `cargo fmt` had reflowed the guard, so the suite ran against the repaired code and passed — a green run wearing a RED label. It was repeated against the formatted text.
+
 ## 2026-09-19 — The unreproducible figure re-derives exactly, and its residue was measured against one record too few (`SIGNOFF-REPAIR.7.1.2.2.3`)
 
 `.6.1.5.3.1` re-derived seven published claims, found one wrong, and recorded an eighth as *unreproducible rather than wrong*. This leaf is that eighth, and both halves of that judgement hold.

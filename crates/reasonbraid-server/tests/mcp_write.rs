@@ -889,3 +889,139 @@ async fn a_response_is_bound_to_the_calls_own_tenant() {
         breaches.join("\n")
     );
 }
+
+/// `SIGNOFF-REPAIR.6.1.3` — the write seam refuses a body it cannot index.
+///
+/// 🔴 `mcp_write::respond` took a `serde_json::Value` it received untyped and
+/// wrote `body["tenant_id"] = …` into it. `IndexMut<&str>` for `Value` PANICS on
+/// a string, a number, a bool or an array, so a caller that handed the `pub`
+/// seam a non-object UNWOUND the task instead of being refused.
+///
+/// ⚠️ **Bounded honestly, and the bound is why this control calls the function
+/// DIRECTLY.** The MCP tool serializes a typed `ContributePayload`, so the panic
+/// is not reachable through that surface today. `respond` is `pub` through
+/// `mcp_write_internal` and takes a `Value`, which is where the promise is made
+/// and where the guard belongs — `SIGNOFF-REPAIR.4.2.7`'s promoted rule, *a
+/// signature is a promise the body must keep*, on a third surface.
+#[tokio::test]
+async fn the_write_seam_refuses_a_body_it_cannot_index() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let base = server.base();
+    let (human_id, tenant, role_id) = bootstrap(
+        &client,
+        &base,
+        "mcpw-untyped",
+        json!(["thread_contribute", "thread_invitation_respond"]),
+    )
+    .await;
+
+    // A real thread the role may contribute to, so the gate and the authz both
+    // PASS and the body is the only thing under test. A control that refused at
+    // the gate would pass against the unrepaired code for the wrong reason.
+    let (status, created) = command(
+        &client,
+        &base,
+        "/v1/threads",
+        &human_id,
+        &envelope(
+            "thread.create",
+            "ut-create",
+            json!({
+                "tenant_id": tenant,
+                "subject": "the untyped body",
+                "objective": "prove the seam refuses what it cannot index",
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "create: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    let (status, invited) = command(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}/commands"),
+        &human_id,
+        &envelope(
+            "thread.invite",
+            "ut-invite",
+            json!({ "tenant_id": tenant, "agent_role": role_id }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "invite: {invited}");
+    let (status, accepted) = command(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}/commands"),
+        &role_id,
+        &envelope(
+            "thread.accept_invitation",
+            "ut-accept",
+            json!({ "tenant_id": tenant }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "accept: {accepted}");
+
+    // ── THE REFUSALS ─────────────────────────────────────────────────────────
+    // Every JSON shape that is not an object. The string, the number, the bool
+    // and the array each PANICKED before this leaf; `null` did not, because
+    // serde_json silently replaces a Null with an empty object — so it reached
+    // the downstream parse and refused there, for a reason that named the
+    // missing fields rather than the real problem. All five are refused at the
+    // seam now, and `null` is included deliberately: fabricating an object out
+    // of a caller's `null` is not a service to anybody.
+    for body in [
+        json!("a bare string"),
+        json!(7),
+        json!(true),
+        json!(["an", "array"]),
+        json!(null),
+    ] {
+        let shape = match &body {
+            Value::String(_) => "string",
+            Value::Number(_) => "number",
+            Value::Bool(_) => "bool",
+            Value::Array(_) => "array",
+            Value::Null => "null",
+            Value::Object(_) => unreachable!("the object is the accepted shape"),
+        };
+        let err = reasonbraid_server::mcp_write_internal::respond(
+            &pool,
+            &tenant,
+            &role_subject(&role_id),
+            &thread_id,
+            body.clone(),
+        )
+        .await
+        .expect_err(&format!("a {shape} body must be REFUSED, never accepted"));
+        assert_eq!(
+            err.family, "handler:invalid_command",
+            "a {shape} body is a typed refusal, not a panic and not an authority \
+             failure: {err:?}"
+        );
+        assert!(
+            err.message.contains("JSON object"),
+            "the refusal names what was wrong with the body, so a caller can fix \
+             it — a {shape} body said: {}",
+            err.message
+        );
+    }
+
+    // ⭐ THE POSITIVE ARM, without which the guard is indistinguishable from
+    // refusing everything: the ordinary object body still lands, and the seam
+    // still injects the tenant the caller must not send twice.
+    let ok = reasonbraid_server::mcp_write_internal::respond(
+        &pool,
+        &tenant,
+        &role_subject(&role_id),
+        &thread_id,
+        json!({ "content": "the object body still lands", "kind": "claim" }),
+    )
+    .await
+    .expect("the object body is unaffected by the guard");
+    assert_eq!(ok["status"], json!(200), "the accepted respond: {ok}");
+}

@@ -5,6 +5,14 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE MCP WRITE SEAM REFUSES THE BODY IT CANNOT INDEX (`.6.1.3`, REPAIR-0285).**
+
+- 🔴 **Observed RED against the shipped seam, and the panic is inside the dependency:** `serde_json-1.0.151/src/value/index.rs:102: cannot access key "tenant_id" in JSON string`. `mcp_write::respond` is `pub`, takes a `serde_json::Value`, and indexed it — and `IndexMut<&str>` panics on a string, number, bool or array.
+- ⚠️ **Bounded honestly:** not reachable through the MCP tool, which serializes a typed `ContributePayload`. The guard belongs where the signature makes the promise, not at one of its callers.
+- ⭐ **The repair is a CHECK, not a retype**, because `body` feeds the idempotency hash three lines down: re-serializing could change the key and turn a replay into a second contribution. `join_call` and `propose_policy_change` legitimately DO parse into typed inputs — neither feeds a hash.
+- 🔎 **The *only site* claim rests on a census that needed a wider key:** 21 index-assign sites, every other one into a value the same function built; the first key missed three of the 21.
+- ✅ **VERIFIED:** `mcp_write` **6/0** (5 before), `mcp` 6, `command_api` 39 — 0 failed. Clippy, fmt, gate (21/21) rc=0. Falsified in situ with no test edit, restored byte-identical.
+
 ✅ **THE UNREPRODUCIBLE FIGURE RE-DERIVES EXACTLY, AND ITS RESIDUE WAS MEASURED AGAINST ONE RECORD TOO FEW (`.7.1.2.2.3`, REPAIR-0284).**
 
 `.6.1.5.3.1` recorded a published figure as *unreproducible rather than wrong* and opened this leaf. Both halves of that judgement hold.

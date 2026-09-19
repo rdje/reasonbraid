@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — A falsification that silently did not apply is a green run wearing a RED label
+
+- I neutralized a four-line guard to prove my control could still see the defect, ran the suite, and got 6/6. For a moment that read as *the guard was not load-bearing*. It was not: the patch had never applied. `cargo fmt` had reflowed the guard between my writing it and my copying the anchor text, so the replacement matched nothing, and the script's own assertion caught it — but only because I had written one.
+- ⛔ **The failure mode is that an unapplied neutralization and a genuinely unnecessary guard produce the SAME OUTPUT**: a passing suite. Everything about the run looks like evidence. What distinguishes them is not in the test output at all; it is whether the file on disk actually changed.
+- ⭐ So a neutralization needs the same thing a control needs: something that fails when it did not happen. An `assert` on the patch anchor is the cheapest version, and a `cmp -s` against the pre-neutralization copy before the run — not only after the restore — is the complete one. I had the second habit and not the first, and the second one runs too late to catch this.
+- 🔎 **The repair itself had a decision worth more than the repair.** The obvious fix for *this function indexes an untyped `Value`* is to parse it into a typed struct, which is what the two sibling seams do. Here it would have been wrong: the body feeds the idempotency hash three lines down, so re-serializing could change the key and turn a replay into a second contribution. The siblings can retype because neither feeds a hash.
+- ⚠️ **That is worth stating because "make the three seams consistent" is a reasonable-sounding instinct that would have shipped a duplicate-effect bug.** Two functions doing the same-looking thing differently is not automatically a defect; the question is whether the difference has a reason, and here it does. I put the reason at the guard rather than in this file, because that is where the next person wanting to tidy it will be standing.
+- promotion: declined — *a signature is a promise the body must keep* is already promoted (`SIGNOFF-REPAIR.4.2.7`) and this is its third instance. The neutralization-hygiene point is an extension of `docs/knowledge/a-falsification-you-can-leave-behind.md` rather than a new rule, and is recorded at this leaf.
+
 ## 2026-09-19 — The figure I could not reproduce was exactly right, and its definition was what had aged
 
 - One leaf ago I recorded a published figure as *unreproducible* rather than wrong, and opened a leaf for it. Both halves of that turn out to have been the right call, and for a reason I did not have at the time.

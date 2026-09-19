@@ -205,6 +205,7 @@
 - [`2026-09-19_the-write-quota-counts-calls-not-effects.md`](docs/decisions/2026-09-19_the-write-quota-counts-calls-not-effects.md)
 - [`2026-09-20_a-command-cannot-outlive-its-authority.md`](docs/decisions/2026-09-20_a-command-cannot-outlive-its-authority.md)
 - [`2026-09-20_a-retention-window-measures-time-in-the-state-it-retains.md`](docs/decisions/2026-09-20_a-retention-window-measures-time-in-the-state-it-retains.md)
+- [`2026-09-20_a-schema-pattern-nobody-reads-is-not-a-contract.md`](docs/decisions/2026-09-20_a-schema-pattern-nobody-reads-is-not-a-contract.md)
 - [`2026-09-20_an-acknowledgement-covers-a-range-and-the-tail-does-not.md`](docs/decisions/2026-09-20_an-acknowledgement-covers-a-range-and-the-tail-does-not.md)
 - [`2026-09-20_revoking-an-authority-records-when.md`](docs/decisions/2026-09-20_revoking-an-authority-records-when.md)
 

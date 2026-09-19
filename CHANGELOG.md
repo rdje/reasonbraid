@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-20 — No column, because the pattern it would complete is one nobody reads (`SIGNOFF-REPAIR.11.24.1.1.2.1.1.1.1`)
+
+`REASONBRAID-REPAIR-0304`. A decision and a census; no code changed.
+
+- 🔴 **This leaf's own opening argument is withdrawn by the census it demanded**, and the argument was written one commit earlier. It opened calling `federation_agreements` a *sharper* instance than the grant that found it: `authority_grants` recorded no transition instants at all, so its omission was uniform and invisible, while this table records `proposed_at` and `accepted_at` and leaves the revocation undated beside them — so *a reader of the columns would reasonably conclude the instant is there*.
+- ⛔ **There is no such reader.** `git grep -n "accepted_at\|proposed_at" -- crates` returns exactly **one** hit outside the two writes, and it is a third write — the re-proposal resetting `accepted_at = NULL`. Neither column appears in any `SELECT`. **The two instants this table records are written and read by nothing**, so the pattern is a writing habit rather than a contract anyone depends on, and the inference-from-the-other-two argument is refuted by there being no reader of the other two.
+- ⭐ **The reader census, read site by site rather than counted.** All three `has_effective_*_agreement` readers take only the capability columns and gate on `status = 'accepted'`; the revoke verb reads `status`. Their two callers — the directory read gate in `api.rs` and the card-import allowlist rung in `authority/profile_admin.rs` — are decision-time liveness gates. None asks *when*. And nothing durable is aged by a revocation: `cross_domain_receipts` carries its own `created_at`.
+- ⛔ **Why the grant's answer does not transfer.** `authority_grants` gained `revoked_at` because a second reader that is not the audit log needed to age something by the instant — the inbox prune's time-in-terminal window. That reader exists there and does not exist here. **A column is not missing until something needs it**, which was true of the grant's column until this week.
+- ⚠️ **The trigger is written down**, which is what makes the refusal safe to act on later: a reader that must age or order something by when a direction was withdrawn. At that point `.11.24.1.1.2.1.1.1`'s two rules apply unchanged.
+- ⚪ **One observation recorded and deliberately not graded a defect.** `accepted_at` is written and never read — the *opposite* arrangement to `.11.24.1.2`'s advertised-but-unproducible variant (a producer and no consumer), and latent data on a row an operator can inspect directly is legitimate. It is recorded because it is the evidence this decision rests on.
+- ✅ **VERIFIED: no code changed**, so there is nothing to falsify and nothing to regress — the honest statement rather than a skipped box. The discriminating evidence is the census, and it was capable of the other answer: one `SELECT … accepted_at` anywhere in the tree would have shipped the column. Doctrine gate green.
+- ⭐ **Promoted to `TOOLBOX.md` as the second instance of one mechanism pointing opposite ways** — not a family match, which the previous leaf explicitly refused to count: *a column is not missing until something needs it — census the readers, not the tables.*
+
 ## 2026-09-20 — Revoking an authority records when, and the row agrees with the audit trail by construction (`SIGNOFF-REPAIR.11.24.1.1.2.1.1.1`)
 
 `REASONBRAID-REPAIR-0303`. The deferral the previous commit opened, closed.

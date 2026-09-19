@@ -496,6 +496,36 @@ The exclusion by path is still there. What makes it safe is the other defence: a
 guard variable that makes any nested invocation exit immediately, so a discovery mistake
 costs one process instead of a machine.
 
+### A column is not missing until something needs it — census the readers, not the tables
+
+When a row records that a state changed and not when, the tempting move is to add the
+timestamp on sight, because the absence looks like an oversight and the fix is one
+`ALTER TABLE`. Census the READERS first. The question is not how many tables lack the
+column; it is whether anything that is not the audit log has to age, order or compare by
+the instant.
+
+Two leaves, one week apart, ran the same census and got opposite answers — which is why
+this is a method rather than a preference.
+
+`SIGNOFF-REPAIR.11.24.1.1.2.1.1.1`: `authority_grants` recorded `SET status = 'revoked'`
+and no instant. That was not a defect for as long as the only reader was the audit trail,
+which records the act with its own `effected_at`. It became one the moment the inbox prune
+had to retain a `revoked` delivery row for a window measured in time-in-terminal, because
+no other column answered that question. **Add the column.**
+
+`SIGNOFF-REPAIR.11.24.1.1.2.1.1.1.1`: `federation_agreements` has the same shape, and
+looked like a sharper instance — it records `proposed_at` and `accepted_at` and leaves the
+revocation undated, so a reader of the columns would infer the third from the other two.
+The census refuted that: `git grep "accepted_at\|proposed_at" -- crates` returns one hit
+outside the writes, and it is another write. The two instants the table records are written
+and read by nothing, so the pattern is a writing habit rather than a contract, and every
+actual reader gates on `status` at decision time. **No column, with the trigger written
+down.**
+
+The trigger is what makes the refusal safe to act on later: *a reader that must age or
+order something by when this changed*. Write it in the decision, so the next person does
+not re-derive the census from scratch.
+
 ## This project's toolbox
 
 <!-- Fill this in as your project grows. List each diagnostic tool, what question it

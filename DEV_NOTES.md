@@ -1,5 +1,65 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — The census that refuted the leaf that asked for it
+
+One commit ago I found a third table with the same shape as the one I was
+repairing, opened a leaf for it, and wrote in that leaf why it was a *sharper*
+instance than the one that found it. `authority_grants` recorded no transition
+instants at all, so its omission was uniform and invisible. `federation_agreements`
+records `proposed_at` and `accepted_at` and leaves the revocation undated beside
+them — a gap in a pattern the schema itself establishes. A reader of the columns,
+I wrote, would reasonably conclude the instant is there.
+
+The leaf's acceptance required a reader census before any column. Good, because
+the census refutes the sentence I just quoted.
+
+```
+git grep -n "accepted_at\|proposed_at" -- crates
+```
+
+One hit outside the two writes. It is a third write: the re-proposal resetting
+`accepted_at = NULL`. Neither column appears in any `SELECT` anywhere in the
+tree. **The two instants this table records are written and read by nothing.**
+
+So there is no reader to infer anything, and the pattern I called a contract is a
+writing habit. That is not a small correction — it was the entire argument for
+the column being a defect rather than a tidiness itch, and it was mine, written
+with confidence, one commit earlier.
+
+**What the census actually found.** Every read of the table: three
+`has_effective_*_agreement` functions that take the capability columns and gate
+on `status = 'accepted'`, and the revoke verb's own status read. Their two
+callers are the directory read gate and the card-import allowlist rung — both
+decision-time liveness questions, both answered completely by `status`. And
+nothing durable is aged by a revocation: `cross_domain_receipts`, the one
+artifact a federated act leaves behind, carries its own `created_at`.
+
+**Why the grant's answer does not transfer**, stated as the rule rather than as a
+special case: `authority_grants` gained `revoked_at` because a second reader that
+is not the audit log needed to age something by the instant. A column is not
+missing until something needs it. That was true of the grant's column until the
+inbox prune needed it this week, and it is true of this one now.
+
+I wrote the trigger down — *a reader that must age or order something by when a
+direction was withdrawn* — because a refusal without one is just a shrug, and the
+next person should not have to re-derive the census.
+
+**Promoted, and for a reason I want to be precise about.** The previous leaf
+refused to count `federation_agreements` towards promoting its rule, on the
+grounds that two tables with the same shape is a family and this project promotes
+on mechanism. That was right, and this leaf is what makes the promotion earned:
+the same census run twice, a week apart, giving **opposite answers**. Add the
+column; do not add the column. A method that only ever says *add the column* is a
+preference. One that can say no is a method.
+
+**One thing I noticed and did not grade.** `accepted_at` being written and never
+read looks like `.11.24.1.2`'s `PresenceState::Busy` — something declared that
+nothing uses. It is the opposite arrangement. `Busy` is a published wire value
+with no producer, which makes a vocabulary lie to a client that branches on it.
+`accepted_at` has a producer and no consumer, which is latent data on a row an
+operator can inspect directly. I recorded it as the evidence this decision rests
+on and left it alone.
+
 ## 2026-09-20 — The column that was never missing until something needed it
 
 The previous leaf could not age a `revoked` inbox row because nothing recorded

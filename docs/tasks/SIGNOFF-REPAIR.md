@@ -5224,6 +5224,31 @@ python3 -B scripts/census_positional_refs.py                # and at HEAD
 - Status: `done`.
 - Verification / commit: `REASONBRAID-REPAIR-0242`.
 
+#### SIGNOFF-REPAIR.11.20.3 — The seventh eviction: seven UNCITED warnings classified, none of them a fact
+
+- Opened and closed by the same act. `SIGNOFF-REPAIR.7.3.6.4`'s close left `MEMORY.md` at **7,026 of 7,168 bytes — 142 bytes of headroom**, which the next leaf's `next_action` alone would breach. ⛔ The file's own first bullet forbids evicting before the census runs, so it ran first.
+- **The census, by command** (`python3 -B scripts/census_memory_warnings.py`): **15 standing warnings, 4,904 of 7,026 bytes — 70% of the file**. Anchored to a task-tree leaf **8**, to a method record **2**, **UNCITED 7**.
+- ⭐ **All seven UNCITED were classified BY HAND, as `.11.20.1` requires, and every one is findability cost rather than a lost fact.** The instrument's own warning is that this class is *rare, real, and was invisible until it read the whole block* — so the check is per item, against the durable layer:
+
+| # | bytes | the warning | its durable home |
+| --- | ---: | --- | --- |
+| 1 | 228 | *do not assume the answer is enforce them* | `.7.3.6.5`'s own leaf text, verbatim |
+| 3 | 154 | `cargo clean` would take the cited evidence | `.11.4.3.1.8` (DOC-0060) and `LIVE_STATUS.md` |
+| 5 | 677 | the enumerated standing-lesson list | `docs/knowledge/` (41 notes) and the derived `KNOWLEDGE_MAP.md` |
+| 8 | 164 | retained fixtures are censused and reduced | `docs/decisions/2026-09-18_retained-fixtures-keep-receipts-not-payload.md` |
+| 12 | 300 | orchestration is the objective, not a pivot | `docs/decisions/2026-09-18_multi-agent-orchestration-is-the-objective-not-a-pivot.md` |
+| 13 | 126 | the binding constraint is the acceptor | the same record |
+| 14 | 632 | bedrock is a GitHub TEMPLATE, not a syncable remote | the same record, line 130, in more detail than the bullet carried |
+
+- ⛔ **Item 14 was the one that could have cost a fact and did not.** It is the longest UNCITED bullet and the most operationally specific, so it was checked against the record rather than assumed: `grep -c "bedrock\|template" ` returns **13** occurrences there, and line 130 carries the *Use this template* mechanism, the absent remote entry, bedrock's own `origin`, and the no-sync-path conclusion — strictly more than the bullet said.
+- **The eviction: every one becomes a pointer, which is what the file is for.** The lesson list collapses to the knowledge layer's two entry points; the three orchestration bullets collapse to one naming the record; the two promoted-lesson bullets collapse into the same pointer, since they name notes the layer already indexes.
+- ⛔ **Nothing was deleted from a durable layer and no warning was dropped without a home named in the table above.** The blockers bullets, the pointer-discipline bullet and the corpus rule stay: they are current state, not lessons.
+- Acceptance: the census runs before any eviction; every UNCITED item is classified by hand against the durable layer with its home named; the file lands under the cap with headroom for the next leaf; and `scripts/check_memory_architecture.sh` passes.
+- Status: `done`; DOC-0063.
+- ⭐ **A stale caveat went with it, found by reading the census's own output against the bullet that describes it.** The pointer bullet said the instrument *can only see the next-action bullet until `.11.20.1` lands*; `.11.20.1` is `done`, and the run above reports four bullets (`next_action`, `in_flight_uncommitted`, `blockers`, unkeyed). Replaced with the rule that actually matters — classify every `UNCITED` item by hand, because that is the class where a fact rather than a pointer is lost.
+- Verification: `MEMORY.md` **7,026 → 5,532 bytes / 19 lines** (caps 7,168 and 50), headroom **142 → 1,636**. The census re-run reports **15 → 10 warnings, 4,904 → 3,419 bytes, 70% → 62% of the file**, `UNCITED` **7 → 4**. `bash scripts/check_memory_architecture.sh` rc=0; `bash scripts/check_doctrines.sh` green.
+- Commit: `REASONBRAID-DOC-0063 (leaf SIGNOFF-REPAIR.11.20.3): the seventh eviction — seven UNCITED warnings classified, none of them a fact`.
+
 #### SIGNOFF-REPAIR.11.20.1 — The memory census counts warnings in a bullet the template no longer uses
 
 - Opened: `pending` by `.11.20`, which repaired the instrument's KEY and measured that its MODEL is stale too.

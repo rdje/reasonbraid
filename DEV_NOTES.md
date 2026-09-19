@@ -1,5 +1,39 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — I went to document a surface and found nobody serves it
+
+The book had no MCP chapter, so I set out to write one. The honest way to write
+it is to derive each sentence from the call path rather than from ADR-024's
+prose, which meant reading `mcp_read.rs`, `mcp_write.rs` and the tool router.
+That reading answered the questions I had — and one I had not asked.
+
+`git grep -n McpTools -- crates` returns seven hits, all in one file, and every
+one that constructs the struct or its router sits below that file's
+`#[cfg(test)]`. No crate depends on `reasonbraid-mcp`. It declares no binary.
+There is no transport. Six tools, correctly authorized by *calling* the HTTP
+handlers they re-express, exercised against a live database — and no MCP client
+can reach any of them.
+
+Nothing was skipped. `PHASE-8.3.3` closed saying *the Streamable-HTTP transport
++ the live roundtrip ride `.3.4`*, and `.3.4` shipped the listen-stream durable
+state and closed. The sentence is still true as a sentence; it points at a leaf
+that finished. **A deferral that names a leaf dies with that leaf** — the leaf it
+names has its own goal and its own acceptance, and neither grew a clause because
+a sibling mentioned it.
+
+Promoted: `docs/knowledge/a-deferral-dies-with-the-leaf-it-names.md`. Extracted
+rather than absorbed into `a-re-export-is-not-a-caller` by `.11.20.2`'s
+criterion — that note's thesis is *the compiler's silence carries no
+information*, and this is a different thesis about ownership that merely uses
+the same census as a tool. The two catch one defect from opposite ends: the
+promise with no code, and the code with no caller. This surface failed both at
+once.
+
+⚠️ What I did **not** do is propose a gate. Two instances in one lane is not a
+population, and a rule that fires on every optimistic goal line is the gate
+people route around. `.11.24` owns the census, and its acceptance makes it
+report the narrow predicate separately from the judgement-bound one.
+
 ## 2026-09-19 — A capability answer is about the provider; eligibility is about your case
 
 `resume_plan(own_cursor: i64, upstream_replay: bool)` asked the upstream one

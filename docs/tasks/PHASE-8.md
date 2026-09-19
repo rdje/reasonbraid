@@ -650,6 +650,37 @@ Implementation ownership and remaining verification are in `docs/tasks/SIGNOFF-R
       documented proc-macro-family coexistence). The
       Streamable-HTTP transport + the live roundtrip
       ride `.3.4` (the listen-stream durability).
+    Annotated by `SIGNOFF-REPAIR.6.5`
+      (REPAIR-0294); the leaf is otherwise
+      byte-unchanged because its Done list claims
+      nothing it did not ship:
+    - 🔴 **THE SENTENCE ABOVE IS A DEFERRAL, AND
+      `.3.4` CLOSED `done` WITHOUT IT.** No
+      Streamable-HTTP transport exists. Measured at
+      REPAIR-0294: `git grep -n McpTools -- crates`
+      returns 7 hits, all in
+      `crates/reasonbraid-mcp/src/lib.rs`, and the
+      five that construct the struct or its router
+      sit below that file's `#[cfg(test)]`; no crate
+      depends on `reasonbraid-mcp`; it declares no
+      `[[bin]]`. **So the six tools are reachable by
+      no MCP client.** ⛔ *A deferral that names a
+      leaf dies with that leaf* —
+      `docs/knowledge/a-deferral-dies-with-the-leaf-it-names.md`.
+      Owned now by `SIGNOFF-REPAIR.6.8`.
+    - ⚠️ **The GOAL line also names *the
+      timelines/evidence/policy-set resources* and
+      none is exposed.** The Done list enumerates
+      three tools and no resources. A goal is a
+      promise and a done list is a receipt, and
+      nothing compares them — the census is
+      `SIGNOFF-REPAIR.11.24`, whose founding
+      population is this leaf and `.3.4`.
+    - ✅ Both facts are now in the book rather than
+      only in a tree: `docs/book/src/mcp.md` records
+      `ask_network` and the resources as not exposed,
+      and carries a Reachability section saying the
+      tools run under `cargo test` and nowhere else.
     Acceptance:
     - [x] **ROOT CAUSE (WHY + WHERE)** — the ADR-024
       read-half (the inspection verbs as the read

@@ -5,6 +5,17 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **NOTHING SERVES THE MCP TOOLS, and the book now says so (`.6.5`, REPAIR-0294).**
+
+The book documented no MCP surface at all while the surface shipped and `.6.1` repaired it five times. Writing the chapter honestly required a census, and the census found the surface unreachable.
+
+- ⛔ **Six implemented, authorized, live-tested tools, reachable by no MCP client.** `git grep -n McpTools -- crates` → **7 hits, all in one file**, and the five that construct the struct or its router sit below that file's `#[cfg(test)]`. No crate depends on `reasonbraid-mcp`, it declares no `[[bin]]`, and there is no stdio or HTTP transport anywhere. The tools run under `cargo test` and nowhere else.
+- 🔎 **The cause is a task-tree failure, not a coding one.** `PHASE-8.3.3` closed `done` saying *"The Streamable-HTTP transport + the live roundtrip ride `.3.4`"*; `PHASE-8.3.4` shipped the listen-stream durable state and closed `done` without one. ⛔ **A deferral that names a leaf dies with that leaf** — the pointer still reads correctly and points at something finished. Promoted: `docs/knowledge/a-deferral-dies-with-the-leaf-it-names.md`.
+- ⭐ **Second instance in two slices.** `.6.2.4` found the same shape in `PHASE-8.3.4`, whose goal named all five ritual steps over a done list carrying two. ⛔ Nothing here compares a goal line to its own done list: `TASK-ACCEPTANCE` reads the checklist, `FRONTIER-STATUS` the status line, `INDEX-FRONTIER` the index. The census is `.11.24`; **no gate is designed before the population is classified.**
+- ✅ **The chapter derives every admission sentence from the call path**, not from ADR-024's prose: `authorize_inspection` → `thread_inspection`; `authorize_tenant_admin` → `inbox_inspection`; the enrolment check → `policy::list`. It also records that the three write handlers are **not uniform** — `respond` has the grant and the audit, `join_call` and `propose_policy_change` have neither — and that neither tool is weaker than its HTTP verb.
+- ⛔ **`ask_network` is not exposed** (**0** hits in `crates`) and neither are the ADR's read **resources**; both are documented as absent rather than omitted.
+- ✅ **VERIFIED:** `make book` rc=0; the chapter renders as **3 `<table>` · 17 `<tr>` · 0 padded cells**, read out of the rendered HTML; `grep -ci mcp docs/book/src/SUMMARY.md` → **2**, against **0** when the leaf opened; all seven ADR-024 tool names appear in the chapter; `git diff --stat -- crates` empty — no code changed; doctrine gate green.
+
 ✅ **THE MCP RECONNECT RITUAL RUNS ALL FIVE STEPS ACROSS A REAL DISCONNECT (`.6.2.4`, REPAIR-0292 + REPAIR-0293) — and `.6.2` CLOSES with it.**
 
 `ROADMAP.md` §9.6 and ADR-024 specify one five-step ritual: reauthorize → recreate the listen request → reconcile any source-specific gap → resume from the OWN cursor → surface the possible-gap when the upstream offers no replay. Two of the five were shipped, as a pure function with no caller.

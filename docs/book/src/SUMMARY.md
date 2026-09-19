@@ -6,6 +6,7 @@
 - [Roadmap and progress](roadmap.md)
 - [The node journal](node-journal.md)
 - [The node channel](node-channel.md)
+- [The MCP surface](mcp.md)
 - [The MCP listen gateway](mcp-listen.md)
 - [The adapter boundary](adapter-boundary.md)
 - [Errors and reason codes](errors.md)

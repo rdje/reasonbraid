@@ -218,7 +218,6 @@ pub async fn stage(
     if proposal_tenant.as_deref() != Some(tenant_id) {
         return Err(PublicationError::UnknownProposal(input.proposal_id.clone()));
     }
-    let tenant_id = proposal_tenant;
     if status != "approved" {
         return Err(PublicationError::WrongStage {
             publication_id: input.proposal_id.clone(),
@@ -259,10 +258,18 @@ pub async fn stage(
         }
         _ => {}
     }
+    // ⛔ `SIGNOFF-REPAIR.6.1.5.3`: `AND tenant_id = $2`. The probe checked only
+    // EXISTENCE, so a publication could be staged against ANOTHER tenant's
+    // projection — its compiled bytes and its declared unrepresentables, which
+    // are a function of that tenant's own resolution request. The decision and
+    // the approval need no such predicate: both are matched to `proposal_id`,
+    // and the proposal has already been proved the caller's.
     let projection: Option<bool> = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM policy_projections WHERE projection_id = $1)",
+        "SELECT EXISTS (SELECT 1 FROM policy_projections \
+         WHERE projection_id = $1 AND tenant_id = $2)",
     )
     .bind(&input.projection_id)
+    .bind(tenant_id)
     .fetch_one(pool)
     .await
     .map_err(|_| PublicationError::UnknownProjection(input.projection_id.clone()))?;
@@ -282,7 +289,7 @@ pub async fn stage(
     .bind(&input.approval_id)
     .bind(&input.projection_id)
     .bind(&input.manifest_digest)
-    .bind(&tenant_id)
+    .bind(&proposal_tenant)
     .execute(pool)
     .await;
     if inserted.is_err() {
@@ -403,6 +410,12 @@ pub async fn mark_failed(
 }
 
 /// Load one publication row (pub — the `.4.3.2` publish verb reads it).
+/// ⚠️ `load` stays UNBOUND, deliberately, and this is one of the reads
+/// `SIGNOFF-REPAIR.6.1.5.3` names rather than binds: every caller reaches it
+/// only after `owned_by` has already refused a foreign publication, and the two
+/// public entry points that read a publication by id — `GET /v1/policy-publications`
+/// and the three transition verbs — are bound at their own boundary. A second
+/// predicate here would be a third copy of one fact.
 pub async fn load(
     pool: &PgPool,
     publication_id: &str,
@@ -446,12 +459,18 @@ pub async fn load(
 }
 
 /// The publications, newest first.
-pub async fn list(pool: &PgPool) -> Result<Vec<StoredPublication>, sqlx::Error> {
+/// ⛔ `SIGNOFF-REPAIR.6.1.5.3`: bound to the caller's tenant. Until now this
+/// returned every tenant's rows to any enrolled principal. ⚠️ The predicate
+/// never matches NULL, so a row `migrations/0073` could not attribute is read
+/// by NOBODY — `.7.1.2.2`'s disposition, and the reason the backfill's coverage
+/// is published as a measured count rather than assumed complete.
+pub async fn list(pool: &PgPool, tenant_id: &str) -> Result<Vec<StoredPublication>, sqlx::Error> {
     let rows: Vec<PublicationRow> = sqlx::query_as(
         "SELECT publication_id, proposal_id, decision_id, approval_id, projection_id, state, \
              manifest_digest, git_object_ids, failed_reason \
-             FROM policy_publications ORDER BY created_at DESC",
+             FROM policy_publications WHERE tenant_id = $1 ORDER BY created_at DESC",
     )
+    .bind(tenant_id)
     .fetch_all(pool)
     .await?;
     Ok(rows

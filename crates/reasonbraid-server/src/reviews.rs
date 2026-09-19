@@ -215,11 +215,20 @@ pub async fn mark_done(
 }
 
 /// The reviews, newest first.
-pub async fn list_reviews(pool: &PgPool) -> Result<Vec<StoredReview>, sqlx::Error> {
+/// ⛔ `SIGNOFF-REPAIR.6.1.5.3`: bound to the caller's tenant. Until now this
+/// returned every tenant's rows to any enrolled principal. ⚠️ The predicate
+/// never matches NULL, so a row `migrations/0073` could not attribute is read
+/// by NOBODY — `.7.1.2.2`'s disposition, and the reason the backfill's coverage
+/// is published as a measured count rather than assumed complete.
+pub async fn list_reviews(
+    pool: &PgPool,
+    tenant_id: &str,
+) -> Result<Vec<StoredReview>, sqlx::Error> {
     let rows: Vec<(String, String, String, String)> = sqlx::query_as(
         "SELECT review_id, publication_id, trigger, status \
-         FROM policy_reviews ORDER BY created_at DESC",
+         FROM policy_reviews WHERE tenant_id = $1 ORDER BY created_at DESC",
     )
+    .bind(tenant_id)
     .fetch_all(pool)
     .await?;
     Ok(rows

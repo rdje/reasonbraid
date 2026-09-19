@@ -143,11 +143,17 @@ pub async fn load(pool: &PgPool, projection_id: &str) -> Result<StoredProjection
 }
 
 /// The projections, newest first.
-pub async fn list(pool: &PgPool) -> Result<Vec<StoredProjection>, sqlx::Error> {
+/// ⛔ `SIGNOFF-REPAIR.6.1.5.3`: bound to the caller's tenant. Until now this
+/// returned every tenant's rows to any enrolled principal. ⚠️ The predicate
+/// never matches NULL, so a row `migrations/0073` could not attribute is read
+/// by NOBODY — `.7.1.2.2`'s disposition, and the reason the backfill's coverage
+/// is published as a measured count rather than assumed complete.
+pub async fn list(pool: &PgPool, tenant_id: &str) -> Result<Vec<StoredProjection>, sqlx::Error> {
     let rows: Vec<(String, String, String, String, serde_json::Value)> = sqlx::query_as(
         "SELECT projection_id, target, digest, bytes, unrepresentable \
-         FROM policy_projections ORDER BY created_at DESC",
+         FROM policy_projections WHERE tenant_id = $1 ORDER BY created_at DESC",
     )
+    .bind(tenant_id)
     .fetch_all(pool)
     .await?;
     Ok(rows

@@ -19,7 +19,7 @@
 # Recorded by `SIGNOFF-REPAIR.7.1.2`. Refresh only with a re-adjudication:
 #     python3 -B scripts/census_registry_read_reach.py --check
 agent_profiles	agent_profiles→agent_roles	list_node_presence,create_thread_auto!,open_recruitment_call,respondent_candidate!,directory_match!,directory_presence,replay,presence,write_profile_in_tx!,current_profile!,lock_existing_profile_anchor_in_tx!,current_profile_in_tx!
-deployment_assignments	-	record_drift!,record_receipt,load_assignment!,list_assignments!
+deployment_assignments	-	record_drift!,record_receipt,load_assignment!,list_assignments
 deployment_targets	-	list_deployment_targets!,assign!
 derivations	-	submit!,children_of!
 evaluation_calibrations	-	list_calibrations!

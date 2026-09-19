@@ -459,15 +459,23 @@ are two different questions and both are now asked.
 > anyone may advance is worse than one that is frozen — but it means an upgraded
 > deployment should check for rows with no owner before relying on them.
 
-One thing remains open and is recorded here rather than implied:
+**Every lifecycle read is bound to the caller's tenant.** Listing proposals,
+decisions, approvals, projections, publications, deployments, drift,
+corrections, outcomes or reviews returns the caller's own rows and nobody
+else's. A row the upgrade could not attribute is returned to nobody, which is
+the same disposition as the frozen publication above and for the same reason.
 
-- **The reads are still site-wide.** Listing proposals, decisions, approvals,
-  projections, publications, drift, outcomes, corrections or reviews still
-  returns every tenant's rows to any enrolled caller. Binding them is
-  `SIGNOFF-REPAIR.6.1.5.3`, and it is deliberately a separate step: narrowing a
-  read before every write records an owner would hide rows from their own
-  authors. Until it lands, treat enrolment as a disclosure boundary for the
-  governance trail — it is no longer a control boundary.
+**The governance library stays open, deliberately.** `GET /v1/policies`,
+resolving a policy set and the MCP policy bundle all still answer any enrolled
+principal, because a policy only its author can read is not governance. What is
+still wrong there is the *write*: registering a policy admits any enrolled
+principal into a first-come identifier namespace, and that is
+`SIGNOFF-REPAIR.6.1.5.4`.
+
+Staging a publication also now requires the projection to be the caller's own.
+The check used to ask only whether the projection existed, so a publication
+could be assembled from another tenant's compiled bytes — the output of a
+resolution request that tenant made, not this one.
 
 ### The workflow-profile registry: repaired, and why it needed to be
 

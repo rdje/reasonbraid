@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE LIFECYCLE READS ARE BOUND TO THEIR OWN TENANT (`.6.1.5.3`, REPAIR-0281).** The third half of `.6.1.5`: the rows got an owner, the writes got a gate, and the reads are now narrowed to it.
+
+- 🔴 **`publications::stage` PROBED A PROJECTION FOR EXISTENCE ONLY** — a publication could be staged against **another tenant's compiled bytes**. ⛔ The predicate was written and every arm still passed; **falsification found it**, because no control had ever staged across the boundary.
+- 🔴 **AN EXISTENCE ORACLE OVER ANOTHER TENANT'S ROLLOUT STATE:** `record_drift` probed the assignment before the publication's owner, so a foreign caller got `assignment … does not exist` when the pair was undeployed and `publication … does not exist` when it was. Ownership now answers first, and the control asserts the two messages are EQUAL.
+- ✅ **The MCP half is satisfied by MEASUREMENT:** a `git grep -c` over the nine tables across the MCP crate and `mcp_read.rs` returns **no match** — that surface reads only the shared library, so `.6.1.1`'s parity is preserved rather than re-opened.
+- ⛔ **The LIBRARY stays open by design and the control now ASSERTS it**, so a future repair that bound `GET /v1/policies` fails here instead of silently reversing DOC-0071. Its WRITE is still wrong and is `.6.1.5.4`'s.
+- ⭐ Both tenants build the whole chain from one closure and every surface is asserted **twice** — the other's row absent AND one's own row present — so a repair that returned nothing to anybody fails.
+- ✅ **VERIFIED:** `policy` **19/0**; eleven further suites, 0 failed. Clippy rc=0; fmt rc=0; gate green; book + links rc=0. Falsified **twelve times, one predicate per run**, restored byte-identical after each.
+
 🔴 **ELEVEN LIFECYCLE VERBS ACTED ON ANOTHER TENANT'S RECORD, AND ARE NOW GATED (`.6.1.5.2.1`, REPAIR-0280).**
 
 Not the five the leaf was opened with: every mutating verb over a publication or a proposal — stage, effective, failed, publish, drift, correction, outcome, schedule, review-done, deploy, receipt.

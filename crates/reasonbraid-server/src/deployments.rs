@@ -308,6 +308,11 @@ pub async fn record_receipt(
 /// The stored assignment row shape (the query tuple).
 type AssignmentRow = (String, String, i64, String, String, Option<String>, String);
 
+/// ⚠️ `load_assignment` stays UNBOUND, deliberately, and this is one of the
+/// reads `SIGNOFF-REPAIR.6.1.5.3` NAMES rather than binds: its only caller is
+/// `record_receipt`, whose own join has already refused an assignment whose
+/// publication is not the caller's. A predicate here would be a second copy of
+/// that fact, and a second copy is what drifts.
 async fn load_assignment(
     pool: &PgPool,
     target_id: &str,
@@ -353,12 +358,28 @@ async fn load_assignment(
 }
 
 /// The assignments, newest first.
-pub async fn list_assignments(pool: &PgPool) -> Result<Vec<StoredAssignment>, sqlx::Error> {
+/// ⛔ `SIGNOFF-REPAIR.6.1.5.3`, and the SCOPE EXTENSION is deliberate rather than
+/// accidental. `deployment_assignments` is not one of the nine lifecycle tables,
+/// so this leaf was not opened over it — but DOC-0029 deferred it to `.6.1.5` BY
+/// NAME, DOC-0071 discharged that deferral by ruling it **tenant-owned by its
+/// PUBLICATION, not by its target**, and no child of `.6.1.5` names it. Leaving a
+/// decided table with an unbound read and no owner is how a data model gets
+/// decided by accident, which is the failure DOC-0029 exists to prevent.
+///
+/// ⚠️ The join IS the ownership, because the table carries no tenant column —
+/// that was DOC-0071's decision, a target being site-wide by design.
+pub async fn list_assignments(
+    pool: &PgPool,
+    tenant_id: &str,
+) -> Result<Vec<StoredAssignment>, sqlx::Error> {
     let rows: Vec<AssignmentRow> = sqlx::query_as(
-        "SELECT target_id, publication_id, wave, desired_ref, desired_digest, \
-             observed_digest, observed_state \
-             FROM deployment_assignments ORDER BY target_id, publication_id",
+        "SELECT a.target_id, a.publication_id, a.wave, a.desired_ref, a.desired_digest, \
+             a.observed_digest, a.observed_state \
+             FROM deployment_assignments a \
+             JOIN policy_publications p ON p.publication_id = a.publication_id \
+             WHERE p.tenant_id = $1 ORDER BY a.target_id, a.publication_id",
     )
+    .bind(tenant_id)
     .fetch_all(pool)
     .await?;
     Ok(rows

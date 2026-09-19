@@ -4905,18 +4905,29 @@ async fn the_lifecycle_row_carries_the_tenant_that_owns_it() {
         "every scheduled review is its publication's, never the scheduler's: {review_tenants:?}"
     );
 
-    // ── THE READS ARE UNCHANGED, which is what keeps this leaf out of
-    //    `.6.1.5.3`'s. Mallory still sees Alice's proposal today. ──────────────
+    // ── THE READS. ⭐ `.6.1.5.2` asserted here that they were UNCHANGED, which
+    //    is what kept that leaf out of `.6.1.5.3`'s; `.6.1.5.3` has since bound
+    //    them, so the same assertion now runs the other way and this line is the
+    //    record of that discharge rather than a rewritten expectation.
     let (status, proposals) = get(&client, &base, "/v1/policy-proposals", &mallory_id).await;
-    assert_eq!(status, 200, "mallory reads the proposals: {proposals}");
+    assert_eq!(status, 200, "mallory reads her own proposals: {proposals}");
+    assert!(
+        !proposals
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["proposal_id"] == json!("lto-prop")),
+        "alice's proposal is absent from another tenant's list (`.6.1.5.3`): {proposals}"
+    );
+    let (status, proposals) = get(&client, &base, "/v1/policy-proposals", &alice_id).await;
+    assert_eq!(status, 200, "alice reads her own proposals: {proposals}");
     assert!(
         proposals
             .as_array()
             .unwrap()
             .iter()
             .any(|p| p["proposal_id"] == json!("lto-prop")),
-        "the lifecycle reads are still site-wide — binding them is `.6.1.5.3`'s, and \
-         a leaf that bound them here would have delivered it by accident: {proposals}"
+        "and the owner still reads it, so the binding is not a blackout: {proposals}"
     );
 }
 
@@ -5329,6 +5340,21 @@ async fn the_lifecycle_verbs_refuse_another_tenants_publication() {
     });
     let (status, refused) = post(&client, &base, "/v1/policy-drift", &mallory_id, &drift).await;
     assert_eq!(status, 400, "a foreign tenant records no drift: {refused}");
+    // ⛔ `SIGNOFF-REPAIR.6.1.5.3`: the refusal must not depend on whether the pair
+    // is DEPLOYED. The assignment probe used to answer first, so a foreign caller
+    // got `UnknownAssignment` for an undeployed pair and `UnknownPublication` for
+    // a deployed one — two different answers, which is an existence oracle over
+    // another tenant's rollout state.
+    let mut undeployed = drift.clone();
+    undeployed["drift_id"] = json!("gtn-drift-undeployed");
+    undeployed["target_id"] = json!("gtn-target-absent");
+    let (status, other) = post(&client, &base, "/v1/policy-drift", &mallory_id, &undeployed).await;
+    assert_eq!(status, 400, "the undeployed pair also refuses: {other}");
+    assert_eq!(
+        other["message"], refused["message"],
+        "a deployed and an undeployed pair give another tenant the SAME answer, \
+         or the refusal enumerates her rollout state: {other} vs {refused}"
+    );
     let (status, ok) = post(&client, &base, "/v1/policy-drift", &alice_id, &drift).await;
     assert_eq!(status, 200, "the owner still records drift: {ok}");
 
@@ -5452,6 +5478,354 @@ async fn the_lifecycle_verbs_refuse_another_tenants_publication() {
     .await;
     assert_eq!(status, 200, "the owner still closes her review: {done}");
     assert_eq!(done["status"], json!("done"), "{done}");
+
+    let _ = std::fs::remove_dir_all(&repo_root);
+}
+
+/// `SIGNOFF-REPAIR.6.1.5.3` — every lifecycle read is bound to the caller's
+/// tenant, and the binding runs BOTH WAYS ROUND.
+///
+/// ⭐ **Two full chains, not one.** A repair that returned nothing to anybody
+/// would pass a one-sided control: Alice's rows really would be absent from
+/// Mallory's list. So both tenants build the whole chain — proposal, decision,
+/// approval, projection, publication, deployment, receipt, drift, correction,
+/// outcome, review — and every table is asserted twice: the other tenant's row
+/// is absent AND this tenant's own row is present. That is `.3.5.5`'s shape and
+/// `.7.1.2.2`'s, applied to ten tables at once.
+///
+/// ⚠️ `GET /v1/policies` and the MCP `policy_bundle` are deliberately NOT bound
+/// and are asserted so: `policy_versions` is the governance LIBRARY, site-wide by
+/// design (DOC-0071), and a policy only its author can read is not governance.
+/// `.6.1.5.4` owns its WRITE, which is the half that is actually wrong.
+#[tokio::test]
+async fn every_lifecycle_read_is_bound_to_its_own_tenant() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let (repo_root, object_ids) = seeded_publication_repository("rdb");
+    let server = TestServer::start_with_publication_root(&pool, &repo_root).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let enrol = |name: &'static str| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            let (status, who) =
+                enroll(&client, &base, json!({ "kind": "human", "name": name })).await;
+            assert_eq!(status, 200, "{name} enrols: {who}");
+            (
+                who["principal_id"].as_str().unwrap().to_string(),
+                who["tenant_id"].as_str().unwrap().to_string(),
+            )
+        }
+    };
+    let (alice_id, alice_tenant) = enrol("rdb-alice").await;
+    let (mallory_id, mallory_tenant) = enrol("rdb-mallory").await;
+    assert_ne!(
+        alice_tenant, mallory_tenant,
+        "two enrolments must be two tenants, or this control measures nothing"
+    );
+
+    // ⛔ ONE policy, registered once and named by both chains. `policy_versions`
+    // is the shared library by DOC-0071's decision, so a control that gave each
+    // tenant its own policy would quietly assume the opposite of what this leaf
+    // deliberately leaves unbound.
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policies",
+        &alice_id,
+        &json!({
+            "policy_id": "rdb-policy", "version": "1.0.0", "digest": DIGEST,
+            "lifecycle": "draft", "title": "rdb",
+            "owning_authority": format!("grt_{alice_id}"),
+            "clauses": [ { "id": "c1", "statement": "the shared clause" } ],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the shared policy registers");
+
+    // The whole chain for one tenant, so both are built by the same code and a
+    // difference between them cannot be an accident of the fixture.
+    let chain = |who: String, tenant: String, tag: &'static str| {
+        let client = client.clone();
+        let base = base.clone();
+        let object_ids = object_ids.clone();
+        async move {
+            let grant = format!("grt_{who}");
+            let (_status, created) = post(
+                &client,
+                &base,
+                "/v1/threads",
+                &who,
+                &json!({
+                    "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                    "operation": "thread.create",
+                    "request_id": reasonbraid_core::RequestId::new().to_string(),
+                    "idempotency_key": format!("{tag}-create"),
+                    "body": { "tenant_id": tenant, "subject": tag, "objective": "probe",
+                              "workflow_profile": "independent_panel" },
+                    "client_context": {},
+                }),
+            )
+            .await;
+            let thread_id = created["thread_id"].as_str().unwrap().to_string();
+            let command = |key: String, operation: &'static str, body: Value| {
+                let client = client.clone();
+                let base = base.clone();
+                let who = who.clone();
+                let thread_id = thread_id.clone();
+                async move {
+                    let response = client
+                        .post(format!("{base}/v1/threads/{thread_id}/commands"))
+                        .header(PRINCIPAL_HEADER, &who)
+                        .json(&json!({
+                            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                            "operation": operation,
+                            "request_id": reasonbraid_core::RequestId::new().to_string(),
+                            "idempotency_key": key,
+                            "body": body, "client_context": {},
+                        }))
+                        .send()
+                        .await
+                        .expect("command request");
+                    let text = response.text().await.expect("command body");
+                    serde_json::from_str::<Value>(&text).unwrap_or_else(|_| json!({ "raw": text }))
+                }
+            };
+            let _ = command(
+                format!("{tag}-advance"),
+                "thread.advance_round",
+                json!({ "tenant_id": tenant }),
+            )
+            .await;
+            let verdict = command(
+                format!("{tag}-verdict"),
+                "thread.contribute",
+                json!({ "tenant_id": tenant, "content": "judged", "kind": "verdict",
+                        "verdict": { "target_digest": "sha256:00", "rule": "majority",
+                                     "outcome": "accepted_by_rule" } }),
+            )
+            .await;
+            let verdict_event = verdict["event_id"].as_str().unwrap().to_string();
+
+            let ids = |suffix: &str| format!("{tag}-{suffix}");
+            for (path, body) in [
+                (
+                    "/v1/policy-proposals",
+                    json!({
+                    "proposal_id": ids("prop"), "policy_id": "rdb-policy",
+                    "policy_version": "1.0.0", "thread_id": thread_id }),
+                ),
+                (
+                    "/v1/policy-decisions",
+                    json!({
+                    "decision_id": ids("dec"), "proposal_id": ids("prop"), "rule": "majority",
+                    "electorate": { "participants": [who], "denominator": 1, "abstentions": [] },
+                    "verdict_event_id": verdict_event }),
+                ),
+                (
+                    "/v1/policy-approvals",
+                    json!({
+                    "approval_id": ids("app"), "proposal_id": ids("prop"),
+                    "decision_id": ids("dec"), "approver": who, "grant_id": grant,
+                    "quorum": { "participants": [who], "denominator": 1, "abstentions": [] } }),
+                ),
+            ] {
+                let (status, out) = post(&client, &base, path, &who, &body).await;
+                assert_eq!(status, 200, "{tag}: {path} — {out}");
+            }
+            let (status, projection) = post(
+                &client, &base, "/v1/policy-projections", &who,
+                &json!({ "projection_id": ids("proj"), "target": "generic",
+                         "resolution": { "policies": [ { "policy_id": "rdb-policy", "version": "1.0.0" } ],
+                                         "target": { "layer": "organization", "target": "*" } } }),
+            ).await;
+            assert_eq!(status, 200, "{tag}: the projection — {projection}");
+            let (status, out) = post(
+                &client,
+                &base,
+                "/v1/policy-publications",
+                &who,
+                &json!({ "publication_id": ids("pub"), "proposal_id": ids("prop"),
+                         "decision_id": ids("dec"), "approval_id": ids("app"),
+                         "projection_id": ids("proj"), "manifest_digest": projection["digest"] }),
+            )
+            .await;
+            assert_eq!(status, 200, "{tag}: the publication — {out}");
+            let (status, out) = post(
+                &client,
+                &base,
+                &format!("/v1/policy-publications/{}/effective", ids("pub")),
+                &who,
+                &json!({ "git_object_ids": object_ids, "repo_path": "live",
+                         "owning_authority": grant }),
+            )
+            .await;
+            assert_eq!(status, 200, "{tag}: effective — {out}");
+            for (path, body) in [
+                (
+                    "/v1/deployment-targets".to_string(),
+                    json!({
+                    "target_id": ids("target"), "target_type": "repository",
+                    "owning_authority": grant }),
+                ),
+                (
+                    "/v1/deployments".to_string(),
+                    json!({
+                    "target_id": ids("target"), "publication_id": ids("pub"), "wave": 1,
+                    "desired_ref": "live", "desired_digest": DIGEST }),
+                ),
+                (
+                    format!("/v1/deployments/{}/{}/receipt", ids("target"), ids("pub")),
+                    json!({
+                    "observed_digest": DIGEST, "observed_state": "applied" }),
+                ),
+                (
+                    "/v1/policy-drift".to_string(),
+                    json!({
+                    "drift_id": ids("drift"), "target_id": ids("target"),
+                    "publication_id": ids("pub"), "category": "pending_rollout",
+                    "desired_digest": DIGEST, "observed_digest": null }),
+                ),
+                (
+                    "/v1/policy-corrections".to_string(),
+                    json!({
+                    "correction_id": ids("corr"), "publication_id": ids("pub"),
+                    "operation": "waiver", "authority_grant": grant,
+                    "expires_at": "2030-01-01T00:00:00Z", "reason": "the waiver" }),
+                ),
+                (
+                    "/v1/policy-outcomes".to_string(),
+                    json!({
+                    "outcome_id": ids("out"), "publication_id": ids("pub"), "kind": "incident",
+                    "review_trigger": "adverse_threshold", "note": "the outcome" }),
+                ),
+                ("/v1/policy-reviews/schedule".to_string(), json!({})),
+            ] {
+                let (status, out) = post(&client, &base, &path, &who, &body).await;
+                assert_eq!(status, 200, "{tag}: {path} — {out}");
+            }
+            (thread_id, verdict_event)
+        }
+    };
+    let (alice_thread, alice_verdict) =
+        chain(alice_id.clone(), alice_tenant.clone(), "rdb-a").await;
+    let _ = chain(mallory_id.clone(), mallory_tenant.clone(), "rdb-m").await;
+
+    // ── `publications::stage` reads `policy_projections`, and that read is one
+    //    of the 32. ⛔ It probed EXISTENCE only, so a publication could be staged
+    //    against ANOTHER tenant's projection — its compiled bytes and its
+    //    declared unrepresentables, which are a function of that tenant's own
+    //    resolution request. Falsification found this predicate untested: every
+    //    other arm here reads a list, and no control staged across the boundary.
+    for (suffix, projection, expected, note) in [
+        (
+            "x1",
+            "rdb-m-proj",
+            400_u16,
+            "another tenant's projection is refused",
+        ),
+        (
+            "x2",
+            "rdb-a-proj",
+            200_u16,
+            "and the owner's own projection still stages",
+        ),
+    ] {
+        let prop = format!("rdb-a-{suffix}-prop");
+        let dec = format!("rdb-a-{suffix}-dec");
+        let app = format!("rdb-a-{suffix}-app");
+        for (path, payload) in [
+            (
+                "/v1/policy-proposals",
+                json!({
+                "proposal_id": prop, "policy_id": "rdb-policy",
+                "policy_version": "1.0.0", "thread_id": alice_thread }),
+            ),
+            (
+                "/v1/policy-decisions",
+                json!({
+                "decision_id": dec, "proposal_id": prop, "rule": "majority",
+                "electorate": { "participants": [alice_id], "denominator": 1, "abstentions": [] },
+                "verdict_event_id": alice_verdict }),
+            ),
+            (
+                "/v1/policy-approvals",
+                json!({
+                "approval_id": app, "proposal_id": prop, "decision_id": dec,
+                "approver": alice_id, "grant_id": format!("grt_{alice_id}"),
+                "quorum": { "participants": [alice_id], "denominator": 1, "abstentions": [] } }),
+            ),
+        ] {
+            let (status, out) = post(&client, &base, path, &alice_id, &payload).await;
+            assert_eq!(status, 200, "the {suffix} chain: {path} — {out}");
+        }
+        let (status, out) = post(
+            &client,
+            &base,
+            "/v1/policy-publications",
+            &alice_id,
+            &json!({ "publication_id": format!("rdb-a-{suffix}-pub"), "proposal_id": prop,
+                     "decision_id": dec, "approval_id": app, "projection_id": projection,
+                     "manifest_digest": DIGEST }),
+        )
+        .await;
+        assert_eq!(status, expected, "{note}: {out}");
+    }
+
+    // Every list verb, with the id field that identifies its rows.
+    let surfaces: [(&str, &str, &str); 10] = [
+        ("/v1/policy-proposals", "proposal_id", "prop"),
+        ("/v1/policy-decisions", "decision_id", "dec"),
+        ("/v1/policy-approvals", "approval_id", "app"),
+        ("/v1/policy-projections", "projection_id", "proj"),
+        ("/v1/policy-publications", "publication_id", "pub"),
+        ("/v1/deployments", "publication_id", "pub"),
+        ("/v1/policy-drift", "drift_id", "drift"),
+        ("/v1/policy-corrections", "correction_id", "corr"),
+        ("/v1/policy-outcomes", "outcome_id", "out"),
+        ("/v1/policy-reviews", "publication_id", "pub"),
+    ];
+    for (path, field, suffix) in surfaces {
+        for (reader, own_tag, other_tag) in [
+            (&alice_id, "rdb-a", "rdb-m"),
+            (&mallory_id, "rdb-m", "rdb-a"),
+        ] {
+            let (status, rows) = get(&client, &base, path, reader).await;
+            assert_eq!(status, 200, "{path} answers {reader}: {rows}");
+            let rows = rows.as_array().expect("a list").clone();
+            let mine = format!("{own_tag}-{suffix}");
+            let theirs = format!("{other_tag}-{suffix}");
+            assert!(
+                rows.iter().any(|r| r[field] == json!(mine)),
+                "{path}: the owner still reads its own `{mine}` — a repair that \
+                 returned nothing to anybody would pass the next assertion: {rows:?}"
+            );
+            assert!(
+                !rows.iter().any(|r| r[field] == json!(theirs)),
+                "{path}: another tenant's `{theirs}` is absent: {rows:?}"
+            );
+        }
+    }
+
+    // ⛔ THE LIBRARY IS DELIBERATELY NOT BOUND, and the control says so out loud:
+    // `policy_versions` is site-wide by design (DOC-0071) and both tenants read
+    // the one policy. A future repair that bound this read would be reversing a
+    // recorded decision, and it would fail here rather than silently.
+    for reader in [&alice_id, &mallory_id] {
+        let (status, policies) = get(&client, &base, "/v1/policies", reader).await;
+        assert_eq!(status, 200, "the library answers {reader}: {policies}");
+        assert!(
+            policies
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|p| p["policy_id"] == json!("rdb-policy")),
+            "the governance LIBRARY stays readable by the tenants it governs — \
+             binding it would reverse DOC-0071: {policies}"
+        );
+    }
 
     let _ = std::fs::remove_dir_all(&repo_root);
 }

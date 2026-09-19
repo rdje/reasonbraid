@@ -1,5 +1,16 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — A predicate with no arm is not a repair
+
+- I added eleven read predicates and the suite passed. Ten of them, neutralized one at a time, turned the suite red at their own surface. The eleventh did not move at all.
+- 🔴 **`publications::stage` probed a projection for existence only.** I had added `AND tenant_id = $2` because the read was on my list; nothing in the control ever staged a publication against another tenant's projection, so the predicate was unexercised and I would have shipped it believing it was verified.
+- ⭐ **That is a different failure from the one I hit at `.6.1.5.2.1`.** There the arm existed and passed for an unrelated reason. Here there was no arm at all, and the predicate looked verified because it sat inside a test file with nineteen green tests. A predicate with no arm is indistinguishable from a comment.
+- 🔎 **The cheapest way to tell them apart is the one I now run by default: neutralize each predicate separately and require a named red.** Anything that does not move is either untested or tested for the wrong reason, and both are findings.
+- 🔴 **Ordering the predicates turned up a second thing I was not looking for.** `record_drift` checked whether the (target, publication) pair was deployed BEFORE checking who owned the publication, so a foreign caller got two distinguishable refusals: `assignment … does not exist` when the pair was not deployed, `publication … does not exist` when it was. That enumerates another tenant's rollout state one guess at a time.
+- ⚠️ **It is a small leak and it was invisible to every census**, because both refusals are 400s from the same handler and no instrument compares refusal TEXT across tenants. The control now asserts the two messages are equal, which is a shape worth reusing: where a verb has two ways to say no, a foreign caller must get the same one.
+- 🔎 **And the same arms tell you when to stop.** Four reads are deliberately unbound and each has a caller that already refused; writing that list down, with the reason per read, is what keeps the next person from "finishing the job" by adding a second copy of a check that already exists somewhere it can be seen.
+- promotion: pending — *a predicate with no arm is not a repair*, and its corollary: where a verb has two ways to say no, a foreign caller must get the same one.
+
 ## 2026-09-19 — A refusal that arrives after the side effect is not a refusal
 
 - Eleven arms, all green on the first run. That is the moment to be suspicious, and the falsification harness earned its keep: ten arms went red at their own assertion, and one did not move at all.

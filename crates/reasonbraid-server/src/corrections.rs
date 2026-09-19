@@ -226,6 +226,14 @@ pub async fn record_drift(
     if !DRIFT_CATEGORIES.contains(&input.category.as_str()) {
         return Err(CorrectionError::UnknownCategory(input.category.clone()));
     }
+    // ⛔ ORDER CHANGED BY `SIGNOFF-REPAIR.6.1.5.3`, and the order is the finding.
+    // The assignment probe used to answer FIRST, so a foreign caller naming
+    // another tenant's publication got `UnknownAssignment` when the pair was not
+    // deployed and `UnknownPublication` when it was — two refusals that differ,
+    // which is an existence oracle over another tenant's rollout state. The
+    // ownership check now answers first, so a foreign publication gives ONE
+    // answer whatever its deployment.
+    let tenant_id = publication_tenant(pool, &input.publication_id, tenant_id).await?;
     let assignment: Option<bool> = sqlx::query_scalar(
         "SELECT EXISTS (SELECT 1 FROM deployment_assignments \
          WHERE target_id = $1 AND publication_id = $2)",
@@ -241,11 +249,6 @@ pub async fn record_drift(
             input.target_id, input.publication_id
         )));
     }
-    // ⚠️ The assignment check above proves the (target, publication) pair is
-    // deployed; it says nothing about who owns it. The tenant comes from the
-    // publication (`SIGNOFF-REPAIR.6.1.5.2`), and this LABELS the row without
-    // gating the write — `.6.1.5.2.1` owns the gate.
-    let tenant_id = publication_tenant(pool, &input.publication_id, tenant_id).await?;
     let inserted = sqlx::query(
         "INSERT INTO policy_drift \
          (drift_id, target_id, publication_id, category, desired_digest, observed_digest, \
@@ -393,38 +396,56 @@ pub async fn record_outcome(
 }
 
 /// The drift records, newest first.
-pub async fn list_drift(pool: &PgPool) -> Result<Vec<Value>, sqlx::Error> {
+/// ⛔ `SIGNOFF-REPAIR.6.1.5.3`: bound to the caller's tenant. Until now this
+/// returned every tenant's rows to any enrolled principal. ⚠️ The predicate
+/// never matches NULL, so a row `migrations/0073` could not attribute is read
+/// by NOBODY — `.7.1.2.2`'s disposition, and the reason the backfill's coverage
+/// is published as a measured count rather than assumed complete.
+pub async fn list_drift(pool: &PgPool, tenant_id: &str) -> Result<Vec<Value>, sqlx::Error> {
     let rows: Vec<Value> = sqlx::query_scalar(
         "SELECT jsonb_build_object('drift_id', drift_id, 'target_id', target_id, \
          'publication_id', publication_id, 'category', category, 'desired_digest', desired_digest, \
          'observed_digest', observed_digest) \
-         FROM policy_drift ORDER BY created_at DESC",
+         FROM policy_drift WHERE tenant_id = $1 ORDER BY created_at DESC",
     )
+    .bind(tenant_id)
     .fetch_all(pool)
     .await?;
     Ok(rows)
 }
 
 /// The corrections, newest first.
-pub async fn list_corrections(pool: &PgPool) -> Result<Vec<Value>, sqlx::Error> {
+/// ⛔ `SIGNOFF-REPAIR.6.1.5.3`: bound to the caller's tenant. Until now this
+/// returned every tenant's rows to any enrolled principal. ⚠️ The predicate
+/// never matches NULL, so a row `migrations/0073` could not attribute is read
+/// by NOBODY — `.7.1.2.2`'s disposition, and the reason the backfill's coverage
+/// is published as a measured count rather than assumed complete.
+pub async fn list_corrections(pool: &PgPool, tenant_id: &str) -> Result<Vec<Value>, sqlx::Error> {
     let rows: Vec<Value> = sqlx::query_scalar(
         "SELECT jsonb_build_object('correction_id', correction_id, 'publication_id', publication_id, \
          'operation', operation, 'authority_grant', authority_grant, 'supersedes', supersedes, \
          'expires_at', expires_at, 'reason', reason, 'evidence', evidence, 'remediation', remediation) \
-         FROM policy_corrections ORDER BY created_at DESC",
+         FROM policy_corrections WHERE tenant_id = $1 ORDER BY created_at DESC",
     )
+    .bind(tenant_id)
     .fetch_all(pool)
     .await?;
     Ok(rows)
 }
 
 /// The outcomes, newest first.
-pub async fn list_outcomes(pool: &PgPool) -> Result<Vec<Value>, sqlx::Error> {
+/// ⛔ `SIGNOFF-REPAIR.6.1.5.3`: bound to the caller's tenant. Until now this
+/// returned every tenant's rows to any enrolled principal. ⚠️ The predicate
+/// never matches NULL, so a row `migrations/0073` could not attribute is read
+/// by NOBODY — `.7.1.2.2`'s disposition, and the reason the backfill's coverage
+/// is published as a measured count rather than assumed complete.
+pub async fn list_outcomes(pool: &PgPool, tenant_id: &str) -> Result<Vec<Value>, sqlx::Error> {
     let rows: Vec<Value> = sqlx::query_scalar(
         "SELECT jsonb_build_object('outcome_id', outcome_id, 'publication_id', publication_id, \
          'kind', kind, 'review_trigger', review_trigger, 'note', note) \
-         FROM policy_outcomes ORDER BY created_at DESC",
+         FROM policy_outcomes WHERE tenant_id = $1 ORDER BY created_at DESC",
     )
+    .bind(tenant_id)
     .fetch_all(pool)
     .await?;
     Ok(rows)

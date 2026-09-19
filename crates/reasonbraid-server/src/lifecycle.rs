@@ -204,12 +204,20 @@ pub async fn record_decision(
     tenant_id: &str,
     input: &DecisionInput,
 ) -> Result<StoredDecision, LifecycleError> {
-    let proposal: Option<(String, String)> =
-        sqlx::query_as("SELECT thread_id, status FROM policy_proposals WHERE proposal_id = $1")
-            .bind(&input.proposal_id)
-            .fetch_optional(pool)
-            .await
-            .map_err(|_| LifecycleError::UnknownProposal(input.proposal_id.clone()))?;
+    // ⛔ `AND tenant_id = $2` ADDED BY `SIGNOFF-REPAIR.6.1.5.3`. The verdict check
+    // below already refused a foreign proposal transitively — the event must be
+    // in THAT proposal's thread AND the caller's tenant — but a gate that holds
+    // only by transitivity is the shape `.6.1.5.1.1` repaired at these same two
+    // verbs. The predicate is explicit, at the read, where it can be seen.
+    let proposal: Option<(String, String)> = sqlx::query_as(
+        "SELECT thread_id, status FROM policy_proposals \
+         WHERE proposal_id = $1 AND tenant_id = $2",
+    )
+    .bind(&input.proposal_id)
+    .bind(tenant_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| LifecycleError::UnknownProposal(input.proposal_id.clone()))?;
     let Some((thread_id, status)) = proposal else {
         return Err(LifecycleError::UnknownProposal(input.proposal_id.clone()));
     };
@@ -292,11 +300,20 @@ pub async fn record_decision(
 }
 
 /// The proposals, newest first.
-pub async fn list_proposals(pool: &PgPool) -> Result<Vec<StoredProposal>, sqlx::Error> {
+/// ⛔ `SIGNOFF-REPAIR.6.1.5.3`: bound to the caller's tenant. Until now this
+/// returned every tenant's rows to any enrolled principal. ⚠️ The predicate
+/// never matches NULL, so a row `migrations/0073` could not attribute is read
+/// by NOBODY — `.7.1.2.2`'s disposition, and the reason the backfill's coverage
+/// is published as a measured count rather than assumed complete.
+pub async fn list_proposals(
+    pool: &PgPool,
+    tenant_id: &str,
+) -> Result<Vec<StoredProposal>, sqlx::Error> {
     let rows: Vec<(String, String, String, String, String)> = sqlx::query_as(
         "SELECT proposal_id, policy_id, policy_version, thread_id, status \
-         FROM policy_proposals ORDER BY created_at DESC",
+         FROM policy_proposals WHERE tenant_id = $1 ORDER BY created_at DESC",
     )
+    .bind(tenant_id)
     .fetch_all(pool)
     .await?;
     Ok(rows
@@ -314,11 +331,20 @@ pub async fn list_proposals(pool: &PgPool) -> Result<Vec<StoredProposal>, sqlx::
 }
 
 /// The decisions, newest first.
-pub async fn list_decisions(pool: &PgPool) -> Result<Vec<StoredDecision>, sqlx::Error> {
+/// ⛔ `SIGNOFF-REPAIR.6.1.5.3`: bound to the caller's tenant. Until now this
+/// returned every tenant's rows to any enrolled principal. ⚠️ The predicate
+/// never matches NULL, so a row `migrations/0073` could not attribute is read
+/// by NOBODY — `.7.1.2.2`'s disposition, and the reason the backfill's coverage
+/// is published as a measured count rather than assumed complete.
+pub async fn list_decisions(
+    pool: &PgPool,
+    tenant_id: &str,
+) -> Result<Vec<StoredDecision>, sqlx::Error> {
     let rows: Vec<(String, String, String, Value, String)> = sqlx::query_as(
         "SELECT decision_id, proposal_id, rule, electorate, verdict_event_id \
-         FROM policy_decisions ORDER BY created_at DESC",
+         FROM policy_decisions WHERE tenant_id = $1 ORDER BY created_at DESC",
     )
+    .bind(tenant_id)
     .fetch_all(pool)
     .await?;
     Ok(rows
@@ -393,12 +419,20 @@ pub async fn record_approval(
     tenant_id: &str,
     input: &ApprovalInput,
 ) -> Result<StoredApproval, LifecycleError> {
-    let proposal: Option<(String, String)> =
-        sqlx::query_as("SELECT thread_id, status FROM policy_proposals WHERE proposal_id = $1")
-            .bind(&input.proposal_id)
-            .fetch_optional(pool)
-            .await
-            .map_err(|_| LifecycleError::UnknownProposal(input.proposal_id.clone()))?;
+    // ⛔ `AND tenant_id = $2` ADDED BY `SIGNOFF-REPAIR.6.1.5.3`, beside the
+    // `aggregate_state` ownership check `.6.1.5.1` added below. The two are not
+    // redundant: that one proves the caller owns the proposal's THREAD, this one
+    // that the proposal row itself is the caller's. A proposal stored before
+    // `migrations/0073` has no owner and is approved by nobody.
+    let proposal: Option<(String, String)> = sqlx::query_as(
+        "SELECT thread_id, status FROM policy_proposals \
+         WHERE proposal_id = $1 AND tenant_id = $2",
+    )
+    .bind(&input.proposal_id)
+    .bind(tenant_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| LifecycleError::UnknownProposal(input.proposal_id.clone()))?;
     let Some((thread_id, status)) = proposal else {
         return Err(LifecycleError::UnknownProposal(input.proposal_id.clone()));
     };
@@ -541,11 +575,20 @@ pub async fn record_approval(
 }
 
 /// The approvals, newest first.
-pub async fn list_approvals(pool: &PgPool) -> Result<Vec<StoredApproval>, sqlx::Error> {
+/// ⛔ `SIGNOFF-REPAIR.6.1.5.3`: bound to the caller's tenant. Until now this
+/// returned every tenant's rows to any enrolled principal. ⚠️ The predicate
+/// never matches NULL, so a row `migrations/0073` could not attribute is read
+/// by NOBODY — `.7.1.2.2`'s disposition, and the reason the backfill's coverage
+/// is published as a measured count rather than assumed complete.
+pub async fn list_approvals(
+    pool: &PgPool,
+    tenant_id: &str,
+) -> Result<Vec<StoredApproval>, sqlx::Error> {
     let rows: Vec<(String, String, String, String, String, Value)> = sqlx::query_as(
         "SELECT approval_id, proposal_id, decision_id, approver, grant_id, quorum \
-         FROM policy_approvals ORDER BY created_at DESC",
+         FROM policy_approvals WHERE tenant_id = $1 ORDER BY created_at DESC",
     )
+    .bind(tenant_id)
     .fetch_all(pool)
     .await?;
     Ok(rows

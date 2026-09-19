@@ -3294,13 +3294,18 @@ async fn list_policy_proposals(
     headers: HeaderMap,
 ) -> Result<Json<Vec<crate::lifecycle::StoredProposal>>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    // `SIGNOFF-REPAIR.6.1.5.3`: the tenant is BOUND and PASSED to the read.
+    // `.6.1.5.2` recorded an owner on every lifecycle row and `.6.1.5.2.1` gated
+    // every write; this is the third half — until now the list returned every
+    // tenant's governance trail to any enrolled caller.
+    let Some(caller_tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal reads no proposals",
         ));
-    }
-    Ok(Json(crate::lifecycle::list_proposals(&state.pool).await?))
+    };
+    Ok(Json(
+        crate::lifecycle::list_proposals(&state.pool, &caller_tenant).await?,
+    ))
 }
 
 /// `POST /v1/policy-decisions` — record one decision (the draft → decided
@@ -3328,13 +3333,18 @@ async fn list_policy_decisions(
     headers: HeaderMap,
 ) -> Result<Json<Vec<crate::lifecycle::StoredDecision>>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    // `SIGNOFF-REPAIR.6.1.5.3`: the tenant is BOUND and PASSED to the read.
+    // `.6.1.5.2` recorded an owner on every lifecycle row and `.6.1.5.2.1` gated
+    // every write; this is the third half — until now the list returned every
+    // tenant's governance trail to any enrolled caller.
+    let Some(caller_tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal reads no decisions",
         ));
-    }
-    Ok(Json(crate::lifecycle::list_decisions(&state.pool).await?))
+    };
+    Ok(Json(
+        crate::lifecycle::list_decisions(&state.pool, &caller_tenant).await?,
+    ))
 }
 
 /// `POST /v1/policy-approvals` — record one approval (`.2.3`): the decided →
@@ -3363,13 +3373,18 @@ async fn list_policy_approvals(
     headers: HeaderMap,
 ) -> Result<Json<Vec<crate::lifecycle::StoredApproval>>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    // `SIGNOFF-REPAIR.6.1.5.3`: the tenant is BOUND and PASSED to the read.
+    // `.6.1.5.2` recorded an owner on every lifecycle row and `.6.1.5.2.1` gated
+    // every write; this is the third half — until now the list returned every
+    // tenant's governance trail to any enrolled caller.
+    let Some(caller_tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal reads no approvals",
         ));
-    }
-    Ok(Json(crate::lifecycle::list_approvals(&state.pool).await?))
+    };
+    Ok(Json(
+        crate::lifecycle::list_approvals(&state.pool, &caller_tenant).await?,
+    ))
 }
 
 /// `POST /v1/policy-projections` — project one resolved set (`.3.2`): the
@@ -3402,13 +3417,18 @@ async fn list_policy_projections(
     headers: HeaderMap,
 ) -> Result<Json<Vec<crate::projections::StoredProjection>>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    // `SIGNOFF-REPAIR.6.1.5.3`: the tenant is BOUND and PASSED to the read.
+    // `.6.1.5.2` recorded an owner on every lifecycle row and `.6.1.5.2.1` gated
+    // every write; this is the third half — until now the list returned every
+    // tenant's governance trail to any enrolled caller.
+    let Some(caller_tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal reads no projections",
         ));
-    }
-    Ok(Json(crate::projections::list(&state.pool).await?))
+    };
+    Ok(Json(
+        crate::projections::list(&state.pool, &caller_tenant).await?,
+    ))
 }
 
 /// `POST /v1/policy-publications` — stage one publication (`.4.2`): the
@@ -3441,13 +3461,18 @@ async fn list_publications(
     headers: HeaderMap,
 ) -> Result<Json<Vec<crate::publications::StoredPublication>>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    // `SIGNOFF-REPAIR.6.1.5.3`: the tenant is BOUND and PASSED to the read.
+    // `.6.1.5.2` recorded an owner on every lifecycle row and `.6.1.5.2.1` gated
+    // every write; this is the third half — until now the list returned every
+    // tenant's governance trail to any enrolled caller.
+    let Some(caller_tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal reads no publications",
         ));
-    }
-    Ok(Json(crate::publications::list(&state.pool).await?))
+    };
+    Ok(Json(
+        crate::publications::list(&state.pool, &caller_tenant).await?,
+    ))
 }
 
 /// `POST /v1/policy-publications/{id}/effective` — the staged → effective
@@ -3788,14 +3813,17 @@ async fn list_deployments(
     headers: HeaderMap,
 ) -> Result<Json<Vec<crate::deployments::StoredAssignment>>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    // `SIGNOFF-REPAIR.6.1.5.3`: an assignment is read by the tenant that owns
+    // its publication — DOC-0071's ruling, implemented here because no child of
+    // `.6.1.5` named this table and a decided-but-unbound read owned by nobody
+    // is how a data model gets decided by accident.
+    let Some(caller_tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal reads no deployments",
         ));
-    }
+    };
     Ok(Json(
-        crate::deployments::list_assignments(&state.pool).await?,
+        crate::deployments::list_assignments(&state.pool, &caller_tenant).await?,
     ))
 }
 
@@ -3860,13 +3888,18 @@ async fn list_policy_drift(
     headers: HeaderMap,
 ) -> Result<Json<Vec<serde_json::Value>>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    // `SIGNOFF-REPAIR.6.1.5.3`: the tenant is BOUND and PASSED to the read.
+    // `.6.1.5.2` recorded an owner on every lifecycle row and `.6.1.5.2.1` gated
+    // every write; this is the third half — until now the list returned every
+    // tenant's governance trail to any enrolled caller.
+    let Some(caller_tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal reads no drift",
         ));
-    }
-    Ok(Json(crate::corrections::list_drift(&state.pool).await?))
+    };
+    Ok(Json(
+        crate::corrections::list_drift(&state.pool, &caller_tenant).await?,
+    ))
 }
 
 /// `POST /v1/policy-corrections` — record one correction (`.5.3`): the
@@ -3900,14 +3933,17 @@ async fn list_policy_corrections(
     headers: HeaderMap,
 ) -> Result<Json<Vec<serde_json::Value>>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    // `SIGNOFF-REPAIR.6.1.5.3`: the tenant is BOUND and PASSED to the read.
+    // `.6.1.5.2` recorded an owner on every lifecycle row and `.6.1.5.2.1` gated
+    // every write; this is the third half — until now the list returned every
+    // tenant's governance trail to any enrolled caller.
+    let Some(caller_tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal reads no corrections",
         ));
-    }
+    };
     Ok(Json(
-        crate::corrections::list_corrections(&state.pool).await?,
+        crate::corrections::list_corrections(&state.pool, &caller_tenant).await?,
     ))
 }
 
@@ -3940,13 +3976,18 @@ async fn list_policy_outcomes(
     headers: HeaderMap,
 ) -> Result<Json<Vec<serde_json::Value>>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    // `SIGNOFF-REPAIR.6.1.5.3`: the tenant is BOUND and PASSED to the read.
+    // `.6.1.5.2` recorded an owner on every lifecycle row and `.6.1.5.2.1` gated
+    // every write; this is the third half — until now the list returned every
+    // tenant's governance trail to any enrolled caller.
+    let Some(caller_tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal reads no outcomes",
         ));
-    }
-    Ok(Json(crate::corrections::list_outcomes(&state.pool).await?))
+    };
+    Ok(Json(
+        crate::corrections::list_outcomes(&state.pool, &caller_tenant).await?,
+    ))
 }
 
 /// `POST /v1/policy-reviews/schedule` — evaluate the DUE reviews (`.6`):
@@ -3977,13 +4018,18 @@ async fn list_policy_reviews(
     headers: HeaderMap,
 ) -> Result<Json<Vec<crate::reviews::StoredReview>>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    // `SIGNOFF-REPAIR.6.1.5.3`: the tenant is BOUND and PASSED to the read.
+    // `.6.1.5.2` recorded an owner on every lifecycle row and `.6.1.5.2.1` gated
+    // every write; this is the third half — until now the list returned every
+    // tenant's governance trail to any enrolled caller.
+    let Some(caller_tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal reads no reviews",
         ));
-    }
-    Ok(Json(crate::reviews::list_reviews(&state.pool).await?))
+    };
+    Ok(Json(
+        crate::reviews::list_reviews(&state.pool, &caller_tenant).await?,
+    ))
 }
 
 /// `POST /v1/policy-reviews/{id}/done` — the due → done transition.

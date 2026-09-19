@@ -6861,6 +6861,25 @@ absent:  400 {"code":"invalid_command","message":"the reference does not exist"}
 - promotion: declined (the durable statement IS the tracked instrument and its `--self-test`; a method statement about retained clusters would be the thing `.11.4.3.1.6` already proved does not survive).
 - Commit: `REASONBRAID-REPAIR-0107 (leaf SIGNOFF-REPAIR.11.4.3.1.7): census and retire the runner's retained clusters with a tracked instrument`.
 
+###### SIGNOFF-REPAIR.11.4.3.1.9 — The artifact sweep, measured before it is run
+
+- Opened: `pending` by the director's instruction 2026-09-19 — *"Clean up target whenever you see fit"* — and MEASURED before anything was deleted, which changed what should be done.
+- ⛔ **THE STANDING PROHIBITION HOLDS AND IS RESTATED HERE SO NO SWEEP FORGETS IT:** `cargo clean` must NOT be used. It would take `target/pg-tests`, `target/ci-browser` and `target/browser-lifetime-controls`, which are CITED evidence (`MEMORY.md`, DOC-0060).
+- 🔴 **THE MEASUREMENT THAT MAKES A NAIVE SWEEP DESTRUCTIVE: 101 of the 257 top-level `.log` files are CITED in tracked Markdown.** They are the verification records of roughly a hundred closed leaves — `pg*_guard.log`, `*_offline.log`, `load_harness_run.log`, `release_manifest.log`. ⛔ `rm target/*.log` would delete the evidence those leaves' acceptance checklists point at. Re-derive:
+
+```bash
+for f in $(find target -maxdepth 1 -name '*.log' | sed 's|target/||'); do
+  git grep -q -- "$f" -- '*.md' && echo "CITED: $f"
+done
+```
+
+- ⭐ **AND THE SWEEP IS NOT WORTH RUNNING, which is the finding rather than the excuse.** The 156 UNCITED logs total **2,680 KB — 2.6 MB of a 16 GB tree, under 0.02%.** Directive 8 names logs and `.bin` files first, and here they are rounding error. `target/debug` alone is **11.9 GB, 74% of the tree**; `target/release` is 1.4 GB; `target/pg-tests` 1.2 GB and `target/ci-browser` 0.5 GB are both cited evidence.
+- **So the only disposition that moves the number is the debug tree's, and that is `.11.4.3.1.8`'s, already decided once:** DOC-0060 retired `target/debug` on the director's instruction and it has grown back to 11.9 GB because every build refills it. ⚠️ Retiring it again buys ~12 GB and costs the next build a cold rebuild — measured at **68m 16s** on this host, under `syspolicyd` contention and exhausted swap. That trade is the director's, not a sweep's.
+- Owns: the two candidate classes a sweep may take WITHOUT touching evidence or the build cache — the 156 uncited top-level logs, and the stray ephemeral clusters (`target/pg-ephemeral.*`, `target/pg-iter.*`, ~116 MB across three) — each censused against `scripts/census_pg_test_clusters.py`'s citation guard before removal, with a residue census afterwards.
+- Acceptance: every deleted path is proved uncited by the command above at the moment of deletion, not from this leaf's stale list; the ephemeral clusters are proved STOPPED and their process groups absent before removal, per `.3.2.1`'s cleanup discipline; file counts and byte totals are recorded before and after; and a residue census proves the exact deleted set is gone and the cited set is intact.
+- ⚠️ **Deliberately NOT run in the session that opened it.** The director asked to `/exit`, and a deletion sweep started at a handoff point is how a half-finished removal outlives its session — the exact class `check_no_background_jobs.sh` exists to prevent.
+- Verification / commit: pending.
+
 ###### SIGNOFF-REPAIR.11.4.3.1.8 — Decide the disposition of the debug build tree
 
 - Opened: `pending`; raised by `.11.4.3.1.7`'s measurement, which measured where the bytes are instead of assuming it.

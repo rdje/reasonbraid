@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — An instrument used outside its corpus gives a confident wrong answer, not a missing one
+
+- I needed "how is this route admitted" and an instrument already answered it, so I imported it and ran it over every file with a route registration. Two node-channel routes came back admitted by **nothing** — writing site-global state, unadmitted. That is a serious finding and it was false. Both call `verify_fencing(node_id, fencing_token, lease_epoch)`.
+- 🔎 **The cause is one line I did not read:** `SOURCE = "crates/reasonbraid-server/src/api.rs"`. That census reads one file. Its `GATES` vocabulary was derived from that file, so it has never needed to know the node channel's token admission — and asked about a route from another router it does not say *I don't know*, it says `none`.
+- ⭐ **A classifier's vocabulary is scoped to the corpus it was built from, and nothing in its output says so.** The label `none` looked like a measurement. Reusing an instrument is right — duplicating it would have been worse — but reuse means inheriting its scope, and the scope is usually a constant near the top of the file rather than anything the result carries.
+- ⛔ My rows now say `not-censused` for anything outside that corpus. Publishing "writes site-global state with no admission" about a route whose admission was never examined would have been the worst error available here, and it would have looked like the best finding of the session.
+- 🔎 **The same day, the same shape, pointing the other way:** importing `tenant_dimensioned_tables()` rather than copying it meant I *inherited* its blind spot — a schema-qualified `CREATE TABLE` it could not see — instead of writing a second one with different bugs. The blind spot surfaced as four tables reading `?` in my output, which is how I found it. **Copying hides a defect in two places; importing surfaces it in both.**
+- ⭐ And the debugging lesson worth keeping: my SQL scan reported tables named `set`, `of`, `the`, `insert` and `invite`. I spent two repairs on "prose leaking in from comments" because `the` and `invite` are English. **The tell was that `set` and `of` are SQL keywords — one explanation had to cover all five, and only the grammar did** (`DO UPDATE SET`, `FOR UPDATE OF`, `FOR UPDATE` at a literal's end). When a symptom list mixes two vocabularies, the cause is in the one you are not looking at.
+- promotion: pending — *an instrument used outside its corpus gives a confident wrong answer, not a missing one* deserves a note, and *copying hides a defect in two places; importing surfaces it in both* belongs with it.
+
 ## 2026-09-19 — A rung nobody stands on holds any weight you like
 
 - The R3 browser pack advertised `sandbox_level: "vm_container"` — the top of a four-rung isolation ladder — while spawning an ordinary child process. That survived from the pack's first commit through a gate record, a re-derivation of that record, and a census built specifically to find false advertisements.

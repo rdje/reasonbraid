@@ -147,13 +147,25 @@ def tenant_dimensioned_tables() -> dict[str, bool]:
     tables: dict[str, bool] = {}
     for path in sorted((ROOT / "migrations").glob("*.sql")):
         text = read(path)
-        for m in re.finditer(r"CREATE TABLE(?:\s+IF NOT EXISTS)?\s+([a-z_][a-z_0-9]*)\s*\(", text, re.IGNORECASE):
+        # 🔴 THE SCHEMA QUALIFIER IS OPTIONAL AND FOUR TABLES USE IT.
+        # Without `(?:public\.)?` this pattern matched none of
+        # `CREATE TABLE public.site_audit`, `…site_authority_guard`,
+        # `…site_boundaries` or `…site_grants` — the whole site-authority
+        # family — so every route touching them reported `table=?` instead of
+        # `table=site-global`. Found by `SIGNOFF-REPAIR.7.1.1`, which imports
+        # this function rather than copying it, and therefore inherited the
+        # blind spot instead of reproducing it. 4 of 80 tables.
+        for m in re.finditer(
+            r"CREATE TABLE(?:\s+IF NOT EXISTS)?\s+(?:[a-z_][a-z_0-9]*\.)?([a-z_][a-z_0-9]*)\s*\(",
+            text,
+            re.IGNORECASE,
+        ):
             end = balanced(text, m.end() - 1)
             body = text[m.end() : end]
             tables[m.group(1)] = bool(TENANT_TOKEN.search(body))
         # A tenant column added later still gives the table a tenant dimension.
         for m in re.finditer(
-            r"ALTER TABLE\s+([a-z_][a-z_0-9]*)\s+ADD COLUMN(?:\s+IF NOT EXISTS)?\s+(\w+)",
+            r"ALTER TABLE\s+(?:[a-z_][a-z_0-9]*\.)?([a-z_][a-z_0-9]*)\s+ADD COLUMN(?:\s+IF NOT EXISTS)?\s+(\w+)",
             text,
             re.IGNORECASE,
         ):

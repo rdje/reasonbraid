@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-19 — Forty-two routes write site-global state, thirty-three on enrolment alone (`SIGNOFF-REPAIR.7.1.1`)
+
+`SIGNOFF-REPAIR.7.1`'s attached clause 2 — two reviewers, one finding — names this census as the PREREQUISITE to designing the resolver bind, because `SIGNOFF-REPAIR.3.2` designed one without it and closed `done` while two shared registries sat outside its six site actions.
+
+- 🔴 **The population is 42, not 2.** `python3 -B scripts/census_shared_registry_writes.py`: **72 mutating routes**, of which **42 write a table carrying no tenant dimension**. By admission: **`identity only` 33** · `guarded transaction` 3 · `not-censused` 3 · `pool tenant-admin` 2 · `pool authorize` 1.
+- 🔴 **So 33 routes write site-global state on enrolment alone**, across **30 distinct tables** — `policy_*` 10, `evaluation_*` 7, `deployment_*` 2, `routing_*` 2. ⛔ `.3.2`'s closed set of six site actions covers **none** of them: the gap is an order of magnitude wider than the two instances known by name.
+- ⚠️ **A population is not a defect count, and this leaf does not call them defects.** The read census's own 24 site-global routes were a false-positive class, and a prior ruling already holds the derivation graph shared on purpose. Adjudicating the 33 is `.7.1.2`; publishing the population is this leaf.
+- 🔴 **Three instrument defects found by following numbers that looked odd — two of them in shipped code.** (1) `tenant_dimensioned_tables()` could not see a schema-qualified `CREATE TABLE`, so the entire site-authority family — **4 of 80 tables** — was unknown to it, and the GET-route census has been reporting `site_audit=?` ever since. ⭐ Found only because this leaf **imports** that function rather than copying it. (2) `UPDATE` appears in SQL in three non-write positions, and the scan called each a table: `DO UPDATE SET` → `set`, `FOR UPDATE OF n` → `of`, `FOR UPDATE` at a literal's end → `the`, `insert`, `invite`. (3) A match could span two joined string literals.
+- ⭐ **The tell for (2) was that `the` and `invite` are English while `set` and `of` are SQL.** One explanation had to cover both, and only the grammar did — the first two repairs chased prose-in-comments and were wrong.
+- ⭐ **Two arms, answering different questions, because one was blind to 26 of 72.** The call walk under-reports (no trait dispatch, no methods, no submodules) and said `POST /v1/admin/regions` writes nothing. The second asks the corpus rather than the call graph and can only be too WIDE. Every row names the arm that answered it; the 42 headline counts only the precise one.
+- ⛔ **`not-censused` is not `none`.** Applying `census_admission_paths.py` outside its one-file corpus reported two fencing-token node routes as admitted by nothing. **Applying an instrument outside its own corpus produces a confident wrong answer, not a missing one.**
+- ⚠️ **Not registered as a pre-commit gate, priced rather than asserted:** `--check` costs 1.86 s against a 13.9 s enforcer and guards a class that is 0 today. The self-test already runs every commit at 1.86 s, down from 5.70 s once the three whole-tree derivations were memoized.
+- ✅ **VERIFIED:** `--check` rc=0, `--self-test` **33/33**; falsified twice in situ and restored byte-identical (reverting the grammar fix → 30/33, reverting the schema-qualifier repair → 32/33); the sibling census's own self-test unchanged; `unittest discover -s scripts/tests` **73 tests, OK**; `make gate` green.
+
 ## 2026-09-19 — The terms are defined, and the R3 pack stops claiming a container it does not have (`SIGNOFF-REPAIR.7.3.6.5`)
 
 The last child of `.7.3.6`, and **G4's open strand closes with it**. All 36 advertised policy lines now carry a defined verdict: **`enforced` 6 · `unverified` 9 · `vacuous` 21 — `undefined` 0, `misdescribed` 0.**

@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **FORTY-TWO ROUTES WRITE SITE-GLOBAL STATE, THIRTY-THREE ON ENROLMENT ALONE (`.7.1.1`, REPAIR-0271).**
+
+`.7.1`'s attached clause 2 named this census as the prerequisite to designing the resolver bind. **72 mutating routes; 42 write a table with no tenant dimension** — `identity only` **33** · `guarded transaction` 3 · `not-censused` 3 · `pool tenant-admin` 2 · `pool authorize` 1.
+
+- 🔴 **30 distinct tables**, concentrated in `policy_*` (10) and `evaluation_*` (7). ⛔ `.3.2`'s closed set of six site actions covers **none** of them — the gap is an order of magnitude wider than the two instances known by name.
+- ⚠️ **A POPULATION, not 33 defects.** The read census's own 24 site-global routes were a false-positive class. Adjudication is `.7.1.2`.
+- 🔴 **Three instrument defects found on the way, two in shipped code:** a schema-qualified `CREATE TABLE` was invisible to the shared tenant-dimension primitive (**4 of 80** tables — the whole site-authority family, so the GET census has reported `site_audit=?` throughout); `UPDATE` in three non-write SQL positions reported tables called `set`, `of`, `the`, `insert`, `invite`; and a match could span two joined literals. ⭐ The tell was that `the` is English and `of` is SQL — one explanation had to cover both.
+- ⛔ **`not-censused` ≠ `none`:** applying the admission census outside its one-file corpus called two fencing-token routes unadmitted. **An instrument used outside its corpus gives a confident wrong answer, not a missing one.**
+- ✅ **VERIFIED:** `--check` rc=0, `--self-test` **33/33**, falsified twice in situ and restored byte-identical; `scripts/tests` **73 OK**; `make gate` green.
+
 🔴 **G4'S OPEN STRAND IS DISCHARGED: THE R3 PACK STOPS CLAIMING A CONTAINER IT DOES NOT HAVE (`.7.3.6.5`, REPAIR-0270).**
 
 `.7.3.6` closes with all five children. **36 advertised policy lines: `enforced` 6 · `unverified` 9 · `vacuous` 21 — `undefined` 0, `misdescribed` 0.**

@@ -266,59 +266,26 @@ The director asked for ReasonBraid to orchestrate 2–5 agents working collectiv
 - 🔴 **The old self-test's third arm asserted `stem("/v1/calls/{call_id}/respond") == "/v1/calls/respond"`** — codifying a key no book writes as the correct answer. Not a control that could not see the defect: one that demanded it. Falsified five ways, each red by name; a sixth attempt was a bad mutant of mine (`return [] or sorted(...)` evaluates to the sorted list) and is recorded rather than counted.
 - ⛔ Unchanged: 52 is not 52 defects, `described` is still a proxy, and no gate is proposed — a better key does not touch `.11.6`'s reasoning.
 
-## 2026-09-18 — A citation is withdrawn by its tenant; a shared row is tombstoned by the site (`SIGNOFF-REPAIR.7.4.4`)
-
-🔴 **One verb carried two acts that do not share an authority. A snapshot two tenants cite is ONE row, so `DELETE /v1/snapshots/{id}` removed tenant B's evidence when tenant A asked — and stamped B's receipt with A's reason.**
-
-- **Reproduced RED first, and the reproduction printed the defect.** Two tenants submit the same `(locator, digest)` pair; the second gets `replay: true` and the SAME `snapshot_id` — one row, two citers. A deletes, and B's read returns `"deleted_at":"2026-09-18T09:09:11Z","deletion_reason":"tenant A no longer relies on this"`. `.11.14.1` had bound the verb to a CITING tenant, which stops a stranger and does not separate two citers, because both are citers.
-- ✅ **The split.** *Withdrawing a citation* is a statement about one tenant's own reliance and is the tenant's to make. *Tombstoning the row* is a statement about shared bytes, which needs the authority the retention sweep already needs — `retention_class` is a column on the shared row, `.7.4.3`'s own argument. So `DELETE` withdraws, and `POST /v1/snapshots/{id}/tombstone` is a site act under the existing `evidence_expire` grant.
-- ⛔ **Two obvious alternatives rejected for the same reason.** *Refuse the delete when another tenant cites the row* and *tombstone only when the last citer leaves* both make one tenant's observable outcome depend on whether a STRANGER cites it — the cross-tenant existence §9.8 forbids. The second is worse: it hands any tenant the shared-row authority by the back door of being the only citer.
-- ✅ **The withdrawal is RECORDED, not deleted** (§12.9, *never a silent disappearance*). `migrations/0070` adds `withdrawn_at`/`withdrawn_by`/`withdrawal_reason`; a plain `DELETE` would have left no answer to *who stopped relying on this, when and why*. Re-citing restores the row and keeps the original `cited_at`/`cited_by`.
-- ✅ **The irreversibility is removed for the tenant and kept for the tombstone.** A withdrawal is undone by citing again; a tombstone stays permanent but is now reachable only through an authorized, audited site act. Undoing one would make the §12.9 record of it a lie.
-- ✅ **Falsified four ways, each red BY NAME**: the withdrawal tombstoning again (B's sentence, plus the roundtrip control), the disclosure predicate dropping `withdrawn_at IS NULL` (A's 404), `record_citation` back to `DO NOTHING` (the restore arm), and the site route with no authority (the 403 arm). `profiles` 56/0, `evaluation` 3, `command_api` 39, `migration_upgrade` 4, clippy `-D warnings` rc=0.
-- ✅ `the_snapshot_store_roundtrips_replays_and_tombstones` is renamed `…_and_withdraws` with its three moved assertions named in the body — nothing was deleted to make it green.
-- 🔎 Two findings routed rather than reported: **`.11.8.1`** — the route census's `stem()` collapses `/v1/snapshots/{id}` onto `/v1/snapshots`, so an item route is counted *described* by the line documenting the submit route, while a mid-path parameter yields a stem no book writes; `.11.8`'s published `35 described / 68 absent` is wrong in both columns. **`.11.21`** — `git.rs` is committed unformatted, because the per-commit enforcer has no formatting check.
-
-## 2026-09-18 — A retention rule with no retirement, on both populations at once (`SIGNOFF-REPAIR.7.3.2.1`)
-
-🔴 **Two test suites retain a workspace on failure, deliberately and correctly — and nothing had ever retired one. Measured at closure: 1,896,248,619 bytes across 37 fixtures, of which 99.93 % is reproducible payload and 1.34 MB is the evidence they exist for.**
-
-- **The premise had got worse while the leaf sat pending.** `target/pg-tests` went from the 12 clusters / 599 MiB this leaf recorded when it opened to **25 clusters / 1,372,355,705 bytes** in two days. `target/browser-lifetime-controls` held 12 fixtures / 523,892,914 bytes.
-- ⭐ **What a retained fixture must keep was measured, not chosen.** Of one fixture's 56,546,450 bytes, `profile/` is 56,394,675 — 36.7 MiB of it a single `model.tflite` Chrome downloaded — and the evidence is 1,293 bytes in 7 files. ⛔ **Two of those seven sit INSIDE the payload directory**: `owner.json` and `completion.json` are the production worker's own receipts, carrying `browser_group` and `cleanup_confirmed`. Dropping `.project-data` wholesale — the obvious rule, and the first one written — would have destroyed exactly the record `.7.3.2` exists to preserve.
-- ✅ **One rule, both populations: keep the receipt, drop the reproducible payload.** `scripts/census_retained_fixtures.py` censuses and reduces. It **never deletes a fixture and never signals a process** — every liveness probe is signal 0, honouring `.7.3.2`'s "never signal a historical numeric PID solely from a stale receipt". An id in use keeps a fixture, so a recycled id costs disk, never evidence.
-- ✅ **Result: 34 of 37 fixtures reduced, 1,824,989,121 bytes dropped, 0 deleted**, residue census green and `du` agreeing independently (`target/browser-lifetime-controls` 511,614 KiB → **384 KiB**; `target/pg-tests` 1,340,190 KiB → **70,464 KiB**). ⭐ The citation guard fired in PRODUCTION rather than only in its self-test, keeping `run-9_ueev0t` whole because three tracked files name it.
-- 🔴 **Mutation found three of this instrument's own controls vacuous.** Flipping `except PermissionError: return True` to `return False` — which would let it reduce a fixture whose browser is alive under another uid — passed every arm, because all nine liveness arms probed *our own* pid, where signal 0 succeeds and the EPERM branch never runs. Deleting the kept-tree equality check entirely passed too. So did removing the pre-removal re-check, which lived inline in `main()` where nothing drove it. All three are repaired with arms that fail for their own reason, and all six mutants are now red.
-- ✅ `scripts/census_pg_test_clusters.py` removes a cluster outright, a different disposition owned by `.11.4.3.1.7` and left intact. It now refuses any cluster carrying `retired.json`, so it cannot undo this repair.
-- 📄 Promoted: `docs/knowledge/a-guard-your-own-process-cannot-reach.md`.
-
-## 2026-09-18 — Three ref clauses, and a fourth defect that made all three unreachable (`SIGNOFF-REPAIR.7.2.8`)
-
-🔴 **`acquire_into` passed the URL's fragment to `remote_at`, so every selector-bearing acquisition failed at the remote. The three clauses this leaf was opened for all sit downstream of a path nothing could reach.**
-
-- **Why it survived:** nothing ever drove the feature. **13** `acquire_local` call sites, none with a fragment; the only `#refs/tags/v1.0` in the suite is a `fetch_refspec` *unit* test that never reaches a transport. 🔎 A careful reading found three real defects in unreachable code, and the FIRST control found the reason it was unreachable — `TOOLBOX.md`'s tools-first argument arriving from the other side.
-- ✅ **An annotated tag resolves, and that was decided rather than defaulted.** It advertises as `Ref::Peeled`; the match covered only `Symbolic`/`Direct`, so it reported `NoHeadRef` for a ref the remote had advertised. Refusing by name was weighed and loses on the contract: the acquisition exists to produce an immutable commit, a tag is the commonest way to name one, and `Peeled` hands over exactly that commit.
-- ✅ **An ambiguous short name is refused BY NAME**, listing both full refs — and only when the two point at **different** commits, so a repository that merely tags its own branch tip still resolves. ⛔ Refusal rather than `gitrevisions`' precedence order, deliberately: this is not a CLI, and a silent pick between two commits is the shape this project refuses everywhere else.
-- ✅ **`refs/heads/..` is refused.** The `refs/` arm returned early, so the `..` guard below it never saw a `refs/` selector while the charset admits `.`.
-- ✅ **Two falsification passes, because one could not separate the defects.** Neutralising the three resolution repairs together reds three arms by name — the ambiguity one reporting the arbitrary winner as an observation. The fragment repair needed its own pass: with it neutralised, all three selector controls fail at the remote and would have masked whether the others fired for their own reasons.
-- ⭐ **`ACQUISITION-KIND-DOC`, registered one leaf earlier, refused the change** — `python3 -B scripts/census_reason_codes.py --check` named the undocumented `ambiguous_ref_selector` the moment the wire mapping was added. ⚠️ Precisely: it refused the CHANGE, by command, before any commit was attempted; the pre-commit hook never had to fire, because the check was run by hand first. A gate catching its own author within the hour is better evidence than its calibration was.
-- ⭐ `.7.2`'s mechanism table is now fully discharged: consumption bounds by `.7.2.7` and `.7.2.9`, supported refs here.
-
-## 2026-09-18 — A safety default disabled by our own correctness (`SIGNOFF-REPAIR.7.2.9`)
-
-🔴 **`gix` ships a 16 MiB per-object allocation brake. This project had it switched off — by the very property that makes its acquisition repositories safe in every other respect.**
-
-- **The mechanism, read in the pinned dependency.** `gix-pack 0.74.2` refuses to allocate for an object larger than `alloc_limit_bytes` (`gix-pack-0.74.2/src/data/file/decode/entry.rs:475`), and gix supplies `ALLOC_LIMIT_IF_REDUCED_TRUST_DEFAULT` = 16 MiB. ⛔ It applies **only at `Trust::Reduced`**, and `init_opts` sets `git_dir_trust = Some(Trust::Full)` unconditionally (`gix-0.87.1/src/init.rs:76`). Every acquisition repository goes through `init_opts`, so the brake never engaged: a remote-supplied pack entry could declare any size and gix would ask the allocator for it.
-- ⭐ **The defect lives in the seam between two correct decisions, in two codebases.** The repository is fully trusted *because the server created it* — the same fact that makes `open::Options::isolated()` the right config posture — and full trust is exactly what disables the limit. Nobody would find this by reading either codebase alone.
-- ✅ **The repair refuses nothing that would have succeeded**, which is why this limit and not gix's. It is set to `max_bytes`, the ceiling the acquisition already declares for its whole object database: an object larger than that could never have passed anyway. gix's 16 MiB was rejected for the opposite reason — it sits *below* what this project's own ceilings permit.
-- ⛔ **No crafted pack, and the leaf says so.** The acceptance offered *demonstrate it or withdraw the concern*; reading the dependency established both that the bound exists and the exact condition disabling it — stronger than a synthetic fixture, and it does not rest on one nobody will re-run.
-- ✅ The control proves the setting **lands** (`an-injection-must-be-shown-to-land`); what gix does with the limit is gix's behaviour, tested by gix. One arm red by name, the negative arm labelled. 17 tests pass, clippy `-D warnings` rc=0, and the book's ceiling table gains the row.
-
 ## Historical entries and exact retrieval
 
 This is a recent digest. Older chronology remains in reachable Git history under
-the rotation contract in `README_POLICY.md`. This file has rotated twenty-seven times;
+the rotation contract in `README_POLICY.md`. This file has rotated twenty-eight times;
 each rotation names the commit holding the ledger immediately before it, so the
 chain walks back without guessing.
+
+Retrieve the ledger immediately before the TWENTY-EIGHTH rotation (2026-09-19)
+from the repository root:
+
+```bash
+git show 61a28a943305135275e38e0b0c6c5f5f46e019c2:CHANGELOG.md
+```
+
+That snapshot is 92,534 bytes and contains 26 dated entries; its Git blob is
+`83cfd5d589acd1a4bcf499fb59d64f5a7e66bddd`, and its SHA-256 is
+`3177e40ce2b183814022c285ee2e7e63b82398c7fa4cabe41f6c8317c091b294`. The newest
+entry it holds that this digest no longer carries is
+`2026-09-18 — A citation is withdrawn by its tenant; a shared row is tombstoned by the site (`SIGNOFF-REPAIR.7.4.4`)`.
+It carries the TWENTY-SEVENTH rotation's notice in turn, which names the ledger before it.
 
 Retrieve the ledger immediately before the TWENTY-SEVENTH rotation (2026-09-19)
 from the repository root:

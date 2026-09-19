@@ -285,56 +285,26 @@ The director asked for ReasonBraid to orchestrate 2–5 agents working collectiv
 - ⛔ **No crafted pack, and the leaf says so.** The acceptance offered *demonstrate it or withdraw the concern*; reading the dependency established both that the bound exists and the exact condition disabling it — stronger than a synthetic fixture, and it does not rest on one nobody will re-run.
 - ✅ The control proves the setting **lands** (`an-injection-must-be-shown-to-land`); what gix does with the limit is gix's behaviour, tested by gix. One arm red by name, the negative arm labelled. 17 tests pass, clippy `-D warnings` rc=0, and the book's ceiling table gains the row.
 
-## 2026-09-18 — A second refusal vocabulary, documented nowhere (`SIGNOFF-REPAIR.7.2.10`)
-
-🔴 **An acquisition refusal travels in `acquisition_error.kind`, not in `code`. Forty-one strings a client branches on, and the book documented none of them.**
-
-- ⭐ **It is NOT a `REASON-CODE-DOC` gap, and checking that first is why this is a leaf rather than a correction.** The struct carries `kind`; the §9.8 registry, `KnownReasonCode` and the book's error table are all about `code`. The two vocabularies share **0** strings — measured. So the census keying on `code:` was right, and the gap it left was real.
-- ⭐ **Derived from the PRODUCERS, and three keys were wrong before the fourth was right** — `a-census-is-as-wide-as-its-key`, three times in one leaf. A `kind: match &error {` marker missed the `GitError` site, written without the `&`, hiding 16 kinds. A `kind:\s*"…"` regex also matched `derived_kind:` and `actor_kind:`, sweeping in `chunk`, `database`, `approval`, `decision`. A fixed 50-line window overran `FetchError::kind` and took the `snake_case` of a `#[serde(rename_all = …)]`. All three are pinned as arms, each with its own red.
-- ✅ **The instrument's 41 agrees exactly with a hand derivation reached a different way**, and the book's table was ASSERTED equal to the producers before it was written — a transcription slip could not survive. Descriptions come from each variant's own `Display` message.
-- ⚠️ **The set is OPEN at five sites** that forward a worker-chosen kind, and the page says so: a client must preserve an unrecognised `kind` exactly as it preserves an unrecognised `code`.
-- ✅ **Gated as `ACQUISITION-KIND-DOC`, calibrated at 0 of 200 commits**, standing population discharged to 0 first, and fired RED end to end — removing one book row takes the enforcer from rc=0 to rc=1 naming the field.
-- ⭐ **`.11.18.2`'s discriminator applies in the unusual direction:** the `code` half has long been gated, so a replay of it would be survivorship; the `kind` half was policed by nothing, which is what makes this zero real.
-- ⛔ A third hardcoded self-test total is counted now. This one was **accurate** at 14 — which is the point: it was one added arm from being wrong, and this leaf was that arm.
-
-## 2026-09-18 — A refusal wired end to end and constructed by nothing (`SIGNOFF-REPAIR.7.2.7`)
-
-🔴 **`GitError::TimedOut` was declared, carried a message, and was mapped to a wire string — and nothing could produce it. `GitLimits::max_time` was declared, defaulted to 120 s, and read by no code path. `gix` was handed an interrupt flag nobody could raise.**
-
-- **The defect, re-derived and larger than the leaf recorded.** Five of `GitLimits`' six fields were enforced; the sixth bounded nothing. And it was not merely an unread field: the refusal existed in three files — the variant (`crates/reasonbraid-server/src/git.rs:100`), its Display message (`:158`), the wire mapping (`crates/reasonbraid-server/src/api.rs:2646`) — with no construction site.
-- ⭐ **The hook already existed.** `gix`'s `receive` polls a `&AtomicBool` throughout the transfer; this module passed `AtomicBool::default()`. Giving it a flag a watchdog raises bounds the **transfer**, not merely the caller's wait — the difference from a `tokio::time::timeout` around the `spawn_blocking` handle, which returns on time and leaves the worker transferring. The chain was read in the pinned dependency: `receive` → `gix_protocol::fetch` → `Bundle::write_to_directory` → `interrupt::Read`, which fails the next `read` once the flag is set.
-- ✅ **The "before allocation" clause is NARROWED, with the measurement that narrows it.** All five other ceilings trip AFTER `receive` — objects and bytes from the written object database, files and depth during the tree walk. So consumption before the first allocation check is bounded **in seconds, not in bytes**, and an operator should budget disk for what the link delivers in `max_time`. Published in the book as a six-row ceiling table with a *when it trips* column, read back out of the rendered page rather than trusted from the source.
-- ⛔ **Two declines, each on a measurement rather than a judgement.** The decode brake: `gix-pack 0.74.2` has no ratio guard anywhere, but allocates with `try_reserve`, so an absurd declared size errors instead of aborting — a brake of `check_ratio`'s shape would duplicate that, and the aggregate residual it would not cover is routed to `.7.2.9`. The `checked_add` overflow guard: `GitLimits` is only ever `Default::default()` in production and `max_time` reaches no config, environment or request path, so the panic is unreachable; the trigger for revisiting is stated.
-- ✅ **One arm red by name** — restoring the pre-fix behaviour in situ makes the acquisition succeed under a zero ceiling, 14 passed / 1 failed — and the two arms that pass both ways are labelled with why.
-- Routed: `.7.2.9` (a pack expanding beyond its wire size in aggregate) and `.7.2.10` (`AcquisitionError.kind` is a second, undocumented refusal vocabulary — checked against the struct before it was claimed, and it is **not** a `REASON-CODE-DOC` gap).
-
-## 2026-09-18 — A right conclusion on a false premise, graded separately (`SIGNOFF-REPAIR.3.4.3.1.1.1`)
-
-🔴 **A signed-off leaf closed on "nothing enforces the stored value". Three production sites enforce it. Its conclusion still stands — for reasons it did not give.**
-
-- **The premise, refuted by command.** `git grep -n 'expires_at > now()' -- crates/reasonbraid-server/src` returns `crates/reasonbraid-server/src/node_channel.rs:673`, `:1121`, `:1158` — lease acquisition, lease renewal, the usability check.
-- ⭐ **Read from the PRE-REPAIR source at `9446034`, not from today's**, because REPAIR-0136 rewrote both call sites. `now_offset()` truncates to whole seconds so `signed = floor(T_sign) + 600`, while the row stored `now + 600` at full precision: `stored − signed = T_now − floor(T_sign)`. `rotate` sampled `now` AFTER signing, so its difference is never negative; `enroll` sampled it **11 awaits and 16 database calls** before signing, so it is negative whenever a second boundary falls in between.
-- ✅ **The refusal window is real at `enroll` and unreachable.** It is the final sub-second of a 600 s certificate, and the node rotates at `ROTATE_REMAINING_SECS = 300` — the halfway point. A node inside it got there by clock skew and is within a second of the handshake refusing it anyway.
-- ⭐ **Graded on all three §4.1 axes separately, which is the point:** PROSE **holds** and is now re-derived; NUMBER, none carried; NAMED INSTANCE **false, and withdrawn** — exact, no tolerance band. A single verdict would have had to choose between "the record was wrong" and "the record was fine", and both are false.
-- ✅ **The control is named by its ABSENCE:** `git grep -c ... 9446034 -- crates` → 0. Nothing pre-repair compared the stored instant to the signed one, and the control the repair added prevents the divergence rather than observing the window. Stated rather than built — a control reachable only by disabling the rotate trigger tests the harness.
-
-## 2026-09-18 — A leaf discharged its own gap claims by having been verified (`SIGNOFF-REPAIR.11.2.5`)
-
-🔴 **`GAP-CLAIM-CENSUS` asked "does this section contain a command?" — and `TASK-ACCEPTANCE` puts one in every closed leaf by construction. Measured: 103 claim lines, 0 undischarged. Inert everywhere.**
-
-- **The defect, by controlled experiment.** Two sections, the identical claim line, one variable: whether a ticked `- [x] **ADDRESSED**` box sat beside it. The one with the box was not flagged. ⭐ A control calibrated against a PROXY for a census rather than against a census.
-- ✅ **Six candidate discharge tests priced against the same 103 claims** — same-line 65.0%, same-bullet 59.2%, bullet-or-next 37.9%, within-3-lines 14.6%, boxes-excluded 9.7%, and the shipped rule **1.0%**. ⛔ Proximity was measured and rejected, not skipped: the 34-line incidental case it was aimed at is one it accepts.
-- 🔴 **The 9.7% variant's extra nine were CLASSIFIED, not counted, and 6 were FALSE POSITIVES** — a claim inside a box discharged by a sibling box, which is the normal structure of an acceptance record. That classification is what bought the final clause and the difference between 10 standing instances and 1.
-- ✅ **1 of 200 commits (0.5%), 1 true positive, 0 false positives** — and the replay is honest by `.11.18.2`'s discriminator: the looser rule was enforced throughout, but the tightening it adds was policed by nothing. Two independent implementations agree exactly at 103/1.
-- ⭐ **The predicate shipped with a redundant clause and the falsification sweep deleted it.** `own[j]==own[i]` is subsumed — same bullet implies same section and equal box-ness — and dropping it changed no arm and no corpus number. It was found by a degenerate arm that should have failed and did not.
-- 🔴 **The repaired gate's FIRST real catch was a false claim inside a signed-off leaf.** `.3.4.3.1.1` closed asserting *"nothing enforces the stored value"*; `git grep -n 'expires_at > now()' -- crates/reasonbraid-server/src` returns three production sites. ⭐ The record's conclusion survives for a different reason than the one it gave — the signed `not_after` is enforced first at the mTLS handshake — and the direction that argument does not cover is routed to `.3.4.3.1.1.1` rather than waved. Standing population **0 of 104**.
-
 ## Historical entries and exact retrieval
 
 This is a recent digest. Older chronology remains in reachable Git history under
-the rotation contract in `README_POLICY.md`. This file has rotated twenty-six times;
+the rotation contract in `README_POLICY.md`. This file has rotated twenty-seven times;
 each rotation names the commit holding the ledger immediately before it, so the
 chain walks back without guessing.
+
+Retrieve the ledger immediately before the TWENTY-SEVENTH rotation (2026-09-19)
+from the repository root:
+
+```bash
+git show d3fa246d4f52862c86a9658a3b30373f37b76e67:CHANGELOG.md
+```
+
+That snapshot is 95,092 bytes and contains 28 dated entries; its Git blob is
+`b37902eb4a661e6aa68b0fd2d5982e6947927c40`, and its SHA-256 is
+`1ece34015ed066060edf099c7a2d1f22d5550b1e6001e89e8367869bcdd3e8e6`. The newest
+entry it holds that this digest no longer carries is
+`2026-09-18 — A second refusal vocabulary, documented nowhere (`SIGNOFF-REPAIR.7.2.10`)`.
+It carries the TWENTY-SIXTH rotation's notice in turn, which names the ledger before it.
 
 Retrieve the ledger immediately before the TWENTY-SIXTH rotation (2026-09-19)
 from the repository root:

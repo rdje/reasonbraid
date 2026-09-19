@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-19 — The two lifecycle gates nothing could observe are now predicated (`SIGNOFF-REPAIR.6.1.5.1.1`)
+
+`.6.1.5.1` wrote a tenant check the way its siblings write theirs, watched it admit a foreign tenant, and opened this leaf on the two verbs that still do it that way.
+
+- 🔴 **BOTH GATES WERE OPEN, OBSERVED SEPARATELY.** ARM 1: Mallory registered a policy proposal against **Alice's thread** — 200. ARM 2: Mallory recorded a **governance DECISION on Alice's proposal**, citing a verdict event from Alice's thread, with herself as the sole electorate participant — 200, stored.
+- ⛔ **And worse than open: UNOBSERVABLE.** `lifecycle::register_proposal` and `record_decision` gated on `rls::with_tenant_claim` alone. `rls.rs`'s own module doc records why that binds nothing here — *"The dev profile's superuser connection bypasses RLS regardless; the claim-setting is harmless there and binds the moment the app role lands"* — and `migrations/0046`'s `FORCE ROW LEVEL SECURITY` does not reach a superuser either. Every control in this repository runs as superuser, so no control could ever have watched these admit or refuse anything, and none did.
+- ⭐ **THE CENSUS ANSWERS THE SYSTEMIC QUESTION, which is why it was the acceptance clause.** `git grep -n "with_tenant_claim" -- crates` returns five call sites: `api.rs::thread_inspection`, the thread event replay and the thread listing each pair the claim with an explicit `WHERE tenant_id = $1` and were never at risk; the two lifecycle verbs were claim-only. ⛔ **Two outliers against a convention the rest of the code keeps — not a systemic RLS problem, and it must not be written up as one.**
+- ✅ **The repair is that same convention:** `AND tenant_id = $2` on the `aggregate_state` probe, `AND tenant_id = $3` on the `event_log` verdict probe, with the claim kept as the second belt where the app role is in force.
+- ⚠️ **ARM 2 had to be ISOLATED to be claimed at all.** The first neutralization replaced the `aggregate_state` predicate text, which is IDENTICAL in `register_proposal` and `record_approval`, so three sites opened at once and the suite failed at ARM 1 before ever reaching ARM 2. A second run neutralized only the `event_log` predicate. ⛔ Without it, ARM 2 would have been reported as observed when it never ran.
+- ⚠️ **Bound honestly: this is NOT a claim that RLS is broken.** Under the app role the policies bind exactly as `2026-09-08_rls-tenant-claim.md` describes. What was wrong is relying on them ALONE where every control runs as superuser.
+- ✅ **VERIFIED:** `policy` **16 passed / 0 failed**, rc=0; `mcp_write` 5 ok. Clippy rc=0; fmt rc=0; gate green; book + links rc=0. Falsified twice, each neutralization degrading the predicate to `($n IS NOT NULL)` so the claim alone remained — the pre-repair behaviour, not an arbitrary break — and restored byte-identical both times. The positive arms run after each negative one: Alice still proposes on her own thread and still decides on her own verdict.
+
 ## 2026-09-19 — An approval is bound to its proposal's tenant, by a predicate the running profile cannot bypass (`SIGNOFF-REPAIR.6.1.5.1`)
 
 `.6.1.5` named `record_approval` the weakest link in the policy lifecycle: the one write verb taking no tenant where both its siblings take one. This binds it, and finding out how cost a full implementation cycle.

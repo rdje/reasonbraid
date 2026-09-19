@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — Grep the mechanism, then check every site for a second belt
+
+- Having found that `rls::with_tenant_claim` enforces nothing under this repository's profile, the obvious next question is *how bad is it* — and the obvious wrong answer is "the RLS layer is broken".
+- ⭐ **The census settles it in one command.** `git grep -n with_tenant_claim -- crates` returns five sites. Three of them — all in `api.rs` — already carry an explicit `WHERE tenant_id = $1` beside the claim. They were never at risk for a moment. The two lifecycle verbs were the only ones relying on the claim alone.
+- ⛔ **So the finding is two outliers against a convention the codebase already keeps**, not a systemic hole. Writing it up as systemic would have been the more dramatic claim and the false one, and the difference is a single grep.
+- 🔎 **The method generalises, and that is the transferable half:** when a mechanism turns out not to enforce, do not ask "is the mechanism used?" — ask "at each use, is there a SECOND belt?". The sites with a belt are fine; only the bare ones are defects. Counting uses would have reported five problems where there were two.
+- ⚠️ **And one methodological near-miss worth recording.** My first neutralization replaced a predicate string that appears identically in three functions, so three gates opened at once and the suite failed at the first arm — before the second arm ever ran. I nearly recorded ARM 2 as "observed RED" on the strength of a run that never reached it. The fix was a second, narrower neutralization touching only the `event_log` predicate.
+- ⛔ That is a specific way to fool yourself that a shared-text `replace` invites: the blast radius of a neutralization is not the line you meant, it is every line matching the string. Check what the edit actually touched before reading the failure.
+- promotion: pending — *grep the mechanism, then check each site for a second belt* belongs beside the existing enforcement-profile rule from `.6.1.5.1`.
+
 ## 2026-09-19 — A gate that the running profile bypasses is not a gate, and a control written against it cannot observe its own repair
 
 - I wrote the tenant check for `record_approval` the way its two siblings write theirs: `rls::with_tenant_claim` over `aggregate_state`. Then I ran the control and the foreign tenant still got 200.

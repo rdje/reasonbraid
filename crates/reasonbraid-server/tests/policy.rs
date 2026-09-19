@@ -4317,3 +4317,188 @@ async fn an_approval_is_bound_to_the_proposals_own_tenant() {
         "the owning tenant still advances the stage: {proposals}"
     );
 }
+
+/// `SIGNOFF-REPAIR.6.1.5.1.1` — the two lifecycle verbs whose tenant claim bound
+/// nothing in the profile this repository runs.
+///
+/// ⛔ **Both gates were open AND unobservable**, which is the part worth stating.
+/// `rls.rs` records that the dev profile's superuser connection bypasses RLS
+/// regardless, and `migrations/0046`'s `FORCE ROW LEVEL SECURITY` does not reach
+/// a superuser either — so no control could ever have watched these admit or
+/// refuse anything, and none did.
+///
+/// ⚠️ **Not a claim that RLS is broken.** Under the app role the policies bind
+/// exactly as `2026-09-08_rls-tenant-claim.md` describes. What was wrong is
+/// relying on them ALONE for a tenant gate here.
+#[tokio::test]
+async fn the_lifecycle_verbs_refuse_a_foreign_tenants_thread() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, alice) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "lft-alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "alice enrols: {alice}");
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    let alice_tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    let alice_grant = format!("grt_{alice_id}");
+
+    let (status, mallory) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "lft-mallory" }),
+    )
+    .await;
+    assert_eq!(status, 200, "mallory enrols: {mallory}");
+    let mallory_id = mallory["principal_id"].as_str().unwrap().to_string();
+
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policies",
+        &alice_id,
+        &json!({
+            "policy_id": "lft-policy", "version": "1.0.0", "digest": DIGEST,
+            "lifecycle": "draft", "title": "lft", "owning_authority": alice_grant,
+            "clauses": [ { "id": "c1", "statement": "the lifecycle clause" } ],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the policy registers");
+
+    // Alice's thread, and a verdict inside it. Both are hers alone.
+    let (_status, created) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &alice_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "lft-create",
+            "body": {
+                "tenant_id": alice_tenant, "subject": "lft", "objective": "probe",
+                "workflow_profile": "independent_panel",
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    let command = |key: &'static str, operation: &'static str, body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let alice_id = alice_id.clone();
+        let thread_id = thread_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/threads/{thread_id}/commands"))
+                .header(PRINCIPAL_HEADER, &alice_id)
+                .json(&json!({
+                    "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                    "operation": operation,
+                    "request_id": reasonbraid_core::RequestId::new().to_string(),
+                    "idempotency_key": key,
+                    "body": body,
+                    "client_context": {},
+                }))
+                .send()
+                .await
+                .expect("command request");
+            let text = response.text().await.expect("command body");
+            serde_json::from_str::<Value>(&text).unwrap_or_else(|_| json!({ "raw": text }))
+        }
+    };
+    let _ = command(
+        "lft-advance",
+        "thread.advance_round",
+        json!({ "tenant_id": alice_tenant }),
+    )
+    .await;
+    let verdict = command(
+        "lft-verdict",
+        "thread.contribute",
+        json!({
+            "tenant_id": alice_tenant, "content": "judged", "kind": "verdict",
+            "verdict": { "target_digest": "sha256:00", "rule": "majority", "outcome": "accepted_by_rule" },
+        }),
+    )
+    .await;
+    let verdict_event = verdict["event_id"].as_str().unwrap().to_string();
+
+    // ── ARM 1: `register_proposal` — mallory names ALICE's thread ──────────────
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-proposals",
+        &mallory_id,
+        &json!({
+            "proposal_id": "lft-prop-foreign", "policy_id": "lft-policy",
+            "policy_version": "1.0.0", "thread_id": thread_id,
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "a foreign tenant proposes against no thread of another tenant's: {refused}"
+    );
+
+    // ── The owning tenant still registers (the positive arm for ARM 1) ────────
+    let (status, own) = post(
+        &client,
+        &base,
+        "/v1/policy-proposals",
+        &alice_id,
+        &json!({
+            "proposal_id": "lft-prop-own", "policy_id": "lft-policy",
+            "policy_version": "1.0.0", "thread_id": thread_id,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "alice still proposes on her own thread: {own}");
+
+    // ── ARM 2: `record_decision` — mallory cites a verdict from ALICE's thread ─
+    // ⭐ The proposal is Alice's own and valid, so the ONLY thing under test is
+    // whether the verdict event is reachable from mallory's tenant.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-decisions",
+        &mallory_id,
+        &json!({
+            "decision_id": "lft-dec-foreign", "proposal_id": "lft-prop-own", "rule": "majority",
+            "electorate": { "participants": [mallory_id], "denominator": 1, "abstentions": [] },
+            "verdict_event_id": verdict_event,
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "a foreign tenant cites no verdict from another tenant's thread: {refused}"
+    );
+
+    // ── The owning tenant still decides (the positive arm for ARM 2) ──────────
+    let (status, decided) = post(
+        &client,
+        &base,
+        "/v1/policy-decisions",
+        &alice_id,
+        &json!({
+            "decision_id": "lft-dec-own", "proposal_id": "lft-prop-own", "rule": "majority",
+            "electorate": { "participants": [alice_id], "denominator": 1, "abstentions": [] },
+            "verdict_event_id": verdict_event,
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "alice still decides on her own verdict: {decided}"
+    );
+}

@@ -132,14 +132,29 @@ pub async fn register_proposal(
     if !policy.unwrap_or(false) {
         return Err(LifecycleError::UnknownPolicy(input.policy_id.clone()));
     }
+    // ⛔ `AND tenant_id = $2` ADDED BY `SIGNOFF-REPAIR.6.1.5.1.1`. The claim alone
+    // enforced NOTHING here: `rls.rs`'s own module doc records that the dev
+    // profile's superuser connection bypasses RLS regardless, and
+    // `migrations/0046`'s `FORCE ROW LEVEL SECURITY` does not reach a superuser
+    // either — so every control in this repository ran against an open gate and
+    // none could ever have observed it admitting or refusing anything. Measured
+    // by `.6.1.5.1`, which wrote this exact shape for `record_approval` and
+    // watched a foreign tenant receive 200.
+    //
+    // ⭐ The predicate is the repository's own DOMINANT pattern, not a new one:
+    // all three `with_tenant_claim` sites in `api.rs` already pair the claim with
+    // an explicit `WHERE tenant_id = $1`. These two lifecycle verbs were the
+    // outliers. The claim stays as the second belt where the app role is in force.
     let thread_ref = input.thread_id.clone();
+    let tenant_ref = tenant_id.to_owned();
     let thread: Option<bool> = crate::rls::with_tenant_claim(pool, tenant_id, |tx| {
         Box::pin(async move {
             sqlx::query_scalar(
                 "SELECT EXISTS (SELECT 1 FROM aggregate_state \
-                 WHERE aggregate_id = $1 AND aggregate_type = 'thread')",
+                 WHERE aggregate_id = $1 AND aggregate_type = 'thread' AND tenant_id = $2)",
             )
             .bind(&thread_ref)
+            .bind(&tenant_ref)
             .fetch_one(&mut *tx)
             .await
         })
@@ -208,17 +223,22 @@ pub async fn record_decision(
     if participants == 0 {
         return Err(LifecycleError::EmptyElectorate);
     }
+    // ⛔ `AND tenant_id = $3` ADDED BY `SIGNOFF-REPAIR.6.1.5.1.1`, for the reason
+    // recorded at `register_proposal` above: the claim alone binds nothing in the
+    // profile this repository runs, so this gate was open and unobservable.
     let verdict_ref = input.verdict_event_id.clone();
     let thread_ref = thread_id.clone();
+    let tenant_ref = tenant_id.to_owned();
     let verdict: Option<bool> = crate::rls::with_tenant_claim(pool, tenant_id, |tx| {
         Box::pin(async move {
             sqlx::query_scalar(
                 "SELECT EXISTS (SELECT 1 FROM event_log \
                  WHERE event_id = $1 AND aggregate_id = $2 AND event_type = 'thread.contribution_submitted' \
-                 AND body ->> 'kind' = 'verdict')",
+                 AND body ->> 'kind' = 'verdict' AND tenant_id = $3)",
             )
             .bind(&verdict_ref)
             .bind(&thread_ref)
+            .bind(&tenant_ref)
             .fetch_one(&mut *tx)
             .await
         })

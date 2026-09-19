@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **TWO POLICY-LIFECYCLE GATES WERE OPEN, AND NOTHING COULD HAVE OBSERVED THEM (`.6.1.5.1.1`, REPAIR-0276).**
+
+A foreign tenant registered a proposal against **another tenant's thread**, and recorded a **governance DECISION on another tenant's proposal** — citing a verdict from that tenant's thread, with herself as the sole electorate. Both returned 200 and were stored.
+
+- ⛔ **Unobservable, not merely open:** both gated on `rls::with_tenant_claim` alone, and the dev/test profile connects as SUPERUSER, which bypasses RLS even under `FORCE ROW LEVEL SECURITY`. No control could ever have watched them admit or refuse anything.
+- ⭐ **The census answers the systemic question: 3 of 5 `with_tenant_claim` sites already pair the claim with an explicit predicate.** Two outliers against a convention the rest of the code keeps — **not** a systemic RLS problem.
+- ✅ Both repaired with that same convention; the claim stays as the second belt where the app role is in force.
+- ⚠️ **NOT a claim that RLS is broken** — under the app role it binds as designed.
+- ✅ **VERIFIED:** `policy` **16/0**, `mcp_write` 5/0; clippy rc=0; fmt rc=0; gate green. Falsified twice and restored byte-identical; ARM 2 required an isolated neutralization to be claimed at all.
+
 🔴 **AN APPROVAL WAS ACCEPTED FROM A FOREIGN TENANT, AND THE OBVIOUS FIX WAS A NO-OP (`.6.1.5.1`, REPAIR-0275).**
 
 Observed: Mallory's approval of Alice's proposal returned **200 and was stored**, as herself, with her own live grant — every check but the tenant passed for her. `publications::stage` reads approvals to decide whether a publication may be staged, so this was a control gap, not only a disclosure one.

@@ -739,6 +739,32 @@ impl NodeChannelState {
     /// work it already holds. It simply gets no more. The same predicate rides
     /// the handshake's replay, where it is vacuous — `verify_cert_proof` has
     /// already required a usable row for this node id before the tail is read.
+    ///
+    /// # Reading the tail IS the offer (`SIGNOFF-REPAIR.11.24.1.1.1`)
+    ///
+    /// §10.6's `offered` had no producer, so a row the server had handed to a
+    /// transport read `queued` — indistinguishable from one it had never tried
+    /// to deliver, which is the difference between a QUIET node and one LOSING
+    /// its responses. This function is where that fact exists: it is the one
+    /// tail both the handshake and the poll read through, and the rows it
+    /// returns are the rows a response carries.
+    ///
+    /// The mark rides the SAME statement as the read, as a data-modifying CTE.
+    /// Two statements would be two snapshots, and the pair is not in a
+    /// transaction here — a row could enter the tail between them and be
+    /// delivered unmarked. ⛔ `offered_at IS NULL` in the `UPDATE` is what makes
+    /// the instant write-once: it records when the row ENTERED the state, and a
+    /// re-offer must not bump it, or every age measured from it silently resets
+    /// (`.11.24.1.1.2.1.1`'s rule — a window measures time in the state being
+    /// retained).
+    ///
+    /// ⚠️ WHAT THE MARK CAN AND CANNOT MEAN. The server knows the row went into
+    /// a response; it cannot know the bytes arrived, and that is precisely what
+    /// `transport_received` is for. So a response lost in flight leaves a row at
+    /// `offered` — which is the state's whole purpose — and a response the
+    /// caller fails to send after this returns overstates by one rung. Both are
+    /// the SAFE direction: the row is re-offered on the next poll (the cursor
+    /// did not move) and the node's journal deduplicates by command id.
     pub async fn replay(
         &self,
         node_id: &str,
@@ -758,22 +784,31 @@ impl NodeChannelState {
                 Option<i64>,
             ),
         >(
-            "SELECT cursor, command_id, tenant_id, thread_id, payload, authz_ref, \
+            "WITH tail AS ( \
+                 SELECT cursor, command_id, tenant_id, thread_id, payload, authz_ref, \
+                        policy_digest, decided_at, revocation_epoch \
+                 FROM node_inbox \
+                 WHERE node_id = $1 AND cursor > $2 AND quarantined_at IS NULL \
+                   AND NOT EXISTS (SELECT 1 FROM authorization_records r \
+                                     JOIN authority_grants g ON g.grant_id = r.grant_id \
+                                    WHERE r.record_id = node_inbox.authz_ref \
+                                      AND (g.status <> 'active' OR g.expires_at <= now())) \
+                   AND EXISTS (SELECT 1 FROM node_certificates c \
+                               WHERE c.node_id = $1 \
+                                 AND c.revoked_at IS NULL AND c.expires_at > now()) \
+                   AND NOT EXISTS ( \
+                       SELECT 1 FROM profile_versions v \
+                         JOIN agent_profiles p ON p.role_id = v.role_id \
+                       WHERE v.role_id = $1 AND v.version = p.current_version \
+                         AND (v.profile->'availability'->>'concurrency')::bigint = 0) \
+             ), marked AS ( \
+                 UPDATE node_inbox SET offered_at = now() \
+                  WHERE node_id = $1 AND offered_at IS NULL \
+                    AND cursor IN (SELECT cursor FROM tail) \
+             ) \
+             SELECT cursor, command_id, tenant_id, thread_id, payload, authz_ref, \
                     policy_digest, decided_at, revocation_epoch \
-             FROM node_inbox \
-             WHERE node_id = $1 AND cursor > $2 AND quarantined_at IS NULL \
-               AND NOT EXISTS (SELECT 1 FROM authorization_records r \
-                                 JOIN authority_grants g ON g.grant_id = r.grant_id \
-                                WHERE r.record_id = node_inbox.authz_ref \
-                                  AND (g.status <> 'active' OR g.expires_at <= now())) \
-               AND EXISTS (SELECT 1 FROM node_certificates c \
-                           WHERE c.node_id = $1 \
-                             AND c.revoked_at IS NULL AND c.expires_at > now()) \
-               AND NOT EXISTS ( \
-                   SELECT 1 FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
-                   WHERE v.role_id = $1 AND v.version = p.current_version \
-                     AND (v.profile->'availability'->>'concurrency')::bigint = 0) \
-             ORDER BY cursor",
+               FROM tail ORDER BY cursor",
         )
         .bind(node_id)
         .bind(after_cursor)

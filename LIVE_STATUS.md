@@ -5,6 +5,19 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE TAIL READ IS THE OFFER (`.11.24.1.1.1`, REPAIR-0308).**
+
+§10.6's `offered` ships; `acknowledged` is DEFERRED with a measured trigger.
+
+- 🔴 **`offered` had no producer, so a row the server had HANDED TO A TRANSPORT read `queued`** — the same answer as one it had never tried to deliver. Two different faults: rows stuck at `queued` say the node is not polling; rows reaching `offered` and stopping say it IS polling and the responses are not arriving.
+- ✅ **The producer is the tail read itself**, because that is where the fact exists. `replay` is the one function the handshake and the poll both read through, and the mark rides the **SAME statement** as the read (a data-modifying CTE) — two statements are two snapshots and the pair is not in a transaction. ⛔ **A withheld row is not marked**: the mark is scoped to the rows the tail returns.
+- ⭐ **Write-once, and DERIVED**: `.11.24.1.1.2.1.1`'s rule — a window measures time in the state being retained — so an instant a re-offer bumps silently resets every age measured from it.
+- ⛔ **The count is REFUSED** (the STATE answers the question; *a column is not missing until something needs it*; trigger: §10.7 storm controls) and ⛔ **the backfill is REFUSED twice over** (unnecessary where derivable — a delivered row outranks `offered` — impossible where informative), with a migration control driving the absence.
+- ⚠️ **`acknowledged` deferred on a MEASUREMENT**: the dispatch has exactly **2** kinds, `contribute` and `revise`, and confirmation means the same for both, so the per-event-type contract has nothing to distinguish. Trigger: a command kind whose acknowledgement means something different from a work item's.
+- 🔎 **A view-replacement hazard the suite caught before a reviewer could**: `node_inbox_state` selects `i.*`, so a new column lands ahead of `delivery_state` and `CREATE OR REPLACE VIEW` refuses (`42P16`). `0078` drops and recreates; the standing hazard is recorded rather than gated (**2** views, **1** star-expanding — `.11.6`). ⭐ The other half of `.13.4.3.1`: applying a migration proves its SQL RUNS; only a driver catches what it MEANS.
+- 🔎 **What `offered` now makes possible is OWNED**: the cursor ack can key on the recorded offer instead of on what is withheld now — `.11.24.1.1.1.1`, with the pre-`0078` NULL cohort named as the hazard it must answer.
+- ✅ **VERIFIED:** `node_inbox` **10/0** (9 at `e35d26a`), `node_work` **12/0**, `node_channel` **40/0**, `migration_upgrade` **7/0** (6 at `e35d26a`), `mcp_listen` **6/0**. No existing `delivery_state` assertion moved. Clippy rc=0; fmt rc=0; book rc=0; gate green. **FALSIFIED four ways, each clause**, restored byte-identical.
+
 🔴 **A PROOF OF ALLOWANCE MUST CARRY ITS OWN WINDOW (`.11.24.1.1.2.2`, REPAIR-0307).**
 
 ⭐ The two halves of one rule were reading two clocks.

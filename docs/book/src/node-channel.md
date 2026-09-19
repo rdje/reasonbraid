@@ -178,13 +178,14 @@ columns the channel already writes — never stored in parallel — so it cannot
 drift from the facts it describes.
 
 ```text
-queued → transport_received → consumed
-                   ↘ expired / revoked / dead_lettered
+queued → offered → transport_received → consumed
+                          ↘ expired / revoked / dead_lettered
 ```
 
 | State | Means | Derived from |
 | --- | --- | --- |
-| `queued` | the row exists and the node has not confirmed holding it | no acknowledgement recorded |
+| `queued` | the row exists and the server has not yet handed it to a transport | no offer and no acknowledgement recorded |
+| `offered` | **a response carried the row** — the server put it on the wire and the node has not confirmed holding it | `offered_at` set |
 | `transport_received` | **the node process durably holds the command** — it has journalled it. The agent has not read it and has not acted | `acknowledged_at` set |
 | `consumed` | the agent acted: a work result came back for this command | `acknowledged_at` set **and** a `work_result` event for the command id |
 | `revoked` | the command's authority was **withdrawn**: the grant that admitted it has been revoked | the admitting grant's `status` is no longer `active` |
@@ -231,13 +232,46 @@ That is the same distinction the directory draws between an *offline-known* node
 and an unknown one, one level down. The reasoning is recorded in
 `docs/decisions/2026-09-20_a-command-cannot-outlive-its-authority.md`.
 
-⛔ **Two states of §10.6's full ladder are still not derived, and the reason is
-that nothing produces them yet.** `offered` would need the server to record that
-a poll response carried the row; `acknowledged`, in §10.6's sense, needs
-acknowledgement semantics that are explicit per event type, and the channel's
-cursor ack covers every row up to a cursor whatever their types. A state with no
-producer is an advertisement rather than a fact, so neither appears in the
-vocabulary this surface publishes.
+### Offered, and why the instant does not move
+
+`offered` separates *the server has not tried* from *the server tried and the
+node has not confirmed*. Rows sitting at `queued` say the node is not polling;
+rows reaching `offered` and stopping there say it is polling and the responses
+are not arriving. Before `migrations/0078` both read `queued`, and those are two
+different faults.
+
+The producer is the tail read itself. The handshake replay and the poll go
+through one function, and the rows it returns are the rows a response carries,
+so the mark is written by the same statement that reads the tail — a row cannot
+enter the tail between a read and a separate update and be delivered unmarked.
+A row the tail **withholds** — quarantined, or past its authority — is not
+marked, because it was not offered.
+
+⚠️ **The server records that the row went into a response, not that the bytes
+arrived.** That is exactly what `transport_received` is for. A response lost in
+flight leaves the row at `offered`, which is the state's whole purpose; the row
+is offered again on the next poll, because the cursor did not move, and the
+node's journal deduplicates by command id.
+
+⛔ **`offered_at` is written once.** It records when the row *entered* the
+state, so a node polling in a loop does not keep its oldest outstanding work
+looking new — the same rule that decided which clock the inbox prune ages a
+terminal by. A count of offers is deliberately **not** recorded: the question
+the state exists to answer is answered by the state, and a column is not missing
+until something needs it. A reader that must tell one offer from forty — a storm
+control, most likely — is the trigger that would add one.
+
+⛔ **One state of §10.6's ladder is still not derived, and the reason is that
+nothing produces it.** `acknowledged`, in §10.6's sense, needs acknowledgement
+semantics that are *explicit per event type*, and the channel's cursor ack
+covers every row up to a cursor whatever their types. The inbox currently
+carries two command kinds, `contribute` and `revise`, whose confirmation means
+exactly the same thing, so there is no per-type contract to express yet.
+Inventing one to fill a ladder slot would be a design commitment made to satisfy
+a table. A state with no producer is an advertisement rather than a fact, so it
+does not appear in the vocabulary this surface publishes; the trigger that would
+revisit it is a command kind whose acknowledgement means something different
+from a work item's.
 
 ## Duplicate safety
 

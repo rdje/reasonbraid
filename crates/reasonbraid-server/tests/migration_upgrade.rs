@@ -1252,3 +1252,126 @@ async fn authority_revoked_at_upgrade_dates_only_what_an_applied_effect_dates() 
         }
     }
 }
+
+/// `SIGNOFF-REPAIR.11.24.1.1.1` — `migrations/0078` adds §10.6's `offered`
+/// rung and DELIBERATELY backfills nothing, so this drives the absence.
+///
+/// ⛔ A refusal to backfill is a decision, and a decision nothing exercises is
+/// indistinguishable from an oversight — `.13.4.3.1`'s finding applied to the
+/// very next migration. The refusal is derived twice over: a row already at
+/// `transport_received` or above OUTRANKS `offered`, so dating it would change
+/// nothing observable while recording an offer at an instant (`acknowledged_at`)
+/// that is provably later than the real one; and a row still at `queued` is
+/// exactly where the answer would matter, with nothing in the schema to derive
+/// it from.
+///
+/// ⭐ The second thing this drives is the view REPLACEMENT itself. `0078` must
+/// `DROP` and re-`CREATE` rather than `CREATE OR REPLACE`, because the view
+/// selects `i.*` and the new column lands ahead of `delivery_state` in that
+/// expansion. Applying the migration over a populated pre-`0078` database is
+/// what proves the replacement path works on a real upgrade rather than only on
+/// a fresh schema.
+#[tokio::test]
+async fn node_inbox_offered_upgrade_adds_the_rung_and_invents_no_offer() {
+    let _g = guard().await;
+    let Some(pool) = pg_test_support::pool().await else {
+        return;
+    };
+    let migrator =
+        Migrator::new(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../migrations"))
+            .await
+            .unwrap();
+    recreate_public_schema(&pool).await;
+    let through = |version| Migrator {
+        migrations: std::borrow::Cow::Owned(
+            migrator
+                .migrations
+                .iter()
+                .filter(|m| m.version <= version)
+                .cloned()
+                .collect(),
+        ),
+        ignore_missing: false,
+        no_tx: false,
+        locking: true,
+    };
+    assert!(migrator.migrations.iter().any(|m| m.version == 78));
+    through(77).run(&pool).await.unwrap();
+
+    let column: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM information_schema.columns \
+         WHERE table_schema = 'public' AND table_name = 'node_inbox' \
+           AND column_name = 'offered_at'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(column, 0, "node_inbox.offered_at must arrive with 0078");
+
+    let tenant = "ten_00000000-0000-7000-8000-000000000178";
+    let node = "nod_00000000-0000-7000-8000-000000000178";
+    sqlx::query("INSERT INTO tenants (tenant_id) VALUES ($1)")
+        .bind(tenant)
+        .execute(&pool)
+        .await
+        .unwrap();
+    // A delivered row and an undelivered one, in the pre-0078 shape. The
+    // delivered one is the tempting backfill: it was certainly offered, and the
+    // only instant available to date it by is the WRONG one.
+    for (command, acknowledged) in [("cmd_pre_delivered", true), ("cmd_pre_queued", false)] {
+        sqlx::query(
+            "INSERT INTO node_inbox \
+             (node_id, cursor, command_id, tenant_id, thread_id, payload, acknowledged_at) \
+             VALUES ($1, $2, $3, $4, 'thr_00000000-0000-7000-8000-000000000178', \
+                     '{\"kind\":\"contribute\"}'::jsonb, \
+                     CASE WHEN $5 THEN TIMESTAMPTZ '2026-05-05T05:05:05Z' ELSE NULL END)",
+        )
+        .bind(node)
+        .bind(if acknowledged { 1_i64 } else { 2_i64 })
+        .bind(command)
+        .bind(tenant)
+        .bind(acknowledged)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    through(78).run(&pool).await.unwrap();
+
+    let states: Vec<(String, Option<DateTime<Utc>>, String)> = sqlx::query_as(
+        "SELECT command_id, offered_at, delivery_state FROM node_inbox_state \
+         ORDER BY command_id COLLATE \"C\"",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        states,
+        vec![
+            (
+                "cmd_pre_delivered".to_string(),
+                None,
+                "transport_received".to_string()
+            ),
+            ("cmd_pre_queued".to_string(), None, "queued".to_string()),
+        ],
+        "the upgrade adds the rung and dates no pre-existing offer"
+    );
+
+    // ⭐ And the rung is REACHABLE after the upgrade, not merely present in a
+    // CASE nothing can satisfy: writing the column moves the state.
+    sqlx::query("UPDATE node_inbox SET offered_at = now() WHERE command_id = 'cmd_pre_queued'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let state: String = sqlx::query_scalar(
+        "SELECT delivery_state FROM node_inbox_state WHERE command_id = 'cmd_pre_queued'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        state, "offered",
+        "the new rung is reachable on an upgraded row"
+    );
+}

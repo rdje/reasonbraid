@@ -209,6 +209,7 @@
 - [`2026-09-20_a-schema-pattern-nobody-reads-is-not-a-contract.md`](docs/decisions/2026-09-20_a-schema-pattern-nobody-reads-is-not-a-contract.md)
 - [`2026-09-20_an-acknowledgement-covers-a-range-and-the-tail-does-not.md`](docs/decisions/2026-09-20_an-acknowledgement-covers-a-range-and-the-tail-does-not.md)
 - [`2026-09-20_revoking-an-authority-records-when.md`](docs/decisions/2026-09-20_revoking-an-authority-records-when.md)
+- [`2026-09-20_the-tail-read-is-the-offer.md`](docs/decisions/2026-09-20_the-tail-read-is-the-offer.md)
 
 ## Promoted lessons
 

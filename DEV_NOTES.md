@@ -1,5 +1,64 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — Two refusals and a star
+
+Shipping §10.6's `offered` rung took about twenty lines. The leaf was three
+decisions, and two of them were refusals.
+
+**The count.** The leaf offered a choice when it opened: "`offered_at`, or a
+count". A count is obviously more informative, and I started to add one. Then I
+went back to the sentence that says what the state is *for* — *the difference
+between a quiet node and one losing its responses* — and the state alone
+answers it. Rows at `queued` mean nobody is polling; rows at `offered` that
+never advance mean somebody is polling and the responses are not arriving. The
+count adds a second fact nothing asks for, and this tree promoted the rule
+against exactly that one migration ago: a column is not missing until something
+needs it. So: no count, and the trigger written down.
+
+**The backfill.** Two commits earlier I had spent a whole leaf on a migration
+whose backfill nothing drove, so my reflex here was to write one. It does not
+survive contact. A row already at `transport_received` was certainly offered —
+and `transport_received` outranks `offered` in the view, so dating it changes
+nothing anyone can see, while the only instant available (`acknowledged_at`) is
+provably later than the real offer. A row still at `queued` is the one case
+where the answer would matter, and the schema holds nothing to derive it from.
+Unnecessary where derivable, impossible where informative. What I did keep from
+that earlier leaf is the other half: a control that drives the *absence*,
+because a refusal nothing exercises reads exactly like an oversight.
+
+**The re-offer question.** The leaf asked whether a re-offer should bump the
+instant or preserve the first, and I expected to have to argue it. I did not:
+`.11.24.1.1.2.1.1` already decided the general case when it worked out which
+clock the inbox prune ages a terminal by. A window measures time in the state
+being retained, so an instant a re-offer bumps resets every age measured from
+it, and a node polling in a tight loop keeps its oldest outstanding work looking
+newest. Write-once, from a rule this tree already owns.
+
+**And the star.** `CREATE OR REPLACE VIEW` refused the new view outright:
+
+```
+42P16 cannot change name of view column "delivery_state" to "offered_at"
+```
+
+`node_inbox_state` is `SELECT i.*, … AS delivery_state`. The star expanded
+positionally when the view was created, so `delivery_state` is its last column;
+`ALTER TABLE node_inbox ADD COLUMN` inserts the new column into that expansion
+ahead of it, and `CREATE OR REPLACE VIEW` may only append. Every suite that
+applies migrations failed at once, which is the pleasant part of the story.
+
+⭐ It is the exact complement of the leaf I closed two commits ago. That one's
+point was that *applying* a migration proves only that its SQL runs — a join
+matching nothing looks identical to one matching correctly. This is the other
+side: applying it is a complete test of whether the SQL is *valid*, and it
+caught this in the first run, before I had written a line of the control.
+Application catches syntax and dependency. Only a driver catches meaning.
+
+⚠️ I did not add a gate for it. The schema has two views and exactly one of
+them expands a star, so the population is one, and `.11.6` says measure the
+population before proposing the rule. What the hazard gets instead is a
+paragraph at the top of the migration that adds the column — the file the next
+person editing this view will already have open.
+
 ## 2026-09-20 — The ledger had a clock and the proof did not
 
 The leaf opened on a number: a work item's budget reservation holds for ten

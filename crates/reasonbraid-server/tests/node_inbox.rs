@@ -1251,6 +1251,173 @@ async fn inspect_inbox(
     (status, serde_json::from_str(&text).unwrap_or(Value::Null))
 }
 
+/// One row's `offered_at` and derived state (`SIGNOFF-REPAIR.11.24.1.1.1`).
+///
+/// Assertion-only SQL, which this suite permits: the fact under test IS the
+/// derivation and the column it derives from, so reading both at their source
+/// is the honest measurement.
+async fn offer_facts(pool: &PgPool, command_id: &str) -> (Option<chrono::DateTime<Utc>>, String) {
+    sqlx::query_as("SELECT offered_at, delivery_state FROM node_inbox_state WHERE command_id = $1")
+        .bind(command_id)
+        .fetch_one(pool)
+        .await
+        .expect("read the row's offer facts")
+}
+
+/// A real poll of the live tail, returning the command ids it carried.
+async fn poll_ids(
+    client: &reqwest::Client,
+    base: &str,
+    node_id: &str,
+    fencing_token: &str,
+    lease_epoch: i64,
+) -> Vec<String> {
+    let response = client
+        .post(format!("{base}/v1/nodes/poll"))
+        .json(&json!({
+            "channel_version": CHANNEL_VERSION,
+            "node_id": node_id,
+            "after_cursor": 0,
+            "fencing_token": fencing_token,
+            "lease_epoch": lease_epoch,
+        }))
+        .send()
+        .await
+        .expect("poll request");
+    assert_eq!(response.status().as_u16(), 200, "the poll succeeds");
+    let body: Value = response.json().await.expect("poll json");
+    body["commands"]
+        .as_array()
+        .expect("the poll carries a command array")
+        .iter()
+        .map(|c| c["command_id"].as_str().expect("a command id").to_string())
+        .collect()
+}
+
+/// `SIGNOFF-REPAIR.11.24.1.1.1` — §10.6's `offered`: the rung between *the row
+/// exists* and *the node holds it*.
+///
+/// 🔴 **THE GAP.** `ROADMAP.md` §10.6 states the ladder as `queued → offered →
+/// transport_received → acknowledged → consumed`, and `migrations/0076` derived
+/// every rung of it but two. Without `offered`, a row the server had handed to a
+/// transport read `queued` — the same answer as a row it had never tried to
+/// deliver. **That is the difference between a QUIET node and one LOSING ITS
+/// RESPONSES**, and the surface an operator reads could not tell them apart.
+///
+/// ⭐ **The producer is the tail read itself**, because that is where the fact
+/// exists: `replay` is the one function the handshake and the poll both read
+/// through, and the rows it returns are the rows a response carries. The mark
+/// rides the SAME statement as the read, so a row cannot enter the tail between
+/// a select and an update and be delivered unmarked.
+///
+/// The three arms, and what each would miss alone:
+///
+///   * a real **poll** moves a row `queued → offered` — the rung exists and the
+///     poll path is what writes it;
+///   * a **withheld** row is NOT marked, so the mark follows the tail's filter
+///     rather than the arrival of a poll. Without this arm a statement that
+///     marked the whole inbox would pass;
+///   * a **re-poll** leaves the instant untouched. `offered_at` records when the
+///     row ENTERED the state (`.11.24.1.1.2.1.1`: a window measures time in the
+///     state being retained), so a node polling in a loop must not keep its
+///     oldest outstanding work looking new.
+#[tokio::test]
+async fn a_polled_row_reads_offered_and_the_instant_is_written_once() {
+    let _g = guard().await;
+    let Some(pool) = pool().await else { return };
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let node_id = "nod_00000000-0000-7000-8000-000000000211";
+    let (tenant, alice) = bootstrap_admin(&client, &base).await;
+    let (cert_hex, key_hex) = seed_node_in(&pool, node_id, &tenant).await;
+    for id in ["cmd_offer_1", "cmd_offer_2"] {
+        enqueue_in(&state, node_id, id, &tenant).await;
+    }
+
+    // Both start on the bottom rung with nothing recorded.
+    for id in ["cmd_offer_1", "cmd_offer_2"] {
+        assert_eq!(
+            offer_facts(&pool, id).await,
+            (None, "queued".to_string()),
+            "{id} starts queued with no offer recorded"
+        );
+    }
+
+    // The second row is withheld from every tail — the arm that proves the mark
+    // follows the FILTER and not the poll.
+    let response = client
+        .post(format!("{base}/v1/nodes/quarantine"))
+        .header(PRINCIPAL_HEADER, &alice)
+        .json(&json!({
+            "tenant_id": tenant,
+            "node_id": node_id,
+            "command_id": "cmd_offer_2",
+            "reason": "withheld so the offer mark can be attributed",
+        }))
+        .send()
+        .await
+        .expect("quarantine request");
+    assert_eq!(response.status().as_u16(), 200, "the quarantine succeeds");
+
+    let hs = handshake(&client, &base, node_id, &cert_hex, &key_hex).await;
+    let fencing_token = hs["fencing_token"].as_str().expect("a fencing token");
+    let lease_epoch = hs["lease_epoch"].as_i64().expect("a lease epoch");
+
+    // ── ARM 1: a real poll carries the live row and marks it offered.
+    assert_eq!(
+        poll_ids(&client, &base, node_id, fencing_token, lease_epoch).await,
+        vec!["cmd_offer_1".to_string()],
+        "the poll carries the live row and withholds the quarantined one"
+    );
+    let (first_offer, offered_state) = offer_facts(&pool, "cmd_offer_1").await;
+    assert_eq!(
+        offered_state, "offered",
+        "a polled row reads §10.6's `offered`"
+    );
+    let first_offer = first_offer.expect("the polled row carries its offer instant");
+
+    // ── ARM 2: the withheld row was not marked by a poll that skipped it.
+    assert_eq!(
+        offer_facts(&pool, "cmd_offer_2").await,
+        (None, "dead_lettered".to_string()),
+        "a row the tail withheld was never offered"
+    );
+
+    // ── ARM 3: a re-poll re-offers the row and does NOT move the instant.
+    assert_eq!(
+        poll_ids(&client, &base, node_id, fencing_token, lease_epoch).await,
+        vec!["cmd_offer_1".to_string()],
+        "the same row is offered again — the cursor did not move"
+    );
+    let (second_offer, state_after) = offer_facts(&pool, "cmd_offer_1").await;
+    assert_eq!(
+        state_after, "offered",
+        "a re-offer does not change the rung"
+    );
+    assert_eq!(
+        second_offer,
+        Some(first_offer),
+        "`offered_at` records when the row ENTERED the state; a re-offer must not \
+         reset every age measured from it"
+    );
+
+    // ── The rung below is not erased by the rung above: an acknowledgement
+    // moves the state to `transport_received` and leaves the offer instant.
+    sqlx::query("UPDATE node_inbox SET acknowledged_at = now() WHERE command_id = $1")
+        .bind("cmd_offer_1")
+        .execute(&pool)
+        .await
+        .expect("record the transport receipt");
+    assert_eq!(
+        offer_facts(&pool, "cmd_offer_1").await,
+        (Some(first_offer), "transport_received".to_string()),
+        "`transport_received` outranks `offered` and the offer instant survives it"
+    );
+}
+
 /// One inbox row's raw columns, read as the operator's inspection surface
 /// returns them plus the derived state (`SIGNOFF-REPAIR.11.24.1.1.2.1`).
 async fn row_facts(pool: &PgPool, command_id: &str) -> (Option<chrono::DateTime<Utc>>, String) {

@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-19 — The residue holds under a second key, and the population is pinned as a set (`SIGNOFF-REPAIR.7.1.1.1`)
+
+Asked whether I trust my own findings, two of `.7.1.1`'s numbers failed `docs/CLAIM_VERIFICATION.md` §4.1 — *the answer is yes, immediately, with no keyboard, and a re-audit triggered by the question is itself the evidence the claim was published before it was earned.* This is that cost paid rather than noted.
+
+- ✅ **The residue 17 STANDS, re-derived by a key that could have disagreed.** It had rested on a backtick-exact match, so a table DOC-0029 named unbackticked would have been counted as unnamed — `docs/knowledge/a-census-is-as-wide-as-its-key.md`, applied to three other instruments this session and not to its own. A loose `\b<table>\b` finds the same **13**: **0 tables move**. ⭐ And the record settles it in its own words — *"twelve of twelve policy, evaluation, deployment and evidence tables"* — so DOC-0029 was never wrong about its bound.
+- 🔴 **The durability gap was real.** `42` and `33` were carried in five live documents with nothing to refuse a change, while the instrument's core was rewritten three times in one sitting and every intermediate count moved (`unseen` 27→26→0, `undetermined` 4→9→12→7→0, `mixed` 6→11→30→37).
+- ✅ **`.doctrine/shared_registry_baseline.tsv` pins the SET** — 68 rows of `route → admission → tables → arm` — and the published pair is **derived** from those rows by the gate's own summary rather than stored beside them.
+- ⭐ **Why a set and not a count, demonstrated rather than argued:** degrading the detector to a count comparison leaves **39 of 40** arms passing, and the one that fails is *a CHANGED row is refused, though the count is unmoved*. One route in and one out holds the number while the population moves underneath it.
+- ✅ All three drift shapes observed RED in situ and restored byte-identical: a route appears, a route vanishes, a row changes. ⛔ A negative arm the obvious implementation would have failed: an **absent** baseline reports no drift rather than 68 vanished routes.
+- ⛔ **The refusal names the five live documents that restate the count**, turning `.13.4`'s standing corpus rule from a habit into a mechanism. `unseen-write` also joined the refused class, which it was defined as and was never checked for; it is 0 today.
+- ✅ **VERIFIED:** `--check` rc=0 reporting `42 site-global writers (33 on identity alone), matching the recorded baseline`; `--self-test` **40/40** in 1.82 s (33 arms before, same cost — the whole-tree derivations are memoized); `make gate` green; `scripts/tests` **73 tests, OK**.
+
 ## 2026-09-19 — The question was already adjudicated for thirteen of the thirty, and the census did not check (`SIGNOFF-REPAIR.7.1.2`, re-scope)
 
 `SIGNOFF-REPAIR.7.1.1` published 42 site-global writers and routed the 33 admitted by enrolment alone to `.7.1.2` for adjudication. Opening `.7.1.2` found most of that adjudication already done.

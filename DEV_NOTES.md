@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — A count is not an identity, and the arm that proves it is the one you nearly skip
+
+- Asked whether I trusted my own findings, I named two numbers I could not stand behind without a keyboard. That question is in `CLAIM_VERIFICATION.md` §4.1 as an acceptance test, and failing it is supposed to cost something — so this is the cost, not a note about the cost.
+- ⭐ **One weakness was real and did not bite.** The residue `17` rested on a backtick-exact key; a loose key finds the same 13, and the record scopes itself in its own words. Worth saying plainly: naming a weakness before checking it is what made the check meaningful. Had I checked first and found nothing, I would have published `17` with the same confidence and no evidence.
+- 🔴 **The other was real and did bite.** `42` and `33` were guarded by nothing while I rewrote the instrument's core three times in one sitting, and every intermediate count moved. The obvious fix is to assert the three integers in the self-test. That fix is wrong.
+- ⭐ **A count is not an identity.** One route added and one removed holds `42` while the population changes underneath it. So the baseline records the SET — route, admission, tables, arm — and the counts are derived from it. The proof is a falsification: degrade the detector to a count comparison and **39 of 40** arms still pass. The single failure is *a CHANGED row is refused, though the count is unmoved*, and that arm is the entire argument for the design.
+- 🔎 **The arm I nearly did not write is the one that matters, and I can say why I nearly skipped it:** the other two shapes — a route appearing, a route vanishing — are what you picture when you think "drift". The third is invisible when you picture it, because nothing moves. It only appears if you ask *what change would this detector miss?* rather than *what change would it catch?*
+- ⛔ And one negative arm that the obvious implementation fails outright: an **absent** baseline must report no drift, not 68 vanished routes. A fresh clone should not be told its whole population disappeared.
+- promotion: pending — *a count is not an identity: one row in and one row out holds the number while the population moves* deserves a note, with the 39/40 falsification as its evidence.
+
 ## 2026-09-19 — I checked the code, the ADR and the schema, and not the one place that had already answered
 
 - I built a census, found 42 routes writing site-global state, published the population, and routed 33 of them for adjudication. Then I opened the adjudicating leaf and discovered `SIGNOFF-REPAIR.11.14` — *the site-global data model is a design position nobody has taken* — closed, with a decision record covering the question.

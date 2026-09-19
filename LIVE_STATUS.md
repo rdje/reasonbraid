@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE TWO NUMBERS THAT FAILED THE STAND-BY-IT TEST ARE PAID FOR (`.7.1.1.1`, REPAIR-0272).**
+
+Asked *do you trust your own findings*, two of `.7.1.1`'s failed `docs/CLAIM_VERIFICATION.md` §4.1 — the answer must be yes with no keyboard. Both are now settled rather than noted.
+
+- ✅ **The residue 17 STANDS.** Re-derived with a key that could have disagreed — `\b<table>\b` anywhere in DOC-0029 finds the same 13, so **0 tables move** — and the record scopes itself in its own words: *"twelve of twelve policy, evaluation, deployment and evidence tables"*. ⛔ DOC-0029 was never wrong about its bound; nobody noticed the bound was narrower than the surface.
+- ✅ **The population is pinned as a SET, not a count** — `.doctrine/shared_registry_baseline.tsv`, 68 rows of `route → admission → tables → arm`; `42` and `33` are DERIVED from it by the gate's own summary, so the file and the number cannot disagree.
+- ⭐ **Why the set and not the count, demonstrated:** degrading the detector to a count comparison leaves **39/40** arms passing and fails exactly *a CHANGED row is refused, though the count is unmoved*. One route in and one out holds `42` while the population moves underneath it.
+- ✅ All three drift shapes observed RED in situ and restored byte-identical; an ABSENT baseline reports no drift rather than 68 vanished routes. ⛔ The refusal NAMES the five live documents that restate the count — `.13.4`'s corpus rule as a mechanism rather than a habit.
+- ⚠️ Cost unchanged at **1.82 s** for 40 arms (up from 33): the whole-tree derivations are memoized, so the new arms reuse them.
+
 🔴 **FORTY-TWO ROUTES WRITE SITE-GLOBAL STATE, THIRTY-THREE ON ENROLMENT ALONE (`.7.1.1`, REPAIR-0271).**
 
 `.7.1`'s attached clause 2 named this census as the prerequisite to designing the resolver bind. **72 mutating routes; 42 write a table with no tenant dimension** — `identity only` **33** · `guarded transaction` 3 · `not-censused` 3 · `pool tenant-admin` 2 · `pool authorize` 1.

@@ -1,0 +1,85 @@
+# SHARED-REGISTRY-WRITES baseline — scripts/census_shared_registry_writes.py
+#
+# Every route whose reach includes a table with no tenant dimension, as
+#     route<TAB>admission<TAB>tables<TAB>arm
+#
+# ⭐ THE SET, NOT THE COUNT. A count is not an identity: one route added and one
+# removed holds the number while the population changes underneath it. The
+# published figures — 42 site-global writers, 33 of them on identity alone — are
+# re-derived FROM these rows, so the file and the number cannot disagree.
+#
+# ⛔ `arm` says WHICH instrument answered. `walk` is the precise call walk and
+# is what the published 42 counts; `module-reach` is the sound
+# over-approximation used only where the walk reached no write at all, and a row
+# carrying it is a reach, not a statement the route issues.
+#
+# Recorded by `SIGNOFF-REPAIR.7.1.1.1`. Refresh only with an adjudication:
+#     python3 -B scripts/census_shared_registry_writes.py --check
+POST /v1/admin/adapters	identity only	recruitment_offers,site_audit	module-reach
+POST /v1/admin/adapters/{adapter_id}/revoke	identity only	recruitment_offers,site_audit	module-reach
+POST /v1/admin/boundaries/{boundary_id}/revoke	guarded transaction	recruitment_offers	module-reach
+POST /v1/admin/breakers	guarded transaction	recruitment_offers	module-reach
+POST /v1/admin/breakers/reset	guarded transaction	recruitment_offers	module-reach
+POST /v1/admin/grants/{grant_id}/revoke	guarded transaction	recruitment_offers	module-reach
+POST /v1/admin/regions	identity only	recruitment_offers,site_audit	module-reach
+POST /v1/admin/regions/{from}/pair/{to}	identity only	recruitment_offers,site_audit	module-reach
+POST /v1/admin/regions/{from}/unpair/{to}	identity only	recruitment_offers,site_audit	module-reach
+POST /v1/calls	pool authorize	recruitment_offers	walk
+POST /v1/calls/{call_id}/close	pool tenant-admin	recruitment_panels	walk
+POST /v1/calls/{call_id}/respond	identity only	recruitment_responses	walk
+POST /v1/deployment-targets	identity only	deployment_targets	walk
+POST /v1/deployments	identity only	deployment_assignments	walk
+POST /v1/deployments/{target_id}/{publication_id}/receipt	identity only	deployment_assignments	walk
+POST /v1/derivations	identity only	derivations	walk
+POST /v1/evaluations/calibrations	identity only	evaluation_calibrations	walk
+POST /v1/evaluations/corpora	identity only	evaluation_corpora	walk
+POST /v1/evaluations/gates	identity only	evaluation_gates	walk
+POST /v1/evaluations/gates/{gate_id}/evaluations	identity only	evaluation_gate_results	walk
+POST /v1/evaluations/runs	identity only	evaluation_runs	walk
+POST /v1/evaluations/trials	identity only	evaluation_trials	walk
+POST /v1/evaluations/trials/{trial_id}/results	identity only	evaluation_trial_results	walk
+POST /v1/federation-agreements	guarded transaction	recruitment_offers	module-reach
+POST /v1/federation-agreements/accept	guarded transaction	recruitment_offers	module-reach
+POST /v1/federation-agreements/revoke	guarded transaction	recruitment_offers	module-reach
+POST /v1/nodes/ack	not-censused	node_certificates,node_events,node_keys,node_leases,node_proof_nonces	module-reach
+POST /v1/nodes/enroll	not-censused	node_certificates,node_keys,node_leases	walk
+POST /v1/nodes/enroll-tokens	guarded transaction	node_certificates,node_events,node_keys,node_leases,node_proof_nonces,recruitment_offers,server_ca	module-reach
+POST /v1/nodes/events	not-censused	node_events,quota_events,resource_references	walk
+POST /v1/nodes/handshake	not-censused	node_certificates,node_events,node_keys,node_leases,node_proof_nonces	module-reach
+POST /v1/nodes/heartbeat	not-censused	node_certificates,node_events,node_keys,node_leases,node_proof_nonces	module-reach
+POST /v1/nodes/inbox/prune	guarded transaction	recruitment_offers	module-reach
+POST /v1/nodes/poll	not-censused	node_certificates,node_events,node_keys,node_leases,node_proof_nonces	module-reach
+POST /v1/nodes/quarantine	guarded transaction	recruitment_offers	module-reach
+POST /v1/nodes/replay	guarded transaction	recruitment_offers	module-reach
+POST /v1/nodes/revoke	guarded transaction	recruitment_offers	module-reach
+POST /v1/nodes/rotate	not-censused	node_certificates	walk
+POST /v1/policies	identity only	policy_versions	walk
+POST /v1/policies/resolve	identity only	policy_versions,recruitment_offers	module-reach
+POST /v1/policy-approvals	identity only	policy_approvals,policy_proposals	walk
+POST /v1/policy-corrections	identity only	policy_corrections	walk
+POST /v1/policy-decisions	identity only	policy_decisions,policy_proposals	walk
+POST /v1/policy-drift	identity only	policy_drift	walk
+POST /v1/policy-outcomes	identity only	policy_outcomes	walk
+POST /v1/policy-projections	identity only	policy_projections	walk
+POST /v1/policy-proposals	identity only	policy_proposals	walk
+POST /v1/policy-publications	identity only	policy_publications	walk
+POST /v1/policy-publications/{publication_id}/effective	identity only	policy_publications	walk
+POST /v1/policy-publications/{publication_id}/failed	identity only	policy_publications	walk
+POST /v1/policy-publications/{publication_id}/publish	identity only	policy_publications	walk
+POST /v1/policy-reviews/schedule	identity only	policy_reviews	walk
+POST /v1/policy-reviews/{review_id}/done	identity only	policy_reviews	walk
+POST /v1/profiles/cards/import	guarded transaction	recruitment_offers	module-reach
+POST /v1/profiles/{role_id}/attest	guarded transaction	recruitment_offers	module-reach
+POST /v1/resolvers	pool tenant-admin	resolver_capabilities	walk
+POST /v1/resources	identity only	resource_references	walk
+POST /v1/resources/{resource_id}/resolve	identity only	derivations,evidence_snapshots,quota_events,snapshot_objects	walk
+POST /v1/routing/recommendations	identity only	routing_recommendations	walk
+POST /v1/routing/resolve	identity only	routing_resolutions	walk
+POST /v1/snapshots	identity only	evidence_snapshots,snapshot_objects	walk
+POST /v1/snapshots/expire-due	identity only	recruitment_offers,site_audit	module-reach
+POST /v1/snapshots/{snapshot_id}/tombstone	identity only	recruitment_offers,site_audit	module-reach
+POST /v1/threads	guarded transaction	quota_events,resource_references,routing_resolutions	walk
+POST /v1/threads/auto	guarded transaction	quota_events,resource_references,routing_resolutions	walk
+POST /v1/threads/{thread_id}/commands	guarded transaction	quota_events,resource_references	walk
+POST /v1/workflow-profiles	identity only	workflow_profiles	walk
+PUT /v1/profiles/{role_id}	identity only	agent_profiles,profile_versions	walk

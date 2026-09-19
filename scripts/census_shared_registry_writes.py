@@ -476,7 +476,67 @@ def report(rows: list[dict[str, object]]) -> None:
             print(f"   {str(row['route']):<52} [{row['arm']}/{row['admission']}] {tables}")
 
 
-def check(rows: list[dict[str, object]]) -> int:
+_USE_RECORDED = object()
+
+BASELINE = ".doctrine/shared_registry_baseline.tsv"
+
+#: The live documents that restate this census's counts. ⛔ `.13.4`'s standing
+#: corpus rule — *a correction is not complete until the LIVE-DOCUMENT corpus
+#: that restates it has been censused* — turned into a mechanism instead of a
+#: habit: when the population moves, the refusal names where the old number is
+#: still written.
+RESTATING_DOCUMENTS = (
+    "CHANGELOG.md",
+    "LIVE_STATUS.md",
+    "MEMORY.md",
+    "docs/TASK_TREE.md",
+    "docs/tasks/SIGNOFF-REPAIR.md",
+)
+
+
+def baseline_rows(rows: list[dict[str, object]]) -> list[str]:
+    """The site-global writers as `route<TAB>admission<TAB>tables`, sorted.
+
+    ⭐ THE SET, NOT THE COUNT. A count is not an identity: one route added and
+    one removed holds `42` while the population changes underneath it. The
+    published numbers are re-derived FROM this file's rows rather than stored
+    beside them, so the two cannot disagree.
+    """
+    out = []
+    for row in rows:
+        if not row["site_global"]:
+            continue
+        out.append("\t".join([
+            str(row["route"]),
+            str(row.get("admission", "?")),
+            ",".join(row["site_global"]),  # type: ignore[arg-type]
+            str(row.get("arm", "?")),
+        ]))
+    return sorted(out)
+
+
+def load_baseline(path: Path | None = None) -> list[str] | None:
+    path = path if path is not None else ROOT / BASELINE
+    if not path.exists():
+        return None
+    return sorted(
+        l.rstrip("\n") for l in path.read_text(encoding="utf-8").splitlines()
+        if l.strip() and not l.lstrip().startswith("#")
+    )
+
+
+def baseline_drift(rows: list[dict[str, object]],
+                   recorded: list[str] | None) -> tuple[list[str], list[str]]:
+    """`(rows that appeared, rows that vanished or changed)`."""
+    if recorded is None:
+        return ([], [])
+    live = set(baseline_rows(rows))
+    was = set(recorded)
+    return (sorted(live - was), sorted(was - live))
+
+
+def check(rows: list[dict[str, object]],
+          recorded: list[str] | None | object = _USE_RECORDED) -> int:
     """⛔ The gate refuses what the census could not classify, never what it found.
 
     A site-global write is a FINDING for a leaf to adjudicate, not a breach to
@@ -485,10 +545,37 @@ def check(rows: list[dict[str, object]]) -> int:
     cannot classify, because that is the census under-counting its own
     population while reporting a tidy number.
     """
-    blind = [r for r in rows if r["verdict"] == "undetermined"]
-    if not blind:
-        print(f"SHARED-REGISTRY-WRITES: {len(rows)} mutating routes, all classified")
+    blind = [r for r in rows if r["verdict"] in ("undetermined", "unseen-write")]
+    # ⛔ The baseline is a PARAMETER so a control can drive the gate without the
+    # real one, and so an arm testing the blind-route path is not also asserting
+    # the whole live population. Defaulting it to the recorded file keeps the
+    # command-line behaviour unchanged.
+    if recorded is _USE_RECORDED:
+        recorded = load_baseline()
+    appeared, vanished = baseline_drift(rows, recorded)  # type: ignore[arg-type]
+    if not blind and not appeared and not vanished:
+        precise = [r for r in rows if r["site_global"] and r.get("arm") == "walk"]
+        identity = [r for r in precise if r.get("admission") == "identity only"]
+        print(f"SHARED-REGISTRY-WRITES: {len(rows)} mutating routes, all classified; "
+              f"{len(precise)} site-global writers ({len(identity)} on identity alone), "
+              f"matching the recorded baseline")
         return 0
+    if appeared or vanished:
+        print("SHARED-REGISTRY-WRITES: the site-global write population has MOVED.",
+              file=sys.stderr)
+        for row in appeared:
+            print(f"    + {row}", file=sys.stderr)
+        for row in vanished:
+            print(f"    - {row}", file=sys.stderr)
+        print(f"""
+  The baseline pins the SET, not the count, because a count is not an identity:
+  one route added and one removed leaves the number unchanged while the
+  population moves underneath it.
+
+  Re-derive, adjudicate what changed, then refresh {BASELINE}. ⛔ The counts are
+  restated in these live documents and a correction is not complete until they
+  have been censused ({'`SIGNOFF-REPAIR.13.4`'}):
+""" + "\n".join(f"      {d}" for d in RESTATING_DOCUMENTS), file=sys.stderr)
     for row in blind:
         print(
             f"SHARED-REGISTRY-WRITES: cannot classify {row['route']} "
@@ -574,10 +661,10 @@ def self_test() -> int:
               "delegates_followed": []}]
     # 16 ⭐ A SITE-GLOBAL WRITE DOES NOT FAIL THE GATE. It is a finding for a
     #    leaf, and `.11.9` rejects a gate that ships a standing backlog.
-    arms.append(("the gate PASSES a site-global finding", check(clean) == 0))
+    arms.append(("the gate PASSES a site-global finding", check(clean, None) == 0))
     # 17 ⛔ NEGATIVE, observed RED: an unclassifiable route refuses.
     blind = [dict(clean[0], verdict="undetermined", unknown=["mystery"])]
-    arms.append(("the gate REFUSES a route it could not classify", check(blind) == 1))
+    arms.append(("the gate REFUSES a route it could not classify", check(blind, None) == 1))
 
     # ── The SQL grammar, every arm a defect this census actually shipped ─────
     # ⛔ Each of these five was live and produced a table name. They are arms,
@@ -645,6 +732,44 @@ def self_test() -> int:
     #    `tenant_dimensioned_tables()` because its pattern forbade a qualifier.
     arms.append(("a schema-qualified table is known to the tenant-dimension primitive",
                  RB.tenant_dimensioned_tables().get("site_audit") is False))
+
+    # ── The baseline: the SET is pinned, not the count ───────────────────────
+    # 🔴 `SIGNOFF-REPAIR.7.1.1.1`. The published 42 and 33 were guarded by
+    #    NOTHING while this instrument's core was rewritten three times in one
+    #    sitting, and every intermediate count moved. These arms are that gap
+    #    closed, and all three drift shapes were observed RED in situ.
+    live_rows = collect()
+    recorded = baseline_rows(live_rows)
+    arms.append(("the live census matches its recorded baseline",
+                 baseline_drift(live_rows, load_baseline()) == ([], [])))
+    # ⛔ a route APPEARS — the row is missing from the baseline
+    arms.append(("a route that APPEARS is refused",
+                 baseline_drift(live_rows, [r for r in recorded if "/v1/resolvers" not in r])[0] != []))
+    # ⛔ a route VANISHES — the baseline holds a row the census no longer finds
+    arms.append(("a route that VANISHES is refused",
+                 baseline_drift(live_rows, recorded + ["POST /v1/ghost\tidentity only\tg\twalk"])[1]
+                 != []))
+    # 🔴 THE ONE A COUNT CANNOT CATCH: same route, changed admission. One row in,
+    #    one row out — the number is identical and the population is not.
+    changed = [r.replace("pool tenant-admin", "identity only") if "/v1/resolvers" in r else r
+               for r in recorded]
+    app, van = baseline_drift(live_rows, changed)
+    arms.append(("a CHANGED row is refused, though the count is unmoved",
+                 len(app) == 1 and len(van) == 1 and len(changed) == len(recorded)))
+    # ⛔ NEGATIVE: an absent baseline does not fabricate drift — a fresh clone
+    #    that has not recorded one must not read as 68 vanished routes.
+    arms.append(("an absent baseline reports no drift rather than total drift",
+                 baseline_drift(live_rows, None) == ([], [])))
+    # ⭐ and the refusal names where the number is restated, or `.13.4`'s corpus
+    #    rule stays a habit instead of a mechanism.
+    arms.append(("the restating documents are named and tracked",
+                 all((ROOT / d).exists() for d in RESTATING_DOCUMENTS)))
+    # ⛔ the published pair is DERIVED from the baseline rows, never carried
+    #    beside them, so the file and the number cannot disagree.
+    precise = [r for r in live_rows if r["site_global"] and r["arm"] == "walk"]
+    arms.append(("the published 42/33 are derived from the rows, not stored",
+                 len(precise) == 42
+                 and sum(1 for r in precise if r["admission"] == "identity only") == 33))
 
     # ── The live corpus ──────────────────────────────────────────────────────
     try:

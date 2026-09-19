@@ -94,11 +94,31 @@ binding constraint rather than beside it.
 
 ## What blocks it, and what would unblock it
 
-1. 🔴 **The LAN bar, which is decisive today.**
+1. 🔴 **LAN completeness, which is decisive today — but ONLY for the live path,
+   and the distinction is load-bearing.**
    `docs/decisions/2026-09-18_lan-completeness-precedes-internet-exposure.md`
-   records the director's instruction that the LAN must fully work first. A
-   HOSTED classifier in the deliberation path makes the LAN **incomplete by
-   design** — a deliberation could not complete without reaching the internet.
+   records the director's instruction that ReasonBraid *"shall match the
+   objective as defined in the roadmap in the LAN"*, over a roadmap whose initial
+   deployment is *"multiple trusted hosts on a private LAN or private overlay"*.
+   A HOSTED classifier **in the deliberation path** makes that unreachable: a
+   deliberation could not complete without egress, so the feature cannot exist on
+   the LAN at all.
+
+   ⛔ **CORRECTION, stated rather than edited away.** This record first said *"Jev
+   cannot satisfy the LAN bar"*, and that phrasing is wrong twice over. The LAN
+   bar is DEFINED in that record as *G0–G5 genuinely met plus G7 earned on the
+   LAN*; Jev is not assessed against a gate and does not "fail" one. And **G6 is
+   about INBOUND exposure** — serving arbitrary Internet-connected hosts — while
+   an outbound call to a classifier is a different category entirely. Conflating
+   inbound exposure with an outbound dependency is the error; the conclusion
+   survives it, for the narrower reason above.
+
+   ⭐ **AND THE SCOPING CUTS THE OTHER WAY, which is why the shadow lane is named
+   the first use.** `routing_recommendations` is advisory and NEVER APPLIED, so a
+   failed call there stops no deliberation — the LAN deployment still does
+   everything it is supposed to do and merely accumulates no advisory row. That
+   use is **not** blocked by LAN completeness. It is blocked by the other two
+   conditions below, and by there being no defect for it to repair.
    ⛔ **SETTLED 2026-09-19 from the vendor's own GitHub** (`https://github.com/typesafe-ai`,
    supplied by the director): the published repositories are **client SDKs only**
    — `typesafe-sdk-js` and `typesafe-sdk-python` ("the official … library for the
@@ -106,9 +126,11 @@ binding constraint rather than beside it.
    APIs", and a `skills` repo. The organisation forks `vllm` and `LLaDA` but
    publishes **no deployable model, inference server or on-device runtime**. Jev
    is a managed hosted service.
-   ⭐ So this is not an open question awaiting an answer: **Jev cannot satisfy the
-   LAN bar today**, and is post-LAN by the project's own standing rule. Revisit
-   only if typesafe.ai ships a self-hostable runtime.
+   ⭐ So this is not an open question awaiting an answer: **any live-path use of
+   Jev is post-LAN**, because the capability cannot exist on a private LAN at all.
+   Revisit only if typesafe.ai ships a self-hostable runtime — which would remove
+   this condition entirely, leaving only data locality and the absence of a defect
+   to repair.
 2. ⚠️ **Data locality (CLAUDE.md §13).** A hosted call also sends deliberation
    content off-volume and off-site. That needs its own decision about what may
    leave, independent of whether the LAN bar is met.

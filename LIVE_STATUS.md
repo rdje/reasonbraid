@@ -5,6 +5,18 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **A PROOF OF ALLOWANCE MUST CARRY ITS OWN WINDOW (`.11.24.1.1.2.2`, REPAIR-0307).**
+
+⭐ The two halves of one rule were reading two clocks.
+
+- 🔴 **A dispatched work item's budget reservation expired ten minutes after dispatch and NOTHING bound delivery to that window.** The held-amount query counts an active row only while `r.expires_at > $2` and falls back to `r.usage`, **NULL until settlement**, so a lapsed unsettled hold holds `{}`. ⚠️ **The ledger is not the defect** — that is deliberate, and `expired_reservations_stop_holding` is the control that decided it.
+- ⛔ **The gap was on the other side of the wire.** `ReservationReference` carried `reservation_id`, `dimensions` and `issued_at` — **no window** — and `applicable()`, the §14.3-step-4 check the node runs before any adapter contact, tested only that the id was non-empty and the dimensions covered a call. **A node polling at minute eleven verified a proof it could not date** and dispatched against a ceiling that had already re-lent the allowance — §14.3's *reservations prevent two concurrent threads from each assuming the same remaining budget*, defeated by the one thread that assumed it twice.
+- ✅ **`expires_at` rides the reference, bound from the SAME variable the `INSERT` uses**, so the proof and the ledger cannot drift; the gate is `applicable_at(now)` and refuses a lapsed hold, journaling `failed_before_dispatch` with a reason naming the instant. ⛔ The boundary is the LEDGER's — `expires_at > $2` holds, so equality is outside on both sides, and the control drives the equality case rather than a point near it.
+- ⛔ **Two answers refused with reasons.** *Re-reserve at delivery* makes the node's poll a budget authority, minting a hold outside the transaction that admitted the dispatch — and its failure leg is the refusal anyway. *Refuse the delivery* adds a third `node_inbox` terminal beside `.11.24.1.1.2`'s two, which both derive from the admitting grant's liveness. ✅ The taken answer is §14.4's own words: *surface partial result and missing work instead of consuming an unauthorized overrun.*
+- ⚠️ **NOT a claim ten minutes is wrong** — the number is `PHASE-0.6.2`'s and `.11.6` forbids revising it before measuring the population. ⚠️ **A wire break, taken deliberately**: `expires_at` is required on an object decoded `deny_unknown_fields`, so both sides upgrade together; the top-level payload key set is unchanged.
+- ⭐ **The node control drives BOTH sides of the boundary** — one minute inside the hold the same reservation dispatches and completes — because a gate that refuses everything is not a window.
+- ✅ **VERIFIED:** `node_work` + `budget` + `node_result_ordering` **25/0**; the six node suites the wire change reaches **31/0**; libraries 52 + 32 + 127, 0 failed. Strict three-crate all-target clippy rc=0; fmt rc=0; book rc=0; gate green. **FALSIFIED in both halves, three arms**, each file restored byte-identical (SHA-256 verified).
+
 ✅ **THE REVOCATION BACKFILL IS WITNESSED, AND IT WAS RIGHT (`.13.4.3.1`, REPAIR-0306).**
 
 ⛔ `.7.1.2.2.1`'s shape — *a green gate is not evidence a suite runs* — applied to a DATA MIGRATION.

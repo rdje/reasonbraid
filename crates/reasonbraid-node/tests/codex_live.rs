@@ -33,6 +33,7 @@ fn reservation(tag: &str) -> ReservationReference {
             wall_clock_seconds: Some(3600),
         },
         issued_at: Utc::now(),
+        expires_at: Utc::now() + chrono::Duration::minutes(10),
     }
 }
 

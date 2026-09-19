@@ -230,6 +230,10 @@ where
             reservation_id: reservation_id.clone(),
             dimensions: *requested,
             issued_at: at,
+            // The SAME instant the held-amount query stops counting this row at
+            // (`SIGNOFF-REPAIR.11.24.1.1.2.2`) — one value, written once, so the
+            // proof the node verifies and the ledger that lends cannot disagree.
+            expires_at,
         },
         ceiling_id: ceiling_id.to_string(),
         tenant_id: tenant_id.to_string(),

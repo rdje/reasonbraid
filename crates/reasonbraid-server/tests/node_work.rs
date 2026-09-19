@@ -538,6 +538,39 @@ async fn invite_dispatches_work_with_a_reservation() {
         "the reservation covers a dispatch"
     );
 
+    // ⭐ `SIGNOFF-REPAIR.11.24.1.1.2.2` — THE PROOF AND THE LEDGER READ ONE
+    // CLOCK. The held-amount query stops counting an active reservation the
+    // instant `budget_reservations.expires_at` passes, so the reference the node
+    // verifies under §14.3 step 4 must carry that same instant; carrying only
+    // `issued_at` left the node unable to date a proof the ceiling had already
+    // re-lent. The equality is asserted against the ROW rather than recomputed
+    // from a duration, because a second derivation of one value is how the two
+    // halves drift apart.
+    let reservation_id = payload["reservation"]["reservation_id"].as_str().unwrap();
+    let row_expires_at: DateTime<Utc> =
+        sqlx::query_scalar("SELECT expires_at FROM budget_reservations WHERE reservation_id = $1")
+            .bind(reservation_id)
+            .fetch_one(&pool)
+            .await
+            .expect("the issued reservation row");
+    let carried = payload["reservation"]["expires_at"]
+        .as_str()
+        .expect("the work item's reservation carries its hold window");
+    assert_eq!(
+        DateTime::parse_from_rfc3339(carried)
+            .expect("an RFC 3339 instant")
+            .with_timezone(&Utc),
+        row_expires_at,
+        "the reference's window is the ledger's own, not a second clock"
+    );
+    let issued_at = payload["reservation"]["issued_at"]
+        .as_str()
+        .expect("the work item's reservation carries its issue instant");
+    assert!(
+        DateTime::parse_from_rfc3339(issued_at).expect("an RFC 3339 instant") < row_expires_at,
+        "a hold that expires at or before it was issued would refuse every delivery"
+    );
+
     let active: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM budget_reservations WHERE status = 'active'")
             .fetch_one(&pool)

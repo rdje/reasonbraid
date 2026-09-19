@@ -1,5 +1,67 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — The ledger had a clock and the proof did not
+
+The leaf opened on a number: a work item's budget reservation holds for ten
+minutes, and nothing stops the work item being delivered at minute eleven. The
+obvious shapes of the answer are all about the number or about the delivery —
+hold longer, refuse the delivery, re-reserve on arrival. None of them is what
+was wrong.
+
+What was wrong is that the server and the node were both enforcing the same
+rule — §14.3 step 4, *verify an applicable reservation before dispatch* — and
+only one of them could see the clock. The server's held-amount query is
+explicit: `CASE WHEN r.status = 'active' AND r.expires_at > $2`. The node's
+`applicable()` checked that the reference had an id and covered a call. The
+reference carried `issued_at`, a fact about the past, and nothing about the
+window. So the node was asked to verify a proof of allowance that had no
+expiry printed on it, and it did the only thing it could: accept it forever.
+
+Once that is the framing, the repair is not a policy choice at all. The
+reference gains `expires_at`, bound from the same variable the `INSERT` uses —
+not recomputed from the ten minutes, because a second derivation of one value
+is exactly how two halves drift apart, and this leaf exists because two halves
+drifted apart. Then the gate can ask the question it was always supposed to
+ask.
+
+**The part that was a policy choice, and how the roadmap answered it.** Given a
+node holding a work item whose hold has lapsed, three things could happen:
+re-reserve, refuse the delivery, or deliver and let the node refuse. I went
+looking for the oracle rather than for my own preference, and §14.4 has the
+sentence: *surface partial result and missing work instead of consuming an
+unauthorized overrun.* That is the third answer, in the roadmap's own words,
+and it made the other two arguable rather than open.
+
+Re-reservation is the one that tempts, because it saves the work. It is also
+the one that quietly relocates authority: the node's poll is a read path, it is
+not the engine's single-writer serialization point, and the hold it would mint
+would exist outside the transaction that admitted the dispatch and evaluated
+the caller's grant. A budget hold created by a poll is a budget hold nobody
+authorized.
+
+**The boundary case is where I nearly wrote a control that agreed with itself.**
+My first instinct was to test "expired" with a hold an hour in the past and
+"live" with one an hour in the future, which measures nothing about the
+boundary. The ledger's predicate is `expires_at > now`, so the instant
+*equal* to `expires_at` is already outside, and the control now drives exactly
+that instant plus one millisecond either side. If the gate had used `>` where
+the ledger uses `>=`, the two would disagree for the width of one instant, and
+only a control standing on the boundary would ever notice.
+
+⚠️ **One thing this cost, stated rather than buried.** `ReservationReference`
+is decoded with `deny_unknown_fields` and the new field is required, so a node
+and a server across this change do not interoperate in either direction. In a
+single-deployment dev profile that is a non-event. It is written down because
+the next required field on a wire type may not be.
+
+⭐ **The connection worth keeping**: this is the same mechanism as
+`revoking-an-authority-records-when`, one layer out. There the row the
+authorization path loads could not date the fact it reported; here the proof
+the dispatch path verifies could not date the allowance it claimed. Two
+instances, one shape — recorded in the decision record rather than promoted,
+because a third would make it a rule about carried proofs generally and two
+make it a coincidence with a good explanation.
+
 ## 2026-09-20 — Three of the nine predicates cannot be turned red, and saying so is the honest version
 
 The control for `migrations/0077` was the easy half of this leaf. The interesting

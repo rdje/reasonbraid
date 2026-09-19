@@ -168,6 +168,14 @@ pub async fn execute_attempt(
     // §14.6) — verified at BOTH boundaries: the reference itself, and the node's
     // local headroom. A refusal is journaled as `failed_before_dispatch` (audited)
     // and the adapter is never invoked.
+    //
+    // ⛔ `applicable_at(now)` rather than a window-blind check
+    // (`SIGNOFF-REPAIR.11.24.1.1.2.2`): the issuing ledger stops holding the
+    // reservation at `expires_at`, so a work item delivered after that instant
+    // carries a proof of an allowance the ceiling has already re-lent. §14.4 —
+    // *surface partial result and missing work instead of consuming an
+    // unauthorized overrun* — is why the answer is this refusal and not a
+    // delivery-time re-reservation.
     let attempt_id_ref = &attempt_id;
     let refused = |reason: String| async move {
         journal
@@ -181,7 +189,7 @@ pub async fn execute_attempt(
             reservation_id: reservation.reservation_id.clone(),
         })
     };
-    if let Err(e) = reservation.applicable() {
+    if let Err(e) = reservation.applicable_at(now) {
         journal
             .prepare_attempt(&attempt_id, operation_id, now)
             .await?;

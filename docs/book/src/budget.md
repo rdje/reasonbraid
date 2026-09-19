@@ -17,6 +17,38 @@ applicable reservation** — enforced at BOTH boundaries:
   refusal is journaled `failed_before_dispatch` and the adapter is never
   invoked.
 
+## The hold has a window, and the node reads it
+
+A reservation holds its dimensions until `expires_at` and no longer: the
+server's held-amount query stops counting an active row the instant that
+passes, and the allowance returns to the ceiling for other work. A work item's
+reservation is created with a ten-minute hold at dispatch.
+
+Delivery is not instant. A node that is offline, slow to poll, or replaying a
+backlog can receive a work item long after the hold lapsed — and until
+`SIGNOFF-REPAIR.11.24.1.1.2.2` the reference it was handed carried only
+`issued_at`, so the node ran the *verify an applicable reservation* check
+against a proof it could not date. The ledger had re-lent the allowance while
+the work item still claimed it, which is exactly what §14.3 says reservations
+exist to prevent.
+
+The reference now carries **`expires_at`, the ledger's own instant**, written
+once by the statement that issues the row, so the proof and the ledger cannot
+disagree. A node handed a work item whose hold has lapsed refuses it before the
+adapter is contacted and journals `failed_before_dispatch` with the reason — the
+same shape a budget denial at dispatch already takes. That is §14.4's rule:
+*surface partial result and missing work instead of consuming an unauthorized
+overrun.*
+
+The refusal is deliberately **not** a re-reservation at delivery. Minting a
+fresh hold on a poll would make the delivery path a budget authority, creating
+an allowance outside the transaction that admitted the dispatch and evaluated
+the caller's grant.
+
+> **Wire change.** `reservation.expires_at` is a required field of the work
+> payload's reservation object, which is decoded with `deny_unknown_fields`. A
+> node and a server across this change do not interoperate: upgrade both.
+
 ## Settle, release, overrun
 
 Settlement records **actual** usage: lower than the reservation frees the

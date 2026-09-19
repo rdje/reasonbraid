@@ -43,6 +43,19 @@ fn run_request() -> RunRequest {
 }
 
 fn reservation(tag: &str, calls: Option<u64>, tokens: Option<u64>) -> ReservationReference {
+    held_for(tag, calls, tokens, chrono::Duration::minutes(10))
+}
+
+/// The same reservation with an explicit hold window, so a control can place the
+/// dispatch on either side of the instant the ISSUING LEDGER stops counting it
+/// (`SIGNOFF-REPAIR.11.24.1.1.2.2`). A negative duration is an already-lapsed hold.
+fn held_for(
+    tag: &str,
+    calls: Option<u64>,
+    tokens: Option<u64>,
+    window: chrono::Duration,
+) -> ReservationReference {
+    let issued_at = Utc::now();
     ReservationReference {
         reservation_id: format!("res_{tag}"),
         dimensions: BudgetDimensions {
@@ -51,7 +64,8 @@ fn reservation(tag: &str, calls: Option<u64>, tokens: Option<u64>) -> Reservatio
             output_tokens: tokens,
             wall_clock_seconds: Some(3600),
         },
-        issued_at: Utc::now(),
+        issued_at,
+        expires_at: issued_at + window,
     }
 }
 
@@ -189,6 +203,81 @@ async fn a_reservation_covering_no_dispatch_is_refused_before_the_boundary() {
     let history = journal.attempt_history(&report.attempt_id).await.unwrap();
     assert_eq!(history.len(), 1, "no dispatch boundary was recorded");
     assert_eq!(history[0].to_status, "failed_before_dispatch");
+}
+
+/// `SIGNOFF-REPAIR.11.24.1.1.2.2` — THE window denial: a work item delivered
+/// after its reservation's hold lapsed is refused before the boundary.
+///
+/// 🔴 **The defect this drives.** The server creates a work item's reservation
+/// with a ten-minute hold and the ledger stops counting it the instant
+/// `expires_at` passes — deliberately, and the server suite's
+/// `expired_reservations_stop_holding` is that decision's control. Nothing bound
+/// DELIVERY to the same window: a node polling at minute eleven received a work
+/// item whose allowance the ceiling had already re-lent to other work, and §14.3's
+/// *reservations prevent two concurrent threads from each assuming the same
+/// remaining budget* was defeated by the one thread that assumed it twice.
+///
+/// ⛔ The refusal is §14.4's answer — *surface partial result and missing work
+/// instead of consuming an unauthorized overrun* — and not a delivery-time
+/// re-reservation, which would make the node's poll a budget authority minting a
+/// hold outside the transaction that admitted the dispatch.
+///
+/// ⭐ Both sides of the boundary are driven, because a check that refuses
+/// everything is not a window: the same reservation one minute INSIDE its hold
+/// dispatches and completes.
+#[tokio::test]
+async fn a_reservation_whose_hold_has_lapsed_is_refused_before_the_boundary() {
+    let journal = Journal::open(journal_path("budget-lapsed")).await.unwrap();
+    let (adapter, invocations) = CountingAdapter::new();
+
+    let lapsed = seed_operation(&journal, "lapsed").await;
+    let report = execute_attempt(
+        &journal,
+        &adapter,
+        &lapsed,
+        &run_request(),
+        // Issued eleven minutes ago for ten: the ledger stopped holding it a
+        // minute before this delivery.
+        &held_for("lapsed", Some(1), Some(100), chrono::Duration::minutes(-1)),
+        &local(10, 10_000),
+    )
+    .await
+    .expect("a refusal is an audited report, not an error");
+
+    assert_eq!(report.final_state.as_str(), "failed_before_dispatch");
+    assert_eq!(
+        invocations.load(Ordering::SeqCst),
+        0,
+        "the adapter was NEVER invoked under a lapsed hold"
+    );
+    let summary = journal.attempt_summary(&report.attempt_id).await.unwrap();
+    let evidence = summary.evidence.clone().unwrap_or_default();
+    assert!(
+        evidence.contains("lapsed"),
+        "the journal must say the hold lapsed, not merely that something refused: {evidence}"
+    );
+    let history = journal.attempt_history(&report.attempt_id).await.unwrap();
+    assert_eq!(history.len(), 1, "no dispatch boundary was recorded");
+    assert_eq!(history[0].to_status, "failed_before_dispatch");
+
+    // ⭐ THE POSITIVE ARM: the same shape one minute INSIDE the window runs.
+    let live = seed_operation(&journal, "within").await;
+    let report = execute_attempt(
+        &journal,
+        &adapter,
+        &live,
+        &run_request(),
+        &held_for("within", Some(1), Some(100), chrono::Duration::minutes(1)),
+        &local(10, 10_000),
+    )
+    .await
+    .expect("a held reservation dispatches");
+    assert_eq!(report.final_state.as_str(), "completed");
+    assert_eq!(
+        invocations.load(Ordering::SeqCst),
+        1,
+        "the adapter WAS invoked inside the window"
+    );
 }
 
 /// THE second node-boundary denial: local headroom exhausted — refused, not dispatched.

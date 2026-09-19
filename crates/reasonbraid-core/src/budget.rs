@@ -159,18 +159,34 @@ impl std::error::Error for BudgetError {}
 /// The server-issued reservation proof a node verifies BEFORE dispatching (§14.3
 /// step 4). Development profile: unsigned (workload identity signs these in WP7);
 /// the reference is still load-bearing — without it the supervisor refuses dispatch.
+///
+/// ⛔ **`expires_at` is the ledger's own instant, not a second clock**
+/// (`SIGNOFF-REPAIR.11.24.1.1.2.2`). The server stops counting an active
+/// reservation's hold the moment `budget_reservations.expires_at` passes, and it
+/// does so deliberately (`expired_reservations_stop_holding`). Until this field
+/// existed the reference carried `issued_at` and no window, so the node ran §14.3
+/// step 4 — *verify an applicable reservation before dispatch* — against a proof
+/// it could not date, and the two halves of the same rule read different clocks:
+/// the allowance was re-lent while the work item still claimed it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReservationReference {
     pub reservation_id: String,
     pub dimensions: BudgetDimensions,
     pub issued_at: DateTime<Utc>,
+    /// The instant the issuing ledger stops holding this reservation's dimensions.
+    pub expires_at: DateTime<Utc>,
 }
 
 impl ReservationReference {
-    /// A dispatch may proceed under this reference only if it covers at least one
-    /// call — the "applicable reservation" check.
-    pub fn applicable(&self) -> Result<(), BudgetError> {
+    /// A dispatch may proceed under this reference only if it names a reservation,
+    /// covers at least one call, and is still held at `now` — the §14.3 step 4
+    /// "applicable reservation" check.
+    ///
+    /// ⛔ It takes the instant rather than reading a clock, because the caller
+    /// already has one and a check that samples its own time cannot be driven to
+    /// the boundary by a control.
+    pub fn applicable_at(&self, now: DateTime<Utc>) -> Result<(), BudgetError> {
         if self.reservation_id.is_empty() {
             return Err(BudgetError::NotApplicable {
                 detail: "the reservation has no id".to_string(),
@@ -181,12 +197,24 @@ impl ReservationReference {
                 detail: "the reservation covers no dispatch".to_string(),
             });
         }
+        // The boundary is the ledger's: `expires_at > $2` holds, so an instant
+        // EQUAL to `expires_at` is already past the window on both sides.
+        if now >= self.expires_at {
+            return Err(BudgetError::NotApplicable {
+                detail: format!(
+                    "the reservation's hold lapsed at {} and the ceiling has re-lent it",
+                    self.expires_at.to_rfc3339()
+                ),
+            });
+        }
         Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use chrono::Duration;
+
     use super::*;
 
     fn dims(calls: Option<u64>, input: Option<u64>, output: Option<u64>) -> BudgetDimensions {
@@ -257,32 +285,75 @@ mod tests {
     /// The applicability check: a dispatch needs a reservation that covers a call.
     #[test]
     fn a_reservation_must_cover_a_dispatch() {
+        let now = chrono::Utc::now();
+        let held_until = now + Duration::minutes(10);
         let good = ReservationReference {
             reservation_id: "res_1".to_string(),
             dimensions: dims(Some(1), Some(100), None),
-            issued_at: chrono::Utc::now(),
+            issued_at: now,
+            expires_at: held_until,
         };
-        assert!(good.applicable().is_ok());
+        assert!(good.applicable_at(now).is_ok());
 
         let no_calls = ReservationReference {
             reservation_id: "res_2".to_string(),
             dimensions: dims(None, Some(100), None),
-            issued_at: chrono::Utc::now(),
+            issued_at: now,
+            expires_at: held_until,
         };
         assert!(matches!(
-            no_calls.applicable(),
+            no_calls.applicable_at(now),
             Err(BudgetError::NotApplicable { .. })
         ));
 
         let no_id = ReservationReference {
             reservation_id: String::new(),
             dimensions: dims(Some(1), None, None),
-            issued_at: chrono::Utc::now(),
+            issued_at: now,
+            expires_at: held_until,
         };
         assert!(matches!(
-            no_id.applicable(),
+            no_id.applicable_at(now),
             Err(BudgetError::NotApplicable { .. })
         ));
+    }
+
+    /// `SIGNOFF-REPAIR.11.24.1.1.2.2` — the window is the LEDGER's, so the check
+    /// must agree with `expires_at > $2` at the boundary itself, not near it.
+    #[test]
+    fn a_reservation_is_not_applicable_once_its_hold_has_lapsed() {
+        let issued = chrono::Utc::now();
+        let expires_at = issued + Duration::minutes(10);
+        let reference = ReservationReference {
+            reservation_id: "res_window".to_string(),
+            dimensions: dims(Some(1), Some(100), None),
+            issued_at: issued,
+            expires_at,
+        };
+        assert!(
+            reference
+                .applicable_at(expires_at - Duration::milliseconds(1))
+                .is_ok(),
+            "a reservation one millisecond inside its window still holds"
+        );
+        // The ledger's predicate is `expires_at > now`, so equality is OUTSIDE.
+        for (label, at) in [
+            ("at the boundary", expires_at),
+            ("past the boundary", expires_at + Duration::minutes(1)),
+        ] {
+            let refusal = reference.applicable_at(at);
+            assert!(
+                matches!(refusal, Err(BudgetError::NotApplicable { .. })),
+                "{label}: a lapsed hold must refuse the dispatch, got {refusal:?}"
+            );
+            let BudgetError::NotApplicable { detail } = refusal.unwrap_err() else {
+                unreachable!("matched above")
+            };
+            assert!(
+                detail.contains("lapsed"),
+                "{label}: the refusal must say the hold lapsed, got {detail}"
+            );
+        }
     }
 
     /// One attempt's usage: exactly one call plus the measured tokens.

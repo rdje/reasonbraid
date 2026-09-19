@@ -78,6 +78,7 @@ fn reserved_payload() -> Value {
             "reservation_id": "res_00000000-0000-7000-8000-000000000001",
             "dimensions": { "calls": 1, "wall_clock_seconds": 60 },
             "issued_at": Utc::now().to_rfc3339(),
+            "expires_at": (Utc::now() + chrono::Duration::minutes(10)).to_rfc3339(),
         },
         "allow_possible_duplicate": false,
     })

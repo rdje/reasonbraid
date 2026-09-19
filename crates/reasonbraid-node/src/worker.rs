@@ -370,10 +370,14 @@ impl<A: Adapter> Worker<A> {
                     WorkerError::MalformedPayload(format!("unreadable reservation: {e}"))
                 })?
             }
+            // The empty id is what refuses; the window is filled with the
+            // current instant so the placeholder is not accidentally the one
+            // reference that never lapses (`SIGNOFF-REPAIR.11.24.1.1.2.2`).
             _ => ReservationReference {
                 reservation_id: String::new(),
                 dimensions: BudgetDimensions::default(),
                 issued_at: Utc::now(),
+                expires_at: Utc::now(),
             },
         };
 
@@ -558,11 +562,16 @@ mod tests {
     /// budget denial is visible, never a silent skip.
     #[test]
     fn missing_reservation_becomes_an_empty_reference() {
+        let now = Utc::now();
         let ref_ = ReservationReference {
             reservation_id: String::new(),
             dimensions: BudgetDimensions::default(),
-            issued_at: Utc::now(),
+            issued_at: now,
+            expires_at: now,
         };
-        assert!(ref_.applicable().is_err(), "an empty reference must refuse");
+        assert!(
+            ref_.applicable_at(now).is_err(),
+            "an empty reference must refuse"
+        );
     }
 }

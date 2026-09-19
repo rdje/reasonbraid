@@ -94,6 +94,7 @@ async fn seed_command_at(
             "reservation_id": "res_00000000-0000-7000-8000-000000000001",
             "dimensions": { "calls": 1, "wall_clock_seconds": 60 },
             "issued_at": Utc::now().to_rfc3339(),
+            "expires_at": (Utc::now() + chrono::Duration::minutes(10)).to_rfc3339(),
         },
     });
     let decided_at_s = decided_at.map(|d| d.to_rfc3339());
@@ -289,6 +290,7 @@ async fn the_budget_gate_still_runs_after_the_cached_decision_allows() {
             "reservation_id": "",
             "dimensions": {},
             "issued_at": Utc::now().to_rfc3339(),
+            "expires_at": (Utc::now() + chrono::Duration::minutes(10)).to_rfc3339(),
         },
     });
     let decided_at = Utc::now().to_rfc3339();

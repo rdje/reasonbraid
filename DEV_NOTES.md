@@ -1,5 +1,62 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — Three of the nine predicates cannot be turned red, and saying so is the honest version
+
+The control for `migrations/0077` was the easy half of this leaf. The interesting
+half was what happened when I tried to falsify it.
+
+The rule this repository keeps relearning is that a control which would still
+pass with the behavior removed is not a control. So after the eleven-row fixture
+went green, I mutated the migration nine times — one predicate at a time, each
+restored byte-identical — and watched which mutations the control noticed.
+
+Six of them it noticed. Delete both `UPDATE`s and the two dated rows come back
+NULL. Drop `outcome->>'kind' = 'applied'` and the `no_op` and `refused` rows get
+dated. Drop `e.tenant_id = g.tenant_id` and the grant whose effect record lives
+in another tenant gets dated from it. Drop `g.status = 'revoked'` and the live
+grant gets dated. Replace `e.effected_at` with `now()` and the instant is wrong
+rather than absent. Drop the boundary statement's `operation->>'boundary_id'` and
+every revoked boundary in the tenant is dated from the one applied effect.
+
+Three of them it did not notice, and my first instinct was to go add rows until
+it did. That instinct is wrong, and working out why is the note.
+
+**`operation->>'kind'`.** I had written a fixture row I described as driving this
+leg: an `applied` effect of kind `grant_revoke` carrying the boundary's id. It
+does not drive it. `AdministrativeOperation` has fourteen variants; exactly one
+carries a `grant_id` field and exactly one carries a `boundary_id` field. So for
+any record the encoder can produce, `operation->>'boundary_id' = b.boundary_id`
+already implies `operation->>'kind' = 'boundary_revoke'` — the id field *is* the
+kind. What refuses my wrong-kind row is the id-field leg, not the kind leg, and
+the comment claiming otherwise was wrong before the mutation proved it. I could
+have made the kind leg red by storing `{"kind":"node_revoke","boundary_id":…}`,
+a shape `OperationWire`'s `deny_unknown_fields` decoder cannot produce and no
+writer in this tree emits. That row would have turned the arm red without telling
+anyone anything true about the system.
+
+**`g.revoked_at IS NULL`.** `ADD COLUMN` leaves every row NULL, so on any first
+upgrade this leg is a tautology. It exists for a second run, which the sqlx
+migration ledger does not permit. There is no fixture that makes it matter,
+because the state it guards against is one the machinery forbids.
+
+So the control's header and the leaf both say six red and three not-red, with the
+reason for each not-red. That is worse-looking than nine-for-nine and it is the
+only version a later reader can act on: someone adding a fifteenth operation
+variant with a `grant_id` field needs to know the kind predicate is the only
+thing standing between them and a mis-dated row, and they will not learn it from
+a green suite.
+
+⭐ The general shape, which is a sharpening of
+`a-control-that-passes-for-an-unrelated-reason` rather than a new rule: **when a
+predicate cannot be isolated by any producible input, document that it cannot be,
+and do not fabricate an unproducible input to make the matrix look complete.** A
+falsification matrix is a measurement of the control, and padding it measures the
+fixture instead.
+
+One thing the pass did NOT find: a defect. The leaf opened saying the backfill
+was unwitnessed, explicitly not that it was wrong, and on being witnessed all
+eleven rows landed where the migration header said they would, first run.
+
 ## 2026-09-20 — Both times, the command was narrower than the sentence
 
 Third pass of *ensure your findings hold*, over this session's five commits. Two

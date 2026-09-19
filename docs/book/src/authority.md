@@ -883,6 +883,21 @@ view are untouched by that column. A NULL on a revoked row means the instant is
 audit record the backfill derives from — never that the row is live. Such a row
 keeps the retention every revoked row had before: there is no clock to age it by.
 
+**The backfill is driven by a control, not only applied by one.** Every
+PostgreSQL suite applies `migrations/0077`, so its SQL has always parsed — but a
+join that matched *nothing* would have looked exactly like one that matched
+correctly. The upgrade suite now seeds an already-revoked grant and boundary
+with their effect records and asserts the migration dates each one to the
+effect's own instant, alongside five rows that must stay NULL: no effect record
+at all, a `no_op` (a repeated revocation, whose instant belongs to the first),
+a `refused`, an `applied` effect recorded under a *different tenant*, and a row
+that is not revoked. Six deliberate mutations of the migration each turn that
+control red. Two of its predicates cannot be turned red by any upgrade and are
+documented as such rather than left looking untested: the `operation->>'kind'`
+check, which for every record the encoder can produce is already implied by the
+id field the record carries, and the `revoked_at IS NULL` check, which guards a
+second run the migration ledger does not permit.
+
 Which decision facts a replay refreshes is deliberately not changed here — that
 remains `SIGNOFF-REPAIR.3.4`. Only the transaction they are refreshed in, the
 tenant binding, and the clock they read have moved.

@@ -12,6 +12,7 @@ mod pg_test_support;
 
 use std::sync::OnceLock;
 
+use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 use sqlx::migrate::Migrator;
 
@@ -833,5 +834,421 @@ async fn policy_lifecycle_tenant_upgrade_derives_by_lineage_and_leaves_the_rest_
     for (old, mut upgraded) in before.into_iter().zip(after) {
         upgraded.as_object_mut().unwrap().remove("tenant_id");
         assert_eq!(upgraded, old, "every historical field survives unchanged");
+    }
+}
+
+/// RFC 3339 → the instant the fixture writes and the assertion compares against.
+fn instant(text: &str) -> DateTime<Utc> {
+    DateTime::parse_from_rfc3339(text)
+        .expect("fixture instant")
+        .with_timezone(&Utc)
+}
+
+/// One `enrollment_boundaries` row in the PRE-`0077` shape — no `revoked_at`,
+/// because the column does not exist yet at the version this seeds into.
+async fn seed_legacy_boundary(pool: &sqlx::PgPool, boundary: &str, tenant: &str, status: &str) {
+    sqlx::query(
+        "INSERT INTO enrollment_boundaries \
+         (boundary_id, tenant_id, parent_or_root_authority, target_owner, permitted_actions, \
+          permitted_domains, risk_ceiling, delegable, max_delegation_depth, valid_from, \
+          expires_at, charter_digest, policy_version, status) \
+         VALUES ($1, $2, 'legacy-root', 'legacy-owner', '[\"tenant_admin\"]', '[]', 'low', \
+                 false, 0, '2026-01-01T00:00:00Z', '2026-12-31T00:00:00Z', 'legacy-charter', \
+                 'legacy', $3)",
+    )
+    .bind(boundary)
+    .bind(tenant)
+    .bind(status)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+/// One `authority_grants` row in the pre-`0077` shape, hung off `boundary`.
+async fn seed_legacy_grant(
+    pool: &sqlx::PgPool,
+    grant: &str,
+    boundary: &str,
+    tenant: &str,
+    status: &str,
+) {
+    sqlx::query(
+        "INSERT INTO authority_grants \
+         (grant_id, boundary_id, tenant_id, issuer, subject_kind, subject_id, actions, selector, \
+          risk_ceiling, delegable, valid_from, expires_at, status) \
+         VALUES ($1, $2, $3, 'hpr_00000000-0000-7000-8000-000000000177', 'role', \
+                 'rol_00000000-0000-7000-8000-000000000177', '[\"tenant_admin\"]', \
+                 '{\"kind\":\"tenant_wide\"}', 'low', false, '2026-01-01T00:00:00Z', \
+                 '2026-12-31T00:00:00Z', $4)",
+    )
+    .bind(grant)
+    .bind(boundary)
+    .bind(tenant)
+    .bind(status)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+/// One administrative effect record and the admission it is bound to.
+///
+/// The admission is not decoration: `administrative_effects` carries
+/// `FOREIGN KEY (record_id, tenant_id) REFERENCES authorization_records`, so an
+/// effect that cites no admission — or cites one under another tenant — is
+/// unrepresentable, and the cross-tenant arm below has to buy its own admission
+/// in the other tenant to exist at all.
+async fn seed_administrative_effect(
+    pool: &sqlx::PgPool,
+    record: &str,
+    tenant: &str,
+    operation: Value,
+    outcome: Value,
+    effected_at: DateTime<Utc>,
+) {
+    sqlx::query(
+        "INSERT INTO authorization_records \
+         (record_id, tenant_id, actor, action, target_kind, target_tenant, decision, reason, \
+          policy_digest, policy_version, decided_at) \
+         VALUES ($1, $2, 'hpr_00000000-0000-7000-8000-000000000177', 'tenant_admin', 'tenant', \
+                 $2, 'allowed', 'historical admission', 'legacy-digest', 'legacy', $3)",
+    )
+    .bind(record)
+    .bind(tenant)
+    .bind(effected_at)
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO administrative_effects \
+         (record_id, tenant_id, operation, submitted_reason, outcome, effected_at) \
+         VALUES ($1, $2, $3, 'historical revocation', $4, $5)",
+    )
+    .bind(record)
+    .bind(tenant)
+    .bind(operation)
+    .bind(outcome)
+    .bind(effected_at)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+/// `SIGNOFF-REPAIR.13.4.3.1` — `migrations/0077` dates an already-revoked row
+/// from the act that revoked it, and this control is what drives that backfill.
+///
+/// ⛔ THE GAP IT CLOSES. Every pg suite applies `0077`, so its two
+/// `UPDATE … FROM administrative_effects` statements parse and the upgrade path
+/// runs — but until this control existed **nothing asserted they produce an
+/// instant, let alone the right one.** A join that matched NOTHING would have
+/// been indistinguishable from one that matched correctly, and
+/// `migration_upgrade` would have stayed green either way. That is
+/// `.7.1.2.2.1`'s shape — *a green gate is not evidence a suite runs* — applied
+/// to a DATA MIGRATION rather than to a test suite.
+///
+/// ⭐ SO EVERY LEG OF THE JOIN IS DRIVEN, not only the one that dates a row.
+/// The migration header argues five conditions in prose; each gets a row whose
+/// answer is known before the migration runs, and every effect record carries a
+/// DISTINCT instant, so a predicate that lost a leg dates the wrong row with the
+/// wrong instant rather than merely dating one row too many:
+///
+///   * `applied`, same tenant, matching kind and id — the one row that must be
+///     dated, and dated to the effect record's own `effected_at`. All the
+///     fixture instants are in the past, so an implementation that reached for
+///     `now()` or for the row's own age fails this arm rather than passing it;
+///   * NO effect record at all — `administrative_effects` arrived in `0058`, so
+///     a revocation applied before it is undatable and must stay NULL. This is
+///     the arm that separates *not recoverable* from *not revoked*, which the
+///     migration header is explicit the NULL must mean;
+///   * `no_op` — a repeated revocation, whose instant belongs to the first one;
+///   * `refused` — no change at all, so there is nothing to date;
+///   * an `applied` effect under ANOTHER tenant naming the same id — the
+///     `e.tenant_id = g.tenant_id` leg, which the header calls out as the one
+///     place this join must not forget;
+///   * `status <> 'revoked'` — a live row is not dated even when an applied
+///     revocation effect names it.
+///
+/// The boundary half adds an `applied` effect of the WRONG KIND
+/// (`grant_revoke`) naming the boundary's id, which must not date it.
+///
+/// ⭐ AND WHICH LEG EACH ARM DRIVES IS MEASURED, NOT ASSERTED, because a control
+/// that would still pass with a leg deleted is not driving it. Nine mutations of
+/// `0077` were run against this control at `SIGNOFF-REPAIR.13.4.3.1`. **Six turn
+/// it RED**: deleting both `UPDATE`s; dropping the grant statement's
+/// `outcome = 'applied'`, `e.tenant_id = g.tenant_id` and `g.status = 'revoked'`
+/// legs; replacing `e.effected_at` with `now()`; and dropping the boundary
+/// statement's `operation->>'boundary_id'` leg.
+///
+/// ⚠️ **Three legs cannot be turned red by any upgrade, and that is a property
+/// of the schema rather than a hole in the control.** Dropping either
+/// statement's `operation->>'kind'` leg leaves it GREEN, because
+/// `AdministrativeOperation` has exactly ONE variant carrying `grant_id` and
+/// exactly one carrying `boundary_id` — for any record the encoder can produce,
+/// the id-FIELD leg already implies the kind, so the kind predicate is defense
+/// in depth against a future variant that adds one of those field names.
+/// Dropping `g.revoked_at IS NULL` likewise stays GREEN: `ADD COLUMN` leaves
+/// every row NULL, so that leg is an idempotence guard for a second run the
+/// migration ledger does not permit, and no first upgrade can observe it.
+///
+/// ⚠️ WHAT IS NOT CLAIMED: an ordering for two `applied` effects naming one
+/// target. The live path records the second revocation of an already-revoked
+/// grant as `no_op`, so the schema does not produce that pair; asserting a
+/// winner would pin behavior `UPDATE … FROM` does not define.
+#[tokio::test]
+async fn authority_revoked_at_upgrade_dates_only_what_an_applied_effect_dates() {
+    let _g = guard().await;
+    let Some(pool) = pg_test_support::pool().await else {
+        return;
+    };
+    let migrator =
+        Migrator::new(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../migrations"))
+            .await
+            .unwrap();
+    recreate_public_schema(&pool).await;
+    let through = |version| Migrator {
+        migrations: std::borrow::Cow::Owned(
+            migrator
+                .migrations
+                .iter()
+                .filter(|m| m.version <= version)
+                .cloned()
+                .collect(),
+        ),
+        ignore_missing: false,
+        no_tx: false,
+        locking: true,
+    };
+    assert!(
+        migrator.migrations.iter().any(|m| m.version == 77),
+        "the migration this control exists to drive must be present"
+    );
+    through(76).run(&pool).await.unwrap();
+
+    // The column is genuinely absent before the upgrade — otherwise this suite
+    // would be seeding into the post-migration schema and measuring nothing.
+    for table in ["authority_grants", "enrollment_boundaries"] {
+        let present: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM information_schema.columns \
+             WHERE table_schema = 'public' AND table_name = $1 AND column_name = 'revoked_at'",
+        )
+        .bind(table)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(present, 0, "{table}.revoked_at must arrive with 0077");
+    }
+
+    let owner = "ten_00000000-0000-7000-8000-000000000177";
+    let other = "ten_00000000-0000-7000-8000-000000000178";
+    for tenant in [owner, other] {
+        sqlx::query("INSERT INTO tenants (tenant_id) VALUES ($1)")
+            .bind(tenant)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+
+    // Distinct instants, all in the past: the assertion names WHICH one landed.
+    const GRANT_APPLIED_AT: &str = "2026-03-01T04:05:06Z";
+    const GRANT_NO_OP_AT: &str = "2026-03-02T05:06:07Z";
+    const GRANT_REFUSED_AT: &str = "2026-03-03T06:07:08Z";
+    const GRANT_CROSS_TENANT_AT: &str = "2026-03-04T07:08:09Z";
+    const GRANT_ACTIVE_AT: &str = "2026-03-05T08:09:10Z";
+    const BOUNDARY_APPLIED_AT: &str = "2026-04-01T09:10:11Z";
+    const BOUNDARY_NO_OP_AT: &str = "2026-04-02T10:11:12Z";
+    const BOUNDARY_WRONG_KIND_AT: &str = "2026-04-03T11:12:13Z";
+
+    let applied = || json!({"kind": "applied"});
+    let no_op = || json!({"kind": "no_op", "detail": "already revoked"});
+    let refused =
+        || json!({"kind": "refused", "code": "invalid_transition", "detail": "not revocable"});
+
+    // ── The boundaries. `bnd_host` is the live one every grant hangs off; the
+    // rest are the boundary half of the measurement. Only one may be `active`:
+    // `enrollment_boundaries_tenant_active_idx` is unique per tenant.
+    seed_legacy_boundary(&pool, "bnd_applied_effect", owner, "revoked").await;
+    seed_legacy_boundary(&pool, "bnd_host", owner, "active").await;
+    seed_legacy_boundary(&pool, "bnd_no_effect", owner, "revoked").await;
+    seed_legacy_boundary(&pool, "bnd_no_op_effect", owner, "revoked").await;
+    seed_legacy_boundary(&pool, "bnd_wrong_kind", owner, "revoked").await;
+
+    // ── The grants.
+    for (grant, status) in [
+        ("grt_active_with_effect", "active"),
+        ("grt_applied_effect", "revoked"),
+        ("grt_cross_tenant_effect", "revoked"),
+        ("grt_no_effect", "revoked"),
+        ("grt_no_op_effect", "revoked"),
+        ("grt_refused_effect", "revoked"),
+    ] {
+        seed_legacy_grant(&pool, grant, "bnd_host", owner, status).await;
+    }
+
+    // ── The effect records, one per arm that has one. `grt_no_effect` and
+    // `bnd_no_effect` deliberately get none: they are the pre-`0058` past.
+    for (record, tenant, operation, outcome, at) in [
+        (
+            "authz_grant_applied",
+            owner,
+            json!({"kind": "grant_revoke", "grant_id": "grt_applied_effect"}),
+            applied(),
+            GRANT_APPLIED_AT,
+        ),
+        (
+            "authz_grant_no_op",
+            owner,
+            json!({"kind": "grant_revoke", "grant_id": "grt_no_op_effect"}),
+            no_op(),
+            GRANT_NO_OP_AT,
+        ),
+        (
+            "authz_grant_refused",
+            owner,
+            json!({"kind": "grant_revoke", "grant_id": "grt_refused_effect"}),
+            refused(),
+            GRANT_REFUSED_AT,
+        ),
+        // The admission — and therefore the effect — lives in `other`; the grant
+        // it names lives in `owner`. Nothing but the tenant leg refuses this.
+        (
+            "authz_grant_cross_tenant",
+            other,
+            json!({"kind": "grant_revoke", "grant_id": "grt_cross_tenant_effect"}),
+            applied(),
+            GRANT_CROSS_TENANT_AT,
+        ),
+        (
+            "authz_grant_active",
+            owner,
+            json!({"kind": "grant_revoke", "grant_id": "grt_active_with_effect"}),
+            applied(),
+            GRANT_ACTIVE_AT,
+        ),
+        (
+            "authz_boundary_applied",
+            owner,
+            json!({"kind": "boundary_revoke", "boundary_id": "bnd_applied_effect"}),
+            applied(),
+            BOUNDARY_APPLIED_AT,
+        ),
+        (
+            "authz_boundary_no_op",
+            owner,
+            json!({"kind": "boundary_revoke", "boundary_id": "bnd_no_op_effect"}),
+            no_op(),
+            BOUNDARY_NO_OP_AT,
+        ),
+        // An applied effect of the WRONG KIND naming the boundary's id, in the
+        // field a grant revocation uses. What refuses it is measured below
+        // rather than asserted: it is the `operation->>'boundary_id'` leg, not
+        // the `kind` leg.
+        (
+            "authz_boundary_wrong_kind",
+            owner,
+            json!({"kind": "grant_revoke", "grant_id": "bnd_wrong_kind"}),
+            applied(),
+            BOUNDARY_WRONG_KIND_AT,
+        ),
+    ] {
+        seed_administrative_effect(&pool, record, tenant, operation, outcome, instant(at)).await;
+    }
+
+    let grants_before: Vec<Value> = sqlx::query_scalar(
+        "SELECT to_jsonb(g) FROM authority_grants g ORDER BY grant_id COLLATE \"C\"",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    let boundaries_before: Vec<Value> = sqlx::query_scalar(
+        "SELECT to_jsonb(b) FROM enrollment_boundaries b ORDER BY boundary_id COLLATE \"C\"",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+
+    through(77).run(&pool).await.unwrap();
+
+    // ── WHAT THE BACKFILL DATED ─────────────────────────────────────────────
+    let grants: Vec<(String, Option<DateTime<Utc>>)> = sqlx::query_as(
+        "SELECT grant_id, revoked_at FROM authority_grants ORDER BY grant_id COLLATE \"C\"",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        grants,
+        vec![
+            ("grt_active_with_effect".to_string(), None),
+            (
+                "grt_applied_effect".to_string(),
+                Some(instant(GRANT_APPLIED_AT))
+            ),
+            ("grt_cross_tenant_effect".to_string(), None),
+            ("grt_no_effect".to_string(), None),
+            ("grt_no_op_effect".to_string(), None),
+            ("grt_refused_effect".to_string(), None),
+        ],
+        "only an applied, same-tenant grant_revoke dates a revoked grant"
+    );
+
+    let boundaries: Vec<(String, Option<DateTime<Utc>>)> = sqlx::query_as(
+        "SELECT boundary_id, revoked_at FROM enrollment_boundaries \
+         ORDER BY boundary_id COLLATE \"C\"",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        boundaries,
+        vec![
+            (
+                "bnd_applied_effect".to_string(),
+                Some(instant(BOUNDARY_APPLIED_AT))
+            ),
+            ("bnd_host".to_string(), None),
+            ("bnd_no_effect".to_string(), None),
+            ("bnd_no_op_effect".to_string(), None),
+            ("bnd_wrong_kind".to_string(), None),
+        ],
+        "only an applied, same-tenant boundary_revoke dates a revoked boundary"
+    );
+
+    // ⛔ The NULLs mean *this instant is not recoverable*, never *this authority
+    // is not revoked* — so `status` must be exactly what it was.
+    let revoked_grants: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM authority_grants WHERE status = 'revoked'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(revoked_grants, 5, "the upgrade answers WHEN, never WHETHER");
+
+    // ⛔ And it INVENTS no history: every pre-existing column of every row is
+    // byte-for-byte what it was, and no row appeared or vanished.
+    for (table, before, after_sql, key) in [
+        (
+            "authority_grants",
+            grants_before,
+            "SELECT to_jsonb(g) FROM authority_grants g ORDER BY grant_id COLLATE \"C\"",
+            "grant_id",
+        ),
+        (
+            "enrollment_boundaries",
+            boundaries_before,
+            "SELECT to_jsonb(b) FROM enrollment_boundaries b ORDER BY boundary_id COLLATE \"C\"",
+            "boundary_id",
+        ),
+    ] {
+        let after: Vec<Value> = sqlx::query_scalar(after_sql)
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+        assert_eq!(after.len(), before.len(), "{table} retains every row");
+        for (old, mut upgraded) in before.into_iter().zip(after) {
+            let id = upgraded[key].clone();
+            upgraded.as_object_mut().unwrap().remove("revoked_at");
+            assert_eq!(
+                upgraded, old,
+                "{table} {id}: every historical field survives"
+            );
+        }
     }
 }

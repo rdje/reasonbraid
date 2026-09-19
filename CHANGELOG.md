@@ -289,66 +289,26 @@ The director asked for ReasonBraid to orchestrate 2–5 agents working collectiv
 - ✅ **`UNCITED` was re-decided against the widened population, and the answer changed.** The footer asserted a 2026-09-13 classification: 13 of 13 recorded somewhere durable, so UNCITED only ever costs a pointer. Re-classified over the 4 now visible: **3 recorded, 1 not** — an environment fact living only in `MEMORY.md`, ⭐ written there this same session by this author, into the file whose own first bullet forbids it. Routed to `docs/decisions/2026-09-18_a-cargo-process-is-not-evidence-of-this-repo.md`. UNCITED **4 → 2**, anchored **4 → 6**; the footer now carries both runs and says they disagree.
 - Routed: the standing lesson *a control that passes for an unrelated reason* is in a leaf and reachable from nowhere else. `.11.20.2`.
 
-## 2026-09-18 — A slash is not a resolution (`SIGNOFF-REPAIR.11.17.2`)
-
-🔴 **`POSITIONAL-REF` decided a reference was resolvable from the SHAPE of the string. Of 251 such occurrences, 39 named no tracked file and one was a suffix of THREE — the exact ambiguity the gate exists to refuse, passed by it.**
-
-- **The defect, at the source.** `classify` in `scripts/census_positional_refs.py` read `kind = "pathed" if "/" in ref`. The branch for a reference WITHOUT a slash consulted the tracked-file index; the branch WITH one did not. ⭐ The instrument had the check in hand and applied it to one branch only — `docs/knowledge/trust-comes-from-the-check-not-the-shape.md`, which now carries this as a second instance.
-- **The population, pinned so it stays re-derivable.** `python3 -B scripts/census_positional_refs.py --at 6f91897`: of **251** occurrences containing a slash, **212** name a tracked file, **27** are a path-suffix of exactly one, **1** of three, **5** are dependency citations and **6** name nothing. ⚠️ The leaf's own opening table said 28/5 where the instrument says 27/6 — the totals and the headline 251/212/39 reproduce exactly, but the split came from an unrecorded pipeline and is reproducible by neither obvious suffix rule (segment-boundary gives 27/6, plain-string gives 31/2).
-- **The repair is the OLD question asked of both branches**, which produced the classes rather than arguing them: `pathed` (exact), `partial` (a segment-boundary path-suffix of exactly one — accepted, as `unique` already is), `ambiguous` (several), `unresolved` (none), and `dependency` for a `<crate>-<version>` segment `Cargo.lock` pins.
-- ⛔ **A suffix must fall on a SEGMENT boundary.** `crates/reasonbraid-core/src/authority.rs` ends with the *string* `core/src/authority.rs` and does not contain it as a *path*; a plain `endswith` would have turned this instrument's founding 93-false-positive hyphen bug into a false NEGATIVE. Pinned as self-test arm 17.
-- ⭐ **The dependency class earns a failure mode, not an exemption.** `Cargo.lock` is the oracle, so `dependency-stale` — a citation into a version the project no longer builds — is now refused. 0 standing instances; both directions in the self-test.
-- ⛔ **Two declines, on different grounds.** The in-crate path is NOT verified (it needs the vendored registry a cold clone lacks — green here, red there). Refusing `partial` is DECLINED on SHAPE rather than cost: priced at **4.5%** of 200 commits and affordable, but a partial path naming one tracked file resolves, and refusing it would gate tidiness where the doctrine gates ambiguity.
-- ✅ **Calibrated before proposing** (`.11.6`): the three refused classes would have blocked **21 of 200 commits (10.5%)**, against the **9.5%** that argued this gate in and the 87%/93% that got two candidates rejected. Standing population **8 → 0**.
-- ⭐ **And `--calibrate` stopped approximating.** It re-scanned only when a source BASENAME entered or left the tree — sound for a basename gate, wrong for a path one. Caching the PARSE and redoing the RESOLVE re-classifies every commit exactly for **1,713 blob reads** instead of ~70,000: **10.8 s for 200 commits**, where the approximation existed because an exact pass was thought to cost nine minutes.
-- **Falsified in situ:** restoring the pre-fix classifier makes **11 of the 12 new arms fail by name** (13/24), the state the repository was actually in. The two that pass both ways are LABELLED in the source. The gate itself was fired red three times in the real enforcer, rc 0 → 1 per class.
-- Routed: none. Next is `.11.20.1`.
-
-## 2026-09-18 — The instrument guarding `MEMORY.md` had been dead since the commit that reshaped `MEMORY.md` (`SIGNOFF-REPAIR.11.20`)
-
-🔴 **A census refused on every run for dozens of commits while its own `--self-test` reported 16 controls passing — and the defect it exists to prevent recurred in the meantime.**
-
-- **The defect.** `python3 -B scripts/census_memory_warnings.py` exits 1 with `census: MEMORY.md has no '- **Next action:**' bullet`. It keys on a literal bullet name; `6199f43` — `SIGNOFF-REPAIR.11.4.2.3`, *"conform the resume pointer to the template that governs it"* — renamed that bullet to `next_action:` and did not update the reader. ⛔ **The commit that reshaped the file is the commit that blinded its guard.**
-- 🔴 **`SELF-TEST` was green on it throughout.** All 16 controls are built from fixtures carrying the OLD bullet name. `TOOLBOX.md` already says *"a self-test written alongside the code shares its blind spots"*; this is the sharper case, where the blind spot was introduced later, by a commit to a different file.
-- 🔴 **And the defect recurred.** `SIGNOFF-REPAIR.11.4.2.2` cleared `MEMORY.md` from 7,168 of 7,168 bytes to 1,395. One session of closing leaves took it back to **6,123** — 85% of the cap.
-- ⭐ **The recurrence is `.11.16`'s shape, which is why the repair is not eviction.** A per-line byte census: **six standing-lesson bullets hold 3,983 bytes, 65% of the file**, and five of the six were PROMOTED to `docs/knowledge/` in the same session and then restated here in full. A layer-A pointer restating what layer C holds is a mirror nothing derives. ✅ **6,123 → 3,825 bytes with nothing lost** — each lesson is now a named slug, and all nine targets were verified tracked BEFORE the eviction.
-- ⭐ **The arm that would have caught it reads the REAL file**, and asserts almost nothing about its content — only that the census can still locate what it is about. An arm coupled to the live wording fails on every honest edit and gets waived. Falsified by name: with the pre-fix key restored, `SELF-TEST FAIL live-corpus: the real MEMORY.md is unreadable to this census`, while the other 16 pass.
-- ⛔ **The general gate is DECLINED on COST, not on shape.** *Every census still runs against its real corpus* would have fired on **1 of 12** before this commit and **0 of 12** after — `REASON-CODE-DOC`'s shape, which normally ships. It costs **3.9 s** against an enforcer costing **11.6 s**, a 34% increase, and `SELF-TEST` already runs each instrument's self-test — so the same property is free as a one-line arm inside it. ⭐ Compare the measurement that argued `SELF-TEST` in: 1.01 s on a 3.15 s enforcer. Four seconds on eleven is a different argument.
-- ⚠️ **Honest limit:** nothing mechanically requires a census to HAVE a live-corpus arm — the `GAP-CLAIM-CENSUS` archetype. The remedy is a `TOOLBOX.md` statement where the next census author is standing.
-- Routed: the census's model of WHERE warnings live is stale too — it counts 3 in one bullet and cannot see the 3,983 bytes in six others. `.11.20.1`.
-
-## 2026-09-18 — `init.rs` was never in this repository (`SIGNOFF-REPAIR.11.17.1`)
-
-🔴 **Eight published citations named "a file that no longer exists". It was a dependency's source all along, and every cited line is exact at the pinned version.**
-
-- **The leaf's own premise was wrong**, and history says so rather than inference: `git log --all --diff-filter=A --name-only -- '*init.rs'` returns NOTHING. No such file has ever been tracked here under any name. The citations name `gix-0.87.1/src/config/cache/init.rs`, cited to explain how `gix` loads git configuration.
-- ⭐ **And every one of the seven cited lines resolves to the code its prose quotes** at the version `Cargo.lock` pins — `:229` is `system: use_system,`, `:243` is `gix_config::file::includes::Options::follow(`, and so on. That is what makes the repair a completion rather than a guess.
-- ⛔ **17 citations qualified, not the 8 the leaf counted.** Its census keyed on the bare basename `init.rs` and missed the partially-pathed `src/init.rs`, `src/lib.rs` and `src/open/permissions.rs` in the same tables — `a-census-is-as-wide-as-its-key`, inside the leaf that cites it.
-- ⭐ **DECIDED: a dependency citation is written crate-and-version qualified.** It resolves for a reader AND dates itself, which a bare basename never could: a line number into a dependency moves on every upgrade, and the version is the only thing that says which source it was exact against. Rejected: annotating with this repo's commit (wrong axis — the drift is the dependency's), accepting it as a property of dated records (the `.11.17` precedent refuses it), and exempting third-party references (an exemption list to maintain, and it would have left the one genuinely unresolvable instance uncaught).
-- ✅ **THE EXAMPLE-VERSUS-CITATION OBSTACLE IS ANSWERED, AND NOT BY TELLING THEM APART.** The leaf named it as the real design problem: the placeholder in `POSITIONAL-REF`'s own registry row is indistinguishable from a broken reference by basename alone. No instrument can make that distinction, so the gate does not try — **an illustrative example may not be WRITTEN in the positional form**, and the row is reworded rather than excluded. The fourth time this doctrine has policed its own description.
-- ✅ **`unresolved` 9 → 0, and the arm ships**, calibrated before it was proposed: **2 of 200 commits (1.0%)**, and both are the instances discharged here. Zero false positives.
-- ⚠️ **The first calibration did not finish** — re-classifying all tracked Markdown at every commit is ~70,000 blob reads; abandoned after nine minutes. `--calibrate` is now incremental and lives on the tracked instrument, so the number is re-derivable rather than believed.
-- 🔴 **The new arm flagged this leaf's own closing prose on its first run** — writing the decision required naming both offending shapes, and naming them reproduced them. Both reworded.
-- 🔎 **Routed: measuring this class measured the one next to it, and it is larger.** `pathed` is assigned on the presence of a slash alone, with no check that the path exists: of **251** `pathed` occurrences **39 do not resolve**, and one is a suffix of **three** tracked files — an ambiguous reference waved through by the gate whose purpose is refusing one. `.11.17.2`.
-
-## 2026-09-18 — A table SWALLOWS the block that abuts it (`SIGNOFF-REPAIR.11.19.2`)
-
-🔴 **`PHASE-3`'s eleven-line closing statement was rendering as eleven table rows, under a table header that had no rows of its own — and the gate that now catches it would have blocked every one of the nineteen commits in this project's history that introduced a table defect.**
-
-- **The defect, and it is the MIRROR of the previous entry.** That one was a blank line where none belonged, SPLITTING a table. This is no blank line where one belongs, so the following block is ABSORBED: a GFM table body continues across any non-blank line, and each line becomes a row padded to the header's width. The renderer put *"**Tree complete.** Phase 3 is CLOSED…"* inside `<td>`.
-- ⭐ **The repair is the corpus's own convention, not a judgement.** The table was a header and a delimiter with **no data rows at all**; `docs/tasks/PHASE-1.md` and `docs/tasks/PHASE-2.md` already close the same way — `## Current Frontier` then prose, no table. So the rowless pair is removed rather than a blank line inserted, which would have left a stray empty table no other tree has.
-- ✅ **Verified by the RENDERER:** data rows **59 → 48** (−11, exactly the absorbed lines), tables **3 → 2**, and the paragraph moves from `<td>` to `<p>`.
-- ⭐ **CALIBRATED OVER THE FULL HISTORY, AND THE WINDOW IS WHY.** Over the last 200 commits the rule blocks **1 (0.5%)** — but the `PHASE-3` instance is older than that, so the usual window cannot see the arm being added at all. Over all **551** commits it would have blocked **19 (3.4%)** — and every one of the nineteen introduced a defect this work has since repaired. ⛔ Not "3.4% looks acceptable": **the blocked set and the defect set are the same set.**
-- ⛔ **The population was over-counted by a third on the first pass.** Keyed on "any non-blank body line not starting with a pipe" it reports **15**; four of those are a bullet list, and a list item ENDS a table. The answer is **11**. ⭐ Which constructs terminate a table without a blank line is NOT uniform and cannot be read off a specification — a list item, heading, blockquote and HTML block do; plain prose and indented continuation do not. Each was rendered separately; each is an arm.
-- ⭐ **`BROKEN-TABLE` gains it as a SECOND ARM rather than a second doctrine** — both halves are the same subject, where the author put the table's boundary, measured over the same corpus by the same instrument. **23 arms, ten of them negatives.** Falsified against the real historical defect rather than a fixture.
-- ⚠️ **What this does not do:** `TABLE-ARITY-RATCHET` still cannot see an absorbed line — one cell in a four-column table, and GFM PADS a short row, the silent direction that gate already declares. Not repaired, and it need not be: the cause is now caught, so widening the arity gate would be a second instrument reporting the same defect.
-
 ## Historical entries and exact retrieval
 
 This is a recent digest. Older chronology remains in reachable Git history under
-the rotation contract in `README_POLICY.md`. This file has rotated twenty-four times;
+the rotation contract in `README_POLICY.md`. This file has rotated twenty-five times;
 each rotation names the commit holding the ledger immediately before it, so the
 chain walks back without guessing.
+
+Retrieve the ledger immediately before the TWENTY-FIFTH rotation (2026-09-19)
+from the repository root:
+
+```bash
+git show ac5d4e114ebce131448ac1acd0daf7881e97ec69:CHANGELOG.md
+```
+
+That snapshot is 93,009 bytes and contains 29 dated entries; its Git blob is
+`80211dce88fb82210bfb5ae45203fcc00a4c81d5`, and its SHA-256 is
+`0d94554ed5e4e1709457a15efc22dfd9c544f4b2070e46e0afc69d5642d870ec`. The newest
+entry it holds that this digest no longer carries is
+`2026-09-18 — A slash is not a resolution (`SIGNOFF-REPAIR.11.17.2`)`.
+It carries the TWENTY-FOURTH rotation's notice in turn, which names the ledger before it.
 
 Retrieve the ledger immediately before the TWENTY-FOURTH rotation (2026-09-18)
 from the repository root:

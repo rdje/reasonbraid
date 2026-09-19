@@ -5,6 +5,19 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **EIGHTEEN DEFERRALS AND TWELVE GOAL ITEMS ADJUDICATED, AND SEVEN WERE STRANDED (`.11.24.1`, REPAIR-0296).**
+
+Five of the seven were unknown before this leaf. Every verdict carries the command that decided it, and no verdict rests on a reading of the task tree alone.
+
+- 🔴 **The §10.6 delivery ladder ships three of its five states.** Migration 0021 derives `queued → acknowledged → consumed` plus `dead_lettered`; `transport_received` has **0** hits in `crates` and `offered` has no producer. The offline-delivery expiry and max age, deferred from `PHASE-3.2.2`, have **0** hits too. ⭐ The CODE is honest — the migration's own header draws the shipped ladder — so a reader of the code is not misled and a reader of the tree is. → `.11.24.1.1`
+- 🔴 **Only the EXTRACT resolution records a derivation edge.** One `derivations::submit` call in the resolve handler, reading `response.extractor_version`; GIT and BROWSE write none, although both were deferred by name. §12.6's graph is what makes a rendered page traceable to its bytes. → `.11.24.1.3`
+- 🔴 **`PresenceState::Busy` is advertised and can never be reported** — declared, rendered as the wire string `busy`, constructed nowhere. → `.11.24.1.2`
+- 🔴 **The adapter SDK has no acquisition trait** — its whole trait surface is `AttemptStream` and `Adapter`, so a third party can declare what it resolves and cannot implement resolving it. → `.11.24.1.5`
+- 🔴 **The release tool cannot re-sign a manifest it already holds** — `generate` re-derives every digest from the binaries, so the re-key recovery the signing-key record describes has no command. → `.11.24.1.4`
+- ⚪ **Two of eighteen are ARTIFACTS and neither can be tightened away.** *"whose DNS **rides** the `.2.2` belt"* uses `rides` to mean *uses*; and `PHASE-8.4.4`'s bare `.2.3` means `PHASE-7.2.3` while `PHASE-8.2.3` **exists**, so a resolver reaches a real leaf with a real status and cannot notice. ⛔ **The leaf's own acceptance asked artifacts to be discharged by tightening the pattern, and that clause is UNSATISFIABLE — reported rather than dropped.** The second one is a CONVENTION defect and has its own leaf, `.11.24.1.6`.
+- ✅ **Ten deferrals and eight goal items discharged**, two trigger-gated with the trigger in the target's own Done list, one owned elsewhere. ⭐ Eight of the twelve goal false positives share one shape: the goal names the CONCEPT (*the digest*) and the receipt names the TYPE (`DigestMismatch`). A word match cannot bridge a Rust identifier and its English gloss, and no separator choice would have.
+- ✅ **VERIFIED:** every verdict's command re-runs at `HEAD`; populations reproduced by `--at fdd3106`; `check_doctrines.sh` 22/22 green; `git diff --stat -- crates scripts` empty — this leaf classifies and changes nothing, because a census that also repairs cannot be re-run against the tree it changed.
+
 ✅ **THE GOAL-VERSUS-RECEIPT CENSUS, AND ITS ONE EXACT PREDICATE BECOMES A GATE (`.11.24`, REPAIR-0295).**
 
 Two `done` Phase-8 leaves were found in consecutive slices whose GOAL line named work their own DONE list did not carry — and nothing in this repository compares those two sections. `scripts/census_goal_receipt_gap.py` now does: **13 trees · 664 leaves · 562 finished · 198 carrying both a goal and a Done list.**

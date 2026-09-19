@@ -1,5 +1,38 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — Two words for one fact, and a census cannot tell
+
+Classifying twelve goal items my own census flagged, eight turned out to be
+false positives of exactly one shape. `PHASE-8.4.4`'s goal promises *the
+allowlist membership → the digest → the signature → the API compatibility*. Its
+receipt delivers `NotAllowlisted`, `DigestMismatch`, `SignatureInvalid`,
+`ApiIncompatible`, `CapabilityExceeded`. Every rung is there. The goal writes
+the concept and the code writes the type, and a word match cannot bridge a Rust
+identifier and its English gloss.
+
+No separator choice would have helped; the split was never the problem. What
+the census can honestly do is produce a short population a person reads, and
+what it cannot do is decide. Ten of eighteen deferrals and eight of twelve goal
+items discharged in one sitting because the commands are cheap — `git grep -cl
+ProviderAttemptId` is a verdict — and the seven that did not discharge are now
+leaves.
+
+⚠️ And the acceptance I wrote for that leaf had a clause I could not meet:
+discharge the artifact class by TIGHTENING the pattern, never by a hand
+exclusion list. Neither artifact yields to it. *"whose DNS rides the `.2.2`
+belt"* differs from a real deferral only in whether the subject is a mechanism
+that already exists. And a bare `.2.3` inside `PHASE-8` that means
+`PHASE-7.2.3` resolves to a `PHASE-8` leaf that **exists**, with a real status —
+there is nothing for a regex to notice. I reported the clause as unsatisfiable
+rather than quietly meeting a weaker version of it, which is what `.11.20.2`
+did when its own last clause turned out unreachable.
+
+The second artifact is the more interesting one: it is not a bug in my pattern,
+it is a gap in this repository's referencing convention. A leaf reference is
+relative, and nothing says a relative reference may not cross trees. Opened as
+`.11.24.1.6` rather than fixed in passing, because the population is unknown and
+`.11.6` forbids a rule before its population.
+
 ## 2026-09-19 — My instrument could not see the two cases it was built for
 
 I built a census to find leaves whose goal line outran their own done list,

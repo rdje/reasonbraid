@@ -166,3 +166,103 @@ async fn the_durable_state_dedups_and_resumes_from_the_own_cursor() {
         "the last delivery records"
     );
 }
+
+/// `SIGNOFF-REPAIR.6.2.1` — the dedup window retains the MOST RECENT ids.
+///
+/// 🔴 It retained the OLDEST: `next.push(id)` appends to the end and
+/// `next.truncate(DEDUP_WINDOW)` keeps the FRONT, so once the window was full
+/// every new id was appended at index `DEDUP_WINDOW` and discarded on the same
+/// line. Past 64 deliveries the window froze and nothing recent deduplicated.
+///
+/// ⛔ **Both arms are necessary and the second is the one that is easy to omit.**
+/// A window that simply grew without bound would refuse every replay and pass
+/// the first assertion — so the control also proves an id that has FALLEN OUT is
+/// accepted, which is the bound still holding. One arm alone cannot distinguish
+/// *the newest are kept* from *everything is kept*.
+#[tokio::test]
+async fn the_dedup_window_retains_the_most_recent_deliveries() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    sqlx::query("INSERT INTO tenants (tenant_id) VALUES ($1)")
+        .bind("ten_aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee")
+        .execute(&pool)
+        .await
+        .expect("seed the tenant");
+    let tenant = "ten_aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+    let window = reasonbraid_server::mcp_listen_internal::DEDUP_WINDOW;
+
+    let record = |id: String, cursor: i64| {
+        let pool = pool.clone();
+        async move {
+            let mut tx = pool.begin().await.expect("begin");
+            let accepted = reasonbraid_server::mcp_listen_internal::record(
+                &mut *tx, tenant, "sub-w", &id, cursor,
+            )
+            .await
+            .expect("record");
+            tx.commit().await.expect("commit");
+            accepted
+        }
+    };
+
+    // Drive PAST the boundary — the defect is invisible below it, which is why
+    // the suite's two-delivery control never saw it.
+    let total = window + 6;
+    for i in 0..total {
+        assert!(
+            record(format!("d-{i:03}"), i as i64).await,
+            "delivery {i} is new and must be accepted"
+        );
+    }
+
+    let stored: serde_json::Value = sqlx::query_scalar(
+        "SELECT dedup_window FROM mcp_listen_state \
+         WHERE tenant_id = $1 AND subscription_id = $2",
+    )
+    .bind(tenant)
+    .bind("sub-w")
+    .fetch_one(&pool)
+    .await
+    .expect("the stored window");
+    let ids: Vec<String> = serde_json::from_value(stored).expect("the window is an array");
+    assert_eq!(ids.len(), window, "the window stays BOUNDED at its size");
+
+    // ARM 1 — the MOST RECENT delivery is deduplicated.
+    let newest = format!("d-{:03}", total - 1);
+    assert!(
+        ids.contains(&newest),
+        "the newest id is IN the window: first={:?} last={:?}",
+        ids.first(),
+        ids.last()
+    );
+    assert!(
+        !record(newest.clone(), 9_000).await,
+        "replaying the most recent delivery `{newest}` is the replay SKIP — accepting \
+         it is a DOUBLE DELIVERY, because the caller commits the effects on `true`"
+    );
+
+    // ARM 2 — an id that has FALLEN OUT is accepted, so the bound still holds.
+    // ⛔ Without this, an unbounded window passes arm 1 and the repair would be a
+    // memory leak wearing a fix's clothes.
+    let evicted = "d-000".to_string();
+    assert!(
+        !ids.contains(&evicted),
+        "the oldest id has left the bounded window: {ids:?}"
+    );
+    assert!(
+        record(evicted, 9_001).await,
+        "an id outside the window is accepted — the window is bounded, not infinite"
+    );
+
+    // ⭐ And the cursor is untouched by a replay, which the suite's original
+    // control asserts at two deliveries and is re-asserted here past the bound.
+    let state = reasonbraid_server::mcp_listen_internal::state(&pool, tenant, "sub-w")
+        .await
+        .expect("read")
+        .expect("the state exists");
+    assert_eq!(
+        state.0, 9_001,
+        "the accepted out-of-window delivery advanced the cursor; the refused \
+         replay before it did not"
+    );
+}

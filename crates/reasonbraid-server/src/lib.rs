@@ -51,6 +51,7 @@ mod mcp_listen;
 pub mod mcp_listen_internal {
     pub use crate::mcp_listen::{
         listen_state as state, record_delivery_in_tx as record, resume_plan, ResumePlan,
+        DEDUP_WINDOW,
     };
 }
 mod mcp_read;

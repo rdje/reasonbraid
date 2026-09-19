@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE MCP DEDUP WINDOW KEEPS THE NEWEST IDS (`.6.2.1`, REPAIR-0288).**
+
+- 🔴 **RED:** `the newest id is IN the window: first=Some("d-000") last=Some("d-063")` — the window had frozen on the first 64 ids it ever saw, so past that boundary nothing recent deduplicated and a replay was a **double delivery**.
+- **The repair is a DIRECTION, three lines:** `push` + `truncate` keeps the FRONT; it becomes an append plus a drain from the old end. The array stays chronological, so an existing row keeps its meaning, and it heals an already over-long row.
+- ⭐ **The second arm is the one that is easy to omit:** an unbounded window refuses every replay and passes the first assertion, so the control also proves an id that has fallen OUT is accepted.
+- ⚠️ **The pre-existing two-delivery control is unchanged and still passes** — it was never wrong, it was never wide enough.
+- ✅ **VERIFIED:** `mcp_listen` **2/0** (1 before), `mcp_write` 7, `mcp` 6 — 0 failed. Clippy, fmt, gate (21/21) rc=0. Falsified in situ, restored byte-identical.
+- ⚠️ **`.6.2.2` (non-monotonic cursor) and `.6.2.3` (a malformed window silently emptied) are still live**, and `.6.2.2` composes with this one.
+
 ✅ **THE QUOTA COUNTS THE ADMITTED CALL AND THE PIPELINE COUNTS THE EFFECT (`.6.1.4`, REPAIR-0286) — AND `.6.1` CLOSES WITH IT.**
 
 - ⛔ **No behaviour changed, and the leaf says so rather than manufacturing a repair.** The seam already committed its quota use in the gate's own transaction, and its header already said so. What was missing was a CONTROL observing the two commits separately and a RECORD of why they are separate.

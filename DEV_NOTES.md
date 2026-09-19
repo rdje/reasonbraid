@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — A two-element fixture cannot test a sixty-four-element bound
+
+- The dedup window had been keeping the wrong end of itself since it was written. `push` appends, `truncate` keeps the front, and the two together mean that once the window is full every new id is written one past the bound and dropped on the same line. It is the kind of bug that reads correctly: both calls are the obvious ones, and the intent is legible in either.
+- ⭐ **What kept it alive is the fixture, not the code.** The suite drove TWO deliveries against a sixty-four-element window, so it never reached the boundary where the two calls disagree. Below the bound, `push` + `truncate` is indistinguishable from the correct thing. The test was not wrong; it was not wide enough, which is a different failure and a quieter one.
+- ⛔ **I kept the old control rather than growing it**, and that was deliberate. It asserts something true about the small case and it costs nothing; replacing it would have traded a passing assertion for a wider one when I could have both.
+- 🔎 **The second arm is where I had to think.** Proving the newest id is refused on replay is not enough: a window that simply grew forever would pass it. So the control also proves an id that has fallen OUT is accepted — the bound still holding — and asserts the length directly. Without that, the repair could have been an unbounded list and the suite would have congratulated it.
+- ⚠️ **I re-exported `DEDUP_WINDOW` so the control could read it.** A test that hardcodes `64` against a constant named `DEDUP_WINDOW` stops testing the bound the moment someone changes the constant: it starts testing the number 64, which nothing claims.
+- 🔴 **And I invented a citation.** The promotion line first pointed at `docs/knowledge/a-control-is-as-wide-as-the-boundary-it-crosses.md` — a plausible filename for a rule I wanted to exist, and a file that does not. The real neighbour is `a-census-is-as-wide-as-its-key.md`, about an enumeration's key rather than a fixture's size. Related, not the same. I noticed because I checked, and I checked because the repo has a doctrine about positional references being resolvable; the habit caught it, not the vigilance.
+- promotion: declined — one instance is not a pattern. If a second boundary-sized bound turns out to be untested, that is the trigger, and the sentence is ready: *a two-element fixture cannot test a sixty-four-element bound.*
+
 ## 2026-09-19 — The leaf with no defect in it, and the assertion that was wrong in the good direction
 
 - This leaf was opened to decide a semantic question and it stayed one. The seam behaved correctly, the header described it correctly, and the temptation — which I want to record because it was real — was to find something to change anyway, because a leaf that closes with *no behaviour changed* feels like a leaf that did nothing.

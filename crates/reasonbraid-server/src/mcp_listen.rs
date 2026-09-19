@@ -52,9 +52,23 @@ where
     if seen.iter().any(|d| d == delivery_id) {
         return Ok(false); // the replay skip — the cursor unchanged
     }
-    let mut next = seen.clone();
+    // ⛔ THE MOST RECENT `DEDUP_WINDOW` ids, and the direction is the whole
+    // repair (`SIGNOFF-REPAIR.6.2.1`). This was `push` + `truncate`, which
+    // appends to the END and keeps the FRONT — so once the window was full every
+    // new id was written at index `DEDUP_WINDOW` and discarded on the same line,
+    // and the window froze on the first 64 ids it ever saw. Measured over 70
+    // deliveries: it held `d-000 … d-063` and replaying `d-069` was ACCEPTED,
+    // which is a double delivery, because this function's `true` is what tells
+    // the caller to commit the delivery's effects.
+    //
+    // ⭐ The array stays CHRONOLOGICAL — oldest first, newest last — so an
+    // existing row keeps its meaning and the drain simply removes from the old
+    // end. It also heals a row that is already over-long, whatever wrote it.
+    let mut next = seen;
     next.push(delivery_id.to_string());
-    next.truncate(DEDUP_WINDOW);
+    if next.len() > DEDUP_WINDOW {
+        next.drain(..next.len() - DEDUP_WINDOW);
+    }
     sqlx::query(
         "UPDATE mcp_listen_state \
          SET last_cursor = $1, last_delivery = $2, dedup_window = $3, updated_at = now() \

@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-19 — The dedup window keeps the newest ids, and the control crosses the boundary the old one never reached (`SIGNOFF-REPAIR.6.2.1`)
+
+- 🔴 **RED in the control's final form:** `the newest id is IN the window: first=Some("d-000") last=Some("d-063")`. The window had frozen on the first 64 delivery ids it ever saw.
+- **The repair is a DIRECTION, and it is three lines.** `next.push(id); next.truncate(DEDUP_WINDOW)` appends to the END and keeps the FRONT, so once the window was full every new id was written at index 64 and discarded on the same line. It becomes an append plus a drain from the old end. ⛔ The consequence of the old behaviour was a **double delivery**: the function's `true` is what tells the caller to commit the delivery's effects.
+- ⭐ **The array stays CHRONOLOGICAL** — oldest first, newest last — so an existing row keeps its meaning; reversing to newest-first was rejected because it would silently re-interpret every stored row. ⭐ It also HEALS a row that is already over-long, which matters because nothing in `migrations/0050` bounds the array's length.
+- ⭐ **THE SECOND ARM IS THE ONE THAT IS EASY TO OMIT.** A window that simply grew without bound refuses every replay and passes the first assertion — the repair would be a memory leak wearing a fix's clothes. The control asserts the bound directly, proves the NEWEST id is refused on replay, and proves an id that has FALLEN OUT is accepted.
+- ⚠️ **`DEDUP_WINDOW` is re-exported** so the control reads the published bound instead of restating `64`. A test that hardcodes the constant it is testing against stops testing it the moment the constant moves.
+- ⚠️ **The pre-existing two-delivery control is unchanged and still passes**, which is why it is kept: it was never wrong, it was never wide enough. A control that does not cross a boundary cannot see what happens at it.
+- ✅ **VERIFIED:** `mcp_listen` **2/0** (1 before), `mcp_write` 7, `mcp` 6 — 0 failed. Clippy rc=0, fmt rc=0, `make gate` green (21/21). Falsified in situ by restoring the shipped line and nothing else; identical RED; `cmp -s` byte-identical after restore; 2/2.
+- ⚠️ **`.6.2.2` and `.6.2.3` are untouched and still live**, and `.6.2.2` COMPOSES with this one: a rewound cursor re-offers deliveries, and until this commit the window could not suppress them.
+
 ## 2026-09-19 — Three of the MCP durable-delivery lane's four clauses are live defects, measured at runtime (`SIGNOFF-REPAIR.6.2`, census and split)
 
 `.6.1` closed, so `.6.2` opened. Its goal line names four mechanisms; a throwaway probe drove each against the shipped `mcp_listen` module rather than reading them off the source.

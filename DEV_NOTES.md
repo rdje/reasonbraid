@@ -1,5 +1,50 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — A capability answer is about the provider; eligibility is about your case
+
+`resume_plan(own_cursor: i64, upstream_replay: bool)` asked the upstream one
+question — *do you replay?* — and derived continuity from the answer. But
+an upstream that replays from cursor 50 while you hold cursor 11 answers **yes**
+and cannot give you deliveries 12 through 49. The answer was true about the
+provider and said nothing about the caller's case.
+
+The profile had already separated them and I nearly did not notice: §9.6 and
+ADR-024 both list *reconcile any source-specific gap* as a step distinct from
+*surface the possible-gap condition*. Two steps, because there are two facts.
+A boolean holds one, so step 3 was not merely unimplemented — it was
+unrepresentable, and no control over the boolean's own two values could have
+found that.
+
+Pairs with `ROADMAP.md` §9.5's *absence differs from `false`* at the other end
+of one axis: **absence must not collapse into unsupported, and stated must not
+collapse into sufficient.** Promoted as
+`docs/decisions/2026-09-19_an-offered-replay-is-not-a-covered-gap.md` (with
+`answers:`).
+
+## 2026-09-19 — A truncation that races the response head fails the wrong thing
+
+The control for the reconnect ritual needed a real mid-stream disconnect, so
+the test upstream yielded its frames and then an error. Hyper abandoned the
+chunked body — correct — but it did so before the client had parsed the
+response head, so `send()` itself failed with *connection closed before message
+completed* and the control never reached the resume it exists to measure. Two
+tests red, for a reason that looked exactly like the feature being broken.
+
+Two things got it back. First, making the failure legible: `reqwest::Error`'s
+`Display` is the top frame only — *error sending request for url (…)* — which
+names the request and not the fault, so the harness now walks `source()` and
+the chain said it outright. Second, giving the control the trigger: the cut
+fires through a `tokio::sync::Notify` after the head is parsed. It is still a
+real transport abort; it just happens at a point the control names rather than
+one the scheduler picks.
+
+The general shape: **when a control must observe a failure PART of the way
+through an exchange, the failure has to be triggered after the part it is
+measuring, or it destroys the evidence instead of producing it.** Recorded, not
+promoted — one instance. `SIGNOFF-REPAIR.6.2.4` carries the trigger for
+promotion and the alternative of absorbing it into
+`a-control-that-passes-for-an-unrelated-reason`.
+
 ## 2026-09-19 — I put an aging number inside the note about aging numbers
 
 - Asked to ensure the session's findings hold, I re-derived sixteen published figures by routes that had not produced them. Fifteen held. The one that did not was a corpus size — *"all 170 decision records"* — which was 170 when I wrote it and 171 two commits later, because I added a decision record. I published a count of a thing and then made more of the thing.

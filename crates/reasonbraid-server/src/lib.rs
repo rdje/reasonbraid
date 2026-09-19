@@ -47,11 +47,13 @@ pub mod git;
 pub mod lifecycle;
 mod matching;
 mod mcp_listen;
-/// The test seam for the listen-state machinery (the `.3.4` suite).
+/// The seam for the listen-state machinery and the reconnect ritual (the
+/// `.3.4` suite; the ritual added by `SIGNOFF-REPAIR.6.2.4`).
 pub mod mcp_listen_internal {
     pub use crate::mcp_listen::{
-        listen_state as state, record_delivery_in_tx as record, resume_plan, ListenError,
-        ResumePlan, DEDUP_WINDOW,
+        listen_state as state, reconcile, reconnect, record_delivery_in_tx as record, Delivery,
+        ListenError, ListenUpstream, ReconnectError, Reconnected, ResumePlan,
+        UpstreamAuthorization, UpstreamError, UpstreamListen, UpstreamReplay, DEDUP_WINDOW,
     };
 }
 mod mcp_read;

@@ -5,6 +5,21 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE MCP RECONNECT RITUAL RUNS ALL FIVE STEPS ACROSS A REAL DISCONNECT (`.6.2.4`, REPAIR-0292 + REPAIR-0293) — and `.6.2` CLOSES with it.**
+
+`ROADMAP.md` §9.6 and ADR-024 specify one five-step ritual: reauthorize → recreate the listen request → reconcile any source-specific gap → resume from the OWN cursor → surface the possible-gap when the upstream offers no replay. Two of the five were shipped, as a pure function with no caller.
+
+- ⭐ **The profile was quoted from its sources in a COMMIT OF ITS OWN, ahead of the code** (REPAIR-0292), because the leaf's acceptance says *before implementation* and a build with no RED is otherwise satisfied by whatever gets written.
+- 🔎 **An offered replay is not a covered gap, and this is the one substantive finding of reading before writing.** `resume_plan(own_cursor, upstream_replay: bool)` set `possible_gap = !upstream_replay`, so an upstream replaying from cursor **50** while ReasonBraid holds **11** offered a replay, could not produce deliveries 12–49, and was reported as CONTINUITY — the exact over-claim both sources forbid in the sentence that closes their paragraph. `UpstreamReplay::None | From(i64)` replaces the boolean; the old function is DELETED rather than wrapped.
+- ✅ **The disconnect is REAL:** an upstream on a loopback port cuts a chunked body mid-stream, the client observes the transport failure, and the resume that follows carries the cursor read from the durable row. The upstream writes its OWN record of the steps — `[reauthorize, listen resume_from=none, reauthorize, listen resume_from=11]` — so the order and the resume value are asserted by the side the client cannot fool.
+- ⭐ **Step 1 is enforced upstream, not watched here:** every reauthorization mints a fresh credential and invalidates the last, and a second control presents a superseded one and observes the upstream's `401`.
+- ✅ **7/7 in-situ mutations caught, four by the live control alone** — including `possible_gap` hard-coded false AND hard-coded true, which is what makes both halves of the gap table mean something.
+- 🔴 **The harness was wrong first and the cause was measured, not guessed:** emitting the error straight after the frames aborted the connection before the client parsed the response head, so `send()` failed and the control never reached what it measures. Walking `reqwest::Error::source()` printed `<- client error (SendRequest) <- connection closed before message completed`; the cut is now fired by the control after the head is parsed.
+- ⛔ **NOT an SDK or conformance claim.** The transport is ordinary HTTP; `rmcp` is pinned for its server half and the Streamable-HTTP client is not a dependency of this workspace — `.6.6` owns that decision and nothing here may say otherwise until it closes.
+- ⛔ **There is no operator-facing gateway.** No route, no CLI verb, no enrolled-upstream registry configures an upstream MCP server, so the ritual ships as a library surface — `.6.7`.
+- ✅ **VERIFIED:** `mcp_listen` **6/0** (4 before this leaf), lib **127/0**, `mcp` and `mcp_write` unchanged at 6/0 and 7/0, `cargo check --workspace --all-targets` rc=0, clippy/fmt rc=0, gate green, book renders.
+- 📖 **The book gained its first MCP chapter** — *The MCP listen gateway*. ⚠️ The rest of the MCP surface is still absent from the book and is now `.6.5`.
+
 ✅ **SIXTEEN PUBLISHED FIGURES RE-DERIVED; FIFTEEN HOLD (`.13.4.1`, REPAIR-0291).**
 
 The director's *ensure the findings hold*, applied to eight leaves. Each figure re-derived by a route that did not produce it.

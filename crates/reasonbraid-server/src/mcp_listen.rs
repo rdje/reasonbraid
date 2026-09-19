@@ -1,10 +1,34 @@
-//! The MCP listen-stream DURABLE state (`PHASE-8.3.4`, ADR-024, §9.6):
-//! the listen stream is the EPHEMERAL transport state; the durable state
-//! — the subscription, the last accepted ReasonBraid cursor, the delivery
-//! ids, the deduplication — stays in REASONBRAID. The reconnect resumes
-//! from the OWN cursor and surfaces the possible-gap when the upstream
-//! offers no replay (never stronger than the upstream can prove).
+//! The MCP listen-stream DURABLE state and the reconnect ritual
+//! (`PHASE-8.3.4`, `SIGNOFF-REPAIR.6.2.4`, ADR-024, §9.6): the listen
+//! stream is the EPHEMERAL transport state; the durable state — the
+//! subscription, the last accepted ReasonBraid cursor, the delivery ids,
+//! the deduplication — stays in REASONBRAID.
+//!
+//! §9.6 and ADR-024 specify the same FIVE-step ritual, performed by
+//! ReasonBraid acting as an MCP *client* to an upstream MCP server:
+//!
+//! 1. reauthorize;
+//! 2. recreate the listen request;
+//! 3. reconcile any source-specific gap, if the upstream supports one;
+//! 4. resume from the OWN cursor;
+//! 5. surface an explicit possible-gap condition when the upstream
+//!    offers no replay.
+//!
+//! [`reconnect`] performs all five against a [`ListenUpstream`], which is
+//! the transport seam: the ritual is transport-neutral, exactly as the
+//! node channel's is, and the profile's own words are *transport-neutral
+//! request stream*.
+//!
+//! ⛔ **The rule every step serves: the MCP continuation is NEVER
+//! advertised as stronger than the upstream can prove.** That sentence is
+//! in both sources and it is what makes step 3 a separate step — *offers
+//! a replay* and *covers our gap* are different facts, and
+//! [`UpstreamReplay`] exists because a boolean cannot hold two facts.
 
+use std::fmt;
+use std::future::Future;
+
+use futures_util::stream::Stream;
 use sqlx::PgPool;
 
 /// The dedup window's size (the recent delivery ids kept per subscription).
@@ -135,9 +159,9 @@ where
     }
     // ⛔ THE CURSOR IS A HIGH-WATER MARK (`SIGNOFF-REPAIR.6.2.2`). This was
     // `SET last_cursor = $1`, unconditional, so recording cursor 100 and then
-    // cursor 5 left the stored cursor at 5 — and `resume_plan` reads that value
-    // as the OWN cursor, so one out-of-order delivery rewound the resume point
-    // and every delivery above it was re-offered on the next reconnect.
+    // cursor 5 left the stored cursor at 5 — and `reconnect` reads that value as
+    // the OWN cursor, so one out-of-order delivery rewound the resume point and
+    // every delivery above it was re-offered on the next reconnect.
     //
     // ⭐ A CLAMP, not a refusal, and the two differ observably. A late delivery
     // is a real delivery — the dedup check above has already said it is new — so
@@ -166,28 +190,265 @@ where
     Ok(true)
 }
 
-/// The reconnect's resume plan: the resume is ALWAYS from the OWN
-/// cursor; the possible-gap flag names the honest condition when the
-/// upstream offers no replay (the deliveries between the own cursor and
-/// the upstream's state may be lost — the continuation is never
-/// advertised as stronger than the upstream can prove).
+/// What the upstream can PROVE about replay — the input to step 3 of the
+/// ritual (`SIGNOFF-REPAIR.6.2.4`).
+///
+/// ⛔ This replaced a `bool`, and the replacement IS the repair. The old
+/// `resume_plan(own_cursor, upstream_replay: bool)` set
+/// `possible_gap = !upstream_replay`, so an upstream that answered *yes, I
+/// replay* closed the gap **whatever it could actually replay from**. An
+/// upstream whose earliest replayable point sits ABOVE our own cursor offers
+/// a replay and still cannot produce the deliveries in between — and
+/// reporting no gap there is exactly *advertising the continuation as
+/// stronger than the upstream can prove*, which §9.6 and ADR-024 forbid in
+/// the same sentence.
+///
+/// ⭐ The old two-valued function was DELETED rather than kept as a wrapper.
+/// A wrapper would have had to read `true` as *replays everything*, which is
+/// the over-claim itself — keeping it would have left the defect reachable
+/// behind a shorter name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UpstreamReplay {
+    /// The upstream offers no replay mechanism at all.
+    None,
+    /// The upstream will replay from this cursor onward, and no earlier.
+    From(i64),
+}
+
+/// The reconnect's resume plan: the resume is ALWAYS from the OWN cursor, and
+/// the possible-gap flag names the honest condition — the deliveries between
+/// what we hold and what the upstream can still produce may be lost.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResumePlan {
-    /// The cursor the delivery resumes from (the OWN last cursor).
-    pub resume_from: i64,
-    /// Whether the upstream offers a replay (false → the possible-gap).
-    pub upstream_replay: bool,
+    /// The cursor the delivery resumes from — the OWN last accepted cursor,
+    /// or `None` when this subscription has accepted nothing yet (the durable
+    /// row is written by the FIRST delivery, so a reconnect can legitimately
+    /// precede it).
+    pub resume_from: Option<i64>,
+    /// What the upstream proved it can replay.
+    pub upstream_replay: UpstreamReplay,
     /// The possible-gap condition to surface to the operator.
     pub possible_gap: bool,
 }
 
-/// Compute the resume plan for a reconnected listen stream.
-pub fn resume_plan(own_cursor: i64, upstream_replay: bool) -> ResumePlan {
+/// Steps 3–5: reconcile what the upstream can replay against what we hold,
+/// resume from the OWN cursor, and decide the possible-gap condition.
+///
+/// The gap is claimed CLOSED in exactly one case — the upstream can replay
+/// from a point at or below the cursor we have already accepted, so nothing
+/// between the two can be missing. Every other case surfaces the gap:
+///
+/// - no replay at all — the profile's own literal condition;
+/// - a replay floor ABOVE our cursor — the upstream offers a replay that does
+///   not reach back far enough, and the deliveries in between are unprovable;
+/// - no own cursor — we have accepted nothing, so there is no cursor to
+///   compare the upstream's floor against and no continuity to claim. ⛔ Not
+///   an edge case to tidy away: it is the same rule applied to our own
+///   ignorance, and it errs towards surfacing a gap rather than hiding one.
+pub fn reconcile(own_cursor: Option<i64>, upstream_replay: UpstreamReplay) -> ResumePlan {
+    let possible_gap = match (own_cursor, &upstream_replay) {
+        (Some(own), UpstreamReplay::From(earliest)) => *earliest > own,
+        (None, UpstreamReplay::From(_)) | (_, UpstreamReplay::None) => true,
+    };
     ResumePlan {
         resume_from: own_cursor,
         upstream_replay,
-        possible_gap: !upstream_replay,
+        possible_gap,
     }
+}
+
+/// The upstream's authorization for ONE recreated listen request (step 1).
+///
+/// ⛔ **It grants NOTHING inside ReasonBraid.** ADR-024: *the remote MCP
+/// metadata NEVER grants authority; the OAuth/authorization maps to the
+/// tenant identity + the scoped grants*. This value admits US to the
+/// upstream; what we may then do with what it sends is decided by
+/// ReasonBraid's own grants, on the ordinary path.
+///
+/// ⛔ [`fmt::Debug`] is written by hand and REDACTS the credential. ADR-024's
+/// *the tokens are never copied into the thread content* is about content,
+/// and a derived `Debug` in a log line or a `.expect()` message is the other
+/// way the same secret escapes — the same position `ListenError::Storage`
+/// already takes for connection details.
+#[derive(Clone)]
+pub struct UpstreamAuthorization(String);
+
+impl UpstreamAuthorization {
+    /// Wrap a credential the upstream issued.
+    #[must_use]
+    pub fn new(credential: String) -> Self {
+        Self(credential)
+    }
+
+    /// The credential, for the transport that presents it upstream.
+    #[must_use]
+    pub fn credential(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Debug for UpstreamAuthorization {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("UpstreamAuthorization(<redacted>)")
+    }
+}
+
+/// What can go wrong talking to the upstream during the ritual.
+///
+/// The two variants are the two steps that touch the network, kept apart
+/// because they need different answers: a reauthorization the upstream
+/// refuses is a credential or enrolment problem, and a listen request that
+/// will not open is a transport or subscription problem.
+#[derive(Debug)]
+pub enum UpstreamError {
+    /// Step 1 — the upstream refused or could not complete the reauthorization.
+    Reauthorization(String),
+    /// Step 2 — the listen request could not be recreated.
+    Listen(String),
+}
+
+impl fmt::Display for UpstreamError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Reauthorization(what) => {
+                write!(f, "the upstream reauthorization did not complete: {what}")
+            }
+            Self::Listen(what) => write!(f, "the listen request could not be recreated: {what}"),
+        }
+    }
+}
+
+impl std::error::Error for UpstreamError {}
+
+/// What can go wrong performing the whole ritual.
+#[derive(Debug)]
+pub enum ReconnectError {
+    /// The OWN cursor could not be read, so step 4 has no input. ⛔ There is
+    /// no fallback: resuming from a cursor we could not read would re-deliver
+    /// or skip silently, which is the failure the durable state exists to
+    /// prevent.
+    State(ListenError),
+    /// An upstream step did not complete.
+    Upstream(UpstreamError),
+}
+
+impl fmt::Display for ReconnectError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::State(e) => write!(f, "{e}"),
+            Self::Upstream(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl std::error::Error for ReconnectError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::State(e) => Some(e),
+            Self::Upstream(e) => Some(e),
+        }
+    }
+}
+
+/// One delivery as the upstream offers it on the resumed stream.
+///
+/// The `cursor` is the upstream's ordering value, which is what
+/// [`record_delivery_in_tx`] stores as the OWN cursor once ReasonBraid has
+/// accepted the delivery — the two are the same scale by construction, because
+/// accepting is what makes an upstream cursor ours.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Delivery {
+    /// The upstream's id for this delivery — the dedup key.
+    pub delivery_id: String,
+    /// The upstream's cursor for this delivery.
+    pub cursor: i64,
+}
+
+/// What a recreated listen request yields: what the upstream proved it can
+/// replay, and the stream it will deliver on.
+///
+/// ⛔ The stream is part of the RESULT rather than something the caller opens
+/// afterwards, because a reconnect that does not hand back a live stream has
+/// not reconnected to anything — it has only asked a question.
+pub struct UpstreamListen<S> {
+    /// What the upstream can replay, for step 3.
+    pub replay: UpstreamReplay,
+    /// The resumed delivery stream.
+    pub deliveries: S,
+}
+
+/// The ritual's outcome: the plan the delivery resumes on, and the stream it
+/// resumes on.
+pub struct Reconnected<S> {
+    /// The resume point and the possible-gap condition.
+    pub plan: ResumePlan,
+    /// The resumed delivery stream.
+    pub deliveries: S,
+}
+
+/// The upstream listen source, as the reconnect ritual needs it.
+///
+/// ⭐ The seam is here, and not in a transport type, because §9.6 calls
+/// `subscriptions/listen` a *transport-neutral request stream* and the node
+/// channel already demonstrates the shape: the semantics — the cursor, the
+/// replay, the reconciliation — are written once and a transport is supplied
+/// under them.
+///
+/// The futures are spelled with `impl Future<Output = …> + Send` rather than
+/// `async fn`, so a caller can hold the returned future across a `.await` in a
+/// spawned task.
+pub trait ListenUpstream {
+    /// The resumed delivery stream this upstream produces.
+    type Deliveries: Stream<Item = Result<Delivery, UpstreamError>> + Send;
+
+    /// Step 1 — reauthorize, and return the authorization the recreated listen
+    /// request will carry.
+    fn reauthorize(
+        &self,
+    ) -> impl Future<Output = Result<UpstreamAuthorization, UpstreamError>> + Send;
+
+    /// Steps 2 and 3 — recreate the listen request from our OWN cursor, and
+    /// report what the upstream can replay along with the stream it resumes on.
+    ///
+    /// `resume_from` is what ReasonBraid holds, not what the upstream last
+    /// sent; `None` means this subscription has accepted nothing yet.
+    fn recreate_listen(
+        &self,
+        authorization: &UpstreamAuthorization,
+        subscription_id: &str,
+        resume_from: Option<i64>,
+    ) -> impl Future<Output = Result<UpstreamListen<Self::Deliveries>, UpstreamError>> + Send;
+}
+
+/// Perform the reconnect ritual and return the plan the delivery resumes on.
+///
+/// The order is the profile's order, and it is load-bearing rather than
+/// stylistic: the reauthorization comes FIRST because the recreated listen
+/// request carries it, and the own cursor is read from the DURABLE state
+/// rather than from anything the dead stream held — that is the whole point
+/// of the state being durable.
+pub async fn reconnect<U: ListenUpstream + Sync>(
+    pool: &PgPool,
+    upstream: &U,
+    tenant_id: &str,
+    subscription_id: &str,
+) -> Result<Reconnected<U::Deliveries>, ReconnectError> {
+    let own_cursor = listen_state(pool, tenant_id, subscription_id)
+        .await
+        .map_err(|e| ReconnectError::State(ListenError::Storage(e)))?
+        .map(|(cursor, _last_delivery)| cursor);
+    let authorization = upstream
+        .reauthorize()
+        .await
+        .map_err(ReconnectError::Upstream)?;
+    let listen = upstream
+        .recreate_listen(&authorization, subscription_id, own_cursor)
+        .await
+        .map_err(ReconnectError::Upstream)?;
+    Ok(Reconnected {
+        plan: reconcile(own_cursor, listen.replay),
+        deliveries: listen.deliveries,
+    })
 }
 
 /// Read the durable state for a subscription (the reconnect's input).
@@ -210,18 +471,79 @@ pub async fn listen_state(
 mod tests {
     use super::*;
 
-    /// The resume plan is always the OWN cursor; the gap flag rides the
-    /// upstream's replay capability.
+    /// The resume point is ALWAYS the OWN cursor, whatever the upstream says
+    /// about replay — step 4 does not negotiate.
     #[test]
-    fn the_resume_plan_is_the_own_cursor_and_the_gap_is_honest() {
-        let with_replay = resume_plan(42, true);
-        assert_eq!(with_replay.resume_from, 42);
-        assert!(!with_replay.possible_gap, "the replay closes the gap");
-        let without_replay = resume_plan(42, false);
-        assert_eq!(without_replay.resume_from, 42);
+    fn the_resume_point_is_always_the_own_cursor() {
+        for replay in [
+            UpstreamReplay::None,
+            UpstreamReplay::From(0),
+            UpstreamReplay::From(41),
+            UpstreamReplay::From(42),
+            UpstreamReplay::From(99),
+        ] {
+            assert_eq!(
+                reconcile(Some(42), replay.clone()).resume_from,
+                Some(42),
+                "the resume point moved for {replay:?}"
+            );
+        }
+    }
+
+    /// The gap is CLOSED in exactly one case: the upstream can replay from at
+    /// or below the cursor we already hold.
+    #[test]
+    fn the_gap_closes_only_when_the_replay_reaches_our_cursor() {
         assert!(
-            without_replay.possible_gap,
-            "no replay → the possible-gap surfaces"
+            !reconcile(Some(42), UpstreamReplay::From(42)).possible_gap,
+            "a replay floor AT our cursor leaves nothing unproven"
         );
+        assert!(
+            !reconcile(Some(42), UpstreamReplay::From(7)).possible_gap,
+            "a replay floor BELOW our cursor covers more than we need"
+        );
+    }
+
+    /// The literal condition both sources name: no replay → the gap surfaces.
+    #[test]
+    fn no_replay_surfaces_the_gap() {
+        assert!(reconcile(Some(42), UpstreamReplay::None).possible_gap);
+        assert!(reconcile(None, UpstreamReplay::None).possible_gap);
+    }
+
+    /// ⛔ The arm the old boolean could not express, and the reason it was
+    /// replaced: the upstream OFFERS a replay and still cannot reach back to
+    /// our cursor, so the deliveries in between are unprovable. Under
+    /// `resume_plan(42, true)` this reported no gap.
+    #[test]
+    fn a_replay_that_starts_above_our_cursor_still_surfaces_the_gap() {
+        let plan = reconcile(Some(42), UpstreamReplay::From(43));
+        assert_eq!(plan.resume_from, Some(42));
+        assert!(
+            plan.possible_gap,
+            "a replay floor one above our cursor leaves delivery 43 unprovable"
+        );
+    }
+
+    /// No own cursor is not a closed gap: we have accepted nothing, so there is
+    /// no cursor to compare the upstream's floor against.
+    #[test]
+    fn an_unstarted_subscription_claims_no_continuity() {
+        let plan = reconcile(None, UpstreamReplay::From(0));
+        assert_eq!(plan.resume_from, None);
+        assert!(plan.possible_gap);
+    }
+
+    /// The credential never reaches a log through the derived formatter.
+    #[test]
+    fn the_upstream_authorization_redacts_its_credential() {
+        let auth = UpstreamAuthorization::new("bearer-secret-value".to_string());
+        assert_eq!(auth.credential(), "bearer-secret-value");
+        let rendered = format!("{auth:?}");
+        assert!(
+            !rendered.contains("bearer-secret-value"),
+            "the credential reached Debug: {rendered}"
+        );
+        assert_eq!(rendered, "UpstreamAuthorization(<redacted>)");
     }
 }

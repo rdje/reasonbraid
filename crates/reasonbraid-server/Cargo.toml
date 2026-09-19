@@ -119,7 +119,12 @@ gix-transport = { version = "0.59", features = ["http-client"] }
 # decision test drives the REAL node worker against the live server, with the scripted
 # fake adapter standing in for the provider.
 reasonbraid-node = { path = "../reasonbraid-node", version = "0.1.0" }
-reqwest = { version = "0.12", default-features = false, features = ["json"] }
+# `stream` is named explicitly for the `SIGNOFF-REPAIR.6.2.4` reconnect
+# control, which reads a listen body as it arrives and needs the truncation
+# to surface as a stream error. The normal dependency above already carries
+# it, so this adds nothing to the build — it stops the control resting on
+# Cargo's feature unification, which is not a contract.
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "net", "time", "io-util", "process"] }
 # The mTLS roundtrip test (`.1.2`): the tokio glue over rustls, ring-pinned and
 # tls12-free (the workspace single-provider rule + the §16.2 TLS 1.3-only stance).

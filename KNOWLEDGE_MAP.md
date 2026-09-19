@@ -193,6 +193,7 @@
 - [`2026-09-19_a-replace-is-complete-and-the-verb-does-not-perform-one.md`](docs/decisions/2026-09-19_a-replace-is-complete-and-the-verb-does-not-perform-one.md)
 - [`2026-09-19_acceptance-debt-is-counted-not-backfilled.md`](docs/decisions/2026-09-19_acceptance-debt-is-counted-not-backfilled.md)
 - [`2026-09-19_an-advertised-line-carries-an-adjudicated-verdict.md`](docs/decisions/2026-09-19_an-advertised-line-carries-an-adjudicated-verdict.md)
+- [`2026-09-19_an-offered-replay-is-not-a-covered-gap.md`](docs/decisions/2026-09-19_an-offered-replay-is-not-a-covered-gap.md)
 - [`2026-09-19_g3-seven-claims-re-derived.md`](docs/decisions/2026-09-19_g3-seven-claims-re-derived.md)
 - [`2026-09-19_g4-g5-four-claims-re-derived.md`](docs/decisions/2026-09-19_g4-g5-four-claims-re-derived.md)
 - [`2026-09-19_system-one-classifiers-are-an-enhancement-not-a-repair.md`](docs/decisions/2026-09-19_system-one-classifiers-are-an-enhancement-not-a-repair.md)

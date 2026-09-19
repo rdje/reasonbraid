@@ -741,6 +741,35 @@ Implementation ownership and remaining verification are in `docs/tasks/SIGNOFF-R
       + every downstream beat; the re-run passed) —
       the pre-existing load sensitivity, not a
       regression.
+    Annotated by `SIGNOFF-REPAIR.6.2.4`
+      (REPAIR-0293), and the leaf is left otherwise
+      byte-unchanged because its Done list was
+      honest about what it shipped:
+    - 🔴 **THE GOAL LINE CLAIMED FIVE STEPS AND THE
+      LEAF CLOSED `done` ON TWO.** It names "the
+      reconnect ritual (the reauthorize → the
+      recreate → the reconcile → the resume from the
+      own cursor → the possible-gap surface)". What
+      landed was the durable state plus a pure
+      `resume_plan` covering steps 4 and 5;
+      `reauthoriz` occurred **0** times in
+      `crates/` and nothing opened a listen request
+      at all. ⭐ The Done list says exactly this —
+      it enumerates the table, the state machine and
+      the pure plan and claims nothing more — so the
+      drift is between a leaf's own two sections,
+      which is the hardest place to see it.
+    - ⚠️ **Step 3 was not merely unimplemented, it
+      was UNREPRESENTABLE**: `resume_plan` took
+      `upstream_replay: bool`, so an upstream
+      replaying from a floor ABOVE our own cursor
+      offered a replay and was reported as
+      continuity. Repaired at `.6.2.4`
+      (`docs/decisions/2026-09-19_an-offered-replay-is-not-a-covered-gap.md`).
+    - ✅ All five steps now run against a real
+      socket; `.6.6` owns the SDK transport and
+      `.6.7` the operator-facing surface, neither of
+      which this leaf claimed.
 
   - ID: `PHASE-8.3.5`
     Status: `done`

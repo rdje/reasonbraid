@@ -1,0 +1,60 @@
+# REGISTRY-READ-REACH baseline — scripts/census_registry_read_reach.py
+#
+# Every site-global table a mutating route reaches, as
+#     table<TAB>tenant-derivation<TAB>readers
+#
+# ⭐ THE SET, NOT THE COUNT — `.7.1.1.1`'s rule applied to the read side. A
+# reader added and a reader removed holds every published number while the
+# surface moves underneath it.
+#
+# ⛔ `-` in column 2 means NOTHING IN THE SCHEMA NAMES AN OWNER. A path there
+# means the tenant is recoverable by a foreign key, which is why a column-less
+# table must never be read as an ownerless one.
+#
+# ⛔ `!` after a reader means that STATEMENT carries no tenant predicate. It is
+# not by itself a defect: `check_in_tx!` resolves its `quota_id` from a
+# tenant-predicated statement one line above. The verdicts are in
+# docs/decisions/2026-09-19_the-policy-registry-is-a-shared-control-surface.md.
+#
+# Recorded by `SIGNOFF-REPAIR.7.1.2`. Refresh only with a re-adjudication:
+#     python3 -B scripts/census_registry_read_reach.py --check
+agent_profiles	agent_profiles→agent_roles	list_node_presence,create_thread_auto!,open_recruitment_call,respondent_candidate!,directory_match!,directory_presence,replay,presence,write_profile_in_tx!,current_profile!,lock_existing_profile_anchor_in_tx!,current_profile_in_tx!
+deployment_assignments	-	record_drift!,record_receipt!,load_assignment!,list_assignments!
+deployment_targets	-	list_deployment_targets!,assign!
+derivations	-	submit!,children_of!
+evaluation_calibrations	-	list_calibrations!
+evaluation_corpora	-	record_run!,list_corpora!,create_trial!
+evaluation_gate_results	-	list_gate_results!
+evaluation_gates	-	evaluate_gate!,list_gates!,record_recommendation!
+evaluation_runs	-	list_runs!,record_calibration!
+evaluation_trial_results	-	list_trial_results!
+evaluation_trials	-	record_trial_results!,list_trials!,record_recommendation!
+evidence_snapshots	-	submit!,submit,submit!,get_for_tenant!,stale_for_tenant!
+node_certificates	node_certificates→nodes	revoke_node_in_one_transaction!,replay,verify_cert_proof!,verify_rotate_proof_in_tx!,renew_lease!,classify_renewal_refusal!,enroll
+node_events	-	event_id_for_operation!
+node_keys	node_keys→nodes	-
+node_leases	node_leases→nodes	verify_fencing!,verify_fencing_in_tx!,classify_renewal_refusal!
+node_proof_nonces	-	consume_proof_nonce!
+policy_approvals	-	list_approvals!,stage!
+policy_corrections	-	list_corrections!,schedule_reviews!
+policy_decisions	-	list_decisions!,record_approval!,stage!
+policy_drift	-	list_drift!,schedule_reviews!
+policy_outcomes	-	list_outcomes!,schedule_reviews!
+policy_projections	-	load!,list!,stage!
+policy_proposals	-	record_decision!,list_proposals!,record_approval!,stage!
+policy_publications	-	publication_exists!,assign!,mark_effective!,mark_failed!,load!,list!
+policy_reviews	-	schedule_reviews!,mark_done!,mark_done!,list_reviews!
+policy_versions	-	register_proposal!,list!,resolve!,impact!
+profile_versions	profile_versions→agent_roles	list_node_presence,create_thread_auto!,open_recruitment_call,respondent_candidate!,directory_match!,directory_presence,replay,presence,current_profile!,version_at!,version_list!,current_profile_in_tx!
+quota_events	quota_events→usage_quotas	check_in_tx!
+recruitment_offers	recruitment_offers→recruitment_calls	inspect_call!
+recruitment_panels	recruitment_panels→recruitment_calls	inspect_call!
+recruitment_responses	recruitment_responses→recruitment_calls	responses!
+resolver_capabilities	-	register_resolver!,resolve!,advertised_media_types!,sync_gated_entries!
+resource_references	-	submit!,get!,submit
+routing_recommendations	-	list_recommendations!
+routing_resolutions	-	list_resolutions!
+server_ca	-	load_ca_material!
+site_audit	-	-
+snapshot_objects	-	submit!
+workflow_profiles	-	resolve!,record_recommendation!,resolve!,register!,list!

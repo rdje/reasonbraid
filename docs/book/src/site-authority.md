@@ -342,3 +342,87 @@ Run the real binary controls alongside the existing service suite:
 ```bash
 RB_DEMO=0 bash scripts/run_pg_tests.sh site_operator_cli site_authority
 ```
+
+## What site authority does NOT cover yet
+
+The six site actions above — `registry_inspect`, `adapter_allow`, `adapter_revoke`,
+`region_declare`, `region_pair`, `region_unpair` — are each explicitly issued and
+audited. They are not, however, the complete set of site-global surfaces. A census
+derived from the producers rather than from a family name finds that **thirty
+tables carry no tenant dimension and are written by routes admitted on tenant
+enrolment alone**:
+
+```bash
+python3 -B scripts/census_shared_registry_writes.py   # the writers, by admission
+python3 -B scripts/census_registry_read_reach.py      # the readers, and the tenant derivations
+```
+
+`SIGNOFF-REPAIR.7.1.2` adjudicated them. Four distinct positions came out of it,
+and the distinction between the first two is the one an operator needs.
+
+### A table without a `tenant_id` column may still have an owner
+
+`agent_profiles`, `profile_versions`, `quota_events` and `recruitment_responses`
+carry no tenant column, yet each keys into a table that does — `agent_roles`,
+`usage_quotas` and `recruitment_calls` respectively — so a single join recovers
+the owning tenant. They are tenant-owned records, not shared ones. A quota check,
+for instance, resolves its `quota_id` from `usage_quotas WHERE tenant_id = …`
+before counting events against it, so the count is tenant-bound even though the
+counting statement never mentions a tenant.
+
+### The evidence chain and the evaluation corpora are shared by design
+
+Evidence snapshots, derivations, resource references and snapshot objects are
+content-addressed rows that several tenants share by construction, so what must
+name the tenant is the decision to DISCLOSE the row rather than the row itself.
+A citation is recorded at the moment a tenant cites a snapshot, and the read is
+bound to that citation. The seven `evaluation_*` tables are
+shared for the same practical reason a benchmark corpus is: it is more useful
+shared than copied.
+
+### The directory is read across tenants on purpose, and bounded by FIELD
+
+`POST /v1/directory/match` and `GET /v1/directory/presence` return every
+enrolled role's current profile regardless of the caller's tenant. That is deliberate: the
+product premise is that an authorized caller asks a durable network a question
+*without knowing who is online*, and a directory restricted to one tenant would
+not answer it.
+
+What bounds the disclosure is not the row set but the fields. Each request derives
+a reader classification — `Full` for a tenant administrator over their own tenant,
+otherwise `Tenant` or `Network` — clamps the request's declared scope against it,
+and filters every profile through that classification before returning it. A field
+declared at a higher visibility class than the reader holds is absent from the
+response, not redacted in place.
+
+This differs from `GET /v1/nodes/presence`, which answers about one *named* node
+and is therefore bound to the caller's own tenant: there, a foreign answer would
+be an existence oracle. Set-valued directory questions and identity-valued
+presence questions are bounded differently, and on purpose.
+
+### The policy and workflow registries are shared CONTROL surfaces
+
+These are the open items, and they are recorded here rather than implied.
+
+The ten policy lifecycle tables form one chain — a version, a proposal, a
+decision, an approval, a projection, a publication, then drift, outcomes,
+corrections and reviews. Each stage reads the previous stage's row in order to
+decide, every row is keyed on an opaque identifier with no tenant, and every write
+admits on enrolment alone. The review scheduler in particular reads drift,
+outcomes and corrections across the entire site with no predicate, so a record
+written by one tenant can schedule a review against another tenant's publication.
+Whether one site-wide policy library is intended, or a policy belongs to a tenant,
+is an open decision owned by `SIGNOFF-REPAIR.6.1.5`.
+
+The workflow-profile registry has the same shape and a sharper consequence.
+`POST /v1/workflow-profiles` admits any enrolled principal and appends a new
+version under any profile identifier, including the eight built-in profiles;
+thread creation resolves a profile to its **highest** version site-wide. An
+operator should therefore treat the workflow registry as a trusted, site-wide
+configuration surface today, and restrict who is enrolled accordingly.
+`SIGNOFF-REPAIR.7.1.2.1` owns the repair.
+
+The routing journals (`routing_resolutions`, `routing_recommendations`) are
+append-only audit rows read without a tenant predicate, so a caller sees every
+tenant's routing trail. That is a disclosure limit, not a control one — routing
+decisions do not read those tables — and `SIGNOFF-REPAIR.7.1.2.2` owns it.

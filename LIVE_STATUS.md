@@ -5,6 +5,19 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **TEN OF THE SEVENTEEN SITE-GLOBAL TABLES ARE SHARED CONTROL SURFACES, AND ONE IS A LIVE CROSS-TENANT DEFECT (`.7.1.2`, DOC-0066).**
+
+`.7.1.1` published thirty site-global tables and judged none; DOC-0029 had already decided thirteen. The other seventeen are adjudicated **4 · 1 · 2 · 10**.
+
+- ⭐ **Four were never ownerless** — `agent_profiles`, `profile_versions`, `quota_events`, `recruitment_responses` each key into a tenant-dimensioned table, so one join recovers the tenant. DOC-0029's content-addressing argument is correct and simply never reached that shape; **9 of 40** site-global tables carry a derivation, so *site-global by data model* is not *ownerless*.
+- ⭐ **A fourth shape, true in code and stated nowhere until now:** the directory reads every tenant's profile BY DESIGN and binds the disclosure at FIELD level (`ReaderClass` + `filter_profile`). §16.8 satisfied, not violated. Now in `docs/book/src/site-authority.md`.
+- 🔎 The evaluation family is **SEVEN**, not the six DOC-0029 names — a count taken per FILE misses a file's second `CREATE TABLE`.
+- 🔴 **`workflow_profiles`:** `resolve` takes the highest version site-wide with no `built_in` filter, `register` appends `MAX(version)+1` for any id including the eight built-ins, `POST /v1/workflow-profiles` admits on **enrolment alone**, and thread creation resolves `quick_advice` through it. **Any enrolled principal can change the steps every other tenant's next bare thread runs.** ⚠️ SOURCE-measured at four sites; the runtime RED is owed FIRST (`.7.1.2.1`). ⚠️ The step vocabulary is closed — a control-plane override, not a capability escape.
+- 🔴 **The nine `policy_*` are ONE chain:** `reviews::schedule_reviews` reads drift, outcomes and corrections with **no predicate at all** and schedules a review against another tenant's publication; `publications::stage` checks parentage and never ownership. ⛔ DOC-0029's *tenant-bound read* remedy reaches none of them — a control surface's problem is the WRITE.
+- ✅ `.6.1.5` answered by RE-SCOPING: from one table to ten, by name. ⛔ `.3.2`'s six site actions upheld as actions, **superseded as THE set** — they cover none of the thirty.
+- ⚠️ **Operator-visible limit, published rather than implied:** the workflow-profile registry is a trusted site-wide configuration surface today. Restrict enrolment accordingly until `.7.1.2.1` lands.
+- ✅ **VERIFIED:** `census_registry_read_reach.py --self-test` ok; `--check` rc=0 (`40 site-global tables, unchanged`), pinned in `.doctrine/registry_read_reach_baseline.tsv`; the write census unchanged at 42/33.
+
 ✅ **THE TWO NUMBERS THAT FAILED THE STAND-BY-IT TEST ARE PAID FOR (`.7.1.1.1`, REPAIR-0272).**
 
 Asked *do you trust your own findings*, two of `.7.1.1`'s failed `docs/CLAIM_VERIFICATION.md` §4.1 — the answer must be yes with no keyboard. Both are now settled rather than noted.

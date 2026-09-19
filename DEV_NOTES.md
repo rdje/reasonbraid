@@ -1,5 +1,16 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — "No tenant column" is a fact about the schema, not a verdict about ownership
+
+- I spent this leaf expecting to find seventeen variations on one defect. Four of them were not defects at all, and the reason I nearly missed that is worth writing down.
+- ⭐ **The phrase that did the damage is `site-global`.** `tenant_dimensioned_tables()` uses it correctly — it means *this table has no tenant column* — and every document downstream reads it as *this table has no owner*. Those are different claims, and the gap between them is one foreign key. `quota_events.quota_id → usage_quotas.tenant_id` recovers the tenant in one join; so do both profile tables and `recruitment_responses`.
+- 🔎 **DOC-0029 is not wrong; it is bounded, and nobody noticed the bound.** Its argument is specifically about content-addressed rows, which genuinely cannot carry an owner because several tenants share one row. That argument is airtight, and it simply never met a table shaped the other way. A record that is correct within its scope and silent about its scope reads as a general rule.
+- ⛔ **The instrument nearly repeated the error one layer down.** My first design flagged every statement without a tenant predicate. `quota::check_in_tx` fails that test and is perfectly bound — the `quota_id` it filters on came from a tenant-predicated statement one line above. A per-statement scan cannot see a two-statement binding, so the census now reports the predicate as *evidence* and refuses to call it a verdict.
+- ⭐ **The finding I would have missed by classifying rather than reading: the directory is cross-tenant ON PURPOSE.** `directory_match` returns every tenant's profile with no row predicate, which looks exactly like `.3.5.3`'s inbox leak. It is the opposite — the product premise is asking a network a question without knowing who is online — and the disclosure is bound at FIELD level by `ReaderClass` + `filter_profile`. Row-level scoping is not the only way to satisfy §16.8, and this codebase already knew that in code and had never said it anywhere.
+- 🔴 **The sharpest defect came from reading two functions next to each other, not from any census.** `workflows::register` appending `MAX(version)+1` for any id is unremarkable. `workflows::resolve` taking `ORDER BY version DESC LIMIT 1` is unremarkable. Together, with a route that admits on enrolment and a `DEFAULT_PROFILE_ID` of `quick_advice`, any tenant rewrites every tenant's default deliberation. The census pointed at the table; only reading its two readers together showed what it was.
+- ⚠️ And `POST /v1/workflow-profiles` had already been cited by name, twice, as an admission gap. Being *known* is not being *understood*.
+- promotion: pending — *a census tells you which tables to read; it cannot tell you what a table IS, and the difference between shared evidence and a shared control surface is exactly that gap* deserves a note.
+
 ## 2026-09-19 — A count is not an identity, and the arm that proves it is the one you nearly skip
 
 - Asked whether I trusted my own findings, I named two numbers I could not stand behind without a keyboard. That question is in `CLAIM_VERIFICATION.md` §4.1 as an acceptance test, and failing it is supposed to cost something — so this is the cost, not a note about the cost.

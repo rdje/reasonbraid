@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE MCP LISTEN CURSOR IS A HIGH-WATER MARK, AND THE LATE DELIVERY IS STILL APPLIED (`.6.2.2`, REPAIR-0289).**
+
+- 🔴 **RED:** recording cursor 100 then cursor 5 left it at **5**, and `resume_plan` reads that as the resume point — so one out-of-order delivery re-offered everything above it on the next reconnect.
+- **A CLAMP, not a refusal**, and the two differ observably: a late delivery is a REAL delivery, so refusing it would DROP it — worse than the cursor problem it would fix. The delivery is applied and enters the window; only the mark is protected.
+- ⭐ **`last_delivery` moves with the CURSOR, not with the write**, so the pair stays ONE fact — *the delivery that set the mark* — rather than a cursor from one delivery and an id from another, handed to a reconnect as one.
+- ⭐ **The arm that keeps it a clamp rather than a silent drop:** the late delivery is replayed and refused, proving its id really entered the window.
+- ✅ **VERIFIED:** `mcp_listen` **3/0** (1 before the lane opened). Clippy, fmt, gate (21/21) rc=0. Falsified in situ, restored byte-identical.
+- ⚠️ **`.6.2.3` remains** — a malformed window is still silently emptied, and that path bypasses the window entirely.
+
 ✅ **THE MCP DEDUP WINDOW KEEPS THE NEWEST IDS (`.6.2.1`, REPAIR-0288).**
 
 - 🔴 **RED:** `the newest id is IN the window: first=Some("d-000") last=Some("d-063")` — the window had frozen on the first 64 ids it ever saw, so past that boundary nothing recent deduplicated and a replay was a **double delivery**.

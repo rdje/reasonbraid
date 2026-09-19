@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — Two columns read as one fact must be written as one fact
+
+- The cursor repair was a one-word change — `GREATEST` — and the decision under it took longer than the change did. A late delivery arriving with a lower cursor could be refused or clamped, and those are not stylistic alternatives: refusing DROPS a real delivery, which is worse than the rewind it would prevent, because the dedup check immediately above has already established the delivery is new.
+- ⭐ **The part I nearly missed is the second column.** `last_cursor` and `last_delivery` are returned together by `listen_state`, described as *the reconnect's input*. Had I clamped only the cursor, `last_delivery` would still have taken the late delivery's id — and the pair would then describe no single event: a cursor from one delivery, an id from another, handed to a reconnect as one fact.
+- ⛔ So `last_delivery` moves with the CURSOR rather than with the write. That is the generalisable sentence: **when two columns are read together as one fact, they must be written together as one fact.** A clamp on one of them silently turns the pair into two independent latest-writes, and nothing about the column types says so.
+- 🔎 **The control arm I am most glad about is the one that does not look necessary.** After clamping, the test asserts the cursor is 100 and `last_delivery` is `d-hi` — and both of those would also hold if the repair had simply IGNORED low-cursor deliveries and dropped them on the floor. So the control replays the late delivery and requires a refusal, which proves the id actually entered the dedup window. Without it the test cannot tell a fix from a different bug that happens to produce the same reading.
+- ⚠️ That is the second time this session a control needed an arm proving the thing it was worried about was *present* rather than merely that the wrong number was *absent*. The dedup window needed the same shape: proving the newest id is deduplicated does not distinguish *keeps the newest* from *keeps everything*.
+- promotion: declined — the pair-of-columns rule is recorded at the SQL it governs, which is where someone changing that statement will be standing. If it turns up on a third surface it earns a note.
+
 ## 2026-09-19 — A two-element fixture cannot test a sixty-four-element bound
 
 - The dedup window had been keeping the wrong end of itself since it was written. `push` appends, `truncate` keeps the front, and the two together mean that once the window is full every new id is written one past the bound and dropped on the same line. It is the kind of bug that reads correctly: both calls are the obvious ones, and the intent is legible in either.

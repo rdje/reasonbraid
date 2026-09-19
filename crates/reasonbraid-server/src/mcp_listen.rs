@@ -69,9 +69,27 @@ where
     if next.len() > DEDUP_WINDOW {
         next.drain(..next.len() - DEDUP_WINDOW);
     }
+    // ⛔ THE CURSOR IS A HIGH-WATER MARK (`SIGNOFF-REPAIR.6.2.2`). This was
+    // `SET last_cursor = $1`, unconditional, so recording cursor 100 and then
+    // cursor 5 left the stored cursor at 5 — and `resume_plan` reads that value
+    // as the OWN cursor, so one out-of-order delivery rewound the resume point
+    // and every delivery above it was re-offered on the next reconnect.
+    //
+    // ⭐ A CLAMP, not a refusal, and the two differ observably. A late delivery
+    // is a real delivery — the dedup check above has already said it is new — so
+    // refusing it would DROP it, which is worse than the cursor problem it would
+    // fix. The delivery is applied and enters the window; only the mark is
+    // protected.
+    //
+    // ⭐ `last_delivery` moves with the cursor and not with the write, so the
+    // pair stays ONE fact — *the delivery that set the mark* — rather than two
+    // independent latest-writes that can disagree about which delivery they
+    // describe. `listen_state` returns them together as the reconnect's input.
     sqlx::query(
         "UPDATE mcp_listen_state \
-         SET last_cursor = $1, last_delivery = $2, dedup_window = $3, updated_at = now() \
+         SET last_cursor = GREATEST(last_cursor, $1), \
+             last_delivery = CASE WHEN $1 > last_cursor THEN $2 ELSE last_delivery END, \
+             dedup_window = $3, updated_at = now() \
          WHERE tenant_id = $4 AND subscription_id = $5",
     )
     .bind(cursor)

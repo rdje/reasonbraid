@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-19 — The cursor is a high-water mark and the late delivery is still applied (`SIGNOFF-REPAIR.6.2.2`)
+
+- 🔴 **RED:** recording cursor 100 then cursor 5 left the stored cursor at **5** — `left: 5`, `right: 100`. `resume_plan` reads that column as the resume point, so one out-of-order delivery rewound it and every delivery above was re-offered on the next reconnect.
+- **The decision is a CLAMP, not a refusal, and the two differ observably.** A late delivery is a REAL delivery — the dedup check immediately above has already said it is new — so refusing it would DROP it, a worse outcome than the cursor problem it would fix. `SET last_cursor = GREATEST(last_cursor, $1)`: the delivery is applied, it enters the window, and only the mark is protected.
+- ⭐ **`last_delivery` moves with the CURSOR, not with the write.** The pair stays ONE fact — *the delivery that set the mark* — rather than two independent latest-writes that can disagree about which delivery they describe. `listen_state` returns them together as the reconnect's input, so a disagreeing pair would be a reconnect reading a cursor from one delivery and an id from another.
+- ⭐ **The arm that keeps it a clamp rather than a silent drop:** the control replays the late delivery and asserts it is refused, proving its id really entered the window. Without it, a repair that simply ignored low-cursor deliveries would pass every other assertion — the cursor would read 100 and the delivery would be gone.
+- ✅ **VERIFIED:** `mcp_listen` **3/0** (1 before the lane opened). Clippy rc=0, fmt rc=0, `make gate` green (21/21). Falsified in situ by restoring the unconditional SET and nothing else; identical RED; `cmp -s` byte-identical after restore; 3/3.
+- ⚠️ **`.6.2.3` remains:** a malformed dedup window is still silently emptied, and that path bypasses the window entirely, so it can still produce a double delivery on its own.
+
 ## 2026-09-19 — The dedup window keeps the newest ids, and the control crosses the boundary the old one never reached (`SIGNOFF-REPAIR.6.2.1`)
 
 - 🔴 **RED in the control's final form:** `the newest id is IN the window: first=Some("d-000") last=Some("d-063")`. The window had frozen on the first 64 delivery ids it ever saw.
@@ -231,62 +240,26 @@ Found while writing a migration of the same shape as `0072`'s and asking which p
 - ✅ **`site authority` joins the vocabulary, FIRST**, because a site grant is the strongest admission it knows and a route reaching one is not described by any weaker label it also matches. ⛔ Seven of the eight predate this leaf; the eighth is the one it repaired.
 - ⚠️ **The published figures move 42 → 41 and 33 → 32, and the movement has ONE cause rather than a recount**: `POST /v1/workflow-profiles` left the precise walk (its handler now delegates across a module boundary) and left `identity only` in the same change. The other seven were already `module-reach`, so they were never in the precise count — only mislabelled in the pinned set. ⭐ **`.7.1.2`'s residue follows for the same reason: 30 tables → 29, 17 → 16**, because `workflow_profiles` is repaired and no longer written on enrolment alone. A defect count going down because the defect was fixed is the baseline working, not drifting.
 
-## 2026-09-19 — Ten of the seventeen are control surfaces, and four were never ownerless (`SIGNOFF-REPAIR.7.1.2`)
-
-`.7.1.1` published thirty site-global tables and judged none. DOC-0029 had already decided thirteen. This is the adjudication of the other seventeen, and it corrects the earlier record's reach rather than its reasoning.
-
-- ⭐ **FOUR WERE NEVER OWNERLESS, and this is the correction DOC-0029 most needed.** That record argues from CONTENT-ADDRESSING — several tenants share one row by construction, so no scalar can hold an owner — and the argument is correct. ⛔ It never reached a table whose key is a FOREIGN KEY into a tenant-dimensioned one, where a single join recovers the tenant: `agent_profiles` and `profile_versions` via `agent_roles`, `quota_events` via `usage_quotas`, `recruitment_responses` via `recruitment_calls`. **9 of the 40 site-global tables carry a derivation**, so *site-global by data model* must never again be read as *ownerless*.
-- ⚠️ **`quota_events` is why a predicate scan is evidence and never a verdict.** `quota::check_in_tx` reads `WHERE quota_id = $1` — no tenant — while the statement one line above resolves that id from `usage_quotas WHERE tenant_id = $1`. The binding is upstream, in a different statement.
-- ⭐ **A FOURTH SHAPE nobody had written down: a tenant-owned row read site-wide BY DESIGN, bound at FIELD level.** The directory returns every tenant's profile — a directory restricted to one tenant would not answer the question the product exists to answer — and clamps the request's scope against a derived `ReaderClass`, then filters every profile through `profiles::filter_profile`. §16.8 is SATISFIED there, by field-level disclosure rather than row-level scoping. It was true in code and stated nowhere; it is in the book now.
-- 🔎 **The evaluation family is SEVEN, not the six DOC-0029 names.** `migrations/0034_evaluation_trials.sql` creates `evaluation_trial_results` as its second `CREATE TABLE`, so a count taken per FILE sees six. Verdict unchanged, and `.8.2`'s attached clause extends to it.
-- 🔴 **TEN ARE SHARED CONTROL SURFACES, and DOC-0029's remedy reaches none of them** — a control surface's problem is the WRITE, and binding its read would hide rows from their own author while leaving the defect in place. The nine `policy_*` are ONE chain: `publications::stage` refuses a `ForeignRecord` whose parent is the wrong PROPOSAL and never asks whether the proposal is the caller's, and `reviews::schedule_reviews` reads drift, outcomes and corrections **with no predicate at all** and schedules a review on another tenant's publication.
-- 🔴 **`workflow_profiles` is a LIVE cross-tenant control defect.** `workflows::resolve` takes the highest version site-wide with no `built_in` filter; `workflows::register` appends `MAX(version)+1` for ANY id including the eight built-ins; `POST /v1/workflow-profiles` admits on **enrolment alone**; and thread creation resolves `DEFAULT_PROFILE_ID = "quick_advice"` through it. ⛔ **Any enrolled principal can change the steps every other tenant's next bare thread executes.** ⚠️ The step vocabulary is closed, so it is a control-plane override, not a capability escape. ⚠️ SOURCE-measured at four sites; the runtime RED is owed first and is `.7.1.2.1`'s.
-- ⭐ **The instance was known by name and its significance was not.** `.7.1`'s clause 2 cited `POST /v1/workflow-profiles` as proof `.3.2`'s closed set was designed without a census, and read it as an admission gap. Nobody had read `workflows::resolve` next to `workflows::register`.
-- ✅ **`.6.1.5` answered by RE-SCOPING it** — from `policy_versions` and its six SQL sites to a registry of **ten** tables. DOC-0029 deferred two of them there by name; the deferral was right and too narrow. ⛔ `.3.2`'s six site actions UPHELD as actions, SUPERSEDED as THE set: they cover none of the thirty.
-- ✅ **VERIFIED:** `scripts/census_registry_read_reach.py --self-test` ok (0 failures); `--check` rc=0, `40 site-global tables, unchanged`; the write census unchanged at 42/33. ⛔ The self-test caught a real pathspec bug on its first run: `git ls-files 'crates/*/src/**/*.rs'` returns **29 of 120** files, dropping every top-level `src/*.rs`.
-
-## 2026-09-19 — The residue holds under a second key, and the population is pinned as a set (`SIGNOFF-REPAIR.7.1.1.1`)
-
-Asked whether I trust my own findings, two of `.7.1.1`'s numbers failed `docs/CLAIM_VERIFICATION.md` §4.1 — *the answer is yes, immediately, with no keyboard, and a re-audit triggered by the question is itself the evidence the claim was published before it was earned.* This is that cost paid rather than noted.
-
-- ✅ **The residue 17 STANDS, re-derived by a key that could have disagreed.** It had rested on a backtick-exact match, so a table DOC-0029 named unbackticked would have been counted as unnamed — `docs/knowledge/a-census-is-as-wide-as-its-key.md`, applied to three other instruments this session and not to its own. A loose `\b<table>\b` finds the same **13**: **0 tables move**. ⭐ And the record settles it in its own words — *"twelve of twelve policy, evaluation, deployment and evidence tables"* — so DOC-0029 was never wrong about its bound.
-- 🔴 **The durability gap was real.** `42` and `33` were carried in five live documents with nothing to refuse a change, while the instrument's core was rewritten three times in one sitting and every intermediate count moved (`unseen` 27→26→0, `undetermined` 4→9→12→7→0, `mixed` 6→11→30→37).
-- ✅ **`.doctrine/shared_registry_baseline.tsv` pins the SET** — 68 rows of `route → admission → tables → arm` — and the published pair is **derived** from those rows by the gate's own summary rather than stored beside them.
-- ⭐ **Why a set and not a count, demonstrated rather than argued:** degrading the detector to a count comparison leaves **39 of 40** arms passing, and the one that fails is *a CHANGED row is refused, though the count is unmoved*. One route in and one out holds the number while the population moves underneath it.
-- ✅ All three drift shapes observed RED in situ and restored byte-identical: a route appears, a route vanishes, a row changes. ⛔ A negative arm the obvious implementation would have failed: an **absent** baseline reports no drift rather than 68 vanished routes.
-- ⛔ **The refusal names the five live documents that restate the count**, turning `.13.4`'s standing corpus rule from a habit into a mechanism. `unseen-write` also joined the refused class, which it was defined as and was never checked for; it is 0 today.
-- ✅ **VERIFIED:** `--check` rc=0 reporting `42 site-global writers (33 on identity alone), matching the recorded baseline`; `--self-test` **40/40** in 1.82 s (33 arms before, same cost — the whole-tree derivations are memoized); `make gate` green; `scripts/tests` **73 tests, OK**.
-
-## 2026-09-19 — The question was already adjudicated for thirteen of the thirty, and the census did not check (`SIGNOFF-REPAIR.7.1.2`, re-scope)
-
-`SIGNOFF-REPAIR.7.1.1` published 42 site-global writers and routed the 33 admitted by enrolment alone to `.7.1.2` for adjudication. Opening `.7.1.2` found most of that adjudication already done.
-
-- 🔴 **`SIGNOFF-REPAIR.11.14` is `done`** — *the site-global data model is a design position nobody has taken* — and `docs/decisions/2026-09-16_evidence-is-shared-the-read-is-tenant-bound.md` (DOC-0029) already decides it: the evidence chain is content-addressed **by design**, **no table is decided tenant-owned**, and what §16.8 requires is that the DISCLOSURE names the tenant rather than that every table carry a `tenant_id`. ⛔ `docs/CLAIM_VERIFICATION.md` leg 2 — the cheapest oracle is the project's own history, and an earlier ruling wins unless the difference is named. `.7.1.1` did not check, and the omission is the same shape as `.7.3.6.4` not searching the tree for `egress`.
-- ⭐ **The difference is real and it is a number: `.11.14` decided TWELVE tables; a census run from the WRITE side finds THIRTY, and 17 are not named in the decision record.** Nine of the ten `policy_*` (only `policy_publications` is named), both `routing_*`, plus `workflow_profiles`, `agent_profiles`, `profile_versions`, `recruitment_responses`, `quota_events` and `evaluation_trial_results`.
-- ⛔ **The cause is the shape this session keeps finding.** `.11.14`'s census was *"of the twelve policy, evaluation, deployment and evidence tables"* — a population scoped by FAMILY NAME and taken as given. Derived from the producers instead — every mutating route, every table it writes, every migration — it is 30. **A family-scoped census answers a question about the family, not about the surface.**
-- ⭐ **And the residue is not more of the same class.** DOC-0029's remedy is *the read is tenant-bound*, which fits shared EVIDENCE. It does not fit a shared CONTROL surface — a table another tenant's resolution, routing or policy decision reads — because a control surface's problem is the WRITE. `policy_*` and `routing_*` are the sharp end by that test, and neither is an accident: `.6.1.5` is open on exactly whether the policy registry is site-global by design or by omission, and `.9.1`'s goal line already says *tenant-scope all material records*.
-- ✅ `.7.1.2` is re-scoped from 30 tables to 17 before any classification, with the reconciliation question stated per table and `.11.14`'s own unmet acceptance clause — that `.6.1.5` be answered by the same record or deferred to it by name — carried forward. `.7.1.1`'s record, `LIVE_STATUS.md` and `MEMORY.md` carry the correction.
-
-## 2026-09-19 — Forty-two routes write site-global state, thirty-three on enrolment alone (`SIGNOFF-REPAIR.7.1.1`)
-
-`SIGNOFF-REPAIR.7.1`'s attached clause 2 — two reviewers, one finding — names this census as the PREREQUISITE to designing the resolver bind, because `SIGNOFF-REPAIR.3.2` designed one without it and closed `done` while two shared registries sat outside its six site actions.
-
-- 🔴 **The population is 42, not 2.** `python3 -B scripts/census_shared_registry_writes.py`: **72 mutating routes**, of which **42 write a table carrying no tenant dimension**. By admission: **`identity only` 33** · `guarded transaction` 3 · `not-censused` 3 · `pool tenant-admin` 2 · `pool authorize` 1.
-- 🔴 **So 33 routes write site-global state on enrolment alone**, across **30 distinct tables** — `policy_*` 10, `evaluation_*` 7, `deployment_*` 2, `routing_*` 2. ⛔ `.3.2`'s closed set of six site actions covers **none** of them: the gap is an order of magnitude wider than the two instances known by name.
-- ⚠️ **A population is not a defect count, and this leaf does not call them defects.** The read census's own 24 site-global routes were a false-positive class, and a prior ruling already holds the derivation graph shared on purpose. Adjudicating the 33 is `.7.1.2`; publishing the population is this leaf.
-- 🔴 **Three instrument defects found by following numbers that looked odd — two of them in shipped code.** (1) `tenant_dimensioned_tables()` could not see a schema-qualified `CREATE TABLE`, so the entire site-authority family — **4 of 80 tables** — was unknown to it, and the GET-route census has been reporting `site_audit=?` ever since. ⭐ Found only because this leaf **imports** that function rather than copying it. (2) `UPDATE` appears in SQL in three non-write positions, and the scan called each a table: `DO UPDATE SET` → `set`, `FOR UPDATE OF n` → `of`, `FOR UPDATE` at a literal's end → `the`, `insert`, `invite`. (3) A match could span two joined string literals.
-- ⭐ **The tell for (2) was that `the` and `invite` are English while `set` and `of` are SQL.** One explanation had to cover both, and only the grammar did — the first two repairs chased prose-in-comments and were wrong.
-- ⭐ **Two arms, answering different questions, because one was blind to 26 of 72.** The call walk under-reports (no trait dispatch, no methods, no submodules) and said `POST /v1/admin/regions` writes nothing. The second asks the corpus rather than the call graph and can only be too WIDE. Every row names the arm that answered it; the 42 headline counts only the precise one.
-- ⛔ **`not-censused` is not `none`.** Applying `census_admission_paths.py` outside its one-file corpus reported two fencing-token node routes as admitted by nothing. **Applying an instrument outside its own corpus produces a confident wrong answer, not a missing one.**
-- ⚠️ **Not registered as a pre-commit gate, priced rather than asserted:** `--check` costs 1.86 s against a 13.9 s enforcer and guards a class that is 0 today. The self-test already runs every commit at 1.86 s, down from 5.70 s once the three whole-tree derivations were memoized.
-- ✅ **VERIFIED:** `--check` rc=0, `--self-test` **33/33**; falsified twice in situ and restored byte-identical (reverting the grammar fix → 30/33, reverting the schema-qualifier repair → 32/33); the sibling census's own self-test unchanged; `unittest discover -s scripts/tests` **73 tests, OK**; `make gate` green.
-
 ## Historical entries and exact retrieval
 
 This is a recent digest. Older chronology remains in reachable Git history under
-the rotation contract in `README_POLICY.md`. This file has rotated thirty-one
+the rotation contract in `README_POLICY.md`. This file has rotated thirty-two
 times; each rotation names the commit holding the ledger immediately before it,
 so the chain walks back without guessing.
+
+Retrieve the ledger immediately before the THIRTY-SECOND rotation (2026-09-19)
+from the repository root:
+
+```bash
+git show f23c94947da33bbbcc8ba9992e852439221c08f3:CHANGELOG.md
+```
+
+That snapshot is 94,073 bytes and contains 21 dated entries; its Git blob is
+`4dd2e3c7f0a4490cba01b9bd06b1e2a5e42828d4`, and its SHA-256 is
+`835b25a3aee42ed1896ce11c73167ba4dab16920bfc3173c7e0f6e14942090ec`. The newest
+entry it holds that this digest no longer carries is
+`2026-09-19 — Ten of the seventeen are control surfaces, and four were never ownerless (`SIGNOFF-REPAIR.7.1.2`)`.
+It carries the THIRTY-FIRST rotation's notice in turn, which names the ledger before it.
 
 Retrieve the ledger immediately before the THIRTY-FIRST rotation (2026-09-19)
 from the repository root:

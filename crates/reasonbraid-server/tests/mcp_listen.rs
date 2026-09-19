@@ -266,3 +266,95 @@ async fn the_dedup_window_retains_the_most_recent_deliveries() {
          replay before it did not"
     );
 }
+
+/// `SIGNOFF-REPAIR.6.2.2` — a late delivery is APPLIED and the cursor does not
+/// go backwards.
+///
+/// 🔴 `SET last_cursor = $1` was unconditional, so recording cursor 100 and then
+/// cursor 5 left the stored cursor at **5**. `resume_plan` reads that value as
+/// *the OWN cursor*, so one out-of-order delivery rewound the resume point and
+/// every delivery above it was re-offered on the next reconnect.
+///
+/// ⛔ **The decision this control asserts is a CLAMP, not a refusal**, and the
+/// two differ observably. A late delivery is a real delivery: the dedup window
+/// has already said it is new, so refusing it would DROP it — a worse outcome
+/// than the cursor problem it would fix. The delivery is applied and recorded;
+/// only the high-water mark is protected.
+#[tokio::test]
+async fn a_late_delivery_is_applied_and_the_cursor_does_not_rewind() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    sqlx::query("INSERT INTO tenants (tenant_id) VALUES ($1)")
+        .bind("ten_aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee")
+        .execute(&pool)
+        .await
+        .expect("seed the tenant");
+    let tenant = "ten_aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+
+    let record = |id: String, cursor: i64| {
+        let pool = pool.clone();
+        async move {
+            let mut tx = pool.begin().await.expect("begin");
+            let accepted = reasonbraid_server::mcp_listen_internal::record(
+                &mut *tx, tenant, "sub-m", &id, cursor,
+            )
+            .await
+            .expect("record");
+            tx.commit().await.expect("commit");
+            accepted
+        }
+    };
+    let state = || {
+        let pool = pool.clone();
+        async move {
+            reasonbraid_server::mcp_listen_internal::state(&pool, tenant, "sub-m")
+                .await
+                .expect("read")
+                .expect("the state exists")
+        }
+    };
+
+    assert!(
+        record("d-hi".into(), 100).await,
+        "the first delivery accepts"
+    );
+    assert_eq!(state().await, (100, Some("d-hi".to_string())));
+
+    // ── THE LATE DELIVERY ────────────────────────────────────────────────────
+    assert!(
+        record("d-late".into(), 5).await,
+        "a late delivery is still a REAL delivery and must be applied — refusing \
+         it would drop it, which is worse than the cursor problem it would fix"
+    );
+    let (cursor, last) = state().await;
+    assert_eq!(
+        cursor, 100,
+        "the cursor is a HIGH-WATER MARK and does not rewind; `resume_plan` reads \
+         it as the resume point, so a rewind re-offers everything above it"
+    );
+    assert_eq!(
+        last.as_deref(),
+        Some("d-hi"),
+        "`last_delivery` is the delivery that SET the cursor, so the pair stays one \
+         fact rather than two independent latest-writes"
+    );
+
+    // ⭐ And the late delivery really was recorded, not silently dropped: its id
+    // is in the dedup window, so replaying it is the replay SKIP. Without this,
+    // a repair that simply ignored low cursors would pass every assertion above.
+    assert!(
+        !record("d-late".into(), 5).await,
+        "the late delivery was RECORDED — replaying it is the skip"
+    );
+
+    // ── AND FORWARD PROGRESS IS UNAFFECTED ───────────────────────────────────
+    assert!(
+        record("d-next".into(), 101).await,
+        "a newer delivery accepts"
+    );
+    assert_eq!(
+        state().await,
+        (101, Some("d-next".to_string())),
+        "a delivery above the mark advances BOTH halves"
+    );
+}

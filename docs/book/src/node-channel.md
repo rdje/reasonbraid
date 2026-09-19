@@ -78,7 +78,8 @@ secret, but the CHANNEL identity is the certificate:
    not rotate at all (rotation requires a usable certificate) and had to be
    re-enrolled by an operator.
 4. **A successful handshake issues a lease**: a fresh random **fencing token**
-   and an expiry 60 s out, plus a bumped **lease epoch** (`.2.2`). The token is
+   and an expiry 60 s out **on the database's clock**, plus a bumped **lease
+   epoch** (`.2.2`). The token is
    the channel's credential from then on: `events`, `ack`, `poll`, and
    `heartbeat` all carry it AND the epoch it was issued under, and only the
    latest handshake's pair is accepted — a second handshake **fences** the old
@@ -100,9 +101,18 @@ secret, but the CHANNEL identity is the certificate:
    behind a lock, a saturated pool, or simply the scheduler — cannot revive a
    lease that reached its expiry in the meantime: the node is told the lease
    expired, and the answer is the same one it gets when the expiry is already
-   past on arrival. The lease clock the renewal reads is the **database's**, the
-   same clock `online` is derived from below, so a renewal can never succeed for
-   a node the presence surface simultaneously reports `offline`.
+   past on arrival.
+
+   **One clock owns the lease, end to end** (`.4.2.3.1`). `lease_expires_at` is
+   both *written* and *compared* by the database: the handshake and the renewal
+   compute it as `now() + TTL` inside their own statements, `online` is derived
+   from it on that clock, and every admission check compares it there too. So the
+   60 s is the TTL a node actually gets rather than a nominal figure — it used to
+   be written from the server process's clock and read from the database's, which
+   made the real duration 60 s plus whatever the two disagreed by. A renewal can
+   never succeed for a node the presence surface simultaneously reports
+   `offline`, and the renewal's single `now()` both checks the old expiry and
+   grants the new one, so the check and the grant share one reading of one clock.
 6. **A renewal also requires a usable certificate.** Extending a lease is the
    one channel operation that asks whether the node is still trusted: if the
    node holds no workload certificate that is both unrevoked and unexpired, the
@@ -134,9 +144,10 @@ to a single node the caller already names; the tenant-wide enumeration is
 `GET /v1/admin/nodes/presence?tenant_id=…`, which additionally requires a
 `tenant_admin` grant (see [Authority](authority.md)).
 
-`online` is **derived from the lease expiry clock** — never a stored flag — so a
-crashed process cannot leave a stale `online` row behind: within one TTL of its
-last heartbeat the node is observably `offline`. An unenrolled node is a typed
+`online` is **derived from the lease expiry clock** — the database's, the same
+one that wrote the expiry — never a stored flag, so a crashed process cannot
+leave a stale `online` row behind: within one TTL of its last heartbeat the node
+is observably `offline`. An unenrolled node is a typed
 `404 unknown_node`, not a fabricated `offline`. The fencing token itself is
 never exposed by the presence surface (presence is an observability fact; the
 token is a credential).
@@ -540,14 +551,17 @@ grant locally.
   placement, re-evaluated before any non-LAN exposure).
 - The lease TTL is the dev constant 60 s; heartbeats are process-local (no
   persisted heartbeat state on the node side).
-- `lease_expires_at` is **written** from the server process clock (`now + TTL`)
-  and **read** from the database clock — by `online` above, and since `.4.2.3`
-  by the renewal itself. On one host those agree; nothing requires them to, so
-  the lease's real duration carries whatever process↔database skew exists. The
-  60 s is therefore a nominal TTL, not a guaranteed one. This predates `.4.2.3`
-  and is unchanged by it — that repair made the renewal agree with the presence
-  surface rather than introducing a new comparison — and it is tracked
-  separately.
+- `lease_expires_at` is written and compared by the **database** at every one
+  of its five sites (`.4.2.3.1`), so the 60 s is a real TTL rather than a
+  nominal one. ⚠️ What remains is narrower and worth stating: **three of those
+  five sites cannot be falsified by any control in this repository**, because
+  the replacement writer samples its own instant internally and both admission
+  checks read a clock that, on a one-host fixture, is the same clock. They are
+  correct by the rule rather than by measurement; two hosts with a driven offset
+  is what would test them. `last_seen_at` and `issued_at` remain the server
+  process's own observation — they are records, compared by nothing — so on a
+  host whose clocks disagree the presence surface can show a `lease_expires_at`
+  that is not exactly one TTL after the `last_seen_at` beside it.
 - Two live processes for one node id fence each other by design (each
   handshake rotates the token) — that is the fencing contract making staleness
   visible, not a bug.

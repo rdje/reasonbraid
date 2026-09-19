@@ -1,5 +1,20 @@
 # CHANGELOG.md
 
+## 2026-09-19 — The lease was written by one clock and read by another, so the published 60 s TTL was nominal (`SIGNOFF-REPAIR.4.2.3.1`)
+
+🔴 **`node_leases.lease_expires_at` was WRITTEN `Utc::now() + LEASE_TTL` by the server process and COMPARED against `now()` by the database.** With the two apart by `S`, a lease was live for `60 s ± S` — and nothing anywhere would have noticed them parting.
+
+- 🔴 **REPRODUCED by driving the writer's own parameter ten minutes ahead** — the one seam that can separate two clocks on a single host. The unrepaired product granted **660.0 s of lease on the database clock**, on BOTH writers: **38 passed / 2 failed**, only the new controls. ⭐ Each asserts `last_seen_at` first, because it is written from the same parameter and compared by nothing — a free witness that the injection LANDED.
+- ⭐ **The argument that decided it was in the WIRE, not the store.** One `HandshakeResponse` already carried `lease_expires_at` (process clock) beside `server_time`, which is `clock_timestamp()` — the database's — and `server_time` is the anchor `.3.4.3.1.2` gave the node to correct every server instant against. The field was expressed in a clock the product does not publish.
+- ✅ **The database clock now owns the column** at all five sites: three writers produce it in SQL, and both admission checks compare it in SQL. ⛔ **One clock is not one function** — `now()` is `transaction_timestamp()`, right where the statement IS its transaction, wrong inside a caller's: `events` can block on the tenant guard's exclusive mode first, so `verify_fencing_in_tx` and the replacement writer use `clock_timestamp()`. Spelling all five `now()` would have re-admitted a lapsed lease — `.4.2.3`'s revival defect re-entering through the clock.
+- 🔴 **The census corrects `.4.2.3`'s own: three writers, not two.** That census was right when run; `.4.1.5` (REPAIR-0167) added the replacement's afterwards. A count inherited from a leaf is a claim about a moment.
+- ⚠️ **NOT claimed: three of the five sites are unfalsifiable here and are labelled, not covered.** The replacement writer and both admission checks sample their clock internally, and a fixture host has one clock; two hosts with a driven offset is what would test them. `.3.4.3.1.1` measured this server's two clocks agree within a second.
+- ⛔ **Blast radius measured before choosing, not assumed:** `git grep -n "\.lease_expires_at" -- crates/reasonbraid-node` returns **zero** uses against two struct-field declarations, so changing what the handshake returns changes no node behaviour.
+- 🔴 **FALSIFIED TWICE, one writer at a time** — neutralize `issue_lease` and only `an_issued_lease_lasts_one_ttl_of_database_time` fails, at 660.0 s, while the renewal control holds at 60.0 s (**39/1**, rc=101); neutralize `renew_lease` and the mirror happens (**39/1**, rc=101). Each neutralization was read in the source before the run and the restore proved byte-identical with `cmp`.
+- ✅ **VERIFIED:** `bash scripts/run_pg_tests.sh node_channel` → **40 passed, 0 failed** in 53.08 s; both controls print **`60.0 s of lease left on the DATABASE clock`**, and the three controls the acceptance named pass unchanged.
+- 🔎 **Opened while rewriting the frontier: `.11.22.1`.** The table named `.4.2.3.1` at rows **1 and 5**, both `pending`, while the caption below asserted the duplicate had been removed — true when written, false after a later commit promoted the leaf to row 1. Censused at **1 unfinished duplicate across all 15 tracked trees**. `FRONTIER-STATUS` is silent because both rows AGREED with the leaf.
+- Decision: `docs/decisions/2026-09-19_the-database-clock-owns-the-lease.md`, with four rejected alternatives.
+
 ## 2026-09-19 — The acceptance gate read one checklist per file, and drifted out of its own corpus (`SIGNOFF-REPAIR.11.2.6`)
 
 🔴 **`check_task_acceptance.sh` stopped at the FIRST box matching each label and exited. This tree carries 194 `ROOT CAUSE` boxes; the gate read one, at line 388, from a leaf closed long before — on every code commit for roughly 200 commits.**

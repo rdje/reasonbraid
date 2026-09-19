@@ -191,6 +191,7 @@
 - [`2026-09-18_node-presence-is-read-by-its-own-tenant.md`](docs/decisions/2026-09-18_node-presence-is-read-by-its-own-tenant.md)
 - [`2026-09-18_retained-fixtures-keep-receipts-not-payload.md`](docs/decisions/2026-09-18_retained-fixtures-keep-receipts-not-payload.md)
 - [`2026-09-19_acceptance-debt-is-counted-not-backfilled.md`](docs/decisions/2026-09-19_acceptance-debt-is-counted-not-backfilled.md)
+- [`2026-09-19_the-database-clock-owns-the-lease.md`](docs/decisions/2026-09-19_the-database-clock-owns-the-lease.md)
 
 ## Promoted lessons
 

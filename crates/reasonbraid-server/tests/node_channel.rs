@@ -29,7 +29,7 @@ use std::sync::{Arc, OnceLock};
 use chrono::Utc;
 use reasonbraid_node::{Journal, Node, NodeState};
 use reasonbraid_server::{
-    api_router, ca::ensure_server_ca, node_router, NodeChannelState, PRINCIPAL_HEADER,
+    api_router, ca::ensure_server_ca, node_router, NodeChannelState, LEASE_TTL, PRINCIPAL_HEADER,
 };
 use serde_json::{json, Value};
 use sqlx::PgPool;
@@ -4077,6 +4077,146 @@ async fn a_heartbeat_cannot_revive_a_lease_that_lapsed_mid_request() {
     channel.heartbeat().await.expect("the fresh lease renews");
 
     server.crash();
+}
+
+/// `SIGNOFF-REPAIR.4.2.3.1` — a lease lasts `LEASE_TTL` of DATABASE time
+/// whatever the server process believes the time is.
+///
+/// The defect this closes: the column had readers on two clocks.
+/// `node_presence.online` — the product's published answer to "is this node
+/// online?" — and `renew_lease`'s own `WHERE` compared it against the database's
+/// `now()`, while both admission checks compared it against the process's
+/// `Utc::now()`. Whichever clock read it, the value was WRITTEN as
+/// `Utc::now() + LEASE_TTL`, so with the process clock ahead of the database by
+/// `S` the lease was observably live for `LEASE_TTL + S`, and behind, for
+/// `LEASE_TTL - S`. The published 60 s was a nominal TTL, not one any reader
+/// was given.
+///
+/// ⚠️ **The two clocks are the same host in every fixture this project has**, so
+/// a control has to DRIVE one of them or it measures nothing (`.3.4.3.1.3`'s
+/// prohibition on writing up an unreproduced skew). `issue_lease` takes the
+/// server's own instant as a parameter, and that parameter is the seam: it is
+/// what a process whose clock is wrong would pass. The control passes an
+/// instant ten minutes ahead and then reads the row back on the database clock.
+/// Against the unrepaired product it reported `660.0 s of lease left`.
+///
+/// ⭐ `last_seen_at` is asserted FIRST, and it is not decoration: it is the
+/// server's own observation instant, so it carries the full injected skew and
+/// proves the injection LANDED. Without it a repair that silently ignored the
+/// parameter and a fixture that silently passed the right one would look
+/// identical.
+#[tokio::test]
+async fn an_issued_lease_lasts_one_ttl_of_database_time() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
+    let node_id = "nod_00000000-0000-7000-8000-000000000431".to_string();
+    seed_node(&pool, &node_id).await;
+
+    let skew = chrono::Duration::minutes(10);
+    let skewed = Utc::now() + skew;
+    let (_token, _epoch, handed_to_the_node) = state
+        .issue_lease(&node_id, skewed)
+        .await
+        .expect("a lease issues under a skewed process clock");
+
+    let (last_seen, stored, remaining): (chrono::DateTime<Utc>, chrono::DateTime<Utc>, f64) =
+        sqlx::query_as(
+            "SELECT last_seen_at, lease_expires_at, \
+                    EXTRACT(EPOCH FROM (lease_expires_at - now()))::float8 \
+             FROM node_leases WHERE node_id = $1",
+        )
+        .bind(&node_id)
+        .fetch_one(&pool)
+        .await
+        .expect("read the lease row back");
+
+    assert!(
+        (last_seen - skewed).num_milliseconds().abs() < 1_000,
+        "the skewed process instant must actually reach the row, or this control \
+         proves nothing: passed {skewed}, stored {last_seen}"
+    );
+    println!(
+        "  .4.2.3.1 issue_lease with the process clock {} min ahead: stored expiry {stored}, \
+         {remaining:.1} s of lease left on the DATABASE clock",
+        skew.num_minutes()
+    );
+
+    let ttl = LEASE_TTL.num_seconds() as f64;
+    assert!(
+        remaining > ttl - 5.0 && remaining <= ttl,
+        "a lease must last {ttl} s on the clock its readers use; this one has \
+         {remaining:.1} s left, so its real duration is the TTL plus the \
+         process↔database skew and the published TTL is nominal"
+    );
+    assert_eq!(
+        handed_to_the_node, stored,
+        "the handshake must hand the node the expiry the store actually holds"
+    );
+}
+
+/// `SIGNOFF-REPAIR.4.2.3.1`, the second writer — a RENEWED lease lasts
+/// `LEASE_TTL` of database time too.
+///
+/// Separate from the issue control rather than a second arm of it: they are two
+/// statements and a repair to one is not evidence about the other, so each has
+/// to be able to go red on its own. The lease here is issued on an HONEST clock
+/// so the renewal is the only skewed writer in the fixture.
+#[tokio::test]
+async fn a_renewed_lease_lasts_one_ttl_of_database_time() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
+    let node_id = "nod_00000000-0000-7000-8000-000000000432".to_string();
+    seed_node(&pool, &node_id).await;
+
+    let (_token, epoch, _issued) = state
+        .issue_lease(&node_id, Utc::now())
+        .await
+        .expect("the session opens on an honest clock");
+
+    let skew = chrono::Duration::minutes(10);
+    let skewed = Utc::now() + skew;
+    let handed_to_the_node = state
+        .renew_lease(&node_id, epoch, skewed)
+        .await
+        .expect("the heartbeat renews under a skewed process clock");
+
+    let (last_seen, stored, remaining): (chrono::DateTime<Utc>, chrono::DateTime<Utc>, f64) =
+        sqlx::query_as(
+            "SELECT last_seen_at, lease_expires_at, \
+                    EXTRACT(EPOCH FROM (lease_expires_at - now()))::float8 \
+             FROM node_leases WHERE node_id = $1",
+        )
+        .bind(&node_id)
+        .fetch_one(&pool)
+        .await
+        .expect("read the lease row back");
+
+    assert!(
+        (last_seen - skewed).num_milliseconds().abs() < 1_000,
+        "the skewed process instant must actually reach the row, or this control \
+         proves nothing: passed {skewed}, stored {last_seen}"
+    );
+    println!(
+        "  .4.2.3.1 renew_lease with the process clock {} min ahead: stored expiry {stored}, \
+         {remaining:.1} s of lease left on the DATABASE clock",
+        skew.num_minutes()
+    );
+
+    let ttl = LEASE_TTL.num_seconds() as f64;
+    assert!(
+        remaining > ttl - 5.0 && remaining <= ttl,
+        "a renewal must grant {ttl} s on the clock its readers use; this one \
+         granted {remaining:.1} s, so a heartbeat from a process whose clock \
+         runs ahead extends the session further than the contract allows"
+    );
+    assert_eq!(
+        handed_to_the_node, stored,
+        "the heartbeat must hand the node the expiry the store actually holds"
+    );
 }
 
 /// `SIGNOFF-REPAIR.4.2.4` — a fenced session's `ack` cannot mark another

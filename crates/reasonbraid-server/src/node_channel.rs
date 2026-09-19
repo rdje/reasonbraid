@@ -29,9 +29,11 @@
 //!   only token that renews the lease (`heartbeat`) or guards `events`/`ack`/`poll`;
 //!   a later handshake rotates the token and fences the old one (stale traffic gets
 //!   `401`, never silently accepted);
-//! - expiry is a database fact (`lease_expires_at`, 60 s dev TTL): a heartbeat only
-//!   renews a LIVE lease; once expired, presence shows `offline` and channel traffic
-//!   is refused until the node re-proves its key with a new handshake.
+//! - expiry is a database fact (`lease_expires_at`, 60 s dev TTL) — written AND
+//!   compared on the database's own clock (`.4.2.3.1`), so the TTL a node gets is
+//!   the TTL the presence surface publishes: a heartbeat only renews a LIVE lease;
+//!   once expired, presence shows `offline` and channel traffic is refused until the
+//!   node re-proves its key with a new handshake.
 //!
 //! # Replay and trust
 //!
@@ -75,6 +77,14 @@ pub const CHANNEL_VERSION: u32 = 5;
 /// gives the demo's 15 s heartbeat cadence a 4× margin; a process that stops
 /// heartbeating is visibly `offline` within a minute.
 pub const LEASE_TTL: ChronoDuration = ChronoDuration::seconds(60);
+
+/// `LEASE_TTL` as the `double precision` seconds `make_interval(secs => …)`
+/// takes, so the two lease writers bind the constant instead of spelling `60`
+/// into their SQL — a second copy of a number nothing derives is how the
+/// published TTL and the granted one come apart.
+fn lease_ttl_seconds() -> f64 {
+    LEASE_TTL.num_seconds() as f64
+}
 
 /// A node-channel identity is the dev node-id space: a `nod_…` node id OR the
 /// `rol_…` agent-role wire id the dev wiring collapses node==role onto (one node,
@@ -983,14 +993,22 @@ impl NodeChannelState {
     /// latest handshake's AND the lease must still be live. A missing/mismatched
     /// token and an expired lease are refused differently (the node can tell a
     /// fenced credential from a lapsed one), but neither reads any ledger fact.
+    ///
+    /// The liveness comparison is the DATABASE's (`SIGNOFF-REPAIR.4.2.3.1`): the
+    /// column is written by the database, `node_presence.online` is derived from
+    /// it on that clock, and this statement is its own transaction, so `now()`
+    /// IS the database clock here. Comparing a returned instant against the
+    /// process's `Utc::now()` — which is what this did — would have made the
+    /// admission check and the published presence fact disagree by exactly the
+    /// process↔database skew.
     pub async fn verify_fencing(
         &self,
         node_id: &str,
         token: &str,
         lease_epoch: i64,
     ) -> Result<(), ApiError> {
-        let expires: Option<DateTime<Utc>> = sqlx::query_scalar(
-            "SELECT lease_expires_at FROM node_leases \
+        let live: Option<bool> = sqlx::query_scalar(
+            "SELECT lease_expires_at > now() FROM node_leases \
              WHERE node_id = $1 AND fencing_token = $2 AND lease_epoch = $3",
         )
         .bind(node_id)
@@ -998,16 +1016,16 @@ impl NodeChannelState {
         .bind(lease_epoch)
         .fetch_optional(&self.pool)
         .await?;
-        match expires {
+        match live {
             None => {
                 crate::telemetry::metrics().incr("lease_refusals");
                 Err(ApiError::fencing_refused())
             }
-            Some(expires) if expires <= Utc::now() => {
+            Some(false) => {
                 crate::telemetry::metrics().incr("lease_refusals");
                 Err(ApiError::lease_expired())
             }
-            Some(_) => Ok(()),
+            Some(true) => Ok(()),
         }
     }
 
@@ -1016,6 +1034,17 @@ impl NodeChannelState {
     /// handshake that rotates the lease between an admission check and the
     /// apply is observed here (the row no longer matches), so a fenced session
     /// can never ride a stale admission into the write.
+    ///
+    /// ⛔ **`clock_timestamp()`, NOT `now()`** (`SIGNOFF-REPAIR.4.2.3.1`). The
+    /// sibling above may use `now()` because its statement IS its transaction.
+    /// Here the caller's transaction is already open and may have waited in it:
+    /// `events` takes the tenant guard's shared mode first, which blocks behind
+    /// a revocation holding the exclusive mode for as long as that takes. `now()`
+    /// is `transaction_timestamp()` — the instant that transaction BEGAN — so
+    /// reading it here would admit a lease that lapsed during the wait, which is
+    /// `.4.2.3`'s revival defect re-entering through the clock instead of
+    /// through the write. `clock_timestamp()` advances inside the transaction
+    /// and is evaluated after the row lock is taken.
     pub async fn verify_fencing_in_tx(
         &self,
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
@@ -1023,8 +1052,8 @@ impl NodeChannelState {
         token: &str,
         lease_epoch: i64,
     ) -> Result<(), ApiError> {
-        let expires: Option<DateTime<Utc>> = sqlx::query_scalar(
-            "SELECT lease_expires_at FROM node_leases \
+        let live: Option<bool> = sqlx::query_scalar(
+            "SELECT lease_expires_at > clock_timestamp() FROM node_leases \
              WHERE node_id = $1 AND fencing_token = $2 AND lease_epoch = $3 \
              FOR UPDATE",
         )
@@ -1033,16 +1062,16 @@ impl NodeChannelState {
         .bind(lease_epoch)
         .fetch_optional(&mut **tx)
         .await?;
-        match expires {
+        match live {
             None => {
                 crate::telemetry::metrics().incr("lease_refusals");
                 Err(ApiError::fencing_refused())
             }
-            Some(expires) if expires <= Utc::now() => {
+            Some(false) => {
                 crate::telemetry::metrics().incr("lease_refusals");
                 Err(ApiError::lease_expired())
             }
-            Some(_) => Ok(()),
+            Some(true) => Ok(()),
         }
     }
 
@@ -1053,27 +1082,44 @@ impl NodeChannelState {
     /// match no row. The token is generated IN PostgreSQL (`gen_random_uuid()`)
     /// in the same statement that writes the row — 128 bits of server entropy,
     /// never client-chosen.
+    ///
+    /// # The expiry is the DATABASE's (`SIGNOFF-REPAIR.4.2.3.1`)
+    ///
+    /// `lease_expires_at` is computed `now() + LEASE_TTL` in the statement, not
+    /// `Utc::now() + LEASE_TTL` in this process, and the statement RETURNS what
+    /// it wrote. Every reader of the column is a SQL comparison against the
+    /// database clock — `node_presence.online`, the renewal's own `WHERE`, both
+    /// admission checks — so producing it here in process terms made the lease's
+    /// real duration `LEASE_TTL` plus the process↔database skew, and the
+    /// published 60 s a nominal figure no reader actually got.
+    ///
+    /// ⚠️ `now` is still this server's OWN observation instant and is still
+    /// written to `last_seen_at`/`issued_at`, which are records rather than
+    /// predicates — nothing in `crates` or `migrations` compares them. Keeping
+    /// them here is also what leaves a fixture able to drive a process clock
+    /// that disagrees with the database's on a single host, which is the only
+    /// way the property above can be falsified at all.
     pub async fn issue_lease(
         &self,
         node_id: &str,
         now: DateTime<Utc>,
     ) -> Result<(String, i64, DateTime<Utc>), sqlx::Error> {
-        let expires = now + LEASE_TTL;
-        let (token, epoch): (String, i64) = sqlx::query_as(
+        let (token, epoch, expires): (String, i64, DateTime<Utc>) = sqlx::query_as(
             "INSERT INTO node_leases (node_id, fencing_token, lease_expires_at, last_seen_at, \
                                       issued_at, lease_epoch) \
-             VALUES ($1, 'fnc_' || gen_random_uuid()::text, $2, $3, $3, 1) \
+             VALUES ($1, 'fnc_' || gen_random_uuid()::text, \
+                     now() + make_interval(secs => $3), $2, $2, 1) \
              ON CONFLICT (node_id) DO UPDATE SET \
                fencing_token = EXCLUDED.fencing_token, \
                lease_expires_at = EXCLUDED.lease_expires_at, \
                last_seen_at = EXCLUDED.last_seen_at, \
                issued_at = EXCLUDED.issued_at, \
                lease_epoch = node_leases.lease_epoch + 1 \
-             RETURNING fencing_token, lease_epoch",
+             RETURNING fencing_token, lease_epoch, lease_expires_at",
         )
         .bind(node_id)
-        .bind(expires)
         .bind(now)
+        .bind(lease_ttl_seconds())
         .fetch_one(&self.pool)
         .await?;
         Ok((token, epoch, expires))
@@ -1117,27 +1163,35 @@ impl NodeChannelState {
     /// between these two statements.
     ///
     /// The expiry is compared on the DATABASE clock, like the certificate
-    /// predicate beside it and unlike `verify_fencing`'s `Utc::now()`. That is
-    /// deliberate on two counts: one statement must not mix two clocks, and
-    /// `node_presence` — the product's published answer to "is this node
-    /// online?" — is `lease_expires_at > now()` on the same clock. The write and
-    /// the fact the operator reads now agree by construction, so a renewal can
-    /// never succeed for a node the API simultaneously reports `offline`.
+    /// predicate beside it. That is deliberate on two counts: one statement must
+    /// not mix two clocks, and `node_presence` — the product's published answer
+    /// to "is this node online?" — is `lease_expires_at > now()` on the same
+    /// clock. The write and the fact the operator reads agree by construction,
+    /// so a renewal can never succeed for a node the API simultaneously reports
+    /// `offline`. ⚠️ When this was written `verify_fencing` still compared
+    /// against the process's `Utc::now()`; `.4.2.3.1` moved it, so the column
+    /// now has ONE clock rather than agreeing readers and a disagreeing one.
     ///
-    /// ⚠️ The column is still WRITTEN from the process clock (`now + LEASE_TTL`,
-    /// here and in `issue_lease`), so the lease's real duration carries the
-    /// process↔database skew. That is pre-existing and unchanged by this repair
-    /// — `.3.4.3.1.2`'s census already recorded `lease_expires_at` as a
-    /// process-clock instant — and it is owned by `.4.2.3.1`, not fixed here.
+    /// # The granted expiry is the DATABASE's too (`SIGNOFF-REPAIR.4.2.3.1`)
+    ///
+    /// The last cross-clock step this statement had. `lease_expires_at` used to
+    /// be written `Utc::now() + LEASE_TTL` while every condition beside it —
+    /// the lease's own liveness, the certificate's — was compared against
+    /// `now()`, so a heartbeat from a process whose clock ran ahead extended the
+    /// session by `LEASE_TTL` plus the skew. It is now `now() + LEASE_TTL`, and
+    /// the `now()` that grants the new expiry is the SAME instant as the `now()`
+    /// that checked the old one: `now()` is `transaction_timestamp()` and this
+    /// statement is its own transaction, so the check and the grant share one
+    /// reading of one clock rather than merely agreeing about which clock.
     pub async fn renew_lease(
         &self,
         node_id: &str,
         lease_epoch: i64,
         now: DateTime<Utc>,
     ) -> Result<DateTime<Utc>, sqlx::Error> {
-        let expires = now + LEASE_TTL;
         let renewed: Option<DateTime<Utc>> = sqlx::query_scalar(
-            "UPDATE node_leases SET lease_expires_at = $3, last_seen_at = $2 \
+            "UPDATE node_leases \
+             SET lease_expires_at = now() + make_interval(secs => $3), last_seen_at = $2 \
              WHERE node_id = $1 AND lease_epoch = $4 \
                AND node_leases.lease_expires_at > now() \
                AND EXISTS (SELECT 1 FROM node_certificates c \
@@ -1147,7 +1201,7 @@ impl NodeChannelState {
         )
         .bind(node_id)
         .bind(now)
-        .bind(expires)
+        .bind(lease_ttl_seconds())
         .bind(lease_epoch)
         .fetch_optional(&self.pool)
         .await?;
@@ -2166,13 +2220,28 @@ async fn enroll(
     // it argues that `(node_id, lease_epoch)` determines the fencing token. The
     // expiry is set too, so presence reads `offline` immediately rather than
     // waiting out the remaining TTL.
+    //
+    // The instant is the DATABASE's, and `clock_timestamp()` rather than `now()`
+    // (`SIGNOFF-REPAIR.4.2.3.1`): this runs inside the enrolment transaction, so
+    // `now()` would be that transaction's START and would record the session as
+    // having ended before the work that ended it. ⛔ The third writer of this
+    // column, and `.4.2.3`'s census — which found two — predates it: `.4.1.5`
+    // (REPAIR-0167) added this statement afterwards.
+    //
+    // ⚠️ Unlike the other two writers this site takes no clock ARGUMENT — it
+    // sampled `Utc::now()` inside the handler — so there is no seam through
+    // which a fixture on one host could separate the two clocks, and this change
+    // is correct by the rule rather than by measurement. What it used to cost is
+    // stated rather than covered: with the process clock ahead by `S`, presence
+    // reported a replaced node `online` for `S` after its replacement. The epoch
+    // bump is what FENCES the old session either way.
     if replacement {
         sqlx::query(
-            "UPDATE node_leases SET lease_epoch = lease_epoch + 1, lease_expires_at = $2 \
+            "UPDATE node_leases \
+             SET lease_epoch = lease_epoch + 1, lease_expires_at = clock_timestamp() \
              WHERE node_id = $1",
         )
         .bind(&req.node_id)
-        .bind(now)
         .execute(&mut *tx)
         .await?;
     }

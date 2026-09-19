@@ -37,6 +37,23 @@ you last looked.
 the restore. `git status --short -- <path>` printing nothing is the proof that
 the tree is byte-identical again.
 
+⭐ **And it applies to a RUNTIME injection, where there is no diff to read.**
+`SIGNOFF-REPAIR.4.2.3.1` had to prove a lease's expiry ignores the server
+process's clock, on a host where the process and the database share one. The
+fixture drives the writer's own `now` parameter ten minutes ahead — and asserts
+FIRST that `last_seen_at`, written from that same parameter and compared by
+nothing, actually holds the skewed instant:
+
+```rust
+assert!((last_seen - skewed).num_milliseconds().abs() < 1_000,
+        "the skewed process instant must actually reach the row, or this control \
+         proves nothing: passed {skewed}, stored {last_seen}");
+```
+
+⛔ Without that line, a repair that silently ignored the parameter and a fixture
+that silently passed the right one produce the same green. The witness column is
+free: pick a field the stimulus writes and the assertion does not depend on.
+
 ## Restore with the tool that cannot fail silently
 
 ⚠️ Copy a file aside and copy it back, and you have two chances to fail quietly:

@@ -5,6 +5,17 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE LEASE WAS WRITTEN BY ONE CLOCK AND READ BY ANOTHER, SO THE PUBLISHED 60 s TTL WAS NOMINAL (`.4.2.3.1`, REPAIR-0263).**
+
+🔴 **`node_leases.lease_expires_at` was written `Utc::now() + LEASE_TTL` by the server process and compared against `now()` by the database**, so the real duration was `60 s ± S` for whatever `S` the two clocks disagreed by. Driven ten minutes ahead at the writer's own parameter, the unrepaired product granted **660.0 s of lease on the database clock** — both writers, **38 passed / 2 failed**.
+
+- ⭐ **The deciding measurement was in the wire:** one `HandshakeResponse` carried `lease_expires_at` (process clock) beside `server_time` = `clock_timestamp()` (database) — and `server_time` is what the node corrects every server instant against.
+- ✅ **The database clock owns the column** at all five sites. ⛔ One clock is not one function: `now()` where the statement IS its transaction, `clock_timestamp()` where it is not — `verify_fencing_in_tx` runs inside a caller transaction that may block on the tenant guard, and `now()` there would re-admit a lapsed lease.
+- 🔴 **Three writers, not two** — `.4.2.3`'s census was right when run; `.4.1.5` added the replacement's afterwards.
+- ⚠️ **Three of the five sites cannot be falsified by any control here** and say so in the leaf, the book and the record rather than carrying a control that would be green either way.
+- ✅ **VERIFIED:** `bash scripts/run_pg_tests.sh node_channel` → **40 passed, 0 failed** in 53.08 s; both controls print **`60.0 s of lease left on the DATABASE clock`**, and the three controls the acceptance named pass unchanged.
+- 🔎 Opened: `.11.22.1` — the frontier named one unfinished leaf twice while its caption said the duplicate was gone; **1 across all 15 trees**.
+
 ✅ **THE ACCEPTANCE GATE READ ONE CHECKLIST PER FILE, AND HAD DRIFTED OUT OF ITS OWN CORPUS (`.11.2.6`, REPAIR-0262).**
 
 🔴 **`check_task_acceptance.sh` stopped at the first matching box and exited. This tree carries 194 `ROOT CAUSE` boxes; it read one, at line 388, from a leaf closed long before — on every code commit for ~200 commits.** ⭐ One cause, two defects: while inert, its vocabulary drifted — it blocked on `ADDRESSED` (14) and `ROOT CAUSE` (13) against the corpus's `NO REGRESSION` (203), `FIX / LOCKSTEP` (192), `REPRODUCE / ISSUE` (142).

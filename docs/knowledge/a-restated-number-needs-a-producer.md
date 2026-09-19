@@ -69,6 +69,19 @@ printed. Each was *also* stale in the instrument's own header comment — the mi
 was a mirror of a mirror. Two `--census` flags fixed all four, permanently, with no
 rule at all.
 
+⭐ **A census is a claim about a MOMENT, and the moment passes.** A second
+instance, from `SIGNOFF-REPAIR.4.2.3.1`: the leaf inherited *"both writers of
+`node_leases.lease_expires_at`"* from the census `.4.2.3` ran at its own closure.
+That census was correct when run — and `.4.1.5` (REPAIR-0167) added a **third**
+writer three leaves later. Nothing related the number to the code it counted, so
+the leaf opened, sat and was worked on a population that had moved.
+
+⚠️ The tell is specific to inherited numbers: it was not restated in a live
+document, so no currency check could see it; it was restated in a TASK LEAF,
+which reads as a historical record and is therefore trusted like one. ⛔ A leaf's
+census is history; a leaf's *Owns* line is a plan, and a plan written from a
+stale census is a plan for the wrong work. Re-derive at the moment you act.
+
 ## Why the gate was tempting
 
 ⚠️ Because the defect is real and the rule sounds obviously correct. The trap is

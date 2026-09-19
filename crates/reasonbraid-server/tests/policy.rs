@@ -3747,6 +3747,7 @@ async fn citing_an_authority_requires_holding_it() {
     assert_eq!(status, 200, "alice enrolls: {alice}");
     let alice_id = alice["principal_id"].as_str().unwrap().to_string();
     let alice_grant = format!("grt_{alice_id}");
+    let alice_tenant = alice["tenant_id"].as_str().unwrap().to_string();
 
     let (status, bob) = enroll(
         &client,
@@ -3937,6 +3938,14 @@ async fn citing_an_authority_requires_holding_it() {
     // subject it matched was `approver`, a string off the wire. So alice
     // approves AS bob, citing bob's grant, and nothing tied either to her.
     sqlx::query(
+        "INSERT INTO aggregate_state (tenant_id, aggregate_id, aggregate_type, aggregate_version, state) \
+         VALUES ($1, 'cite-thread', 'thread', 1, '{}'::jsonb) ON CONFLICT DO NOTHING",
+    )
+    .bind(&alice_tenant)
+    .execute(&pool)
+    .await
+    .expect("the fixture's thread exists, as `.6.1.5.1` requires of a real proposal");
+    sqlx::query(
         "INSERT INTO policy_proposals (proposal_id, policy_id, policy_version, thread_id, status) \
          VALUES ('cite-prp-1', 'cite-pol', '1.0.0', 'cite-thread', 'decided')",
     )
@@ -4084,5 +4093,227 @@ async fn citing_an_authority_requires_holding_it() {
         "{} of the cited-authority legs breach:\n{}",
         breaches.len(),
         breaches.join("\n")
+    );
+}
+
+/// `SIGNOFF-REPAIR.6.1.5.1` — an approval is an act upon a proposal, so it is
+/// bound to the tenant that owns the proposal's thread.
+///
+/// ⛔ **Not merely a disclosure defect.** `publications::stage` reads
+/// `policy_approvals` to decide whether a publication may be STAGED, and refuses
+/// only a `ForeignRecord` whose parent is the wrong PROPOSAL — never one whose
+/// approver belongs to another tenant. So a foreign approval carried a foreign
+/// publication forward.
+///
+/// ⚠️ The foreign proposal answers exactly as an ABSENT one does, per
+/// `docs/decisions/2026-09-18_node-presence-is-read-by-its-own-tenant.md`:
+/// distinguishing them would leave an existence oracle over every other tenant's
+/// proposal ids.
+#[tokio::test]
+async fn an_approval_is_bound_to_the_proposals_own_tenant() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, alice) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "apt-alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "alice enrols: {alice}");
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    let alice_tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    let alice_grant = format!("grt_{alice_id}");
+
+    // ⭐ Mallory is enrolled in her OWN tenant and holds her OWN live grant, so
+    // the control measures the tenant binding and nothing else: every other
+    // check on this path — the grant's liveness, the approver being the
+    // authenticated caller (`.9.3.1`), the decision's parentage — passes for her.
+    let (status, mallory) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "apt-mallory" }),
+    )
+    .await;
+    assert_eq!(status, 200, "mallory enrols: {mallory}");
+    let mallory_id = mallory["principal_id"].as_str().unwrap().to_string();
+    let mallory_grant = format!("grt_{mallory_id}");
+    assert_ne!(
+        alice_tenant,
+        mallory["tenant_id"].as_str().unwrap(),
+        "two enrolments must be two tenants, or this control measures nothing"
+    );
+
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policies",
+        &alice_id,
+        &json!({
+            "policy_id": "apt-policy",
+            "version": "1.0.0",
+            "digest": DIGEST,
+            "lifecycle": "draft",
+            "title": "apt",
+            "owning_authority": alice_grant,
+            "clauses": [ { "id": "c1", "statement": "the approval clause" } ],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the policy registers");
+
+    let (_status, created) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &alice_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "apt-create",
+            "body": {
+                "tenant_id": alice_tenant,
+                "subject": "apt",
+                "objective": "probe",
+                "workflow_profile": "independent_panel",
+            },
+            "client_context": {},
+        }),
+    )
+    .await;
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    let command = |key: &'static str, operation: &'static str, body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let alice_id = alice_id.clone();
+        let thread_id = thread_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/threads/{thread_id}/commands"))
+                .header(PRINCIPAL_HEADER, &alice_id)
+                .json(&json!({
+                    "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                    "operation": operation,
+                    "request_id": reasonbraid_core::RequestId::new().to_string(),
+                    "idempotency_key": key,
+                    "body": body,
+                    "client_context": {},
+                }))
+                .send()
+                .await
+                .expect("command request");
+            let status = response.status().as_u16();
+            let text = response.text().await.expect("command body");
+            (
+                status,
+                serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text })),
+            )
+        }
+    };
+    let (status, _) = command(
+        "apt-advance",
+        "thread.advance_round",
+        json!({ "tenant_id": alice_tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "the round advances");
+    let (_status, verdict) = command(
+        "apt-verdict",
+        "thread.contribute",
+        json!({
+            "tenant_id": alice_tenant,
+            "content": "judged",
+            "kind": "verdict",
+            "verdict": { "target_digest": "sha256:00", "rule": "majority", "outcome": "accepted_by_rule" },
+        }),
+    )
+    .await;
+    let verdict_event = verdict["event_id"].as_str().unwrap().to_string();
+
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-proposals",
+        &alice_id,
+        &json!({
+            "proposal_id": "apt-prop", "policy_id": "apt-policy",
+            "policy_version": "1.0.0", "thread_id": thread_id,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "alice's proposal registers");
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-decisions",
+        &alice_id,
+        &json!({
+            "decision_id": "apt-dec", "proposal_id": "apt-prop", "rule": "majority",
+            "electorate": { "participants": [alice_id], "denominator": 1, "abstentions": [] },
+            "verdict_event_id": verdict_event,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "alice's decision records");
+
+    // THE NEGATIVE ARM: mallory approves alice's proposal, as herself, with her
+    // own live grant. Everything but the tenant is in order.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-approvals",
+        &mallory_id,
+        &json!({
+            "approval_id": "apt-app-foreign", "proposal_id": "apt-prop",
+            "decision_id": "apt-dec", "approver": mallory_id, "grant_id": mallory_grant,
+            "quorum": { "participants": [mallory_id], "denominator": 1, "abstentions": [] },
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "a foreign tenant approves no proposal: {refused}"
+    );
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("apt-prop"),
+        "the refusal names the proposal as an ABSENT one would: {refused}"
+    );
+
+    // The stage did NOT advance — the assertion that makes this a control
+    // defect rather than a rejected request.
+    let (status, proposals) = get(&client, &base, "/v1/policy-proposals", &alice_id).await;
+    assert_eq!(status, 200, "alice reads her proposals: {proposals}");
+    assert_eq!(
+        proposals[0]["status"],
+        json!("decided"),
+        "a foreign approval advances no stage: {proposals}"
+    );
+
+    // THE POSITIVE ARM: alice approves her own proposal and it advances.
+    let (status, approval) = post(
+        &client,
+        &base,
+        "/v1/policy-approvals",
+        &alice_id,
+        &json!({
+            "approval_id": "apt-app-own", "proposal_id": "apt-prop",
+            "decision_id": "apt-dec", "approver": alice_id, "grant_id": alice_grant,
+            "quorum": { "participants": [alice_id], "denominator": 1, "abstentions": [] },
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "alice approves her own proposal: {approval}");
+    let (_status, proposals) = get(&client, &base, "/v1/policy-proposals", &alice_id).await;
+    assert_eq!(
+        proposals[0]["status"],
+        json!("approved"),
+        "the owning tenant still advances the stage: {proposals}"
     );
 }

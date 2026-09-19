@@ -361,17 +361,61 @@ impl LifecycleError {
 pub async fn record_approval(
     pool: &PgPool,
     principal: &GrantSubject,
+    tenant_id: &str,
     input: &ApprovalInput,
 ) -> Result<StoredApproval, LifecycleError> {
-    let proposal: Option<String> =
-        sqlx::query_scalar("SELECT status FROM policy_proposals WHERE proposal_id = $1")
+    let proposal: Option<(String, String)> =
+        sqlx::query_as("SELECT thread_id, status FROM policy_proposals WHERE proposal_id = $1")
             .bind(&input.proposal_id)
             .fetch_optional(pool)
             .await
             .map_err(|_| LifecycleError::UnknownProposal(input.proposal_id.clone()))?;
-    let Some(status) = proposal else {
+    let Some((thread_id, status)) = proposal else {
         return Err(LifecycleError::UnknownProposal(input.proposal_id.clone()));
     };
+    // 🔴 `SIGNOFF-REPAIR.6.1.5.1`. This verb took `&principal` and NO tenant,
+    // where both its siblings take one and spend it on an `rls::with_tenant_claim`
+    // check — `register_proposal` against the proposal's thread, `record_decision`
+    // against the verdict event in that thread. So an approval was the one
+    // lifecycle write with no tenant enforcement of any kind, and
+    // `publications::stage` reads approvals to decide whether a publication may be
+    // STAGED: a foreign approval carried a foreign publication forward.
+    //
+    // ⛔ The anchor is the PROPOSAL'S THREAD, not the decision's: an approval is an
+    // act upon a proposal, the decision is only its evidence, and `record_decision`
+    // has already bound that decision to this same thread. Anchoring on the
+    // decision would check the weaker of the two links.
+    //
+    // ⚠️ A foreign proposal answers exactly as an ABSENT one does
+    // (`docs/decisions/2026-09-18_node-presence-is-read-by-its-own-tenant.md`):
+    // distinguishing them would leave an existence oracle over every other
+    // tenant's proposal ids.
+    // ⛔ AN EXPLICIT PREDICATE, NOT `rls::with_tenant_claim`, AND THE DIVERGENCE
+    // FROM THIS VERB'S TWO SIBLINGS IS DELIBERATE. `rls.rs` says so in its own
+    // module doc: "The dev profile's superuser connection bypasses RLS
+    // regardless; the claim-setting is harmless there and binds the moment the
+    // app role lands." So a claim-only check enforces NOTHING under the profile
+    // this repository's suites and its dev deployment actually run, and a
+    // control written against one cannot observe its own repair.
+    //
+    // ⚠️ `aggregate_state` is keyed `PRIMARY KEY (tenant_id, aggregate_id)`, so
+    // the predicate is both exact and indexed. It holds in EVERY profile, and
+    // the RLS policy remains a second belt wherever the app role is in force.
+    //
+    // 🔎 That `register_proposal` and `record_decision` are claim-only is a live
+    // gap in both, not a style difference — owned by `SIGNOFF-REPAIR.6.1.5.1.1`.
+    let owned: Option<bool> = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM aggregate_state \
+         WHERE aggregate_id = $1 AND aggregate_type = 'thread' AND tenant_id = $2)",
+    )
+    .bind(&thread_id)
+    .bind(tenant_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|_| LifecycleError::UnknownProposal(input.proposal_id.clone()))?;
+    if !owned.unwrap_or(false) {
+        return Err(LifecycleError::UnknownProposal(input.proposal_id.clone()));
+    }
     if status != "decided" {
         return Err(LifecycleError::WrongStage {
             proposal_id: input.proposal_id.clone(),

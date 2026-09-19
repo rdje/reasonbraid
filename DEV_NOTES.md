@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — A gate that the running profile bypasses is not a gate, and a control written against it cannot observe its own repair
+
+- I wrote the tenant check for `record_approval` the way its two siblings write theirs: `rls::with_tenant_claim` over `aggregate_state`. Then I ran the control and the foreign tenant still got 200.
+- ⭐ **The first instinct was that my control was wrong.** It was not. `rls.rs`'s module doc had the answer in its own words the whole time — the dev profile's superuser connection bypasses RLS regardless — and `migrations/0046` uses `FORCE ROW LEVEL SECURITY`, which sounds like it covers everything and specifically does not cover a superuser.
+- 🔴 **The consequence is bigger than my leaf.** `register_proposal` and `record_decision` rely on that claim ALONE for their tenant gate, and every control in this repository runs as superuser — so no test has ever observed either gate admitting or refusing anything. Two doc comments assert an enforcement that, in the profile this project actually runs, does not happen.
+- ⛔ **And I would not have found it by reading.** I had already quoted those RLS claims in `.6.1.5`'s decision record as evidence the lifecycle is tenant work. They still are evidence of INTENT — that argument survives — but I had read them as evidence of ENFORCEMENT, which they are not. Reusing the mechanism is what exposed it; reading it twice would not have.
+- ⭐ **The repair is an explicit predicate, and the schema was already shaped for it**: `aggregate_state` is keyed `PRIMARY KEY (tenant_id, aggregate_id)`, so the check is exact, indexed, and profile-independent. RLS stays as a second belt where the app role is in force. Belt and braces beats braces that only exist in production.
+- 🔎 **A fixture fell over and it was right to.** Another test inserts its proposals by raw SQL against a `thread_id` that exists in no aggregate. My precondition refused it, and the honest fix was to make the fixture create the thread it claims rather than to weaken the gate — a fixture cannot be tidier than the real input it stands for.
+- promotion: pending — *an enforcement mechanism the running profile bypasses is not an enforcement mechanism; check which profile your controls run under before trusting a gate you cannot observe* is transferable and cost a full implementation cycle to learn.
+
 ## 2026-09-19 — When a question has been open for a long time, suspect it of being two questions
 
 - `.6.1.5` sat open since `.6.1.1` measured it. It is phrased as a single choice — one site-wide library, or a policy belongs to a tenant — and every time I looked at it, both answers had good arguments. That is the tell, and I did not read it as one until today.

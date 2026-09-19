@@ -74,6 +74,22 @@ policy_version, thread_id, status)` stores no tenant at all**, so
 `list_proposals`, `publications::stage`, `record_decision` and `record_approval`
 all read site-wide.
 
+⛔ **QUALIFIED THE SAME DAY BY `SIGNOFF-REPAIR.6.1.5.1`, which tried to reuse
+that claim and watched it admit a foreign tenant.** `rls.rs`'s module doc states
+the mechanism — *"The dev profile's superuser connection bypasses RLS regardless
+… and binds the moment the app role lands"* — and `migrations/0046`'s `FORCE ROW
+LEVEL SECURITY` does not reach a superuser either. So under the profile this
+repository's suites and its dev deployment actually run, **both claims enforce
+nothing**, and no control has ever observed either gate working or failing. That
+is a live gap in both verbs, owned by `.6.1.5.1.1`.
+
+⚠️ **It does not weaken the decision below, and saying why matters.** The argument
+here is about INTENT: a system that did not mean proposals to be tenant work
+would not have written an RLS claim to enforce it. An intent is not undone by the
+mechanism failing to bind — if anything the gap sharpens the verdict, because it
+means the lifecycle is site-wide in practice *today* while being tenant work by
+design.
+
 🔎 **So `.6.1.5`'s question — by design or by omission? — is ANSWERED, and the
 answer is BOTH, for different tables.** The library is shared by design. The
 lifecycle is shared by omission, and the omission is provable rather than

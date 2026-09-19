@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-19 — An approval is bound to its proposal's tenant, by a predicate the running profile cannot bypass (`SIGNOFF-REPAIR.6.1.5.1`)
+
+`.6.1.5` named `record_approval` the weakest link in the policy lifecycle: the one write verb taking no tenant where both its siblings take one. This binds it, and finding out how cost a full implementation cycle.
+
+- 🔴 **REPRODUCED: Mallory's approval of Alice's proposal returned 200 and was STORED** — `{"approval_id":"apt-app-foreign","approver":"hpr_…","grant_id":"grt_hpr_…","proposal_id":"apt-prop",…}`. ⭐ Mallory is enrolled in her own tenant and holds her own live grant, so every other check on the path passes for her: the grant's liveness, the approver being the authenticated caller (`.9.3.1`), the decision's parentage. The control measures the tenant binding and nothing else.
+- **The anchor is the PROPOSAL'S THREAD, decided rather than taken by symmetry.** An approval is an act upon a proposal; the decision is only its evidence, and `record_decision` has already bound that decision to the same thread. Anchoring on the decision would check the weaker of the two links.
+- 🔴 **THE OBVIOUS IMPLEMENTATION WAS WRITTEN, RUN, AND OBSERVED TO BE A NO-OP.** The first version used `rls::with_tenant_claim`, exactly as the two siblings do. Mallory still received 200. `rls.rs`'s own module doc says why — *"The dev profile's superuser connection bypasses RLS regardless; the claim-setting is harmless there and binds the moment the app role lands"* — and `migrations/0046`'s `FORCE ROW LEVEL SECURITY` does not reach a superuser either.
+- ✅ **So the gate is an explicit predicate** on `aggregate_state`, whose `PRIMARY KEY (tenant_id, aggregate_id)` makes it exact and indexed, and which holds in EVERY profile. The RLS policy stays as a second belt wherever the app role is in force.
+- ⭐ **Which makes `register_proposal`'s and `record_decision`'s enforcement a live gap, not a style difference** — both doc comments claim *"checked under the CALLER's tenant claim"*, and no control has ever observed either gate working or failing, because every control runs as superuser. Owned by `.6.1.5.1.1`; `.6.1.5`'s decision record is qualified rather than left to be misread. ⚠️ It does not weaken that decision, which argued from INTENT: an intent is not undone by its mechanism failing to bind.
+- 🔎 **A second test's fixture was exposed and repaired rather than worked around.** `citing_an_authority_requires_holding_it` inserts proposals by raw SQL against a fabricated `thread_id` existing in no aggregate, so the new precondition refused Alice's own approval. That is `a-self-test-cannot-be-tidier-than-the-real-input` exactly; it now creates the thread it claims.
+- ✅ **VERIFIED:** `policy` **15 passed / 0 failed**, rc=0; clippy rc=0; fmt rc=0; gate green; book + links rc=0. Falsified against the FINAL implementation and restored byte-identical; the control also asserts the STAGE did not advance, and the positive arm proves the owning tenant still approves and still reaches `approved`.
+
 ## 2026-09-19 — The policy library is shared by design; the lifecycle is its tenants', by omission (`SIGNOFF-REPAIR.6.1.5`)
 
 `.6.1.5` had asked, since `.6.1.1` opened it, whether the policy registry is site-global by design or by omission. DOC-0066 re-scoped it from one table to ten. The answer is both, for different tables, and the code proves which is which.

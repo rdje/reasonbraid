@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **AN APPROVAL WAS ACCEPTED FROM A FOREIGN TENANT, AND THE OBVIOUS FIX WAS A NO-OP (`.6.1.5.1`, REPAIR-0275).**
+
+Observed: Mallory's approval of Alice's proposal returned **200 and was stored**, as herself, with her own live grant — every check but the tenant passed for her. `publications::stage` reads approvals to decide whether a publication may be staged, so this was a control gap, not only a disclosure one.
+
+- ✅ **Bound to the proposal's THREAD**, decided rather than taken by symmetry: the decision is only the approval's evidence, and it is already bound to that same thread.
+- 🔴 **The claim-based implementation was written, run, and observed to ADMIT HER ANYWAY.** `rls.rs`: *"the dev profile's superuser connection bypasses RLS regardless"*, and `FORCE ROW LEVEL SECURITY` does not reach a superuser. The gate is now an explicit predicate on `aggregate_state`'s `(tenant_id, aggregate_id)` key, which holds in every profile.
+- ⚠️ **So `register_proposal` and `record_decision` enforce nothing here while their doc comments claim they do** — a live gap owned by `.6.1.5.1.1`. NOT a claim that RLS is broken: under the app role it binds. What is wrong is relying on it alone where every control runs as superuser.
+- ✅ **VERIFIED:** `policy` **15/0**; clippy rc=0; fmt rc=0; gate green. Falsified against the final implementation, restored byte-identical; the control asserts the stage did not advance, and the positive arm proves the owner still reaches `approved`.
+
 ✅ **THE POLICY REGISTRY QUESTION IS ANSWERED, AND IT WAS TWO QUESTIONS (`.6.1.5`, DOC-0071).**
 
 Open since `.6.1.1` measured it. `policy_versions` is a governance **LIBRARY** — site-wide BY DESIGN, its ownership model a GRANT. The nine **LIFECYCLE** tables are **tenant-owned BY OMISSION**.

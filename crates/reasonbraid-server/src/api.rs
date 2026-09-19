@@ -3346,13 +3346,12 @@ async fn record_policy_approval(
     Json(input): Json<crate::lifecycle::ApprovalInput>,
 ) -> Result<Json<crate::lifecycle::StoredApproval>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    let Some(tenant_id) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal records no approval",
         ));
-    }
-    match crate::lifecycle::record_approval(&state.pool, &principal, &input).await {
+    };
+    match crate::lifecycle::record_approval(&state.pool, &principal, &tenant_id, &input).await {
         Ok(row) => Ok(Json(row)),
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }

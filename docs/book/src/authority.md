@@ -870,11 +870,18 @@ The response carries `deleted_delivered` and `deleted_expired` beside the total,
 because a receipt saying *delivered* about work that was never handed over is a
 false retention statement.
 
-⛔ **A `revoked` row is not prunable, and that is a measured omission rather than
-an oversight.** Revoking a grant writes `status = 'revoked'` and nothing else:
-`authority_grants` has no `revoked_at`, so nothing records *when* the authority
-was withdrawn. A window aged by any other column would delete work the operator
-was told they could still see. Those rows are retained until that column exists.
+Rows that were never delivered because the admitting grant was **revoked** are
+the third class, aged by the instant of the revocation itself. `migrations/0077`
+gave the grant that instant: the status change and the effect record are stamped
+with the same database time, sampled once after the guard wait, so the row and
+the audit trail agree by construction rather than by two clocks matching.
+
+⛔ **`revoked_at` answers *when* and never *whether*.** `status` remains the sole
+answer to whether authority stands, so the liveness predicate and the delivery
+view are untouched by that column. A NULL on a revoked row means the instant is
+**not recoverable** — a revocation applied before `migrations/0058` created the
+audit record the backfill derives from — never that the row is live. Such a row
+keeps the retention every revoked row had before: there is no clock to age it by.
 
 Which decision facts a replay refreshes is deliberately not changed here — that
 remains `SIGNOFF-REPAIR.3.4`. Only the transaction they are refreshed in, the

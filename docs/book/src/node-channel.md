@@ -212,9 +212,11 @@ issuing tenant already set when it issued the grant. Before `migrations/0076` a
 command queued for a node that never came back was held forever: the only
 removal path the server has is the operator prune, and that then deleted
 *delivered* rows only. It now also removes rows that reached `expired`, aged by
-the grant's own expiry and reported as their own class — see
-[Administering a node's inbox](authority.md). A `revoked` row is still retained,
-because nothing records when a grant was withdrawn.
+the grant's own expiry and reported as their own class, and rows that reached
+`revoked`, aged by the instant of the revocation — see
+[Administering a node's inbox](authority.md). Each class is aged by its own
+clock, and a revoked row whose grant predates the audit record that would date it
+is retained.
 
 ⛔ **A row in either terminal is withheld from delivery, and that is what keeps
 the terminal terminal.** The handshake replay and the poll read the tail through

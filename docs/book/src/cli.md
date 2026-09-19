@@ -326,17 +326,18 @@ node rol_…'s inbox (3 rows):
   #3 work_evt_… — undelivered
 
 $ rb node prune --node rol_… --min-age-seconds 604800 --as alice
-pruned 2 row(s) from node rol_…'s inbox — 2 delivered, 0 expired undelivered (before 5, after 3, cutoff …)
+pruned 2 row(s) from node rol_…'s inbox — 2 delivered, 0 expired undelivered, 0 revoked undelivered (before 5, after 3, cutoff …)
 ```
 
 A quarantined command is never re-delivered (the reason rides the row). Pruning
-deletes two classes of finished row older than the window — those the node
+deletes three classes of finished row older than the window — those the node
 acknowledged holding, and those never delivered because the grant admitting them
-expired — and **names which class it removed**, because *delivered* is a false
-word for work that was never handed over. A `revoked` row is retained: nothing
-records when a grant was withdrawn, so no window can age it honestly. The verb
-reports a measured before/after and is an explicit operator action, never a
-background sweep.
+expired or was revoked — and **names which class it removed**, because
+*delivered* is a false word for work that was never handed over. Each class is
+aged by its own clock: the acknowledgement, the grant's expiry, the revocation's
+instant. A revoked row whose grant predates the audit record that would date it
+is retained, because no window can age it honestly. The verb reports a measured
+before/after and is an explicit operator action, never a background sweep.
 
 All four verbs above are **bound to your tenant**, and they got there in two
 steps. `SIGNOFF-REPAIR.3.3.4.10.3` bound the three that WRITE — quarantine,

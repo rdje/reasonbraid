@@ -1663,17 +1663,19 @@ pub(crate) async fn inbox_inspection(
 /// 1. **delivered** rows, acknowledged by the node, aged by `acknowledged_at`;
 /// 2. rows that were **never delivered** and reached §10.6's `expired` — the
 ///    admitting grant passed its own `expires_at` — aged by that same instant,
-///    which is exactly when the row entered the terminal.
+///    which is exactly when the row entered the terminal;
+/// 3. rows that were **never delivered** and reached §10.6's `revoked`, aged by
+///    the instant of the revocation itself (`migrations/0077`).
 ///
 /// A QUARANTINED row is never prunable (§16.11, `.1.3.3`): the preservation
 /// survives the disposition. Cleanup is an explicit, measured operator action;
 /// nothing sweeps on its own.
 ///
-/// ⛔ A `revoked` row is not prunable either, and that is measured rather than
-/// an oversight: `authority_grants` records no `revoked_at`, so nothing says
-/// WHEN the grant was withdrawn, and a window aged by any other column would
-/// delete work the operator was told they could still see
-/// (`.11.24.1.1.2.1.1.1`).
+/// ⛔ A `revoked` row whose grant carries no recoverable instant is still
+/// retained. `migrations/0058` is where the audit record the backfill derives
+/// from begins, so a revocation applied before it cannot be dated — and a
+/// window aged by any other column would delete work the operator was told
+/// they could still see.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PruneInboxRequest {
@@ -1693,6 +1695,7 @@ pub struct PruneInboxResponse {
     pub deleted: i64,
     pub deleted_delivered: i64,
     pub deleted_expired: i64,
+    pub deleted_revoked: i64,
     pub before: i64,
     pub after: i64,
     pub cutoff_at: String,
@@ -1737,6 +1740,7 @@ async fn prune_node_inbox(
             deleted,
             deleted_delivered,
             deleted_expired,
+            deleted_revoked,
             before,
             after,
             cutoff,
@@ -1744,6 +1748,7 @@ async fn prune_node_inbox(
             deleted,
             deleted_delivered,
             deleted_expired,
+            deleted_revoked,
             before,
             after,
             cutoff_at: cutoff.to_rfc3339(),
@@ -1757,6 +1762,7 @@ async fn prune_node_inbox(
             deleted: 0,
             deleted_delivered: 0,
             deleted_expired: 0,
+            deleted_revoked: 0,
             before,
             after,
             cutoff_at: cutoff.to_rfc3339(),

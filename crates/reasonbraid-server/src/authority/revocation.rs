@@ -233,13 +233,31 @@ pub(crate) async fn revoke_in_one_transaction(
                     },
                 ),
                 Some(_) => {
+                    // ⭐ `revoked_at` is written by the SAME statement that
+                    // changes the status (`SIGNOFF-REPAIR.11.24.1.1.2.1.1.1`).
+                    // A second statement would be a second source of truth about
+                    // one act, and could leave a row revoked with no instant if
+                    // anything between them failed. The value is `at` — the
+                    // database time this transaction sampled after the guard wait
+                    // — which is also what stamps the effect record below, so the
+                    // row and the audit trail agree by CONSTRUCTION rather than
+                    // by two clocks happening to match.
+                    //
+                    // ⛔ The column answers WHEN and never WHETHER. `status`
+                    // remains the sole answer to whether authority stands, so
+                    // `grant_is_live` and the `node_inbox_state` view are
+                    // untouched; a NULL `revoked_at` on a revoked row means the
+                    // instant is not recoverable (a revocation predating
+                    // `migrations/0058`), never that the row is live.
                     sqlx::query(&format!(
-                        "UPDATE {} SET status = 'revoked' WHERE {} = $1 AND tenant_id = $2",
+                        "UPDATE {} SET status = 'revoked', revoked_at = $3 \
+                         WHERE {} = $1 AND tenant_id = $2",
                         target.table(),
                         target.key()
                     ))
                     .bind(&target_id)
                     .bind(tenant_id.to_string())
+                    .bind(at)
                     .execute(&mut *conn)
                     .await?;
                     bump_revocation_epoch(&mut *conn, &tenant_id.to_string()).await?;

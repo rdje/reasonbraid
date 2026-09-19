@@ -516,6 +516,11 @@ pub enum PruneResult {
         /// aged by the admitting grant's own `expires_at`
         /// (`SIGNOFF-REPAIR.11.24.1.1.2.1.1`).
         deleted_expired: i64,
+        /// Rows that were NEVER delivered and reached §10.6's `revoked`, aged by
+        /// the instant of the revocation itself
+        /// (`SIGNOFF-REPAIR.11.24.1.1.2.1.1.1`). A revocation with no recoverable
+        /// instant leaves its rows retained.
+        deleted_revoked: i64,
         before: i64,
         after: i64,
         cutoff: DateTime<Utc>,
@@ -850,12 +855,11 @@ pub(crate) async fn prune_node_inbox_in_one_transaction(
             // the exact instant the row entered the terminal, so `min_age_seconds`
             // measures time IN that state, which is what a retention window means.
             //
-            // ⛔ `revoked` is NOT included, and the omission is measured rather
-            // than an oversight: `authority/revocation.rs` writes
-            // `SET status = 'revoked'` and `authority_grants` has no `revoked_at`,
-            // so nothing records WHEN a grant was revoked. Ageing those rows by
-            // any other column would delete work an operator was told they could
-            // still see. The trigger is that column — `.11.24.1.1.2.1.1.1`.
+            // ⭐ `revoked` gained its own clock at `.11.24.1.1.2.1.1.1`
+            // (`migrations/0077`) and is the third statement below. It is NOT
+            // folded into this one: the two terminals are aged by two different
+            // columns, and one statement measuring two clocks could not report
+            // which class it removed.
             let deleted_expired = sqlx::query(
                 "DELETE FROM node_inbox \
                  WHERE node_id = $1 AND tenant_id = $2 \
@@ -873,7 +877,41 @@ pub(crate) async fn prune_node_inbox_in_one_transaction(
             .execute(&mut *conn)
             .await?
             .rows_affected() as i64;
-            let deleted = deleted_delivered + deleted_expired;
+
+            // The THIRD class (`SIGNOFF-REPAIR.11.24.1.1.2.1.1.1`): a row whose
+            // admitting grant was REVOKED, aged by the instant of that act.
+            //
+            // ⚠️ `g.revoked_at IS NOT NULL` is REDUNDANT today and is written out
+            // on purpose, which is worth stating rather than leaving a reader to
+            // wonder: `NULL <= $3` is already UNKNOWN, so three-valued logic
+            // alone retains a row whose grant has no recoverable instant — a
+            // revocation applied before `migrations/0058` existed to date it.
+            // Measured, by deleting the clause and watching every arm stay green.
+            // It stays because the guarantee is a RETENTION one, and a retention
+            // guarantee that depends on the next editor remembering NULL
+            // semantics is one clause away from deleting work nobody meant to.
+            // The rule it states is the one that kept EVERY revoked row retained
+            // before `migrations/0077`, now narrowed to the rows that genuinely
+            // have no clock instead of applied to all of them.
+            let deleted_revoked = sqlx::query(
+                "DELETE FROM node_inbox \
+                 WHERE node_id = $1 AND tenant_id = $2 \
+                   AND acknowledged_at IS NULL \
+                   AND quarantined_at IS NULL \
+                   AND EXISTS (SELECT 1 FROM authorization_records r \
+                                 JOIN authority_grants g ON g.grant_id = r.grant_id \
+                                WHERE r.record_id = node_inbox.authz_ref \
+                                  AND g.status <> 'active' \
+                                  AND g.revoked_at IS NOT NULL \
+                                  AND g.revoked_at <= $3)",
+            )
+            .bind(&node_id)
+            .bind(tenant_id.to_string())
+            .bind(cutoff)
+            .execute(&mut *conn)
+            .await?
+            .rows_affected() as i64;
+            let deleted = deleted_delivered + deleted_expired + deleted_revoked;
             let after: i64 = sqlx::query_scalar(
                 "SELECT COUNT(*) FROM node_inbox WHERE node_id = $1 AND tenant_id = $2",
             )
@@ -888,6 +926,7 @@ pub(crate) async fn prune_node_inbox_in_one_transaction(
                         deleted,
                         deleted_delivered,
                         deleted_expired,
+                        deleted_revoked,
                         before,
                         after,
                         cutoff,
@@ -903,8 +942,8 @@ pub(crate) async fn prune_node_inbox_in_one_transaction(
                     },
                     AdministrativeOutcome::NoOp {
                         detail: bounded_detail(
-                            "no delivered row, and no row whose authority expired, was older \
-                             than the window in this tenant"
+                            "no delivered row, and no row whose authority expired or was \
+                             revoked, was older than the window in this tenant"
                                 .to_owned(),
                         ),
                     },

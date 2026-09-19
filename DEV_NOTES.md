@@ -1,5 +1,83 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — The column that was never missing until something needed it
+
+The previous leaf could not age a `revoked` inbox row because nothing recorded
+when the grant was revoked. That sounded like an oversight. It is not, and the
+distinction is worth writing down.
+
+`authority/revocation.rs` answers one question: may this authority still be used?
+`status` answers it completely. *When did it stop* was never asked of the row
+because `administrative_effects` answered it for the only reader that existed —
+an auditor. The defect appears the moment a **second** reader needs the fact, and
+`.11.24.1.1.2.1.1` was that reader. A column is not missing until something needs
+it; then it has always been missing.
+
+**Where I put the write, and why it is not negotiable.** `revoked_at` goes in the
+same `UPDATE` that sets the status. Two statements would be two sources of truth
+about one act, and the failure mode is concrete rather than theoretical: anything
+between them leaves a row revoked with no instant, which is exactly the state the
+backfill then cannot repair. The value is `at` — the database time the
+transaction samples once after the guard wait — and that same `at` stamps the
+effect record a few lines later. So the row and the audit trail do not merely
+tend to agree; they cannot disagree. The control asserts the equality anyway,
+because "cannot disagree" is a claim about code that can be edited.
+
+**The boundary that makes this safe to do inside the authority core.** I wrote it
+into the migration header and the code comment both: this column answers *when*
+and never *whether*. `status` stays the sole answer to whether authority stands,
+so `grant_is_live` and the delivery view are untouched by the migration. That
+matters because the tempting next step — deriving liveness from `revoked_at IS
+NULL` — would be wrong for exactly the rows the backfill cannot reach.
+
+**The backfill is derivable, which I checked before claiming it.** The effect
+record carries `{"kind":"grant_revoke","grant_id":"…"}` and `effected_at`, so an
+already-revoked row is dated from the act that revoked it. Two details are not
+decoration: the join binds the tenant as well as the id, because an effect cannot
+cite another tenant's admission and I did not want this to be the one place that
+forgets it; and only an `applied` outcome dates a change, because a `no_op`
+records a repeated revocation whose instant belongs to the first one.
+
+And it is partial. `administrative_effects` arrived in migration 0058. A
+revocation applied before it left no record and nothing else in the schema dates
+one. Those rows keep NULL and stay retained — which is the same treatment every
+revoked row had before this change, now narrowed to the rows that genuinely have
+no clock instead of applied to all of them.
+
+**A clause I kept after measuring that it does nothing.** The prune's new
+statement carries `AND g.revoked_at IS NOT NULL` beside `AND g.revoked_at <= $3`.
+`NULL <= $3` is already UNKNOWN, so three-valued logic alone retains an undatable
+row — and I deleted the clause and watched all twelve arms stay green rather than
+asserting it. It stays. The guarantee it states is a retention one, and a
+retention guarantee that depends on the next editor remembering NULL semantics is
+one clause away from deleting work nobody meant to delete. I wrote *redundant* in
+the comment rather than letting a future reader discover it and quietly remove it.
+
+**What the census found that I was not looking for.** Before writing the
+migration I grepped every writer of a revoked status, to be sure I had both
+targets. There is a third: `federation_agreements`, whose UPDATE also writes the
+status alone — beside a schema that already records `proposed_at` and
+`accepted_at`. That is a sharper instance than the one that sent me looking:
+`authority_grants` recorded no transition instants at all, so its omission was
+uniform and invisible. Here the schema establishes a pattern and the third column
+breaks it, so a reader of the columns would reasonably conclude the instant is
+there.
+
+I did not fix it. It is a different verb in a different transaction, and — more
+honestly — nothing has asked for it yet, which is precisely the condition that
+made the grant's missing column *not* a defect until this week. So it gets a leaf
+whose first job is to census the readers, not the tables. And I did not count it
+towards promoting the rule: two tables with the same shape is a family, and this
+project promotes on mechanism.
+
+**Validation.** `node_work` 12/12 — unchanged from the previous commit, because
+this leaf *replaced* the revoked control rather than adding one. I measured that
+on both sides rather than writing "(11 before)", which is the habit `.13.4.2`
+caught me in and the reason I now check by default. `node_inbox` 9/9,
+`node_channel` 40/40, `authority` 22/22, `authority_transaction` 16/16,
+`migration_upgrade` 5/5, `administrative_effects` 25/25, `cli_end_to_end` 5/5.
+Falsified twice, each restored byte-identical.
+
 ## 2026-09-20 — Two terminals, one window, and only one clock
 
 The previous commit stopped the cursor acknowledgement writing receipts it had

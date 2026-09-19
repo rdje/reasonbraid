@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE UNREPRODUCIBLE FIGURE RE-DERIVES EXACTLY, AND ITS RESIDUE WAS MEASURED AGAINST ONE RECORD TOO FEW (`.7.1.2.2.3`, REPAIR-0284).**
+
+`.6.1.5.3.1` recorded a published figure as *unreproducible rather than wrong* and opened this leaf. Both halves of that judgement hold.
+
+- ✅ **The figure is exactly right.** `29 tables → 27` is the **distinct site-global tables over the baseline rows that are both `identity only` and `walk`** — the tables behind the pair's second number. Both refuted hypotheses had conditioned on the ARM and never on the ADMISSION. Every value ever published re-derives from the baseline pinned at its own commit: **30/17 → 29/16 → 27/14 → 18/6 → 17/0**.
+- 🔴 **The defect is the DEFINITION, not any number.** `residue` was written against **DOC-0029 alone**, when that was the only record deciding these tables; DOC-0066 and DOC-0071 have since adjudicated the same population. Measured the old way today it reads **5**, and all five are decided in full by DOC-0066. ⛔ **A metric naming ONE record ages the moment a second is written**, and nothing says so, because the number keeps moving plausibly.
+- ✅ **Restated, and the answer is real: residue is 0.** Every site-global table still written on enrolment alone is named by an adjudicating decision record.
+- ⛔ **Rejected with its measurement:** scanning all 170 decision records also returns 0, for the wrong reason — `derivations` matches nine and `resource_references` twelve, because a bare table name is an ordinary word.
+- ✅ **VERIFIED:** `--check` prints `25 site-global writers (16 on identity alone) across 17 tables, residue 0`, rc=0; `--self-test` **45/45** (from 40). Falsified three ways, each RED by name, restored byte-identical. `make gate` green. No product code changed.
+
 ✅ **THE GOVERNANCE LIBRARY TAKES THE OPERATOR'S AUTHORITY, AND `.6.1.5` IS FULLY DISCHARGED (`.6.1.5.4`, REPAIR-0283).**
 
 The last open child of `.6.1.5`, and the third instance of one template — the evidence sweep (`0063`), the workflow registry (`0071`), the policy library (`0074`). Each is a store with no tenant column whose write was admitted on enrolment alone.
@@ -26,7 +36,7 @@ Verified against `docs/CLAIM_VERIFICATION.md` — each claim re-derived by a rou
 - ⭐ **The repair is DURABILITY, not arithmetic.** `census_registry_read_reach.py` now names the five live documents that restate its count and refuses with both counts and the instruction to SUBTRACT. Its sibling has done so since `.7.1.1.1` — **which is exactly why the write figure `39/30 → 26/17` was right in the same commit.**
 - ✅ **The strongest claim was CONSERVATIVE.** *"Twenty suites could not start"* rested on one measured suite; measured per item with the plans reverted, **all 20 server suites `0 passed`**, plus `cli_end_to_end` 0/5 — **21 targets**, and `reasonbraid-mcp` lost 2 of 6.
 - ✅ **Five more hold** by independent routes: the 15 write sites, the 27 purge plans (28 hits, one classified out), the MCP claim, the write census, and the eleven gated verbs (which independently confirmed ten read verbs).
-- ⚠️ **One earlier figure is NOT reconstructible and is named rather than judged:** `.7.1.2.2`'s `29 tables → 27` matches no quantity either baseline pins, after two refuted hypotheses. Not a claim it is wrong — Leg 3 answered `no`. `.7.1.2.2.3` owns it with `residue 16 → 14`.
+- ✅ **That one earlier figure is now RE-DERIVED AND CONFIRMED EXACT** by `.7.1.2.2.3` (REPAIR-0284), above: the quantity is the distinct site-global tables over the `identity only` + `walk` rows, and the real defect was that `residue` was scoped to a single decision record.
 
 ✅ **THE LIFECYCLE READS ARE BOUND TO THEIR OWN TENANT (`.6.1.5.3`, REPAIR-0281).** The third half of `.6.1.5`: the rows got an owner, the writes got a gate, and the reads are now narrowed to it.
 

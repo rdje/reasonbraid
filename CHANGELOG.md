@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-19 — The unreproducible figure re-derives exactly, and its residue was measured against one record too few (`SIGNOFF-REPAIR.7.1.2.2.3`)
+
+`.6.1.5.3.1` re-derived seven published claims, found one wrong, and recorded an eighth as *unreproducible rather than wrong*. This leaf is that eighth, and both halves of that judgement hold.
+
+- ✅ **THE FIGURE IS EXACTLY RIGHT.** `29 tables → 27` is the **distinct site-global tables over the baseline rows that are both `identity only` and `walk`** — the tables behind the published pair's second number, not its first. Both refuted hypotheses had conditioned on the ARM and never on the ADMISSION, and the definition was sitting in the leaf that first published it: *"33 routes write site-global state on enrolment alone … across 30 distinct tables."*
+- ✅ **AND SO IS `residue 16 → 14`**, which is `.7.1.2`'s own sentence: *"17 of them are not named in the decision record."* Every value ever published re-derives from the baseline pinned at its own commit — **30/17** (`e4604ad`), **29/16** (`4c36840`), **27/14** (`d1ba384`), **18/6** (`cc6e640`), **17/0** today.
+- 🔴 **THE DEFECT IS THE DEFINITION, NOT ANY OF THE NUMBERS.** `residue` was written against **DOC-0029 alone**, when that was the only record deciding these tables. DOC-0066 then adjudicated the seventeen and DOC-0071 split the policy chain — so measured the old way today it reads **5**, and all five (`agent_profiles`, `evaluation_trial_results`, `profile_versions`, `quota_events`, `recruitment_responses`) are decided in full by DOC-0066. ⛔ **A metric that names ONE record ages the moment a second is written**, and nothing says so, because the number keeps moving plausibly.
+- ✅ **RESTATED, AND THE ANSWER IS A REAL ONE: residue is 0.** Every site-global table still written on enrolment alone is named by an adjudicating decision record.
+- ⛔ **REJECTED WITH ITS MEASUREMENT:** scanning all 170 records in `docs/decisions/` also returns 0 — for the wrong reason. `derivations` matches **nine** and `resource_references` **twelve**, most about something else entirely, because a bare table name is an ordinary word. A residue of 0 that nothing could have made non-zero is not an answer.
+- ✅ **BOTH FIGURES NOW HAVE A PRODUCER.** `--check` prints `25 site-global writers (16 on identity alone) across 17 tables, residue 0`, derived from the rows rather than stored beside them, so the file and the numbers cannot disagree.
+- ✅ **VERIFIED:** `census_shared_registry_writes --check` rc=0; `--self-test` **45/45** (up from 40). Falsified three ways, each RED by name and restored byte-identical: narrowing the record list to DOC-0029 prints `residue 5`; a degenerate `unadjudicated_tables` returning `[]` fails the ghost arm — which is what makes `0` a measurement rather than a silence; dropping the `identity only` filter prints `24 tables`. `make gate` green (21/21). No product code changed.
+- ⭐ **PROMOTED:** `docs/knowledge/a-metric-scoped-to-one-record-ages-silently.md`, linked to `.6.1.5.3.1`'s sibling rule about a figure carried between documents. Same family: a number whose producer is not tracked.
+
 ## 2026-09-19 — The governance library takes the operator's authority, and a refusal that aborts its own audit is not one (`SIGNOFF-REPAIR.6.1.5.4`)
 
 The last open child of `.6.1.5`, and the third instance of one template: the evidence retention sweep (`0063`), the workflow-profile registry (`0071`), and now the policy library (`0074`). Each is a store with no tenant column whose write was admitted on enrolment alone.
@@ -222,66 +235,26 @@ Asked whether I trust my own findings, two of `.7.1.1`'s numbers failed `docs/CL
 - ⚠️ **Not registered as a pre-commit gate, priced rather than asserted:** `--check` costs 1.86 s against a 13.9 s enforcer and guards a class that is 0 today. The self-test already runs every commit at 1.86 s, down from 5.70 s once the three whole-tree derivations were memoized.
 - ✅ **VERIFIED:** `--check` rc=0, `--self-test` **33/33**; falsified twice in situ and restored byte-identical (reverting the grammar fix → 30/33, reverting the schema-qualifier repair → 32/33); the sibling census's own self-test unchanged; `unittest discover -s scripts/tests` **73 tests, OK**; `make gate` green.
 
-## 2026-09-19 — The terms are defined, and the R3 pack stops claiming a container it does not have (`SIGNOFF-REPAIR.7.3.6.5`)
-
-The last child of `.7.3.6`, and **G4's open strand closes with it**. All 36 advertised policy lines now carry a defined verdict: **`enforced` 6 · `unverified` 9 · `vacuous` 21 — `undefined` 0, `misdescribed` 0.**
-
-- 🔴 **THE R3 PACK ADVERTISED THE TOP OF THE ISOLATION LADDER AND RUNS AN ORDINARY CHILD PROCESS.** `sandbox_level: "vm_container"` against a worker in an owned process group — rung one. Reproduced: a caller requiring `vm_container` was served `{"resolvers":["r3-browser-worker"],"unresolvable_now":false}`. ⛔ That is the silent downgrade ADR-018's exit clause exists to prevent, performed by the one pack that executes untrusted JavaScript. The level now reads `process`.
-- ⭐ **Nothing had ever REQUIRED `vm_container`, which is why the claim survived.** `git grep` returns the ladder constant, one SDK vocabulary test and the advertisement — no caller, no control. **A rung nobody stands on holds any weight you like.** Correcting it broke no test.
-- ⚠️ **`security_evidence`'s `container_required: true` stays and is now consistent** rather than contradictory: the level says what the CODE provides, that key what the DEPLOYMENT must add. The defect was one field claiming the other's content.
-- ⭐ **Thirteen of the fourteen unsettled lines were settled by DEFINING a term, not by correcting anything.** `archive_policy`'s axis is DEPTH — `ROADMAP.md` §16 says *archive-depth* — so `deny` means the pack does not expand an archive nested inside the container it acquired. 🔴 That dissolves what the first census called its *sharpest instance of a contradiction*: R2 expands the zip or tar it was **given** and refuses one **inside** it, by name. **An undefined term and a contradicted one look identical until the term is pinned.**
-- ⭐ `egress_class: "listed"` means the §12.4 destination **classes** are the list — migration `0025`'s own comment had said so since the pack shipped, and a definition in a migration comment is not one a caller can read. `javascript_policy: "allow-bounded"` is defined by enumerating its four actual bounds.
-- ⚠️ **One of the first census's own verdicts was wrong and is corrected.** RX's `egress_class: "any"` was graded `misdescribed` because the pack performs no egress; that judged the wrong granularity. The class is the maximum of the **acquisition the pack delivers**, and an enrolled agent's reach is unbounded, so `any` is the honest ceiling — re-graded `vacuous`.
-- 🔎 **A book drift found and repaired in passing:** `blockers.md` said all five gate records were re-derived and C2 closed, while `qualification-review.md` — two pages of the same book — still said *"The first is done"*. REPAIR-0265 swept one page and not the other.
-- ⛔ **NOT claimed: that G4 is now Met.** What closes is the last un-discharged strand of its re-derivation; the record's *G4 must be re-earned* verdict is unchanged.
-- ✅ **VERIFIED:** `run_pg_tests.sh profiles` → **60 passed, 0 failed** (RED before: 59/1); census `--check` rc=0 and `--self-test` 26/26; clippy `-D warnings` rc=0; fmt rc=0; book rebuilt and links green.
-
-## 2026-09-19 — The egress claim is a ceiling, the sandbox claim is a floor (`SIGNOFF-REPAIR.7.3.6.4`)
-
-`resolvers::resolve` filtered both ADR-018 isolation classes with the same test, `declared >= required` — one predicate for two ladders that run in opposite safety directions.
-
-- 🔴 **The sandbox ladder goes up towards more ISOLATION, so a floor is right. The egress ladder goes up towards more REACH, so the same test admitted a pack that reaches further than the caller permitted.** ⭐ The comment above it quoted ADR-018's *the claim is the MAXIMUM* and drew the opposite conclusion in the same sentence.
-- 🔴 **Measured over the whole 4 × 6 matrix: the egress filter refused exactly 1 combination of 24, and it refused the wrong one.** Asking for `any` — the widest class — was the only way to narrow the field, and it narrowed it to `rx-agent-mediated`, the single pack declaring no bound. **No value of `required_egress` meant *do not give me a pack that can dial anywhere*,** which is the one thing ADR-018 says the class is for.
-- ⭐ **Reproduced on two resolvers differing in ONE field** — `rsv-egress-listed` and `rsv-egress-any`, identical but for `egress_class`. Asking for at most `listed` returned both: `left: [rsv-egress-listed, rsv-egress-any]`, `right: [rsv-egress-listed]`.
-- ✅ **The CODE moved; ADR-018 stands unchanged.** `egress` is now `declared <= required`, a ceiling; `sandbox` stays a floor. ⚠️ A decision rather than an obvious inversion — the shipped default `loopback` only makes sense under the capability reading, so the code was internally consistent. It moved because a capability floor over a maximum claim is incoherent: it asks a promise-not-to-exceed to behave like a promise-to-reach.
-- ✅ **The default becomes `any` and the behaviour is unchanged** — under the old floor test `loopback` admitted every pack, and under the ceiling test `any` does too. The word now says what it does.
-- ✅ **An off-ladder required class is refused by name** (`invalid_command`) instead of yielding a silent empty result that a typo and a genuine absence shared. ⛔ Validated AFTER the tenant binding, so a foreign or absent resource id keeps giving one answer.
-- ⚠️ **One existing test changed and the reason is written beside the line:** the RX resolution passed `required_egress: "listed"` and expected the pack declaring `any` — the defect seen from the suite's own side. It now passes `"any"`. 🔎 `.7.3.6.5` may find RX's `any` to be a misdescription, in which case it changes again for a different reason.
-- ⚠️ **Recorded, not repaired:** `required_sandbox` defaults to `process`, which excludes the four packs declaring `none` including R0, so the documented default resolves nothing for the flagship pack. Fail-closed; a default-policy question, not a comparison one.
-- ✅ **VERIFIED:** `run_pg_tests.sh profiles` → **59 passed, 0 failed** (RED before: 58 passed, 1 failed); clippy `-D warnings` rc=0; fmt rc=0; book rebuilt. Decision: `docs/decisions/2026-09-19_the-egress-claim-is-a-ceiling-the-sandbox-claim-is-a-floor.md`.
-
-## 2026-09-19 — The pair was gated at two cadences, and the looser half is now a pure function (`SIGNOFF-REPAIR.7.3.6.3`)
-
-The R3 pack advertises two deny-policies and enforces them. Nothing derives one from the other, so both sides are gated — and measuring first found that the two gates were built by two earlier leaves that did not know about each other, at very different strengths.
-
-- 🔴 **THE ASYMMETRY IS THE FINDING.** A moved ADVERTISEMENT is refused by `scripts/census_advertised_policies.py`, a doctrine gate in the pre-commit hook: **every commit**. A moved BEHAVIOUR was caught only by `browser_roundtrip`, which needs a real Chrome and therefore runs in CI **at push** — and the push cadence is about 300 commits, with the tree **237 ahead** as this closes. One half of one claim was guarded hundreds of commits more loosely than the other, and nothing said so, because both halves were green.
-- ✅ **The repair: the decision becomes a pure function.** `refusing_policy(is_document, url, requested)` is the whole of the R3 request policy, lifted out of the async interception closure. It touches no network, no browser and no filesystem, so `cargo test -p reasonbraid-browse --bins` covers it — **8 → 12 tests in 0.08 s**, wherever cargo runs. ⛔ The end-to-end control is not replaced: a pure function cannot show the decision is actually wired to Chrome's `Fetch` domain.
-- ⭐ **Both directions observed RED, each from its own side.** Flipping `subresource_policy` `deny` → `allow` in the producer with the worker untouched: `the verdict 'enforced' was earned for 'deny', the producer now advertises 'allow'`, rc=1. Neutralizing the worker two ways: the **pre-`.7.3.5` defect** (refuse nothing) → `9 passed; 3 failed`; the **almost-fix** (refuse everything, including the navigation) → `8 passed; 4 failed`. Both restored byte-identical.
-- ⭐ **The suite separates a policy from a blackout, not merely detects change:** `a_policy_that_refused_everything_would_fail_this` fires on the almost-fix and **not** on the original defect.
-- ⚠️ **Two alternatives rejected, and the first is the one that looks best on paper.** Plumbing the advertised word into the worker — one source instead of two — would make a value decide whether the pack isolates anything, and `resolver_capabilities` has no tenant column (`.11.9.1.1.1`), so that value is writable by any tenant administrator. ⛔ **A one-source design that puts the source where an attacker can reach it is worse than two sources with a gate between them.** Sharing the label strings via the adapter crate was rejected too: the labels are not the claim.
-- ⭐ One arm documents an edge instead of leaving it to be found: the asked-for comparison is exact, so a trailing slash makes a URL a different URL and the policy refuses rather than guesses — the fail-closed direction, written down.
-- ✅ **VERIFIED:** `cargo test -p reasonbraid-browse --bins --locked` **12 passed, 0 failed**; `scripts/ci_browser.py -- cargo test -p reasonbraid-browse --test browser_roundtrip --locked` **18 passed, 0 failed** in 31.20 s with `a_subresource_the_pack_advertises_as_denied_is_not_dialed ... ok`; `census_advertised_policies.py --check` rc=0; clippy `-D warnings` rc=0; fmt rc=0.
-
-## 2026-09-19 — A replace is complete, and the HTTP verb does not perform one (`SIGNOFF-REPAIR.7.3.6.2`)
-
-`resolvers::register` INSERTed **18** columns and its `ON CONFLICT DO UPDATE` wrote **6**, silently keeping eleven — `media_types`, all four advertised policies, the abilities, the authentication classes, the locator patterns, both format lists and the latency range. A corrected advertisement never reached an existing row.
-
-- 🔴 **REPRODUCED AT RUNTIME, both halves, each as its own control so neither RED hid behind the other's panic.** The startup sync failed to restore drift written into the R3 row (`left: "allow"`, `right: "deny"`), and the HTTP verb answered a narrowing re-registration with its own body as the evidence: **`{"registered":true,"resolver_id":"rsv-replace-probe"}`** — `left: 200`, `right: 409`. `test result: FAILED. 56 passed; 2 failed`.
-- ⚠️ **The re-read the acceptance demanded changed the repair.** `SIGNOFF-REPAIR.11.9.1.1.1` had already measured that `resolver_capabilities` has **no tenant column** and a single-column key, so any tenant administrator can address any row — the built-in `r0-https-fetcher`'s included. That says the upsert's reach is too LARGE, and it is `.7.1`'s to bind.
-- ⛔ **So "write all 18 columns" was rejected as the whole answer**: it would have handed an unbound principal eleven more columns on a site-global row. A repair that satisfies a doc comment by enlarging the surface another leaf has to bind is not a repair.
-- ✅ **Split by CALLER, because the two callers have two different trusts.** `sync_gated_entries` at boot replaces **completely** — the advertisement in the binary is the truth and a drifted row loses to it, `registered_at` excepted. `POST /v1/resolvers` **refuses** an already-registered id with `invalid_transition` (409), naming the row.
-- ⭐ **It NARROWS `.7.1` and does not discharge it.** The replace half of that finding closes; creating a new site-global resolver on a tenant-admin grant is untouched, and that is the larger half. `docs/book/src/qualification-review.md`'s row is narrowed, not removed.
-- ⚠️ **What is lost, stated rather than discovered:** an operator can no longer change a registered advertise through the API. That capability was never usable for its documented purpose — it could not narrow `media_types` and could not correct a policy line — while the part that did work was the part that should not have.
-- ✅ **VERIFIED:** `bash scripts/run_pg_tests.sh profiles` → **58 passed, 0 failed** in 13.11 s, every one of the 56 pre-existing tests unchanged; `cargo clippy -p reasonbraid-server --all-targets --locked -- -D warnings` rc=0; `cargo fmt --all --check` rc=0.
-- 🔎 **An environment fact found on the way.** The first RED run reported a third failure: two R2 controls panicked with *the extraction worker is absent at `target/debug/reasonbraid-extract`*. They are right to refuse rather than pass vacuously, but the debug-tree retirement (DOC-0060) left them unreportable and its record says only that the next build is cold. **Run `cargo build --workspace --bins --locked` before the pg suites after a debug retirement.**
-- ⚠️ **A citation correction carried in the same commit.** REPAIR-0266 attributed *a deployment that narrows a pack's advertisement narrows what that pack may acquire, in the same act* to `docs/decisions/2026-09-12_r2-acquisition-accept-set.md`. That record does not contain the sentence; it is `advertised_media_types`' own doc comment at `crates/reasonbraid-server/src/resolvers.rs:211`, which cites the decision. The finding is unchanged; a NAMED INSTANCE is graded exact, so all five sites are corrected. Decision: `docs/decisions/2026-09-19_a-replace-is-complete-and-the-verb-does-not-perform-one.md`.
-
 ## Historical entries and exact retrieval
 
 This is a recent digest. Older chronology remains in reachable Git history under
-the rotation contract in `README_POLICY.md`. This file has rotated thirty times;
-each rotation names the commit holding the ledger immediately before it, so the
-chain walks back without guessing.
+the rotation contract in `README_POLICY.md`. This file has rotated thirty-one
+times; each rotation names the commit holding the ledger immediately before it,
+so the chain walks back without guessing.
+
+Retrieve the ledger immediately before the THIRTY-FIRST rotation (2026-09-19)
+from the repository root:
+
+```bash
+git show 4629a6bcddea12972483a38dbdf5590ffc4c1b06:CHANGELOG.md
+```
+
+That snapshot is 92,935 bytes and contains 20 dated entries; its Git blob is
+`7a5a8e3535d83b6ac5097d7d743167cb3d578e2a`, and its SHA-256 is
+`b81c927890fb3ea471e1d11d4d0ee962695ce0eb6d4befca133090492bbca24b`. The newest
+entry it holds that this digest no longer carries is
+`2026-09-19 — The terms are defined, and the R3 pack stops claiming a container it does not have (`SIGNOFF-REPAIR.7.3.6.5`)`.
+It carries the THIRTIETH rotation's notice in turn, which names the ledger before it.
 
 Retrieve the ledger immediately before the THIRTIETH rotation (2026-09-19)
 from the repository root:

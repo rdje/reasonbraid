@@ -30,6 +30,18 @@
 # AND left the precise walk, because its handler now delegates across a module
 # boundary. The published figures move 26/17 → 25/16 — one movement, one cause,
 # and a defect population going DOWN because the defect was fixed.
+#
+# ⭐ TWO MORE PUBLISHED FIGURES COME OUT OF THESE ROWS since
+# `SIGNOFF-REPAIR.7.1.2.2.3`, and neither had a producer before it. `N tables`
+# is the DISTINCT site-global tables over the rows that are both `identity only`
+# and `walk`; `residue N` is those of them that no adjudicating decision record
+# names (the list is in the script, with the reason the definition had to widen
+# beyond DOC-0029 and the measurement that rejected scanning all of
+# `docs/decisions/`). Every value ever published re-derives from the baseline
+# pinned at its own commit: 30/17 at `e4604ad`, 29/16 at `4c36840`, 27/14 at
+# `d1ba384`, 18/6 at `cc6e640`, and 17/0 here. ⛔ `.6.1.5.3.1` could not
+# reproduce `29 tables → 27` and recorded it as unreproducible rather than
+# wrong; it was right, and only its producer was missing.
 POST /v1/admin/adapters	site authority	recruitment_offers,site_audit	module-reach
 POST /v1/admin/adapters/{adapter_id}/revoke	site authority	recruitment_offers,site_audit	module-reach
 POST /v1/admin/boundaries/{boundary_id}/revoke	guarded transaction	recruitment_offers	module-reach

@@ -1,5 +1,16 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — The figure I could not reproduce was exactly right, and its definition was what had aged
+
+- One leaf ago I recorded a published figure as *unreproducible* rather than wrong, and opened a leaf for it. Both halves of that turn out to have been the right call, and for a reason I did not have at the time.
+- ⭐ **The quantity was a filter I never tried.** `29 tables → 27` is the distinct site-global tables over the rows that are both `identity only` AND `walk`. My two refuted hypotheses had each conditioned on the ARM and never on the ADMISSION — and the sentence that names it was sitting in the leaf that first published it: *"33 routes write site-global state on enrolment alone … across 30 distinct tables."* I had read that leaf while looking for the number and not while looking for the definition.
+- ⛔ **Every value ever published re-derives exactly** from the baseline pinned at its own commit: 30/17, 29/16, 27/14. Nothing was wrong. Which is the point of the distinction: *I cannot reproduce this* and *this is wrong* are different statements, and rounding the first up to the second would have corrected a correct number.
+- 🔴 **The real defect was one layer under the number, and it is the kind that cannot be caught by checking the arithmetic.** `residue` was defined as *the members not named in the decision record* — singular, written when there genuinely was only one. Two more records have since adjudicated the same population. Measured the old way today it reads **5**, and every one of those five is decided in full by a record the metric does not read. The number kept moving plausibly the whole time.
+- ⭐ **A metric whose key names a DOCUMENT has an expiry date nobody sets.** That is the transferable half, promoted to `docs/knowledge/a-metric-scoped-to-one-record-ages-silently.md`, and it is the sibling of the previous leaf's rule about a figure carried between documents. Same family: a number whose producer is not tracked.
+- ⛔ **The obvious widening is worse, and I measured it rather than reasoning about it.** Scanning all 170 decision records returns residue 0 too — but `derivations` matches NINE of them and `resource_references` TWELVE, most about something else entirely, because a bare table name is an ordinary word. A 0 that nothing could have made non-zero is not an answer.
+- 🔎 **And my first negative arm was the shape I have written a note about.** With the live residue at 0, I asserted the ghost arm by list equality — so it failed under an unrelated RED, for a reason that had nothing to do with what it was testing. A membership test is independent of the population. I have now made that mistake with the note open in the same session, which is worth recording without excuse.
+- promotion: **PROMOTED** — `docs/knowledge/a-metric-scoped-to-one-record-ages-silently.md`.
+
 ## 2026-09-19 — A refusal detected by letting a statement FAIL does not survive being moved inside a transaction
 
 - The repair was supposed to be the third mechanical instance of a template I had already applied twice. It was — and it still shipped a 500 into my own control, because the template moves code across a boundary the code did not know it was standing on.

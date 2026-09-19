@@ -458,6 +458,14 @@ def report(rows: list[dict[str, object]]) -> None:
           f"({len(precise)} seen by the precise walk, "
           f"{len(reaching) - len(precise)} only by the module-reach over-approximation)")
 
+    identity = [r for r in precise if r.get("admission") == "identity only"]
+    residue = unadjudicated_tables(rows)
+    print(f"  written on ENROLMENT ALONE: {len(identity)} routes across "
+          f"{len(enrolment_tables(rows))} distinct tables; "
+          f"residue {len(residue)} — the tables no adjudicating record names")
+    if residue:
+        print("    " + ", ".join(residue))
+
     print("\n== SITE-GLOBAL WRITES BY ADMISSION — the join clause 2 asks for ==")
     by_gate: dict[str, list[dict[str, object]]] = {}
     for row in precise:
@@ -492,6 +500,69 @@ RESTATING_DOCUMENTS = (
     "docs/TASK_TREE.md",
     "docs/tasks/SIGNOFF-REPAIR.md",
 )
+
+
+#: The decision records that ADJUDICATE this population (`SIGNOFF-REPAIR.7.1.2.2.3`).
+#:
+#: ⭐ `residue` was published four times — 17, 16, 14 and an implied 6 — and
+#: never by a command. It is the identity-only precise-walk site-global tables
+#: that NO adjudicating record names, and `SIGNOFF-REPAIR.7.1.2`'s own sentence
+#: is its definition: *`.11.14` decided TWELVE tables; a census run from the
+#: WRITE side finds THIRTY, and 17 of them are not named in the decision
+#: record.* Every published value re-derives from the pinned baselines under
+#: that reading — 30/17 at `e4604ad`, 29/16 at `4c36840`, 27/14 at `d1ba384` —
+#: so the figures were right and only their producer was missing.
+#:
+#: ⛔ THE DEFINITION HAD TO WIDEN, and that is the durability defect rather than
+#: any of the numbers. It was written against DOC-0029 ALONE, at a moment when
+#: that was the only record deciding these tables. DOC-0066 then adjudicated the
+#: seventeen and DOC-0071 split the policy chain — so a figure measured against
+#: one record counts five tables as unadjudicated that a later record decided in
+#: full. A metric naming one record ages the moment a second one is written.
+#:
+#: ⛔ REJECTED, with its measurement: scanning ALL of `docs/decisions/` also
+#: returns 0 — and returns it for the wrong reason. `derivations` matches NINE
+#: records and `resource_references` TWELVE, most about something else entirely,
+#: because a bare table name is an ordinary word. That is
+#: `docs/knowledge/a-census-is-as-wide-as-its-key.md` in the direction that
+#: manufactures a clean answer, which is the worse one.
+ADJUDICATING_RECORDS = (
+    "docs/decisions/2026-09-16_evidence-is-shared-the-read-is-tenant-bound.md",
+    "docs/decisions/2026-09-19_the-policy-registry-is-a-shared-control-surface.md",
+    "docs/decisions/2026-09-19_the-policy-library-is-shared-the-lifecycle-is-its-tenants.md",
+)
+
+
+def unadjudicated_tables(rows: list[dict[str, object]]) -> list[str]:
+    """The site-global tables written on enrolment alone that no record names.
+
+    ⚠️ The key is `\b<table>\b` anywhere in the record — deliberately the LOOSE
+    one, because `SIGNOFF-REPAIR.7.1.1.1` re-derived the residue under both a
+    backtick-exact key and this one and got the same 13 either way. A key that
+    could disagree and does not is the evidence; reusing the looser of the two
+    means this can only ever UNDER-report the residue, which is the direction a
+    scoping defect must err in.
+    """
+    tables: set[str] = set()
+    for row in rows:
+        if row.get("admission") != "identity only" or row.get("arm") != "walk":
+            continue
+        tables |= set(row["site_global"])  # type: ignore[arg-type]
+    text = ""
+    for record in ADJUDICATING_RECORDS:
+        path = ROOT / record
+        if path.exists():
+            text += path.read_text(encoding="utf-8")
+    return sorted(t for t in tables if not re.search(rf"\b{re.escape(t)}\b", text))
+
+
+def enrolment_tables(rows: list[dict[str, object]]) -> list[str]:
+    """The distinct site-global tables written on enrolment alone (the precise arm)."""
+    tables: set[str] = set()
+    for row in rows:
+        if row.get("admission") == "identity only" and row.get("arm") == "walk":
+            tables |= set(row["site_global"])  # type: ignore[arg-type]
+    return sorted(tables)
 
 
 def baseline_rows(rows: list[dict[str, object]]) -> list[str]:
@@ -556,8 +627,14 @@ def check(rows: list[dict[str, object]],
     if not blind and not appeared and not vanished:
         precise = [r for r in rows if r["site_global"] and r.get("arm") == "walk"]
         identity = [r for r in precise if r.get("admission") == "identity only"]
+        # ⛔ BOTH of the other published figures are printed here, derived from
+        # the same rows (`SIGNOFF-REPAIR.7.1.2.2.3`). They were restated four
+        # times each with no command behind them, which is how a correct number
+        # fails `docs/CLAIM_VERIFICATION.md` Leg 3: the producer was untracked.
         print(f"SHARED-REGISTRY-WRITES: {len(rows)} mutating routes, all classified; "
-              f"{len(precise)} site-global writers ({len(identity)} on identity alone), "
+              f"{len(precise)} site-global writers ({len(identity)} on identity alone) "
+              f"across {len(enrolment_tables(rows))} tables, "
+              f"residue {len(unadjudicated_tables(rows))}, "
               f"matching the recorded baseline")
         return 0
     if appeared or vanished:
@@ -800,6 +877,55 @@ def self_test() -> int:
     arms.append(("the published 25/16 are derived from the rows, not stored",
                  len(precise) == 25
                  and sum(1 for r in precise if r["admission"] == "identity only") == 16))
+
+    # ── The OTHER two published figures (`SIGNOFF-REPAIR.7.1.2.2.3`) ─────────
+    # ⛔ `N tables` and `residue N` were restated four times each and produced by
+    # NOTHING. `.6.1.5.3.1` tried to re-derive `29 tables → 27` and could not,
+    # which is Leg 3 — *is the producer tracked?* — answered `no` about a figure
+    # that turns out to be exactly right. Both now come out of the rows.
+    #
+    # ⛔ The lineage, each movement with one cause and every value re-derived
+    # from the baseline pinned at that commit: **30/17** (`e4604ad`) →
+    # **29/16** (`4c36840`, `workflow_profiles` gated) → **27/14** (`d1ba384`,
+    # both routing journals bound) → **18/6** (`cc6e640`, nine lifecycle tables
+    # tenanted) → **17/0** here, where the drop in residue is the DEFINITION
+    # widening from DOC-0029 alone to the three records that adjudicate this
+    # population, not a table changing.
+    arms.append(("the published 17 tables are derived from the rows, not stored",
+                 len(enrolment_tables(live_rows)) == 17))
+    # ⭐ residue 0 is a REAL statement and not an empty one: every site-global
+    #    table still written on enrolment alone is named by an adjudicating
+    #    record. Measured against DOC-0029 alone it would read 5, which is what
+    #    makes the widened definition the finding rather than the number.
+    arms.append(("the published residue 0 is derived from the rows, not stored",
+                 unadjudicated_tables(live_rows) == []))
+    # ⛔ a declared record that is not tracked would inflate the residue
+    #    silently, so the list is checked rather than trusted.
+    arms.append(("the adjudicating records are named and tracked",
+                 all((ROOT / d).exists() for d in ADJUDICATING_RECORDS)))
+    # ⛔ NEGATIVE, and it needs a DEGENERATE input rather than the live one:
+    #    residue 0 passes whether the key works or not, so the arm is run against
+    #    a row writing a table no record could possibly name. Without it, `0`
+    #    would be indistinguishable from `this function returns nothing`.
+    ghost = live_rows + [{
+        "route": "POST /v1/ghost", "admission": "identity only", "arm": "walk",
+        "site_global": ["zzz_unadjudicated_table"], "tenant_scoped": [], "unknown": [],
+        "verdict": "site-global", "file": "x", "delegates": [], "truncated": False,
+        "delegates_unresolved": [],
+    }]
+    arms.append(("an unadjudicated table IS reported as residue",
+                 "zzz_unadjudicated_table" in unadjudicated_tables(ghost)))
+    # ⛔ and the residue key is scoped to the ENROLMENT population, not to every
+    #    site-global writer: a table written only by an already-gated site act is
+    #    not outstanding work and must not be counted as any.
+    gated = live_rows + [{
+        "route": "POST /v1/ghost-site", "admission": "site authority", "arm": "walk",
+        "site_global": ["zzz_unadjudicated_table"], "tenant_scoped": [], "unknown": [],
+        "verdict": "site-global", "file": "x", "delegates": [], "truncated": False,
+        "delegates_unresolved": [],
+    }]
+    arms.append(("a table written only by a GATED route is not residue",
+                 "zzz_unadjudicated_table" not in unadjudicated_tables(gated)))
 
     # ── The live corpus ──────────────────────────────────────────────────────
     try:

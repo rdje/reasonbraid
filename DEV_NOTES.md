@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — One predicate, two populations that disagree about which end is safe
+
+- `resolvers::resolve` filtered two ADR-018 ladders with one test, `declared >= required`. It is correct for sandbox and inverted for egress, and the reason is not a typo: the two ladders are ordered by different things. Sandbox counts upward towards *more isolation*; egress counts upward towards *more reach*. A floor on the first is a safety guarantee. The same floor on the second is a guarantee pointed backwards.
+- ⭐ **The comment above the filter contained the whole error, and it cited the right document to make it.** It quoted ADR-018 — *the claim is the MAXIMUM* — and then concluded *"so a resolver claiming LESS than required is ineligible"*. Under a maximum claim, less is more constrained, which is safer. Reading the ADR was not enough; the sentence that misapplies a rule usually quotes it.
+- 🔎 **What actually found it was refusing to answer a smaller question.** The leaf only needed a verdict for `egress_class: "listed"` on five packs. Working out what the word means meant working out what a *requirement* for it means, which meant enumerating the whole 4 × 6 matrix rather than reading the one row. The matrix said the filter refuses one combination of twenty-four — and a filter that refuses 1 in 24 is either trivial or wrong.
+- ⛔ **A number that small is a prompt, not a result.** "One of twenty-four" looked like a footnote until I asked *which* one, and it was the combination that makes asking for the WIDEST class the only way to narrow the field. A rate without its instance is an opinion.
+- ⚠️ **And I had to change an existing test, which is the moment to be most careful.** The RX resolution asked for `listed` and expected a pack declaring `any` — the defect, written into the suite as an expectation. Editing it to `any` is right and looks exactly like editing a test to make a repair pass, so the reason went into the file beside the line rather than into the commit message alone.
+- promotion: declined for a new record — the decision carries it (*a ladder's comparison direction is a property of the ladder, not of the filter*), and the shape is `[[a-control-that-passes-for-an-unrelated-reason]]` moved from a control into a filter.
+
 ## 2026-09-19 — Two halves of one claim can be gated hundreds of commits apart, and both look green
 
 - The leaf asked me to gate a pair: an advertised `deny` and the code that enforces it. I went to build the gate and found two already there — one from `.7.3.5`, one from `.7.3.6.1` — built for different reasons by leaves that never mention each other. The pair was covered. Nothing was wrong.

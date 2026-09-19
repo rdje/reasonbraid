@@ -5,6 +5,17 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **THE EGRESS CLAIM IS A CEILING, THE SANDBOX CLAIM IS A FLOOR, AND ONE TEST SERVED BOTH (`.7.3.6.4`, REPAIR-0269).**
+
+`resolvers::resolve` filtered both ADR-018 classes with `declared >= required`. Sandbox goes up towards more ISOLATION (a floor is right); egress goes up towards more REACH, so the same test admitted a pack reaching further than the caller permitted.
+
+- 🔴 **Measured over the whole 4 × 6 matrix: the egress filter refused exactly 1 combination of 24, and it refused the wrong one.** A caller requiring `listed` was served `rx-agent-mediated`, which declares `any`; **no value meant *do not give me a pack that can dial anywhere***. ⭐ The comment above the filter quoted ADR-018's *the claim is the MAXIMUM* and drew the opposite conclusion in the same sentence.
+- ✅ **The CODE moved; ADR-018 stands unchanged.** `egress` is `declared <= required`. ⚠️ A decision, not an obvious inversion — the code was internally consistent, and the shipped default only makes sense under the capability reading.
+- ✅ Default `any`, **behaviour unchanged**; an off-ladder class is now `invalid_command`, validated after the tenant binding so the existence oracle stays closed.
+- ⚠️ One existing test moved from `listed` to `any`, with the reason written beside the line — it was the defect seen from the suite's side.
+- ⚠️ **Recorded, not repaired:** `required_sandbox` defaults to `process`, excluding the four `none` packs including R0 — the documented default resolves nothing for the flagship pack. Fail-closed.
+- ✅ **VERIFIED:** `profiles` **59 passed, 0 failed** (RED before: 58/1); clippy rc=0; fmt rc=0.
+
 🔴 **THE PAIR WAS GATED AT TWO CADENCES, AND THE LOOSER HALF IS NOW A PURE FUNCTION (`.7.3.6.3`, REPAIR-0268).**
 
 The R3 pack advertises two deny-policies and enforces them; nothing derives one from the other. Both sides were already gated — by two earlier leaves that did not know about each other — **at very different strengths**.

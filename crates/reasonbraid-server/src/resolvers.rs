@@ -187,8 +187,26 @@ pub async fn resolve(
         }
     };
     // The filters: the resolver's declared classes must MEET the required
-    // ones (the ADR-018 ladder order — the claim is the maximum, so a
-    // resolver claiming LESS than required is ineligible).
+    // ones — and the two ADR-018 ladders are compared in OPPOSITE directions,
+    // because they run in opposite safety directions.
+    //
+    // 🔴 THEY USED TO SHARE ONE TEST, `declared >= required`, AND THAT WAS THE
+    // DEFECT (`SIGNOFF-REPAIR.7.3.6.4`). The sandbox ladder
+    // (`none < process < constrained_process < vm_container`) goes UP towards
+    // more isolation, so a floor is right: a resolver offering less isolation
+    // than required is ineligible. The egress ladder
+    // (`none < loopback < listed < any`) goes UP towards more REACH, so the
+    // same test admitted a pack that reaches FURTHER than the caller permitted.
+    //
+    // ⛔ ADR-018 says the egress claim is *the MAXIMUM, never the minimum* —
+    // a resolver declaring `listed` promises not to dial beyond listed hosts.
+    // A consumer of a maximum claim requires a LOWER one, so the comparison is
+    // `declared <= required`. The old comment quoted that rule and drew the
+    // opposite conclusion from it, in the same sentence.
+    //
+    // Measured over the whole 4 × 6 matrix before the repair: the egress filter
+    // refused exactly one combination of 24, and a caller requiring `listed`
+    // was served `rx-agent-mediated`, which declares `any`.
     let mut eligible: Vec<(String, f64)> = Vec::new();
     for (resolver_id, sandbox, egress, latency) in rows {
         let ok_sandbox = match (
@@ -202,7 +220,7 @@ pub async fn resolve(
             EGRESS_CLASSES.iter().position(|e| e == &egress),
             egress_rank,
         ) {
-            (Some(declared), Some(required)) => declared >= required,
+            (Some(declared), Some(required)) => declared <= required,
             _ => false,
         };
         if ok_sandbox && ok_egress {

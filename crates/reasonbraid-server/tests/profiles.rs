@@ -2920,6 +2920,158 @@ async fn the_resolver_verb_refuses_to_replace_an_existing_advertise() {
         .expect("clear the probe rows");
 }
 
+/// `SIGNOFF-REPAIR.7.3.6.4`: a caller that bounds a pack's egress is not served
+/// a pack that declares no bound.
+///
+/// ADR-018 states the egress class as *the allowed destinations … the claim is
+/// the MAXIMUM, never the minimum*. `resolvers::resolve` filtered it with
+/// `declared >= required`, the same test it uses for the sandbox ladder — and
+/// the two ladders run in opposite safety directions. Higher sandbox is more
+/// isolated, so a floor is right there; higher egress is more REACH, so the
+/// same test admitted a pack that reaches further than the caller permitted.
+///
+/// Measured over the whole 4 × 6 matrix before the repair, the filter refused
+/// exactly one combination out of 24, and it was the wrong one: a caller
+/// requiring `listed` was served `rx-agent-mediated`, which declares `any`, and
+/// no value of `required_egress` meant *do not give me a pack that can dial
+/// anywhere*.
+#[tokio::test]
+async fn an_egress_bound_excludes_a_pack_that_declares_a_wider_one() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "egress-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+
+    // Two resolvers on one scheme, differing ONLY in the egress they declare.
+    // That is the discriminator: anything else that changed the outcome would
+    // be a different finding.
+    for (id, egress) in [("rsv-egress-listed", "listed"), ("rsv-egress-any", "any")] {
+        let response = client
+            .post(format!("{base}/v1/resolvers"))
+            .header(PRINCIPAL_HEADER, &human_id)
+            .json(&json!({
+                "resolver_id": id,
+                "schemes": ["egress-probe"],
+                "egress_class": egress,
+                "sandbox_level": "none",
+                "latency_range_ms": { "min": 100, "max": 200 },
+                "version": "0.1.0",
+            }))
+            .send()
+            .await
+            .expect("register request");
+        assert_eq!(response.status().as_u16(), 200, "{id} registers");
+    }
+
+    let submitted: Value = client
+        .post(format!("{base}/v1/resources"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({
+            "original_locator": "https://example.org/egress-probe",
+            "scheme": "egress-probe",
+        }))
+        .send()
+        .await
+        .expect("submit request")
+        .json()
+        .await
+        .expect("submit json");
+    let resource_id = submitted["resource_id"].as_str().unwrap().to_string();
+
+    let resolve = |required: &'static str| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let resource_id = resource_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/resources/{resource_id}/resolve"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&json!({ "required_sandbox": "none", "required_egress": required }))
+                .send()
+                .await
+                .expect("resolve request");
+            let status = response.status().as_u16();
+            let parsed: Value = response.json().await.expect("resolve json");
+            (status, parsed)
+        }
+    };
+
+    // THE BOUND. A caller permitting at most `listed` gets the `listed` pack
+    // and NOT the one declaring `any`.
+    let (status, bounded) = resolve("listed").await;
+    assert_eq!(status, 200, "the bounded resolution: {bounded}");
+    assert_eq!(
+        bounded["resolvers"],
+        json!(["rsv-egress-listed"]),
+        "a caller that permits at most `listed` is not served a pack declaring \
+         `any` — the egress claim is a MAXIMUM (ADR-018): {bounded}",
+    );
+
+    // ⛔ A BOUND, NOT A BLACKOUT: permitting `any` still admits both, so the
+    // repair narrows what a caller ASKED to narrow and nothing else.
+    let (status, unbounded) = resolve("any").await;
+    assert_eq!(status, 200, "the unbounded resolution: {unbounded}");
+    let mut ids: Vec<&str> = unbounded["resolvers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    ids.sort_unstable();
+    assert_eq!(
+        ids,
+        vec!["rsv-egress-any", "rsv-egress-listed"],
+        "permitting `any` admits both packs: {unbounded}",
+    );
+
+    // ⛔ And a bound NO pack meets is the explicit unresolvable-now, never a
+    // silent downgrade to a wider pack (ADR-018's own exit clause).
+    let (status, impossible) = resolve("loopback").await;
+    assert_eq!(
+        status, 200,
+        "the impossible bound still answers: {impossible}"
+    );
+    assert_eq!(impossible["unresolvable_now"], json!(true));
+    assert!(impossible["resolvers"].as_array().unwrap().is_empty());
+
+    // 🔴 AND A REQUIREMENT OUTSIDE THE ADR-018 VOCABULARY IS NAMED, not
+    // silently answered as an absence. `position()` returned `None` for an
+    // unknown class, every row became ineligible, and a typo was indistinguishable
+    // from "no resolver available".
+    let response = client
+        .post(format!("{base}/v1/resources/{resource_id}/resolve"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({ "required_sandbox": "none", "required_egress": "public" }))
+        .send()
+        .await
+        .expect("resolve request");
+    let status = response.status().as_u16();
+    let refused: Value = response.json().await.expect("resolve json");
+    assert_eq!(
+        status, 400,
+        "an off-ladder required class is refused by name, not answered as an \
+         empty result: {refused}",
+    );
+    assert_eq!(refused["code"], json!("invalid_command"));
+
+    sqlx::query("DELETE FROM resolver_capabilities WHERE resolver_id = ANY($1::text[])")
+        .bind(["rsv-egress-listed", "rsv-egress-any"])
+        .execute(&pool)
+        .await
+        .expect("clear the probe rows");
+}
+
 /// The built-in R1 pack (PHASE-4.3.3): the seeded `git` entry resolves the
 /// git references under its own claimed classes, the acquisition runs under
 /// the real policy — the loopback literal refuses with the class NAMED (the
@@ -3995,10 +4147,21 @@ async fn the_gated_packs_resolve_only_while_the_gate_is_open() {
     };
     assert_eq!(status, 200, "the agent reference submits: {agent_ref}");
     let agent_id = agent_ref["resource_id"].as_str().unwrap().to_string();
+    // ⚠️ `required_egress: "any"`, changed from `"listed"` by
+    // `SIGNOFF-REPAIR.7.3.6.4` and not to make a repair pass. RX declares
+    // `egress_class: "any"`, and the egress claim is a MAXIMUM (ADR-018), so a
+    // caller permitting at most `listed` must NOT be handed a pack that
+    // declares no bound — that is the repair, and this call is a caller who
+    // does permit it. ⛔ Recorded rather than quietly edited: under the old
+    // `declared >= required` test this line passed `"listed"` and got RX,
+    // which is the defect seen from the test suite's side.
+    // 🔎 `.7.3.6.5` may yet find RX's `any` to be a MISDESCRIPTION — the pack
+    // performs no egress at all — in which case this line changes again, for a
+    // different reason.
     let response = client
         .post(format!("{base}/v1/resources/{agent_id}/resolve"))
         .header(PRINCIPAL_HEADER, &human_id)
-        .json(&json!({ "required_sandbox": "none", "required_egress": "listed" }))
+        .json(&json!({ "required_sandbox": "none", "required_egress": "any" }))
         .send()
         .await
         .expect("resolve request");

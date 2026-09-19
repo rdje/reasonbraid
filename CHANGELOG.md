@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-19 — The egress claim is a ceiling, the sandbox claim is a floor (`SIGNOFF-REPAIR.7.3.6.4`)
+
+`resolvers::resolve` filtered both ADR-018 isolation classes with the same test, `declared >= required` — one predicate for two ladders that run in opposite safety directions.
+
+- 🔴 **The sandbox ladder goes up towards more ISOLATION, so a floor is right. The egress ladder goes up towards more REACH, so the same test admitted a pack that reaches further than the caller permitted.** ⭐ The comment above it quoted ADR-018's *the claim is the MAXIMUM* and drew the opposite conclusion in the same sentence.
+- 🔴 **Measured over the whole 4 × 6 matrix: the egress filter refused exactly 1 combination of 24, and it refused the wrong one.** Asking for `any` — the widest class — was the only way to narrow the field, and it narrowed it to `rx-agent-mediated`, the single pack declaring no bound. **No value of `required_egress` meant *do not give me a pack that can dial anywhere*,** which is the one thing ADR-018 says the class is for.
+- ⭐ **Reproduced on two resolvers differing in ONE field** — `rsv-egress-listed` and `rsv-egress-any`, identical but for `egress_class`. Asking for at most `listed` returned both: `left: [rsv-egress-listed, rsv-egress-any]`, `right: [rsv-egress-listed]`.
+- ✅ **The CODE moved; ADR-018 stands unchanged.** `egress` is now `declared <= required`, a ceiling; `sandbox` stays a floor. ⚠️ A decision rather than an obvious inversion — the shipped default `loopback` only makes sense under the capability reading, so the code was internally consistent. It moved because a capability floor over a maximum claim is incoherent: it asks a promise-not-to-exceed to behave like a promise-to-reach.
+- ✅ **The default becomes `any` and the behaviour is unchanged** — under the old floor test `loopback` admitted every pack, and under the ceiling test `any` does too. The word now says what it does.
+- ✅ **An off-ladder required class is refused by name** (`invalid_command`) instead of yielding a silent empty result that a typo and a genuine absence shared. ⛔ Validated AFTER the tenant binding, so a foreign or absent resource id keeps giving one answer.
+- ⚠️ **One existing test changed and the reason is written beside the line:** the RX resolution passed `required_egress: "listed"` and expected the pack declaring `any` — the defect seen from the suite's own side. It now passes `"any"`. 🔎 `.7.3.6.5` may find RX's `any` to be a misdescription, in which case it changes again for a different reason.
+- ⚠️ **Recorded, not repaired:** `required_sandbox` defaults to `process`, which excludes the four packs declaring `none` including R0, so the documented default resolves nothing for the flagship pack. Fail-closed; a default-policy question, not a comparison one.
+- ✅ **VERIFIED:** `run_pg_tests.sh profiles` → **59 passed, 0 failed** (RED before: 58 passed, 1 failed); clippy `-D warnings` rc=0; fmt rc=0; book rebuilt. Decision: `docs/decisions/2026-09-19_the-egress-claim-is-a-ceiling-the-sandbox-claim-is-a-floor.md`.
+
 ## 2026-09-19 — The pair was gated at two cadences, and the looser half is now a pure function (`SIGNOFF-REPAIR.7.3.6.3`)
 
 The R3 pack advertises two deny-policies and enforces them. Nothing derives one from the other, so both sides are gated — and measuring first found that the two gates were built by two earlier leaves that did not know about each other, at very different strengths.

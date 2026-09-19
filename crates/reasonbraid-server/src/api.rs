@@ -2119,8 +2119,22 @@ struct ResolveRequest {
 fn default_sandbox() -> String {
     "process".to_string()
 }
+/// ⛔ `any` is the PERMISSIVE default, and it is the honest spelling of the
+/// behaviour that shipped. The egress claim is a maximum, so a requirement is
+/// a ceiling: `any` means *I place no bound on where this pack may dial*.
+///
+/// The field read `loopback`, which under the old `declared >= required` test
+/// also admitted every pack — every one declares `listed` or `any`. So the
+/// default's behaviour is unchanged by `SIGNOFF-REPAIR.7.3.6.4`; what changed
+/// is that the word now says what it does. `loopback` under the corrected
+/// comparison would mean *at most loopback*, which no pack declares, and every
+/// default resolution would answer `unresolvable_now`.
+///
+/// ⚠️ Whether the default SHOULD be permissive is a separate decision this leaf
+/// does not take: tightening it changes what every existing caller gets, and
+/// `.7.3.6.4` owns the comparison, not the policy.
 fn default_egress() -> String {
-    "loopback".to_string()
+    "any".to_string()
 }
 
 /// `POST /v1/resources/{id}/resolve` — the §12.2 resolution order: the
@@ -2155,6 +2169,35 @@ async fn resolve_resource(
             "no reference `{resource_id}`"
         )));
     };
+    // 🔴 AN OFF-LADDER REQUIREMENT IS NAMED, not answered as an absence
+    // (`SIGNOFF-REPAIR.7.3.6.4`). `resolve` locates each required class with
+    // `position()`; an unknown one yielded `None`, every row became ineligible,
+    // and the caller received `unresolvable_now` — indistinguishable from "no
+    // resolver available". Fail-closed, and silent about which.
+    //
+    // ⛔ It is validated HERE, after the tenant binding, deliberately. Checking
+    // the body first would answer 400 for a resource this caller may not know
+    // exists, which re-opens the existence oracle `.11.14.3.4` closed: a
+    // foreign or absent id must keep giving one answer.
+    for (field, value, vocabulary) in [
+        (
+            "required_sandbox",
+            &req.required_sandbox,
+            &crate::resolvers::SANDBOX_LEVELS[..],
+        ),
+        (
+            "required_egress",
+            &req.required_egress,
+            &crate::resolvers::EGRESS_CLASSES[..],
+        ),
+    ] {
+        if !vocabulary.contains(&value.as_str()) {
+            return Err(ControlApiError::invalid_command(format!(
+                "`{field}` must be one of {}; `{value}` is outside the ADR-018 vocabulary",
+                vocabulary.join(", ")
+            )));
+        }
+    }
     let mut outcome = crate::resolvers::resolve(
         &state.pool,
         &reference.scheme,

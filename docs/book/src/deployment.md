@@ -1920,6 +1920,45 @@ itself carries. Denying every request including the navigation is *not* the
 policy — a control asserts that the requested page still loads, so a repair that
 blacked the browser out would fail it.
 
+### Asking for a pack: the two isolation classes run in opposite directions
+
+`POST /v1/resources/{id}/resolve` takes two ADR-018 classes, and they are
+filtered in opposite directions because they measure opposite things.
+
+`required_sandbox` is a **floor**. The ladder is
+`none < process < constrained_process < vm_container`, higher meaning more
+isolated, so a pack offering less isolation than you require is ineligible.
+
+`required_egress` is a **ceiling**. The ladder is
+`none < loopback < listed < any`, higher meaning more reach, and a pack's
+declared class is its *maximum* — `listed` is a promise not to dial beyond
+listed hosts. So a pack that declares more reach than you permit is ineligible.
+
+| `required_egress` | admits |
+| --- | --- |
+| `any` (the default) | every pack — no bound requested |
+| `listed` | the packs that declare `listed`, `loopback` or `none`; **not** one declaring `any` |
+| `loopback` | only packs declaring `loopback` or `none` |
+| `none` | only packs declaring `none` |
+
+Until `SIGNOFF-REPAIR.7.3.6.4` both classes used the floor test. For egress
+that inverted the guarantee: a caller asking for at most `listed` was served
+`rx-agent-mediated`, which declares `any`, and **no value meant "do not give me
+a pack that can dial anywhere"** — which is the one thing ADR-018 says the class
+is for. Measured over the whole four-by-six matrix, the filter refused exactly
+one combination out of twenty-four, and it refused the wrong one.
+
+The default is `any`, which places no bound. That is the same behaviour the old
+default (`loopback`, under the floor test) produced — every pack was admitted
+either way — so nothing a caller sees changed except that the word now means
+what it says.
+
+A requirement no pack can meet is the explicit `unresolvable_now`; the
+reference stays submitted and is never silently downgraded to a wider pack. A
+requirement outside the ADR-018 vocabulary is now refused by name with
+`invalid_command`, rather than answered as an empty result — a typo used to be
+indistinguishable from "no resolver available".
+
 ### How the advertisement and the enforcement are kept together
 
 The R3 pack advertises two deny-policies and enforces them, and those are two

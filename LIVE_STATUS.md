@@ -5,6 +5,19 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **TWENTY CLAIMS FROM THIS SESSION RE-DERIVED: FOURTEEN HOLD, AND THE THREE THAT FAILED ARE ONE HABIT (`.13.4.2`, REPAIR-0299).**
+
+The director's *ensure the findings hold*, put a second time and applied to `REPAIR-0292`…`0298`. Every re-derivation by a route that did NOT produce the number.
+
+- ✅ **The headline holds by the TOOLCHAIN rather than by a grep.** `cargo metadata`'s resolved graph: **0 workspace packages depend on `reasonbraid-mcp`**, whose only targets are a `lib` and a build script. Falsified further — the only reference outside `crates/` and `docs/` is `scripts/run_pg_tests.py`, the test runner.
+- ✅ **The rename's argument came back STRONGER.** It rested on one producer; enumerating every writer of `acknowledged_at` finds **two** production paths (`node.rs:315`, `worker.rs:187`) and **both journal every command before acking**.
+- ✅ **`PresenceState::Busy` is never constructed — said by the COMPILER**, not by a search: removing `#[allow(dead_code)]` yields `warning: variant Busy is never constructed`.
+- ✅ **The 23 PHASE rows and 18 pairs the whole adjudication rests on did not move**, and they are the same 18. Also holding: `ask_network` 0, the offline expiry 0, `sse-stream` unvendored, `presence_state` 5 call sites, the book's MCP absence at `fdd3106`, three chapters' render figures, **7/7 mutations re-caught**, and the census's five figures at their own commit.
+- 🔴 **THREE NAMED INSTANCES WERE WRONG, and §4.1 grades that class exact.** `node_channel` *(39 before)* — **false**; the repair extended a control and the suite was **40 on both sides**. `.6.8`'s *six workspace binaries* — there are **nine**; a `[[bin]]` grep cannot see a crate using `src/main.rs`. `respond` *(5 hits)* in the book — that is **5 files / 8 hits**.
+- 🔎 **All three are one habit, not three slips: a number reasoned to, published in the voice of one measured.** ⭐ **The tell costs nothing and needs no re-run — the sentence names a quantity the command could not have produced.** Promoted: `docs/knowledge/a-delta-is-a-second-measurement.md`.
+- ⚠️ **Two numbers moved, both trajectory-grade.** `664 · 562` → **`665 · 563`**: measured before the leaf's own text was written, so it described a tree never committed. `53 stranded deferrals at fdd3106` → **60** at the *same commit*, because the INSTRUMENT changed between runs. ✅ Repaired in the producer, not the copies: the census now prints its own content hash beside every figure, so a published number names a commit **and** an instrument.
+- ⭐ **THE SCORE, graded on §4.1's three axes separately: PROSE 20 of 20 hold** — no finding withdrawn, no leaf re-opened. **NUMBER: 2 moved. NAMED INSTANCE: 3 wrong**, and that is the real failure, because a named row is the first thing a reader checks.
+
 🔴 **THE DELIVERY STATE WAS CALLING A TRANSPORT RECEIPT AN ACKNOWLEDGEMENT (`.11.24.1.1`, REPAIR-0297).**
 
 The leaf opened on a MISSING state and found a WRONG one, which is the better finding.
@@ -15,13 +28,13 @@ The leaf opened on a MISSING state and found a WRONG one, which is the better fi
 - 🔴 **The state whose name was wrong was the one state the suite never asserted.** The control now carries it, and the new row also DISCRIMINATES the two states that share a column — `cmd_received` and `cmd_consumed` are both acknowledged and differ only in the `work_result` event.
 - ⚠️ **A wire-visible vocabulary change, taken deliberately.** A client matching `acknowledged` sees `transport_received`. The test applied: could the old name mislead a decision? Yes — a client reading a receipt as an acknowledgement skips a re-offer it should make.
 - ⚪ **Four §10.6 states stay underived WITH dispositions and leaves**: `offered` and a per-event-type `acknowledged` (`.11.24.1.1.1` — the second is a DESIGN commitment before an implementation), `expired` and `revoked` (`.11.24.1.1.2`, which absorbs `PHASE-3.2.2`'s deferred offline-delivery expiry).
-- ✅ **VERIFIED:** `node_channel` **40 passed, 0 failed** (39 before); FALSIFIED in situ — reverting the one literal gives `left: "acknowledged"`, `39 passed; 1 failed`, restored byte-identical; `make book` renders the new delivery-state table (6 tables · 27 rows · 0 padded); `cargo fmt --all --check` rc=0; doctrine gate green.
+- ✅ **VERIFIED:** `node_channel` **40 passed, 0 failed**. 🔴 **This line read *(39 before)* and that delta is FALSE (`.13.4.2`)** — the repair EXTENDED a control and added no test; the static count is 40 at both commits. The suite was 40 on both sides; FALSIFIED in situ — reverting the one literal gives `left: "acknowledged"`, `39 passed; 1 failed`, restored byte-identical; `make book` renders the new delivery-state table (6 tables · 27 rows · 0 padded); `cargo fmt --all --check` rc=0; doctrine gate green.
 
 🔴 **EIGHTEEN DEFERRALS AND TWELVE GOAL ITEMS ADJUDICATED, AND SEVEN WERE STRANDED (`.11.24.1`, REPAIR-0296).**
 
 Five of the seven were unknown before this leaf. Every verdict carries the command that decided it, and no verdict rests on a reading of the task tree alone.
 
-- 🔴 **The §10.6 delivery ladder ships three of its five states.** Migration 0021 derives `queued → acknowledged → consumed` plus `dead_lettered`; `transport_received` has **0** hits in `crates` and `offered` has no producer. The offline-delivery expiry and max age, deferred from `PHASE-3.2.2`, have **0** hits too. ⭐ The CODE is honest — the migration's own header draws the shipped ladder — so a reader of the code is not misled and a reader of the tree is. → `.11.24.1.1`
+- 🔴 **The §10.6 delivery ladder ships three of its five states.** Migration 0021 derives `queued → acknowledged → consumed` plus `dead_lettered`; `transport_received` has **0** hits in `crates` and `offered` has no producer. ⚠️ **STALE BY ONE COMMIT, annotated by `.13.4.2` rather than deleted because it was true when measured and it is this finding's own evidence:** REPAIR-0297 renamed the third state to `transport_received`, so the figure is now **1**, and `migrations/0075` supersedes 0021's derivation. `offered` is still unproduced. The offline-delivery expiry and max age, deferred from `PHASE-3.2.2`, have **0** hits too. ⭐ The CODE is honest — the migration's own header draws the shipped ladder — so a reader of the code is not misled and a reader of the tree is. → `.11.24.1.1`
 - 🔴 **Only the EXTRACT resolution records a derivation edge.** One `derivations::submit` call in the resolve handler, reading `response.extractor_version`; GIT and BROWSE write none, although both were deferred by name. §12.6's graph is what makes a rendered page traceable to its bytes. → `.11.24.1.3`
 - 🔴 **`PresenceState::Busy` is advertised and can never be reported** — declared, rendered as the wire string `busy`, constructed nowhere. → `.11.24.1.2`
 - 🔴 **The adapter SDK has no acquisition trait** — its whole trait surface is `AttemptStream` and `Adapter`, so a third party can declare what it resolves and cannot implement resolving it. → `.11.24.1.5`
@@ -32,7 +45,7 @@ Five of the seven were unknown before this leaf. Every verdict carries the comma
 
 ✅ **THE GOAL-VERSUS-RECEIPT CENSUS, AND ITS ONE EXACT PREDICATE BECOMES A GATE (`.11.24`, REPAIR-0295).**
 
-Two `done` Phase-8 leaves were found in consecutive slices whose GOAL line named work their own DONE list did not carry — and nothing in this repository compares those two sections. `scripts/census_goal_receipt_gap.py` now does: **13 trees · 664 leaves · 562 finished · 198 carrying both a goal and a Done list.**
+Two `done` Phase-8 leaves were found in consecutive slices whose GOAL line named work their own DONE list did not carry — and nothing in this repository compares those two sections. `scripts/census_goal_receipt_gap.py` now does: **13 trees · 665 leaves · 563 finished · 198 carrying both a goal and a Done list.** (⚠️ `664 · 562` as first published: measured before the leaf's own text was written, so it described a tree that was never committed — `.13.4.2`)
 
 - ✅ **`duplicate-leaf-id` is 0 and SHIPS as the `LEAF-ID-UNIQUE` gate.** Exact, no judgement, **0.36 s against a 20.5 s enforcer**, and **0 of the last 200 commits** would have been blocked. ⭐ Registered anyway, and the reason is the difference from the one gate this project priced OUT: that one guards a class that changes when a ROUTE is added; this one guards a class that changes when a LEAF is added, which is almost every commit here — and the near-miss happened in the session that opened the leaf.
 - 🔴 **`stranded-deferral` is 62, and 39 of them are the discipline WORKING.** Every SIGNOFF-REPAIR row is a parent routing a finding to a leaf with its own acceptance, and that leaf closed. ⛔ Publishing 62 as a defect count would have called this project's own routing discipline a defect.

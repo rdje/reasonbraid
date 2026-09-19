@@ -1,5 +1,40 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — Where did the 39 come from?
+
+I published `node_channel` *40 passed (39 before)*. I ran that suite exactly
+once, afterwards. The 39 came from the shape of the three sentences before it —
+`mcp_listen` 4 → 6, the lib 122 → 127, both measured and both true — and the
+fourth slice extended an existing control instead of adding one. Static
+`#[tokio::test]` count: 40 at both commits.
+
+Two more of the same kind, same session. *The workspace's binaries are
+`rb-server`, `rb-node`, `rb-cli`, `rb-site`, `rb-bench`, `rb-journal`* — a
+`[[bin]]` grep cannot see `reasonbraid-browse` or `reasonbraid-extract`, which
+use `src/main.rs`; there are nine. And *`respond` (5 hits)*, where the command
+was `git grep -c … | wc -l`, which counts files.
+
+⭐ The thing worth keeping is that **none of the three needed a re-run to
+catch**. In each, the sentence names a quantity the command could not have
+produced: one run cannot report two counts, a `[[bin]]` grep cannot enumerate
+binaries, `| wc -l` cannot count hits. That is a proofreading pass against the
+command, not a verification pass against the world, and it is free.
+
+The other half of the audit went the other way and is worth saying too. The
+rename I took a wire break for rested on **one** producer of `acknowledged_at`;
+enumerating them all found **two** — and the second one, `worker.rs:187`,
+journals every command before acking exactly as the first does. The claim came
+back stronger than it went in. And `cargo metadata` answered the reachability
+question the way `.13.4.1` said it would: the toolchain beats a search when the
+claim is about reachability.
+
+⚠️ One instrument defect, and it is the leg-3 one I would have skipped. The same
+commit re-censused gave 53 deferrals one day and 60 the next, because the
+instrument learned an idiom in between. Neither is wrong; the published pair
+could not say which question it answered. The census now prints its own content
+hash beside every figure. A number that is a function of the repository AND of
+the code reading it has to name both.
+
 ## 2026-09-19 — I went looking for a missing state and found a wrong one
 
 The census said `transport_received` had zero hits in `crates/`, so I opened the

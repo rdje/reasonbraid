@@ -334,9 +334,28 @@ def squeeze(text: str) -> str:
     return " ".join(text.split())
 
 
+def instrument_identity() -> str:
+    """This file's own content hash.
+
+    ⛔ **A FIGURE FROM THIS CENSUS NAMES A COMMIT AND AN INSTRUMENT, and it took
+    a re-audit to notice that it was printing only one of them.**
+    `SIGNOFF-REPAIR.11.24.1` published *53 stranded deferrals at `fdd3106`*; the
+    same commit re-censused after this instrument learned the
+    `- Opened and closed` idiom returns **60**. Neither number is wrong — they
+    answer different questions, and the published pair could not say which.
+    `docs/CLAIM_VERIFICATION.md` §5B: a constant that is a function of the
+    repository is derived or gated, never carried — and this one is a function
+    of the repository AND of the code reading it.
+    """
+    import hashlib
+    import pathlib
+
+    return hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest()[:12]
+
+
 def report(result: dict, verbose: bool) -> int:
     print(f"tracked trees: {result['trees']}  leaves: {result['leaves']}  "
-          f"finished: {result['finished']}")
+          f"finished: {result['finished']}  [instrument {instrument_identity()}]")
     print(f"  finished leaves carrying a goal AND a Done list: "
           f"{result['comparable']}  (goal but no Done list: {len(result['no-receipt'])} "
           f"— not comparable, never a gap)")
@@ -511,7 +530,7 @@ def main() -> int:
     rev = None
     if "--at" in sys.argv:
         rev = sys.argv[sys.argv.index("--at") + 1]
-        print(f"(censused at {rev})")
+        print(f"(censused at {rev} with instrument {instrument_identity()})")
     result = census(tracked_trees(rev), rev)
     return report(result, verbose="--check" not in sys.argv)
 

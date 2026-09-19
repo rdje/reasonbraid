@@ -60,6 +60,23 @@ It is the honest answer when the server cannot observe whether its own commit
 landed, and retrying blindly can duplicate an effect. The CLI's
 `--resume-bootstrap` exists for exactly this case.
 
+⚠️ **What the MCP write quota counts, because a client can be surprised by it.**
+The principal-scope quota on the MCP write tools bounds **calls**, not effects.
+It is charged when the gate admits the call — before the handler runs — so:
+
+- a call the handler then refuses, for example because the role holds no
+  `thread_contribute` grant, **has still spent quota**; and
+- an identical call repeated, which the pipeline correctly replays rather than
+  performing twice, **spends quota again** even though no second contribution is
+  written. The replayed response carries the original event id and says
+  `"replayed": true`.
+
+That is deliberate. The surface being bounded is the call itself, so refunding on
+refusal would leave a caller with an unlimited supply of refused calls — the
+storm the bound exists to stop, inverted rather than prevented. A `429
+quota_exceeded` therefore counts every call a principal made in the window, not
+every one that achieved something.
+
 ## Every `kind` an acquisition refusal carries
 
 ⛔ **These are NOT the codes above.** An acquisition that fails puts a refusal in

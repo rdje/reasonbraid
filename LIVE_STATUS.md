@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE QUOTA COUNTS THE ADMITTED CALL AND THE PIPELINE COUNTS THE EFFECT (`.6.1.4`, REPAIR-0286) — AND `.6.1` CLOSES WITH IT.**
+
+- ⛔ **No behaviour changed, and the leaf says so rather than manufacturing a repair.** The seam already committed its quota use in the gate's own transaction, and its header already said so. What was missing was a CONTROL observing the two commits separately and a RECORD of why they are separate.
+- ✅ **The decision:** the per-principal write quota bounds **call volume**, not effects — a call the handler refuses HAS spent quota, and an idempotent replay spends it again. The abuse surface is the CALL, so refunding on refusal would hand an attacker an unlimited supply of refused calls.
+- ⭐ **One caller, two calls, one contribution.** The control observes the split by its outcomes, because no test can reliably interrupt between two commits.
+- 🔎 **A better fact than assumed, found by an assertion that FAILED:** the replay is not byte-identical — it carries the original `event_id` and `"replayed": true`, which distinguishes a replay from a second contribution that merely matched.
+- ✅ **Published in the book** (`errors.md`, beside `quota_exceeded`), because a client can be surprised by it; and test 3's heading, which named three things as one pipeline, is corrected.
+- ✅ **VERIFIED:** `mcp_write` **7/0** (6 before), `mcp` 6 — 0 failed. Clippy, fmt, gate (21/21), book + links rc=0. Falsified with the degenerate *the use does not survive the gate*, restored byte-identical.
+- ✅ **`SIGNOFF-REPAIR.6.1` is CLOSED** — all five children: the three MCP read tools, the write seam's enrolment-as-authority, the untyped body index, the quota semantics, and the policy registry's whole chain.
+
 ✅ **THE MCP WRITE SEAM REFUSES THE BODY IT CANNOT INDEX (`.6.1.3`, REPAIR-0285).**
 
 - 🔴 **Observed RED against the shipped seam, and the panic is inside the dependency:** `serde_json-1.0.151/src/value/index.rs:102: cannot access key "tenant_id" in JSON string`. `mcp_write::respond` is `pub`, takes a `serde_json::Value`, and indexed it — and `IndexMut<&str>` panics on a string, number, bool or array.

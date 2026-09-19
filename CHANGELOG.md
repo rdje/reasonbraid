@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-19 — The quota counts the admitted call and the pipeline counts the effect, and a control finally says which (`SIGNOFF-REPAIR.6.1.4`)
+
+The last open child of `.6.1`, which closes with it.
+
+- ⛔ **NO BEHAVIOUR CHANGED, and the leaf says so rather than manufacturing a repair.** `mcp_write::gate` commits its quota `use` in its own transaction before the handler runs, and the seam's header always said so. What was missing was a CONTROL observing the two commits separately — nothing would have noticed if the split had been closed by accident — and a RECORD of why they are separate.
+- ✅ **THE DECISION:** `docs/decisions/2026-09-19_the-write-quota-counts-calls-not-effects.md`. The per-principal write quota bounds **call volume**, not effects. A call the handler refuses HAS spent quota; an idempotent replay spends it again. ⛔ The argument is the bound's own purpose: **the abuse surface is the call**, so refunding on refusal would hand an attacker an unlimited supply of refused calls — the invitation-storm surface inverted rather than bounded.
+- ⭐ **THE CONTROL OBSERVES THE SPLIT BY ITS OUTCOMES, which is what makes it possible at all** — no test can reliably interrupt between two commits. An ungranted principal's call is refused by the HANDLER and spends `use` +1 with `denial` 0; a granted call spends +1 and writes one contribution; the SAME call repeated spends +1 more while the thread still holds ONE. **One caller, two calls, one contribution.**
+- 🔎 **A BETTER FACT THAN THE LEAF ASSUMED, found by an assertion that FAILED.** The replay is not byte-identical: it carries `"replayed": true` alongside the original `event_id`. The assertion was corrected to that stronger truth — a result that merely looked identical would not distinguish a replay from a second contribution that happened to match.
+- ✅ **A FALSE HEADING CORRECTED.** Test 3 read *"rides the SAME thread-command pipeline (the effect + the audited allowance + the quota use)"* — true of two of the three. It now names the pipeline, names the split, and points at the control that owns it.
+- ⚠️ **AND IT IS USER-VISIBLE, so it is in the book** — `docs/book/src/errors.md`, beside the `quota_exceeded` row that already named the MCP write gate: a refused call and a replayed call both spend quota, with the reason.
+- ✅ **VERIFIED:** `mcp_write` **7/0** (6 before), `mcp` 6 — 0 failed. Clippy rc=0, fmt rc=0, `make gate` green (21/21), book + links rc=0. Falsified in situ with the degenerate *the use does not survive the gate* — the gate rolling back instead of committing — which fails this control at exactly the assertion measuring the split (`left: 0`, `right: 1`) and two pre-existing tests with it. Restored byte-identical; 7/7.
+- ✅ **`SIGNOFF-REPAIR.6.1` CLOSES**: all five children done — the three MCP read tools, the write seam's enrolment-as-authority, the untyped body index, the quota semantics, and the policy registry's whole chain.
+
 ## 2026-09-19 — The write seam refuses the body it cannot index, and a check rather than a retype because the body feeds a hash (`SIGNOFF-REPAIR.6.1.3`)
 
 - 🔴 **OBSERVED RED AGAINST THE SHIPPED SEAM, and the panic is inside the dependency:** `panicked at serde_json-1.0.151/src/value/index.rs:102:18: cannot access key "tenant_id" in JSON string`. `mcp_write::respond` is `pub` through `mcp_write_internal`, takes a `serde_json::Value`, and wrote `body["tenant_id"] = …` straight into it — and `IndexMut<&str>` panics on a string, a number, a bool or an array.

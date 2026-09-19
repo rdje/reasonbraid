@@ -389,9 +389,19 @@ async fn the_gate_counts_calls_and_refuses_the_unconfigured_and_the_exhausted() 
     );
 }
 
-/// 3. The granted `respond` rides the SAME thread-command pipeline (the
-///    effect + the audited allowance + the quota use); the ungranted role
-///    is refused by the handler's OWN authz — never the ambient path.
+/// 3. The granted `respond` rides the SAME thread-command pipeline; the
+///    ungranted role is refused by the handler's OWN authz — never the
+///    ambient path.
+///
+/// ⚠️ **The heading used to say "the effect + the audited allowance + the quota
+/// use", naming three things as one pipeline, and it is true of two**
+/// (`SIGNOFF-REPAIR.6.1.4`). The effect and the allowance commit together inside
+/// `run_thread_command`; the QUOTA use commits in the gate's own transaction
+/// BEFORE the handler is reached, and is spent whatever the handler then decides.
+/// The split is deliberate and is asserted on its own by
+/// `the_quota_counts_the_admitted_call_and_not_the_effect`. This test still
+/// checks the use count, and that is fine — what it may not do is imply the
+/// three share a transaction.
 #[tokio::test]
 async fn the_granted_respond_lands_and_the_ungranted_is_refused_by_the_handler() {
     let _guard = guard().await;
@@ -504,7 +514,7 @@ async fn the_granted_respond_lands_and_the_ungranted_is_refused_by_the_handler()
     assert!(allowances >= 1, "the allowance is audited");
     assert!(
         principal_uses(&pool, &tenant, &role_id, "use").await >= 1,
-        "the admitted respond counted"
+        "the admitted respond counted — in the GATE's transaction, not this one"
     );
 
     // The ungranted role (the explicit EMPTY action set — the default set
@@ -1024,4 +1034,195 @@ async fn the_write_seam_refuses_a_body_it_cannot_index() {
     .await
     .expect("the object body is unaffected by the guard");
     assert_eq!(ok["status"], json!(200), "the accepted respond: {ok}");
+}
+
+/// `SIGNOFF-REPAIR.6.1.4` — the quota counts the ADMITTED CALL, and the
+/// pipeline counts the EFFECT. They are two transactions and this proves it.
+///
+/// ⛔ **This is not a defect report.** `gate()` commits its quota use in its own
+/// transaction before `run_thread_command` applies idempotency, and
+/// `mcp_write.rs`'s header has always said so. What was missing is a control:
+/// no test observed the two commits separately, so nothing would have noticed if
+/// the split had been closed by accident — and test 3's heading named *the
+/// effect + the audited allowance + the quota use* as one pipeline, which is
+/// true of two of the three. Both directions are asserted here.
+///
+/// The decision behind it: `docs/decisions/2026-09-19_the-write-quota-counts-calls-not-effects.md`.
+#[tokio::test]
+async fn the_quota_counts_the_admitted_call_and_not_the_effect() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let base = server.base();
+    let (human_id, tenant, role_id) = bootstrap(
+        &client,
+        &base,
+        "mcpw-quota",
+        json!(["thread_contribute", "thread_invitation_respond"]),
+    )
+    .await;
+
+    let (status, created) = command(
+        &client,
+        &base,
+        "/v1/threads",
+        &human_id,
+        &envelope(
+            "thread.create",
+            "q-create",
+            json!({
+                "tenant_id": tenant,
+                "subject": "the quota split",
+                "objective": "prove the call and the effect are counted apart",
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "create: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    let (status, invited) = command(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}/commands"),
+        &human_id,
+        &envelope(
+            "thread.invite",
+            "q-invite",
+            json!({ "tenant_id": tenant, "agent_role": role_id }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "invite: {invited}");
+    let (status, accepted) = command(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}/commands"),
+        &role_id,
+        &envelope(
+            "thread.accept_invitation",
+            "q-accept",
+            json!({ "tenant_id": tenant }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "accept: {accepted}");
+
+    let contributions = |pool: PgPool, thread_id: String, tenant: String| async move {
+        let n: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM event_log \
+             WHERE tenant_id = $1 AND aggregate_id = $2 \
+             AND event_type = 'thread.contribution_submitted'",
+        )
+        .bind(&tenant)
+        .bind(&thread_id)
+        .fetch_one(&pool)
+        .await
+        .expect("the contribution count");
+        n
+    };
+
+    // ── DIRECTION 1: an ADMITTED call whose handler REFUSES still spends the
+    //    quota. The gate's transaction has already committed by the time the
+    //    handler decides, and that is the bound's whole purpose: the abuse
+    //    surface is the CALL, so a caller whose every call is refused must not
+    //    get an unlimited supply of them.
+    let (status, ghost) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "mcpw-quota-ghost", "tenant_id": tenant, "actions": [] }),
+    )
+    .await;
+    assert_eq!(status, 200, "the ghost enrolls: {ghost}");
+    let ghost_id = ghost["principal_id"].as_str().unwrap().to_string();
+    assert_eq!(
+        principal_uses(&pool, &tenant, &ghost_id, "use").await,
+        0,
+        "the ghost has made no call yet"
+    );
+
+    let err = reasonbraid_server::mcp_write_internal::respond(
+        &pool,
+        &tenant,
+        &role_subject(&ghost_id),
+        &thread_id,
+        json!({ "content": "the refused write", "kind": "claim" }),
+    )
+    .await
+    .expect_err("the ungranted role is refused by the handler");
+    assert_eq!(
+        err.family, "handler:unauthorized",
+        "the GATE admitted it and the HANDLER refused it — a quota refusal here \
+         would mean this arm never reached the split it is measuring: {err:?}"
+    );
+    assert_eq!(
+        principal_uses(&pool, &tenant, &ghost_id, "use").await,
+        1,
+        "the admitted call spent quota although its effect never happened"
+    );
+    assert_eq!(
+        principal_uses(&pool, &tenant, &ghost_id, "denial").await,
+        0,
+        "and it is NOT recorded as a quota denial — the quota admitted this call; \
+         something downstream refused it"
+    );
+
+    // ── DIRECTION 2: an admitted call whose handler SUCCEEDS, then the same
+    //    call REPLAYED. The replay is idempotent — the key is deterministic over
+    //    (thread, principal, body) — so the pipeline produces no second effect,
+    //    while the quota counts a second call. One caller, two calls, one
+    //    contribution: the two commits, observed by their outcomes rather than
+    //    by interrupting between them.
+    let before = principal_uses(&pool, &tenant, &role_id, "use").await;
+    let body = json!({ "content": "the counted write", "kind": "claim" });
+    let first = reasonbraid_server::mcp_write_internal::respond(
+        &pool,
+        &tenant,
+        &role_subject(&role_id),
+        &thread_id,
+        body.clone(),
+    )
+    .await
+    .expect("the granted respond lands");
+    assert_eq!(first["status"], json!(200), "the first call: {first}");
+    assert_eq!(
+        principal_uses(&pool, &tenant, &role_id, "use").await,
+        before + 1,
+        "the admitted call is counted once"
+    );
+    let after_first = contributions(pool.clone(), thread_id.clone(), tenant.clone()).await;
+    assert_eq!(after_first, 1, "exactly one contribution so far");
+
+    let replay = reasonbraid_server::mcp_write_internal::respond(
+        &pool,
+        &tenant,
+        &role_subject(&role_id),
+        &thread_id,
+        body.clone(),
+    )
+    .await
+    .expect("the replay returns the original result");
+    // ⭐ The replay returns the ORIGINAL EVENT — same `event_id` — and says so
+    // in the body. A result that merely looked the same would not distinguish a
+    // replay from a second contribution that happened to match; the id does.
+    assert_eq!(
+        replay["result"]["event_id"], first["result"]["event_id"],
+        "the replay returns the ORIGINAL event, not a second one: {replay}"
+    );
+    assert_eq!(
+        replay["result"]["replayed"],
+        json!(true),
+        "and the pipeline says so rather than leaving it to be inferred: {replay}"
+    );
+    assert_eq!(
+        contributions(pool.clone(), thread_id.clone(), tenant.clone()).await,
+        1,
+        "the replay produced NO second effect — the idempotency held"
+    );
+    assert_eq!(
+        principal_uses(&pool, &tenant, &role_id, "use").await,
+        before + 2,
+        "and it spent quota anyway: the quota counts CALLS, the pipeline counts \
+         EFFECTS, and they are two transactions"
+    );
 }

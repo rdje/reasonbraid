@@ -65,6 +65,8 @@ NEUTRAL=(
   scripts/check_lockstep_claim.sh
   scripts/check_tree_index_frontier.sh
   scripts/check_frontier_status.py
+  scripts/check_leaf_id_unique.sh
+  scripts/census_goal_receipt_gap.py
   scripts/check_rust_formatting.sh
   scripts/check_self_tests.sh
   scripts/check_scaffold_coverage.sh

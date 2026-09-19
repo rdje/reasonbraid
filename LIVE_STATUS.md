@@ -5,6 +5,20 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE GOAL-VERSUS-RECEIPT CENSUS, AND ITS ONE EXACT PREDICATE BECOMES A GATE (`.11.24`, REPAIR-0295).**
+
+Two `done` Phase-8 leaves were found in consecutive slices whose GOAL line named work their own DONE list did not carry — and nothing in this repository compares those two sections. `scripts/census_goal_receipt_gap.py` now does: **13 trees · 664 leaves · 562 finished · 198 carrying both a goal and a Done list.**
+
+- ✅ **`duplicate-leaf-id` is 0 and SHIPS as the `LEAF-ID-UNIQUE` gate.** Exact, no judgement, **0.36 s against a 20.5 s enforcer**, and **0 of the last 200 commits** would have been blocked. ⭐ Registered anyway, and the reason is the difference from the one gate this project priced OUT: that one guards a class that changes when a ROUTE is added; this one guards a class that changes when a LEAF is added, which is almost every commit here — and the near-miss happened in the session that opened the leaf.
+- 🔴 **`stranded-deferral` is 62, and 39 of them are the discipline WORKING.** Every SIGNOFF-REPAIR row is a parent routing a finding to a leaf with its own acceptance, and that leaf closed. ⛔ Publishing 62 as a defect count would have called this project's own routing discipline a defect.
+- ⚪ **The 23 PHASE rows are the real population and are NOT adjudicated here** — `.11.24.1`, for the same reason `.7.1.1` left its 42 to `.7.1.2`: each row needs a code census, and a census that also repairs cannot be re-run against the tree it changed.
+- 🔴 **The instrument could not see its own founding instances at `HEAD`**, because this session's own repairs annotated both leaves and put the missing words into their receipts. ⛔ **An instrument measured only against the tree its own repairs have touched is measuring the repair.** `--at <rev>` exists for that, and the calibration runs at `fdd3106`.
+- ⭐ **The separator is calibrated, not chosen:** population against founding items caught — `→ + ; ,` **306/2**, `→ + ;` **78/2**, `→ +` **51/2**, `→` **12/2**. The narrowest strictly dominates. ⚠️ And the predicate's limit is published with it: **it catches one of the two founding leaves, not both**, which is what declines it as a gate rather than an opinion about noise.
+- 🔴 **An `arrived` column was built to classify the deferrals mechanically, measured, and DISCARDED** — 16 rows with an empty subject, and it marked the confirmed stranding as *arrived* because the word *transport* appears in the target's root-cause box while the transport does not exist.
+- 🔎 **Three leaves the instrument refused were its own blind spot**, not a defect: they use `- Opened and closed by …`, a real idiom. The repair is to learn the idiom, not to edit three tracked leaves into the shape a script preferred. `check_frontier_status.py` shares the blind spot, latently.
+- 🔴 **The STORAGE-LOCALITY gate refused my own script and was right**: three self-test `tempfile` calls defaulted to `TMPDIR`, off-volume. A fixture is project data even for a millisecond.
+- ✅ **VERIFIED:** `--self-test` **12/12**, `--check` rc=0, `--calibrate 200` → **0 (0.0%)**, the gate red on a colliding leaf and green after a byte-identical restore, `check_doctrines.sh` **22/22 green**. No product code changed.
+
 🔴 **NOTHING SERVES THE MCP TOOLS, and the book now says so (`.6.5`, REPAIR-0294).**
 
 The book documented no MCP surface at all while the surface shipped and `.6.1` repaired it five times. Writing the chapter honestly required a census, and the census found the surface unreachable.

@@ -1,5 +1,42 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — My instrument could not see the two cases it was built for
+
+I built a census to find leaves whose goal line outran their own done list,
+because I had just found two of them by hand. Run at `HEAD`, it returned
+nothing for either.
+
+The reason is not subtle once seen: the commits that FOUND those two leaves
+annotated them, and the annotations contain the words the done lists were
+missing. `PHASE-8.3.4`'s goal promises *the reauthorize → the recreate → the
+reconcile*; my own annotation, written to record that they were missing, put
+all three into the leaf. The evidence and the repair are the same bytes.
+
+So `--at <rev>` is not a convenience on this script, it is the only way it can
+be calibrated, and every number it publishes is taken at `fdd3106` — the commit
+before this session's first annotation. **An instrument measured only against
+the tree its own repairs have already touched is measuring the repair.** That is
+a sharpening of `calibrate-over-the-history-that-contains-the-instance` rather
+than a new rule, and it is absorbed there.
+
+Two more things fell out of the same exercise and both are about believing
+numbers less:
+
+- The first version reported **543** unreceipted goal items out of 559 finished
+  leaves. That is not a finding, it is a broken predicate, and the fix was not
+  a threshold — it was measuring four separator sets against the founding
+  instances and taking the one that strictly dominates (12 rows, same
+  detections, against 306). The predicate's *limit* is published with it: it
+  catches one of the two founding leaves, not both.
+- The `arrived` column, built to do the classification mechanically, produced 16
+  rows with an empty subject and marked the one confirmed stranding as
+  *arrived*. I deleted it and wrote the reason at the site. An instrument that
+  cannot classify its own founding case may not classify the rest.
+
+And `STORAGE-LOCALITY` refused the script for three `tempfile` calls defaulting
+to `TMPDIR`. It was right. A fixture is project data even when it lives for a
+millisecond.
+
 ## 2026-09-19 — I went to document a surface and found nobody serves it
 
 The book had no MCP chapter, so I set out to write one. The honest way to write

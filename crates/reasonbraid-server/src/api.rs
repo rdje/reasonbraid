@@ -3109,12 +3109,11 @@ async fn resolve_routing_class(
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<crate::routing::ResolvedRoute>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal resolves no route",
         ));
-    }
+    };
     let case_class = body
         .get("case_class")
         .and_then(|v| v.as_str())
@@ -3126,6 +3125,7 @@ async fn resolve_routing_class(
                 &route,
                 &principal.id_string(),
                 "resolve_verb",
+                &tenant,
             )
             .await?;
             Ok(Json(route))
@@ -3140,13 +3140,14 @@ async fn list_routing_resolutions(
     headers: HeaderMap,
 ) -> Result<Json<Vec<serde_json::Value>>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal reads no resolutions",
         ));
-    }
-    Ok(Json(crate::routing::list_resolutions(&state.pool).await?))
+    };
+    Ok(Json(
+        crate::routing::list_resolutions(&state.pool, &tenant).await?,
+    ))
 }
 
 /// `POST /v1/routing/recommendations` — record the shadow recommendation
@@ -3158,13 +3159,12 @@ async fn record_routing_recommendation(
     Json(submission): Json<crate::routing::RecommendationSubmission>,
 ) -> Result<Json<serde_json::Value>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal records no recommendation",
         ));
-    }
-    match crate::routing::record_recommendation(&state.pool, &submission).await {
+    };
+    match crate::routing::record_recommendation(&state.pool, &submission, &tenant).await {
         Ok(row) => Ok(Json(row)),
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }
@@ -3176,14 +3176,13 @@ async fn list_routing_recommendations(
     headers: HeaderMap,
 ) -> Result<Json<Vec<serde_json::Value>>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
+    let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal reads no recommendations",
         ));
-    }
+    };
     Ok(Json(
-        crate::routing::list_recommendations(&state.pool).await?,
+        crate::routing::list_recommendations(&state.pool, &tenant).await?,
     ))
 }
 
@@ -4551,11 +4550,22 @@ async fn create_thread_auto(
                 let route = crate::routing::resolve(&state.pool, class)
                     .await
                     .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+                // ⛔ The journal's tenant is DERIVED from the authenticated
+                // caller, NOT taken from `body.tenant_id`: this write happens
+                // BEFORE the command authorization below, so a caller-supplied
+                // tenant here would let anyone inject rows into another
+                // tenant's audit trail (`SIGNOFF-REPAIR.7.1.2.2`).
+                let Some(journal_tenant) = reader_tenant(&state.pool, &principal).await? else {
+                    return Err(ControlApiError::unauthorized(
+                        "an unenrolled principal resolves no route",
+                    ));
+                };
                 crate::routing::record_resolution(
                     &state.pool,
                     &route,
                     &principal.id_string(),
                     "create_boundary",
+                    &journal_tenant,
                 )
                 .await?;
                 Some(route.arm)
@@ -7041,11 +7051,22 @@ async fn create_thread(
                 let route = crate::routing::resolve(&state.pool, class)
                     .await
                     .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+                // ⛔ The journal's tenant is DERIVED from the authenticated
+                // caller, NOT taken from `body.tenant_id`: this write happens
+                // BEFORE the command authorization below, so a caller-supplied
+                // tenant here would let anyone inject rows into another
+                // tenant's audit trail (`SIGNOFF-REPAIR.7.1.2.2`).
+                let Some(journal_tenant) = reader_tenant(&state.pool, &principal).await? else {
+                    return Err(ControlApiError::unauthorized(
+                        "an unenrolled principal resolves no route",
+                    ));
+                };
                 crate::routing::record_resolution(
                     &state.pool,
                     &route,
                     &principal.id_string(),
                     "create_boundary",
+                    &journal_tenant,
                 )
                 .await?;
                 Some(route.arm)

@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **THE ROUTING JOURNAL LEAK CARRIED THE OTHER TENANT'S PRINCIPAL, AND IS REPAIRED (`.7.1.2.2`, REPAIR-0274).**
+
+`GET /v1/routing/resolutions` and `/recommendations` returned every tenant's routing trail to any enrolled caller. Observed: Alice's list holding Bob's row in full — his case class, his arm, and his principal id.
+
+- ✅ **`migrations/0072`** binds both journals to their own tenant, derived from the authenticated caller at all five write sites and never accepted on the wire.
+- ⭐ **The stored rows get TWO answers because the tables recorded different things:** `routing_resolutions.caller` is a principal primary key, so its history is derived back by join; `routing_recommendations` never recorded an actor, so its history is read by NOBODY. Inventing an owner for a row that asserts who did something is worse than losing its visibility.
+- ⚠️ **A DISCLOSURE path, not a control one** — `routing::resolve` reads neither journal, so no row here bound anybody's outcome.
+- ✅ **The census follows the repair: 42/33 → 41/32 → 39/30, residue 17 → 14.** Each movement is a repair, never a recount.
+- ✅ **VERIFIED:** `routing` 4/0; `policy` 14, `regions` 3, `allowlist` 2, `mcp_write` 5, `migration_upgrade` 4 — 0 failed. Falsified with only the read predicates removed; restored byte-identical; the positive arm runs both ways round.
+
 🔴 **THE DEFAULT WORKFLOW TAKEOVER IS OBSERVED AND REPAIRED (`.7.1.2.1`, REPAIR-0273).**
 
 `.7.1.2` named it from four source sites and owed a runtime reproduction. Observed: **Alice's thread, in Alice's own tenant, executed Mallory's steps** — `["solicit","decide"]` against the shipped `["solicit","synthesize","decide"]`. Mallory holds no authority in Alice's tenant and never touched her thread.

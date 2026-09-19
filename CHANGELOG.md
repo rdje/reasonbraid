@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-19 — The routing journal is read by its own tenant (`SIGNOFF-REPAIR.7.1.2.2`)
+
+`.7.1.2` classified both routing journals as shared, disclosure-only rows whose READ must name the tenant — DOC-0029's remedy, fitting exactly. This binds them.
+
+- 🔴 **THE LEAK CARRIED THE OTHER TENANT'S PRINCIPAL, not merely its traffic.** Against the unbound read, Alice's list holds Bob's row in full — `{"arm":"policy_proposal","caller":"hpr_01a0b96c-…","case_class":"governed","rule_id":"rule_governed","surface":"resolve_verb"}` — and the shadow half hands Bob Alice's recommendation with the evaluation trial it rests on.
+- ⭐ **The two tenants resolve DIFFERENT classes on purpose.** A control asserting only a row count would pass against a repair that returned the wrong tenant's single row; asserting content makes that impossible.
+- ✅ **`migrations/0072`** adds `tenant_id REFERENCES tenants` to both journals, the five write sites derive it from the authenticated caller, and both reads carry `WHERE tenant_id = $1`. ⛔ The thread-create sites deliberately do NOT use `body.tenant_id`, though it is in scope: that write happens BEFORE the command authorization, so a caller-supplied tenant would let anyone inject rows into another tenant's audit trail.
+- ⭐ **THE STORED ROWS GET TWO DIFFERENT ANSWERS, because the two tables recorded different things.** `routing_resolutions.caller` holds a principal primary key, and each principal carries exactly one tenant — so its history is DERIVED back by join. `routing_recommendations` never recorded an actor at all, so nothing can attribute its history: those rows stay NULL and are read by NOBODY. ⛔ Inventing an owner for an audit row that asserts who did something would be worse than losing its visibility.
+- 🔎 **The migration broke five test purge plans, and that is the harness working.** `routing_recommendations` gained its first FK to `tenants`, so `delete_tables` refused with `MissingDependency { parent: "tenants", child: "public.routing_recommendations" }` across five suites. A plan that did not name a child would leave rows behind between tests.
+- ⚠️ **Stated at its real width:** a DISCLOSURE path, not a write path. `routing::resolve` reads neither journal, so no row here ever bound anybody's outcome.
+- ✅ **The census follows the repair: 41/32 → 39/30, 29 tables → 27, residue 16 → 14.** Both journals left the site-global population and two routes stopped being site-global writers at all. Each movement is a repair, never a recount, and the arm deriving the figures now records the whole chain.
+- ✅ **VERIFIED:** `routing` 4/0; `policy` 14, `regions` 3, `allowlist` 2, `mcp_write` 5, `migration_upgrade` 4 — 0 failed. Clippy rc=0; fmt rc=0; both censuses `--check` rc=0 and self-tests green; gate green; book + links rc=0. **Falsified in situ with only the two read predicates removed** — the writes still recorded the tenant, so the arm measures the disclosure and nothing else — `routing.rs` restored byte-identical, 4/4 after.
+
 ## 2026-09-19 — The operator's verb takes the operator's authority (`SIGNOFF-REPAIR.7.1.2.1`)
 
 `.7.1.2` named the workflow registry a shared CONTROL surface from four source sites and owed a runtime reproduction. This is that reproduction, and the repair.

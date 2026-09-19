@@ -92,21 +92,28 @@ pub async fn resolve(pool: &PgPool, case_class: &str) -> Result<ResolvedRoute, R
 
 /// Append the resolution audit row (the surface names where the resolution
 /// happened: the `resolve` verb or the create boundary).
+/// ⛔ `tenant` is DERIVED from the authenticated caller by the HTTP layer and is
+/// never accepted on the wire (`SIGNOFF-REPAIR.7.1.2.2`,
+/// `docs/decisions/2026-09-18_node-presence-is-read-by-its-own-tenant.md`). The
+/// row was site-global until then, and [`list_resolutions`] returned every
+/// tenant's trail to any enrolled principal.
 pub async fn record_resolution(
     pool: &PgPool,
     route: &ResolvedRoute,
     caller: &str,
     surface: &str,
+    tenant: &str,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
-        "INSERT INTO routing_resolutions (case_class, arm, rule_id, caller, surface) \
-         VALUES ($1, $2, $3, $4, $5)",
+        "INSERT INTO routing_resolutions (case_class, arm, rule_id, caller, surface, tenant_id) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(&route.case_class)
     .bind(&route.arm)
     .bind(&route.rule_id)
     .bind(caller)
     .bind(surface)
+    .bind(tenant)
     .execute(pool)
     .await?;
     Ok(())
@@ -124,12 +131,20 @@ pub async fn list_rules(pool: &PgPool) -> Result<Vec<serde_json::Value>, sqlx::E
 }
 
 /// The resolution audit rows, newest first.
-pub async fn list_resolutions(pool: &PgPool) -> Result<Vec<serde_json::Value>, sqlx::Error> {
+/// ⛔ Bound to ONE tenant. A row whose `tenant_id` is NULL — written before
+/// `migrations/0072` by a caller the schema cannot attribute — is read by
+/// nobody, which is deliberate: inventing an owner for an audit row that asserts
+/// who did something would be worse than losing its visibility.
+pub async fn list_resolutions(
+    pool: &PgPool,
+    tenant: &str,
+) -> Result<Vec<serde_json::Value>, sqlx::Error> {
     let rows: Vec<serde_json::Value> = sqlx::query_scalar(
         "SELECT jsonb_build_object('case_class', case_class, 'arm', arm, 'rule_id', rule_id, \
          'caller', caller, 'surface', surface) \
-         FROM routing_resolutions ORDER BY resolved_at DESC",
+         FROM routing_resolutions WHERE tenant_id = $1 ORDER BY resolved_at DESC",
     )
+    .bind(tenant)
     .fetch_all(pool)
     .await?;
     Ok(rows)
@@ -161,9 +176,14 @@ impl RoutingError {
 /// Record one shadow recommendation. It is NEVER applied — the create
 /// boundary keeps resolving the rule table; this record is the evidence a
 /// future policy gate weighs.
+/// ⛔ `tenant` is DERIVED from the authenticated caller (`SIGNOFF-REPAIR.7.1.2.2`).
+/// ⚠️ This table never recorded an actor at all before `migrations/0072`, which
+/// is why its historical rows cannot be attributed the way
+/// `routing_resolutions`'s can: there is nothing in them to join on.
 pub async fn record_recommendation(
     pool: &PgPool,
     submission: &RecommendationSubmission,
+    tenant: &str,
 ) -> Result<serde_json::Value, RoutingError> {
     if !CASE_CLASSES.contains(&submission.case_class.as_str()) {
         return Err(RoutingError::UnknownClass(submission.case_class.clone()));
@@ -192,12 +212,14 @@ pub async fn record_recommendation(
     }
     let inserted = sqlx::query(
         "INSERT INTO routing_recommendations \
-         (recommendation_id, case_class, arm, evidence_ref) VALUES ($1, $2, $3, $4)",
+         (recommendation_id, case_class, arm, evidence_ref, tenant_id) \
+         VALUES ($1, $2, $3, $4, $5)",
     )
     .bind(&submission.recommendation_id)
     .bind(&submission.case_class)
     .bind(&submission.arm)
     .bind(&submission.evidence_ref)
+    .bind(tenant)
     .execute(pool)
     .await;
     match inserted {
@@ -216,12 +238,20 @@ pub async fn record_recommendation(
 }
 
 /// The recommendations, newest first.
-pub async fn list_recommendations(pool: &PgPool) -> Result<Vec<serde_json::Value>, sqlx::Error> {
+/// ⛔ Bound to ONE tenant. Every row written before `migrations/0072` has
+/// `tenant_id IS NULL` and is read by nobody — this table recorded no actor, so
+/// nothing in the schema can attribute them.
+pub async fn list_recommendations(
+    pool: &PgPool,
+    tenant: &str,
+) -> Result<Vec<serde_json::Value>, sqlx::Error> {
     let rows: Vec<serde_json::Value> = sqlx::query_scalar(
         "SELECT jsonb_build_object('recommendation_id', recommendation_id, \
          'case_class', case_class, 'arm', arm, 'evidence_ref', evidence_ref, \
-         'applied', false) FROM routing_recommendations ORDER BY recorded_at DESC",
+         'applied', false) FROM routing_recommendations \
+         WHERE tenant_id = $1 ORDER BY recorded_at DESC",
     )
+    .bind(tenant)
     .fetch_all(pool)
     .await?;
     Ok(rows)

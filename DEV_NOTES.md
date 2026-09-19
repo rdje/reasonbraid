@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — Two tables that look identical can owe their history different answers
+
+- Both routing journals are append-only audit rows with no tenant column, read without a predicate. Same defect, same repair, and I nearly gave them the same disposition for their stored rows.
+- ⭐ **They are not the same, and the schema is what shows it.** `routing_resolutions` records `caller`, which is `GrantSubject::id_string()` — the primary key of `human_principals` or `agent_roles`, each carrying exactly one tenant. Its history is *derivable*, so the migration backfills it by join. `routing_recommendations` records no actor at all. Nothing in it can be attributed, ever.
+- ⛔ **The tempting move is to give the second table the first's answer** — backfill from something nearby, or assign the rows to whoever reads them. Both invent an owner for a row whose whole content is an assertion about who did something. NULL, read by nobody, is the honest answer, and DOC-0029 already took it for snapshots written before their citation table existed.
+- 🔎 **The migration broke five test purge plans and I briefly read that as collateral.** It is the checked-dependency harness doing its job: `routing_recommendations` had never had a foreign key to `tenants`, so no purge plan named it as a child, and a plan that does not name a child leaves rows behind between tests. The failure was the harness telling me the schema's shape had changed.
+- ⭐ **The falsification is narrower than "revert the repair", deliberately.** I removed only the two READ predicates and left the writes recording the tenant. A wider neutralisation would have proved that some part of the change matters; this one proves the disclosure specifically is what the control sees.
+- ⚠️ And the positive arm runs both ways round — Alice sees hers and not Bob's, Bob sees his and not Alice's. One direction alone is satisfied by a repair that refuses everyone.
+- promotion: declined — the rule is `2026-09-18_node-presence-is-read-by-its-own-tenant.md`'s *derive the tenant from the caller, never take it from the wire*, applied to an audit journal. The new wrinkle is the per-table history disposition, recorded at the leaf and in `migrations/0072` itself.
+
 ## 2026-09-19 — A doc comment can describe an authority the route does not require
 
 - `workflows::register` has said *"the operator's verb"* since PHASE-5.1.2. The route reaching it asked for tenant enrolment. Nobody had read those two lines together, and the gap between them was a cross-tenant control-plane takeover.

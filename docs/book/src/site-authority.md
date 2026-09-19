@@ -438,7 +438,23 @@ Appending a version to an existing profile is still possible for an operator who
 holds the capability — the registry is versioned by design, and forbidding that
 would have removed the feature rather than repaired the authority.
 
-The routing journals (`routing_resolutions`, `routing_recommendations`) are
-append-only audit rows read without a tenant predicate, so a caller sees every
-tenant's routing trail. That is a disclosure limit, not a control one — routing
-decisions do not read those tables — and `SIGNOFF-REPAIR.7.1.2.2` owns it.
+### The routing journals: bound to their own tenant
+
+`GET /v1/routing/resolutions` and `GET /v1/routing/recommendations` used to
+return every tenant's routing trail to any enrolled caller: which case classes a
+tenant submitted, which arm each resolved to, which principal asked, and which
+evaluation trial or gate a shadow recommendation rested on. That was a disclosure
+limit rather than a control one — routing decisions read the rule table and the
+profile registry, never these journals — but it was a real one.
+
+Both are now bound to the caller's own tenant, derived from the authenticated
+principal and never accepted on the wire. A caller reads its own journal in full
+and sees nothing of anyone else's.
+
+Two limits, published rather than implied. Rows written before the binding
+migration are attributed where the schema allows it and are read by nobody where
+it does not: `routing_resolutions` recorded the calling principal, so its
+historical rows are derived back to that principal's tenant, while
+`routing_recommendations` never recorded an actor at all, so every row predating
+the migration is invisible to every tenant. Inventing an owner for an audit row
+that asserts who did something would be worse than losing its visibility.

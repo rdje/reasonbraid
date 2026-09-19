@@ -52,8 +52,6 @@ recruitment_panels	recruitment_panels→recruitment_calls	inspect_call!
 recruitment_responses	recruitment_responses→recruitment_calls	responses!
 resolver_capabilities	-	register_resolver!,resolve!,advertised_media_types!,sync_gated_entries!
 resource_references	-	submit!,get!,submit
-routing_recommendations	-	list_recommendations!
-routing_resolutions	-	list_resolutions!
 server_ca	-	load_ca_material!
 site_audit	-	-
 snapshot_objects	-	submit!

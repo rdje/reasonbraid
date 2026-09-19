@@ -81,13 +81,11 @@ POST /v1/profiles/{role_id}/attest	guarded transaction	recruitment_offers	module
 POST /v1/resolvers	pool tenant-admin	resolver_capabilities	walk
 POST /v1/resources	identity only	resource_references	walk
 POST /v1/resources/{resource_id}/resolve	identity only	derivations,evidence_snapshots,quota_events,snapshot_objects	walk
-POST /v1/routing/recommendations	identity only	routing_recommendations	walk
-POST /v1/routing/resolve	identity only	routing_resolutions	walk
 POST /v1/snapshots	identity only	evidence_snapshots,snapshot_objects	walk
 POST /v1/snapshots/expire-due	site authority	recruitment_offers,site_audit	module-reach
 POST /v1/snapshots/{snapshot_id}/tombstone	site authority	recruitment_offers,site_audit	module-reach
-POST /v1/threads	guarded transaction	quota_events,resource_references,routing_resolutions	walk
-POST /v1/threads/auto	guarded transaction	quota_events,resource_references,routing_resolutions	walk
+POST /v1/threads	guarded transaction	quota_events,resource_references	walk
+POST /v1/threads/auto	guarded transaction	quota_events,resource_references	walk
 POST /v1/threads/{thread_id}/commands	guarded transaction	quota_events,resource_references	walk
 POST /v1/workflow-profiles	site authority	recruitment_offers,site_audit,workflow_profiles	module-reach
 PUT /v1/profiles/{role_id}	identity only	agent_profiles,profile_versions	walk

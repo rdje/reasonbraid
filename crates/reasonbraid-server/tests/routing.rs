@@ -42,6 +42,7 @@ async fn pool() -> Option<PgPool> {
     pg_cleanup::delete_tables(
         &pool,
         &[
+            "routing_recommendations",
             "routing_resolutions",
             "evaluation_runs",
             "evaluation_corpora",
@@ -567,4 +568,172 @@ async fn the_shadow_recommendation_records_and_never_applies() {
     assert_eq!(recommendations.len(), 1, "{recommendations:?}");
     assert_eq!(recommendations[0]["arm"], json!("critique"));
     assert_eq!(recommendations[0]["applied"], json!(false));
+}
+
+/// `SIGNOFF-REPAIR.7.1.2.2` — the routing journal is read by its own tenant.
+///
+/// ⚠️ **A DISCLOSURE defect, and the control must not overstate it.**
+/// `routing::resolve` reads NEITHER journal — it reads `routing_rules` and
+/// `workflow_profiles` — so no row here binds anybody's outcome. What leaked is
+/// the trail: which case classes a tenant submitted, which arm each resolved to,
+/// which principal asked, and which evaluation evidence a recommendation rested
+/// on.
+///
+/// ⛔ **The POSITIVE arm is the point, not an afterthought** (`.3.5.5`'s shape):
+/// a repair that refused everyone would pass the negative assertion and fail
+/// this one, so each tenant must still read its OWN journal in full.
+#[tokio::test]
+async fn the_routing_journal_is_read_by_its_own_tenant() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, alice) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "rj-alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "alice enrols: {alice}");
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    let alice_tenant = alice["tenant_id"].as_str().unwrap().to_string();
+
+    let (status, bob) = enroll(&client, &base, json!({ "kind": "human", "name": "rj-bob" })).await;
+    assert_eq!(status, 200, "bob enrols: {bob}");
+    let bob_id = bob["principal_id"].as_str().unwrap().to_string();
+    let bob_tenant = bob["tenant_id"].as_str().unwrap().to_string();
+    assert_ne!(
+        alice_tenant, bob_tenant,
+        "two enrolments must be two tenants, or this control measures nothing"
+    );
+
+    // Each tenant resolves a DIFFERENT class, so the rows are distinguishable
+    // by content and not merely by count.
+    for (who, class) in [(&alice_id, "uncertain"), (&bob_id, "governed")] {
+        let (status, resolved) = post(
+            &client,
+            &base,
+            "/v1/routing/resolve",
+            who,
+            &json!({ "case_class": class }),
+        )
+        .await;
+        assert_eq!(status, 200, "the resolution succeeds: {resolved}");
+    }
+
+    // THE NEGATIVE ARM: alice sees her own row and NOT bob's.
+    let (status, rows) = get(&client, &base, "/v1/routing/resolutions", &alice_id).await;
+    assert_eq!(status, 200, "alice reads her resolutions: {rows}");
+    let rows = rows.as_array().expect("the array");
+    assert_eq!(
+        rows.len(),
+        1,
+        "alice reads her OWN journal only, not the site's: {rows:?}"
+    );
+    assert_eq!(rows[0]["case_class"], json!("uncertain"), "{rows:?}");
+    assert_eq!(rows[0]["caller"], json!(alice_id), "{rows:?}");
+
+    // THE POSITIVE ARM, the other way round: bob still reads his own in full.
+    let (status, rows) = get(&client, &base, "/v1/routing/resolutions", &bob_id).await;
+    assert_eq!(status, 200, "bob reads his resolutions: {rows}");
+    let rows = rows.as_array().expect("the array");
+    assert_eq!(rows.len(), 1, "bob reads his OWN journal in full: {rows:?}");
+    assert_eq!(rows[0]["case_class"], json!("governed"), "{rows:?}");
+}
+
+/// The shadow-recommendation half of the same journal.
+///
+/// ⚠️ This table records NO actor column, which is why its historical rows are
+/// unattributable where `routing_resolutions`'s are derivable from `caller`
+/// (`migrations/0072`). The control measures the new rows, which do carry a
+/// derived tenant.
+#[tokio::test]
+async fn the_shadow_recommendations_are_read_by_their_own_tenant() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, alice) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "rr-alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "alice enrols: {alice}");
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    let (status, bob) = enroll(&client, &base, json!({ "kind": "human", "name": "rr-bob" })).await;
+    assert_eq!(status, 200, "bob enrols: {bob}");
+    let bob_id = bob["principal_id"].as_str().unwrap().to_string();
+
+    // A recommendation must rest on real `.4` evidence, so register a corpus,
+    // a run and a trial the submission can cite.
+    let (status, corpus) = post(
+        &client,
+        &base,
+        "/v1/evaluations/corpora",
+        &alice_id,
+        &json!({
+            "corpus_id": "rr-corpus",
+            "version": 1,
+            "cases_digest": "a".repeat(64),
+            "prompts_digest": "b".repeat(64),
+            "cases": [{ "case_id": "c1" }],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the corpus registers: {corpus}");
+    let (status, trial) = post(
+        &client,
+        &base,
+        "/v1/evaluations/trials",
+        &alice_id,
+        &json!({
+            "trial_id": "rr-trial",
+            "corpus_id": "rr-corpus",
+            "corpus_version": 1,
+            "seed": 7,
+            "arms": ["quick_advice", "critique"],
+            "case_ids": ["c1"],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the trial registers: {trial}");
+
+    let (status, recorded) = post(
+        &client,
+        &base,
+        "/v1/routing/recommendations",
+        &alice_id,
+        &json!({
+            "recommendation_id": "rr-1", "case_class": "uncertain",
+            "arm": "critique", "evidence_ref": "rr-trial",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "alice records a recommendation: {recorded}");
+
+    // THE NEGATIVE ARM: bob does not read alice's shadow record.
+    let (status, rows) = get(&client, &base, "/v1/routing/recommendations", &bob_id).await;
+    assert_eq!(status, 200, "bob reads recommendations: {rows}");
+    assert!(
+        rows.as_array().expect("the array").is_empty(),
+        "bob reads none of alice's shadow records: {rows}"
+    );
+
+    // THE POSITIVE ARM: alice still reads her own, with its evidence intact.
+    let (status, rows) = get(&client, &base, "/v1/routing/recommendations", &alice_id).await;
+    assert_eq!(status, 200, "alice reads recommendations: {rows}");
+    let rows = rows.as_array().expect("the array");
+    assert_eq!(rows.len(), 1, "alice reads her own in full: {rows:?}");
+    assert_eq!(rows[0]["recommendation_id"], json!("rr-1"), "{rows:?}");
+    assert_eq!(rows[0]["evidence_ref"], json!("rr-trial"), "{rows:?}");
+    assert_eq!(
+        rows[0]["applied"],
+        json!(false),
+        "the shadow is never applied"
+    );
 }

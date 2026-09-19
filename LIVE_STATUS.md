@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **BLOCKER C2 IS CLOSED — ALL FIVE GATE RECORDS RE-DERIVE (`.11.4.7`, REPAIR-0265).**
+
+G1–G2, G3, G4, G5 and G6–G7, line by line, each verdict from `stands`/`narrowed`/`must be re-earned` with the command that produces it. ⛔ **No record's conclusion changed**: G6–G7 stays NOT MET for Internet exposure and G3 stays blocked as binding use.
+
+- 🔴 **G4 must be re-earned and is NOT fully discharged.** Three defects landed inside its own clause (REPAIR-0224, REPAIR-0227, `.11.14.3.12`), all repaired. ⚠️ **One strand stays open**: the R3 `vm_container` deferral is a claim *about the deployment*, not an enforced property, and `.7.3.6` owns it — now frontier row 1.
+- 🔴 **4 of 6 evidence pointers moved** (`profiles.rs` 23→56; `profiles 23` was G4's only citation). ⛔ The numbering instrument was wrong first — it counted helpers — and was rebuilt with a self-check before any conclusion.
+- ✅ **G5's three stand**, on a positive-controlled census: the first pattern returned 0 and was wrong; corrected it finds 3 hits, all withdrawals. H1 null preserved, no new benchmark evidence.
+- `profiles` 56/56 · `evaluation` 3/3 · `routing` 2/2 — **61 tests, 0 failures**.
+
 ✅ **G3'S SEVEN CLAIMS RE-DERIVED — AND ITS EVIDENCE POINTERS NO LONGER RESOLVE (`.11.4.7.3`, REPAIR-0264).**
 
 **3 stand · 1 narrows · 3 had to be re-earned**, against **38 tests, 0 failures** across every suite the record cites (`policy` 14/14, `invitations` 6/6, `compiler` 8/8, `publisher` 7/7, `reconciler` 3/3).

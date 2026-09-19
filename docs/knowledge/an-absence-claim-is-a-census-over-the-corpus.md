@@ -64,6 +64,26 @@ zeroes and **neither was a defect** — while the entry that WAS a defect had a
 complete, unreachable store behind it and a specification naming the step that
 should reach it.
 
+## A zero that was wrong because of one hyphen
+
+`SIGNOFF-REPAIR.11.4.7.4` had to show that a withdrawn quality claim is still
+absent. The first census returned **zero hits** — and it was wrong:
+
+```bash
+git grep -niE "quality lift|deliberation improves" -- README.md LIVE_STATUS.md docs/book/src   # 0
+git grep -niE "quality.?lift|deliberation improves" -- README.md LIVE_STATUS.md docs/book/src  # 3
+```
+
+The corpus writes **`quality-lift`**, hyphenated. A zero from the first pattern
+is indistinguishable from a true absence, and it is the answer the author wants,
+which is exactly what makes it dangerous.
+
+⛔ **The rule this adds: an absence census must first be shown to FIND the
+places that legitimately discuss the thing.** Here the corrected pattern returns
+three hits and all three are *withdrawals* — which is both the positive control
+and the real evidence. A pattern that finds nothing anywhere has not measured an
+absence; it has measured itself.
+
 ## The tell that is easy to misread
 
 ⛔ **An unimplemented vocabulary entry is not evidence of an open question. It is

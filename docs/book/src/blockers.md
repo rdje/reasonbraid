@@ -131,7 +131,7 @@ public deliberately.
 | # | Item | Status |
 | --- | --- | --- |
 | **C1** | **The remote gate is green, and 167 commits sit beyond it.** All three workflows last ran **successfully** at `c17841c`, which is exactly `origin/main`. 🔴 This row previously read *"remote CI has never run"* and that was **false** — see below | The push cadence is roughly 300 commits and the branch is inside it, so this is not a schedule failure. What may not be claimed is that the *current* head has been remotely gated |
-| **C2** | **Gate records counted their shipped lines before the full source review.** Five records exist and four count lines as shipped. The first has now been re-derived: of G6–G7's seven, **three must be re-earned, two are narrowed, two stand** | The records are not dishonest — each claims the evidence its suites then carried. What was never measured is those suites' **coverage**. Four records remain to re-derive |
+| **C2** | ✅ **CLOSED.** Gate records counted their shipped lines before the full source review; **all five have now been re-derived**, line by line, each verdict carrying the command that produces it — G1–G2, G3, G4, G5 and G6–G7 | The records were never dishonest — each claimed the evidence its suites then carried. What was never measured is those suites' **coverage**, and now it has been. ⛔ No record's conclusion changed: G6–G7 remains NOT MET for Internet exposure. ⚠️ One strand of G4 is un-discharged and tracked separately |
 
 ## C1 was wrong, and how it was wrong is the useful part
 

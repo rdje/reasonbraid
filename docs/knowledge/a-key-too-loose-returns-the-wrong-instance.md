@@ -112,7 +112,12 @@ both from a key wider than the thing it named:
   blocker on work that has not started. Bounding each leaf between its own
   heading and the next one fixed it.
 
-⭐ Neither wrong answer was contradicted by the tool that produced it — both were
+- **A regex that counted helpers as tests.** Numbering a suite with `^(?:async )?fn (\w+)` made
+  `routing 2` resolve to `pool`. The fix was not a tighter regex but a **self-check**: point the
+  rebuilt instrument at a file whose answer you already know — `policy.rs`, where the suite had
+  just reported 14 passed — and require it to say 14 before reading anything else.
+
+⭐ None of these wrong answers was contradicted by the tool that produced it — both were
 plausible and both came back clean. What caught them was asking the same question
 a **second way**: reading the file instead of the grep, and bounding the section
 instead of counting lines. When a key is a guess about structure, the check is

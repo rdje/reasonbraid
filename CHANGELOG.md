@@ -290,61 +290,26 @@ The director asked for ReasonBraid to orchestrate 2–5 agents working collectiv
 - ⭐ **The predicate shipped with a redundant clause and the falsification sweep deleted it.** `own[j]==own[i]` is subsumed — same bullet implies same section and equal box-ness — and dropping it changed no arm and no corpus number. It was found by a degenerate arm that should have failed and did not.
 - 🔴 **The repaired gate's FIRST real catch was a false claim inside a signed-off leaf.** `.3.4.3.1.1` closed asserting *"nothing enforces the stored value"*; `git grep -n 'expires_at > now()' -- crates/reasonbraid-server/src` returns three production sites. ⭐ The record's conclusion survives for a different reason than the one it gave — the signed `not_after` is enforced first at the mTLS handshake — and the direction that argument does not cover is routed to `.3.4.3.1.1.1` rather than waved. Standing population **0 of 104**.
 
-## 2026-09-18 — A replay over policed history measures deterrence, not cost (`SIGNOFF-REPAIR.11.18.2`)
-
-🔴 **Two calibrations of the same candidate returned 0 of 559 commits and only one of them meant anything.**
-
-- **The trap.** Once a rule is enforced, every commit that LANDED had already been edited until it passed, so a replay across that interval returns 0 **by construction** — and that 0 reads exactly like *"this rule would never have fired"*. It measures the gate's DETERRENCE, not the rule's COST, in the same units.
-- ⚠️ **It is the neighbour of the window trap, not the same one.** `calibrate-over-the-history-that-contains-the-instance` is about a window too short to contain the defect, and widening fixes that. Here the whole interval is enforced and **widening makes it worse** — more policed history is more zeros.
-- ⭐ **ABSORBED into that note rather than extracted, which needed a third clause beyond `.11.20.2`'s criterion.** This is the same activity with a different failure mode, neither thesis nor tool. What decides it: the host's `answers:` line already claims *"my proposed gate catches nothing in the calibration, is it unnecessary"* — so **a note that advertises a question owes every answer to it**, and extracting would have made the host a confidently wrong reply.
-- ✅ **Mechanizability answered by census, not judgement.** Of this project's three calibration-bearing instruments, **2 of 3** replay over a corpus their own `--check` gates (`census_positional_refs.py` 12 of 200, `census_broken_tables.py` 10 of 200; `census_mirror_numbers.py` is a review instrument). Detection costs **17 ms** against a 10.8 s replay. ⭐ The case rests on growth, not on 5–6%: the overlap is the fraction of the window after registration, so it reaches 100% exactly when a mature gate is re-argued.
-- ✅ **Shipped as a DISCLOSURE, not a refusal** — the post-registration number is the right one when the question is *does the gate still hold*, and only the caller knows which question they are asking.
-- ⚠️ The helper is duplicated in two scripts, named rather than hidden: **26 tracked `scripts/*.py`, 0 sibling imports**, so the project's first shared module is a structural change this leaf does not own. Trigger for revisiting: a third instrument needing it.
-- 🔴 **Adding the arms caught a live false total.** `census_broken_tables.py`'s self-test printed a hardcoded `23 arms` while running **21** — measured two independent ways. Counted now, the same repair `.11.20.1` made one leaf earlier: the second instance of one `TOOLBOX.md` hazard in two leaves.
-- ⭐ Restated outside software: *"how many drivers would this speed limit catch?"*, measured on a road that already has a camera.
-
-## 2026-09-18 — The advisory and the blocker never governed the same corpus (`SIGNOFF-REPAIR.11.18.1`)
-
-🔴 **`GAP-CLAIM-CENSUS` advised on 69 files and enforced on 15, for the whole of its life, because the script spelled its population twice.**
-
-- **The defect.** `--all` iterates `git ls-files 'docs/tasks/*.md'` — **69** files, because git's `*` crosses `/` — while the blocker filtered `^docs/tasks/[^/]*\.md$` and saw **15**. The backlog reported **102 claim lines across 6 files**; enforcement covered **97 across 5**. **54** nested artifacts were invisible to the blocking path, and nothing said so.
-- ⛔ **The cause is the two spellings, not the exclusion.** Each path named the population itself, and the `TEMPLATE.md` exclusion lived *inside the staged loop* where `--all` could not reach it. One `governed_filter` now serves both, so the agreement is structural rather than remembered — and the self-test arms run that filter itself, covering both callers by construction.
-- ✅ **The "a signoff artifact is a dated record, not a living leaf" defence was refuted by measurement**, not argued down: **66 of 559 commits** modify a nested artifact, and `RECONCILIATION.md` is the clause ledger three tranches are actively writing.
-- ✅ **Calibrated and free:** replayed over **all 559 commits**, the extension would have blocked **0** — `REASON-CODE-DOC`'s shape.
-- ⛔ **Full history rather than a window, and the control is what showed why.** The same harness over the TOP-LEVEL corpus also returns 0 — and that number is worthless, because the blocker has governed those files since the initial commit, so every commit that landed had already been made to pass. **A replay can only price a rule over history the rule did not police.** Routed to `.11.18.2`.
-- ⭐ **The harness was proved before its zero was believed.** A synthetic unbacked claim through the same classifier returns `BLOCKED`; its censused twin returns nothing. Without that pair, *nothing to find* and *broken replay* are the same output.
-- ✅ Five in-situ wrong rules, five arms RED by name, no arm needing a label. And the gate end-to-end on a real staged nested artifact: rc **1** after, rc **0** (`NOT EVALUATED`) before.
-
-## 2026-09-18 — A control that passes for an unrelated reason, promoted (`SIGNOFF-REPAIR.11.20.2`)
-
-🔴 **A lesson that had fired in three consecutive leaves was reachable only from the tree it was written in.**
-
-- **The gap, by command.** `grep -rl 'passes for an UNRELATED reason' docs/knowledge/ TOOLBOX.md docs/decisions/` returns nothing; over `docs/tasks/` it returns `SIGNOFF-REPAIR.md`. It was written down inside `a-scoping-defect-errs-in-one-direction`'s method section — reachable by subject, not by question.
-- ⭐ **EXTRACTED rather than absorbed, and the criterion is the deliverable.** `.11.17.2` absorbed its lesson one commit earlier, so the opposite ruling needs a named difference: **absorb when the host note's THESIS is your rule; extract when your rule is a TOOL the host merely uses.** ⭐ The host got SHORTER — its method section is now a pointer plus its own instance — which is the test for a good extraction.
-- ⭐ **New beyond relocation.** A **NEGATIVE** arm cannot be falsified against the old code: the old code under-reached, so the arm passes against it for the same reason it passes against the fix. *A positive arm is falsified against the past; a negative arm against the future you rejected* — a DEGENERATE implementation of the new rule. And running a suite against broken code is the only time your controls are tested as **reporters**.
-- ✅ **Checked outside software**, per `docs/CLAIM_VERIFICATION.md` §0: a fire alarm that has never sounded and one with a flat battery are the same observation, and pressing the test button is also how you learn whether it carries to the stairwell.
-- 🔴 **The acceptance's own last clause was UNSATISFIABLE, and that is the second finding.** It required the census to confirm the pointer by reporting `anchored:method`. `classify` was a precedence chain, so naming the leaf SHADOWED the note: a correct pointer, a correct note, and the instrument would not say so. ⚠️ The tempting move — drop the citation until the instrument agrees — is fitting the corpus to the measurement. Both anchors are reported now; the counts no longer partition and the output says so.
-- ✅ Falsified from both sides: the precedence version reds `both-anchors` by name, a degenerate *always both* reds `leaf-only-claims-no-method` by name. `MEMORY.md` 3,883 → 3,659 bytes, warnings 8 → 7.
-
-## 2026-09-18 — The memory census saw two warnings where eight stood (`SIGNOFF-REPAIR.11.20.1`)
-
-🔴 **Its model was one bullet; the template the file had been conformed to uses several. 47% of `MEMORY.md` by weight was invisible to the instrument that exists to guard its weight.**
-
-- **The defect.** `run` called `segment(warning_text(memory))`, and `warning_text` returns ONE bullet. Measured at `69cf2dc` before the model was touched: **2** warnings visible, **8** present, **1,801 of 3,809 bytes (47%)** in four bullets never read. `.11.20` fixed WHERE it looks; nothing fixed WHAT it counts.
-- ⭐ **The new model is parsed from `MEMORY_ARCHITECTURE.md` §6, not from `MEMORY.md`.** A model fitted to the file it measures agrees with that file by construction and says nothing — and re-deriving it from current contents is how this census went stale the first time. A bullet the template names contributes the text after its key; every other bullet is warning text in its own right.
-- ✅ **After:** 8 warnings, **2,312 of 3,809 bytes (61%)**, reported per bullet and per warning against the 7,168-byte cap. Weight is what the cap is about, so a census answering only *how many* to a reader about to evict for BYTES answers the wrong question.
-- ⛔ **Two falsifications were needed, and that is the methodological finding.** The pre-fix model reds three arms by name. The NEGATIVE arms have no red against it at all — so a DEGENERATE `segment` (every bullet whole) was run to fire `keyed-bullet-without-marker-is-silent` and `no-markers`. **A negative arm falsified only against the old code is a negative arm nothing has tested.** Arms passing both ways are LABELLED in the source.
-- 🔴 **The falsification exposed a defect in the self-test itself.** One new arm raised `IndexError` against the pre-fix model and took the whole suite down — a RED that names nothing, when a naming RED is the entire point. A self-test only ever run against working code never meets this.
-- ⛔ **The hardcoded `CONTROL_COUNT = 17` is counted now** — `TOOLBOX.md` had already named the hazard, and it was found while adding arms to the very instrument it warns about.
-- ✅ **`UNCITED` was re-decided against the widened population, and the answer changed.** The footer asserted a 2026-09-13 classification: 13 of 13 recorded somewhere durable, so UNCITED only ever costs a pointer. Re-classified over the 4 now visible: **3 recorded, 1 not** — an environment fact living only in `MEMORY.md`, ⭐ written there this same session by this author, into the file whose own first bullet forbids it. Routed to `docs/decisions/2026-09-18_a-cargo-process-is-not-evidence-of-this-repo.md`. UNCITED **4 → 2**, anchored **4 → 6**; the footer now carries both runs and says they disagree.
-- Routed: the standing lesson *a control that passes for an unrelated reason* is in a leaf and reachable from nowhere else. `.11.20.2`.
-
 ## Historical entries and exact retrieval
 
 This is a recent digest. Older chronology remains in reachable Git history under
-the rotation contract in `README_POLICY.md`. This file has rotated twenty-five times;
+the rotation contract in `README_POLICY.md`. This file has rotated twenty-six times;
 each rotation names the commit holding the ledger immediately before it, so the
 chain walks back without guessing.
+
+Retrieve the ledger immediately before the TWENTY-SIXTH rotation (2026-09-19)
+from the repository root:
+
+```bash
+git show fa588db2b53ce12b972f019cc5880a57542d33f8:CHANGELOG.md
+```
+
+That snapshot is 93,398 bytes and contains 29 dated entries; its Git blob is
+`5d8a67dde01d27e5cfe50674eb0cfc13eab16e53`, and its SHA-256 is
+`bdfd2d0c1abc80c4a8f6a7aab462efd5ec71e87faa4bb94841766c292aaf7bdf`. The newest
+entry it holds that this digest no longer carries is
+`2026-09-18 — A replay over policed history measures deterrence, not cost (`SIGNOFF-REPAIR.11.18.2`)`.
+It carries the TWENTY-FIFTH rotation's notice in turn, which names the ledger before it.
 
 Retrieve the ledger immediately before the TWENTY-FIFTH rotation (2026-09-19)
 from the repository root:

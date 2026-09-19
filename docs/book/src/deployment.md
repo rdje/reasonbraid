@@ -1920,6 +1920,36 @@ itself carries. Denying every request including the navigation is *not* the
 policy — a control asserts that the requested page still loads, so a repair that
 blacked the browser out would fail it.
 
+### How the advertisement and the enforcement are kept together
+
+The R3 pack advertises two deny-policies and enforces them, and those are two
+separate facts in two separate crates. Nothing derives one from the other, so
+both are gated, in opposite directions:
+
+| if this moves… | …this refuses |
+| --- | --- |
+| the advertised word in the resolver registry | `scripts/census_advertised_policies.py --check`, a doctrine gate — **every commit** |
+| the worker's own decision | `refusing_policy`'s controls in `reasonbraid-browse` — **every commit** — and `browser_roundtrip`'s real-browser proof in CI |
+
+Until `SIGNOFF-REPAIR.7.3.6.3` the second row was only the CI entry. The policy
+decision lived inline in the interception task, so exercising it meant driving a
+real Chrome — which runs at push, and pushes go out in batches of about three
+hundred commits. One half of one claim was guarded hundreds of commits more
+loosely than the other, and nothing said so, because both halves were green.
+
+The decision is now `refusing_policy`, a pure function of what the browser
+reports and what the caller asked for. It touches no network, no browser and no
+filesystem, so ordinary `cargo test` covers it. The real-browser control stays:
+a pure function cannot show that the decision is actually wired to Chrome's
+`Fetch` domain, and that is what the end-to-end proof is for.
+
+**The worker deliberately does not read the advertisement.** Plumbing the
+advertised word down to it would make one value decide whether this pack
+isolates anything at all — and `resolver_capabilities` has no tenant column, so
+that value is writable by any tenant administrator. Two sources with a gate
+between them is the safer shape than one source in a place an attacker can
+reach.
+
 ### What a pack advertises, and what is actually behind each line
 
 A resolver pack publishes six policy fields to every caller that reads the

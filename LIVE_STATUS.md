@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **THE PAIR WAS GATED AT TWO CADENCES, AND THE LOOSER HALF IS NOW A PURE FUNCTION (`.7.3.6.3`, REPAIR-0268).**
+
+The R3 pack advertises two deny-policies and enforces them; nothing derives one from the other. Both sides were already gated — by two earlier leaves that did not know about each other — **at very different strengths**.
+
+- 🔴 A moved ADVERTISEMENT is refused **every commit** (the doctrine gate). A moved BEHAVIOUR was caught only by the real-browser suite, which runs in CI **at push** — cadence ~300 commits, tree **237 ahead**. One half of one claim, guarded hundreds of commits more loosely, invisible because both were green.
+- ✅ `refusing_policy` is now a pure function: no network, no browser, no filesystem, so ordinary `cargo test` covers it — **8 → 12 tests, 0.08 s**. ⛔ The end-to-end control is NOT replaced; a pure function cannot show the decision is wired to Chrome's `Fetch` domain.
+- ⭐ **Both directions observed RED.** Advertisement flipped with the worker untouched → the census refuses by name. Worker neutralized two ways → `9 passed; 3 failed` (the original defect) and `8 passed; 4 failed` (the almost-fix). The blackout arm fires on the second and not the first, so the suite separates a policy from a prohibition.
+- ⚠️ **Rejected:** plumbing the advertised word into the worker. It would make one value decide whether the pack isolates anything, and `resolver_capabilities` has no tenant column — **a one-source design that puts the source where an attacker can reach it is worse than two sources with a gate between them.**
+- ✅ **VERIFIED:** browse bins **12/12**; `browser_roundtrip` **18 passed, 0 failed** in 31.20 s; census `--check` rc=0; clippy rc=0; fmt rc=0.
+
 🔴 **A REPLACE IS COMPLETE, AND THE HTTP VERB DOES NOT PERFORM ONE (`.7.3.6.2`, REPAIR-0267).**
 
 `resolvers::register` INSERTed 18 columns and updated **6** on conflict, so a corrected advertisement never reached an existing row. Reproduced at runtime, both halves: the boot sync left drift in place (`left: "allow"`, `right: "deny"`), and the verb answered a narrowing re-registration `{"registered":true}` — **`left: 200`, `right: 409`**.

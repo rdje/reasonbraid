@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — Two halves of one claim can be gated hundreds of commits apart, and both look green
+
+- The leaf asked me to gate a pair: an advertised `deny` and the code that enforces it. I went to build the gate and found two already there — one from `.7.3.5`, one from `.7.3.6.1` — built for different reasons by leaves that never mention each other. The pair was covered. Nothing was wrong.
+- 🔎 **Except the question I nearly did not ask: *how often does each one run?*** The advertisement side is a pre-commit doctrine gate. The behaviour side needs a real Chrome, so it is in CI, and CI runs on push — every ~300 commits. The tree is 237 ahead right now. Two green checkmarks, three hundred commits of difference in what they actually protect.
+- ⭐ **A gate's strength is its CADENCE times its coverage, and only one of those is visible in a passing run.** Both halves reported success identically. The asymmetry is not in any output; it is in the workflow file and the push policy, two files neither control mentions.
+- ✅ The fix was small once the question was right: the policy decision was inline in an async closure, so the only way to exercise it was to drive a browser. Lifted into a pure function it costs 0.08 s and runs wherever cargo does. The end-to-end control stays — it is the only thing that shows the decision is really wired to Chrome's `Fetch` domain, which no unit test can.
+- ⛔ **And the tempting design was the wrong one.** "Derive the behaviour from one source" — have the worker read the advertised word — is better engineering in the abstract and worse here: `resolver_capabilities` has no tenant column, so that one source is writable by any tenant administrator. **A one-source design that puts the source where an attacker can reach it is worse than two sources with a gate between them.** I had just refused to widen that same surface one leaf earlier, which is the only reason I noticed.
+- promotion: pending — *a gate's strength is its cadence times its coverage, and a passing run shows neither* is the transferable sentence, and it belongs beside `[[a-control-that-passes-for-an-unrelated-reason]]` rather than inside it.
+
 ## 2026-09-19 — Two of your own findings can point in opposite directions, and the older one usually wins
 
 - The finding was clean: `register`'s upsert writes 6 of the 18 columns it inserts, two doc comments promise a replace, so complete the replace. I had the control RED and the one-line fix half-written.

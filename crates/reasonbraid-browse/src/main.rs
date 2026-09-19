@@ -181,6 +181,47 @@ pub fn browser_binary() -> Option<std::path::PathBuf> {
         .find(|path| path.exists())
 }
 
+/// Which advertised deny-policy refuses this request, if either.
+///
+/// This is the whole of the R3 pack's request policy, as a pure function of
+/// what the browser reports and what the caller asked for. `Some("subresource")`
+/// and `Some("redirect")` are refusals; `None` continues.
+///
+/// ⭐ THE TWO ADVERTISED LINES, WITH NOTHING ADDED. The resolver registry
+/// publishes this pack with `subresource_policy: "deny"` and
+/// `redirect_policy: "deny"` (`reasonbraid-server/src/resolvers.rs::gated_advertises`).
+/// A non-document request IS a subresource; a document request for a URL nobody
+/// asked to navigate to IS a redirect. Anything beyond those two would enforce
+/// something the pack does not advertise, which is the defect
+/// `SIGNOFF-REPAIR.7.3.5` repaired in the other direction.
+///
+/// ⛔ IT IS A FUNCTION SO THAT A COMMIT CAN GUARD IT (`SIGNOFF-REPAIR.7.3.6.3`).
+/// Inline in the interception task, the decision could only be exercised by
+/// driving a real Chrome, so the enforcement half of the claim was gated at
+/// PUSH time while the advertisement half was gated at every commit. Nothing
+/// here touches the network, the browser or the filesystem.
+///
+/// ⚠️ IT DOES NOT READ THE REGISTRY, and that is deliberate. Plumbing the
+/// advertised word down to the worker was the rejected alternative: it would
+/// make a value an operator can write decide whether this pack isolates
+/// anything, and `resolver_capabilities` has no tenant column
+/// (`SIGNOFF-REPAIR.11.9.1.1.1`). The pair is GATED instead — a moved
+/// advertisement is refused by `scripts/census_advertised_policies.py`, a moved
+/// behaviour by the controls below.
+fn refusing_policy(
+    is_document: bool,
+    url: &str,
+    requested: &std::collections::HashSet<String>,
+) -> Option<&'static str> {
+    if !is_document {
+        Some("subresource")
+    } else if requested.contains(url) {
+        None
+    } else {
+        Some("redirect")
+    }
+}
+
 fn main() {
     let mut input = String::new();
     let request: BrowseRequest =
@@ -327,6 +368,16 @@ async fn run_inner(
         }));
     }
 
+    // ⛔ THE POLICY DECISION ITSELF LIVES IN `refusing_policy`, a pure function,
+    // and that placement is the repair rather than a tidiness preference
+    // (`SIGNOFF-REPAIR.7.3.6.3`). Inline in this async closure, the only way to
+    // exercise the decision was to drive a real Chrome — so it was guarded by
+    // `browser_roundtrip`, which needs a browser and therefore runs in CI at
+    // PUSH time. The advertisement it implements is guarded by a doctrine gate
+    // on every COMMIT. Two halves of one claim, gated hundreds of commits
+    // apart. As a pure function the decision is covered by `cargo test -p
+    // reasonbraid-browse --bins`, which needs nothing.
+    //
     // ⛔ THE ADVERTISED DENY-POLICIES, ENFORCED. The resolver registry tells
     // every caller that this pack runs with `subresource_policy: "deny"` and
     // `redirect_policy: "deny"` (`resolvers.rs::gated_advertises`), and until
@@ -380,13 +431,7 @@ async fn run_inner(
             while let Some(event) = paused.next().await {
                 let url = event.request.url.clone();
                 let is_document = matches!(event.resource_type, ResourceType::Document);
-                let policy = if !is_document {
-                    Some("subresource")
-                } else if requested.contains(&url) {
-                    None
-                } else {
-                    Some("redirect")
-                };
+                let policy = refusing_policy(is_document, &url, &requested);
                 let outcome = match policy {
                     None => page_for_task
                         .execute(ContinueRequestParams::new(event.request_id.clone()))
@@ -622,6 +667,109 @@ mod tests {
         assert!(
             wire.get("cleanup_error").is_none(),
             "an absent cleanup error is omitted, never serialized as null: {wire}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod request_policy_tests {
+    use super::refusing_policy;
+    use std::collections::HashSet;
+
+    fn asked(urls: &[&str]) -> HashSet<String> {
+        urls.iter().map(|u| (*u).to_owned()).collect()
+    }
+
+    /// `SIGNOFF-REPAIR.7.3.6.3`: the R3 pack's request policy, guarded without
+    /// a browser.
+    ///
+    /// The end-to-end proof stays `browser_roundtrip`'s
+    /// `a_subresource_the_pack_advertises_as_denied_is_not_dialed`, which drives
+    /// a real Chrome and watches an origin's own counter — that is the control
+    /// that showed the defect. What it cannot do is run on every commit: it
+    /// needs a browser, so it runs in CI at push. These arms run wherever
+    /// `cargo test` does, so the decision is covered between pushes too.
+    #[test]
+    fn the_request_policy_enforces_exactly_the_two_advertised_lines() {
+        let requested = asked(&["https://example.org/page"]);
+
+        // A DOCUMENT request for a URL the caller asked to navigate to is the
+        // navigation itself, and continues. Denying it would be a blackout
+        // rather than a policy — the almost-fix `.7.3.5` neutralized into.
+        assert_eq!(
+            refusing_policy(true, "https://example.org/page", &requested),
+            None,
+            "the requested navigation continues",
+        );
+
+        // A DOCUMENT request for a URL nobody asked for IS the redirect.
+        assert_eq!(
+            refusing_policy(true, "https://elsewhere.test/moved", &requested),
+            Some("redirect"),
+            "a document request for an unasked URL is the redirect policy",
+        );
+
+        // Every NON-document request is a subresource, including one whose URL
+        // the caller did ask for — the resource type decides, not the URL. An
+        // implementation that checked the URL first would let a page fetch the
+        // navigated document as an image and call it asked-for.
+        assert_eq!(
+            refusing_policy(false, "https://example.org/logo.png", &requested),
+            Some("subresource"),
+        );
+        assert_eq!(
+            refusing_policy(false, "https://example.org/page", &requested),
+            Some("subresource"),
+            "the resource type decides a subresource, never the URL",
+        );
+    }
+
+    /// ⛔ THE REFUSAL IS A CLASSIFICATION, NOT A PROHIBITION, and this arm is
+    /// the one that fails against the almost-fix. `.7.3.5` neutralized its
+    /// repair into "deny means deny, refuse everything" and the real browser
+    /// answered `navigation_failed` / `net::ERR_BLOCKED_BY_CLIENT`. A policy
+    /// that refuses every request passes every other arm here and fails this
+    /// one.
+    #[test]
+    fn a_policy_that_refused_everything_would_fail_this() {
+        let requested = asked(&["https://example.org/a", "https://example.org/b"]);
+        for url in ["https://example.org/a", "https://example.org/b"] {
+            assert_eq!(
+                refusing_policy(true, url, &requested),
+                None,
+                "every URL the caller asked to navigate to still loads",
+            );
+        }
+    }
+
+    /// Multi-step navigation: `BrowseStep::Navigate` adds to the asked-for set,
+    /// so a later step's document is not mistaken for a redirect.
+    #[test]
+    fn a_later_navigation_step_is_not_a_redirect() {
+        let requested = asked(&["https://example.org/one", "https://example.org/two"]);
+        assert_eq!(
+            refusing_policy(true, "https://example.org/two", &requested),
+            None,
+        );
+        assert_eq!(
+            refusing_policy(true, "https://example.org/three", &requested),
+            Some("redirect"),
+            "…and a URL no step named is still the redirect policy",
+        );
+    }
+
+    /// ⚠️ The comparison is EXACT, stated rather than left to be discovered: a
+    /// trailing slash, a fragment or a different case makes a URL a different
+    /// URL, so a server that normalises the navigation target yields a document
+    /// request the policy calls a redirect. That is the fail-closed direction —
+    /// recorded here because the arm documents the edge rather than hiding it.
+    #[test]
+    fn the_asked_for_comparison_is_exact_and_fails_closed() {
+        let requested = asked(&["https://example.org/page"]);
+        assert_eq!(
+            refusing_policy(true, "https://example.org/page/", &requested),
+            Some("redirect"),
+            "a trailing slash is a different URL, and the policy refuses rather than guesses",
         );
     }
 }

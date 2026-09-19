@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-19 — Three of the MCP durable-delivery lane's four clauses are live defects, measured at runtime (`SIGNOFF-REPAIR.6.2`, census and split)
+
+`.6.1` closed, so `.6.2` opened. Its goal line names four mechanisms; a throwaway probe drove each against the shipped `mcp_listen` module rather than reading them off the source.
+
+- 🔴 **The dedup window retains the OLDEST 64.** `push` appends and `truncate(64)` keeps the first 64, so past the boundary every new id is appended at index 64 and immediately discarded. Over 70 deliveries the window holds `d-000 … d-063`; replaying the most recent `d-069` is **accepted** and replaying `d-000` is skipped. ⛔ The consequence is a **double delivery** — the function returns `bool` and the caller commits the delivery's effects on `true`. `.6.2.1`.
+- 🔴 **The cursor is not monotonic.** Recording cursor 100 then cursor 5 leaves it at **5**, and the resume path reads that as the OWN cursor — so one out-of-order delivery rewinds the resume point. ⚠️ The dedup window is the only thing that would suppress the redeliveries, and it holds the wrong 64: the two defects compose. `.6.2.2`.
+- 🔴 **A malformed dedup window is silently replaced with an empty one** — `unwrap_or_default()`, one expression. With the column set to `{"not": "an array"}`, a delivery the state had already recorded replays and is **accepted**. ⛔ Silent, total, and self-erasing: the next UPDATE overwrites the malformed value, destroying the evidence. `.6.2.3`.
+- ⚪ **The first-delivery race is recorded as NOT REPRODUCED and is not opened as a child.** The source reading is real — `SELECT … FOR UPDATE` locks nothing when no row exists — but the probe observed two correct acceptances, and `SIGNOFF-REPAIR.7.2.2`'s standard forbids promoting a reading to a finding.
+- ⚪ **The transport profile is a BUILD, not a repair**, and is ranked last deliberately: new code resting on a dedup window that does not dedup is worse than no new code. Its acceptance must quote the documented profile from its source before implementation. `.6.2.4`.
+- ⭐ **The three defects share a shape worth naming once:** each is a state machine keeping the wrong half of what it knows — the oldest instead of the newest, the latest write instead of the highest, nothing instead of a refusal. All three are silent, and all three end in a delivery applied twice.
+- 🔎 **None of this was reachable by the existing suite, which drives TWO deliveries** against a 64-entry window. A control that never crosses a boundary cannot see what happens at it.
+
 ## 2026-09-19 — The quota counts the admitted call and the pipeline counts the effect, and a control finally says which (`SIGNOFF-REPAIR.6.1.4`)
 
 The last open child of `.6.1`, which closes with it.

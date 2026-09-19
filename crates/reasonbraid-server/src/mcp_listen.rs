@@ -10,6 +10,50 @@ use sqlx::PgPool;
 /// The dedup window's size (the recent delivery ids kept per subscription).
 pub const DEDUP_WINDOW: usize = 64;
 
+/// What can go wrong recording a delivery (`SIGNOFF-REPAIR.6.2.3`).
+///
+/// ⛔ The malformed window is a SEPARATE variant rather than a storage error,
+/// because the two need different answers from an operator: a storage failure is
+/// retried, and a row whose `dedup_window` is not an array of delivery ids has
+/// to be looked at. Collapsing them would send the second one down the first
+/// one's path.
+#[derive(Debug)]
+pub enum ListenError {
+    /// The durable row could not be read or written.
+    Storage(sqlx::Error),
+    /// The stored `dedup_window` is not an array of delivery ids, so this
+    /// subscription's deduplication cannot be evaluated. The message names the
+    /// subscription, because that is what an operator has to go and look at.
+    MalformedWindow(String),
+}
+
+impl std::fmt::Display for ListenError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            // Connection details belong in controlled diagnostics, not in a
+            // message a caller may surface — the rule `site_authority::Error`
+            // and `PolicyError` already follow.
+            Self::Storage(_) => f.write_str("the listen state could not be read or written"),
+            Self::MalformedWindow(what) => write!(f, "{what}"),
+        }
+    }
+}
+
+impl std::error::Error for ListenError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Storage(e) => Some(e),
+            Self::MalformedWindow(_) => None,
+        }
+    }
+}
+
+impl From<sqlx::Error> for ListenError {
+    fn from(error: sqlx::Error) -> Self {
+        Self::Storage(error)
+    }
+}
+
 /// Record one accepted delivery: the dedup check (the delivery id seen
 /// → the replay SKIP, the cursor unchanged) and the cursor advance. The
 /// caller's transaction commits the state WITH the delivery's effects.
@@ -19,7 +63,7 @@ pub async fn record_delivery_in_tx<'e, E>(
     subscription_id: &str,
     delivery_id: &str,
     cursor: i64,
-) -> Result<bool, sqlx::Error>
+) -> Result<bool, ListenError>
 where
     E: std::ops::DerefMut,
     for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
@@ -48,7 +92,27 @@ where
         .await?;
         return Ok(true);
     };
-    let seen: Vec<String> = serde_json::from_value(window).unwrap_or_default();
+    // ⛔ FAIL CLOSED (`SIGNOFF-REPAIR.6.2.3`). This was
+    // `serde_json::from_value(window).unwrap_or_default()`, which turned any
+    // value that is not an array of delivery ids into an EMPTY window — so the
+    // subscription silently stopped deduplicating and a delivery it had already
+    // recorded replayed and was ACCEPTED. ⛔ And it was self-erasing: the UPDATE
+    // below then overwrote the malformed value with a fresh one-element array,
+    // destroying the only evidence that anything had been wrong.
+    //
+    // ⭐ Refusing costs one subscription's deliveries until an operator looks at
+    // it; continuing costs every delivery on that subscription being applicable
+    // twice, invisibly. This module exists to prevent the second, so it may not
+    // trade it for the first. It is the same fail-closed position `quota.rs`
+    // takes for an unconfigured scope, and for the same reason.
+    //
+    // ⚠️ The refusal returns BEFORE the UPDATE, deliberately: a refusal that
+    // still rewrote the row would destroy the same evidence the old code did.
+    let seen: Vec<String> = serde_json::from_value(window).map_err(|_| {
+        ListenError::MalformedWindow(format!(
+            "the dedup window stored for subscription `{subscription_id}` is not an array of delivery ids, so deduplication cannot be evaluated"
+        ))
+    })?;
     if seen.iter().any(|d| d == delivery_id) {
         return Ok(false); // the replay skip — the cursor unchanged
     }

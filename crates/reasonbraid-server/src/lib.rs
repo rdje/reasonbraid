@@ -50,8 +50,8 @@ mod mcp_listen;
 /// The test seam for the listen-state machinery (the `.3.4` suite).
 pub mod mcp_listen_internal {
     pub use crate::mcp_listen::{
-        listen_state as state, record_delivery_in_tx as record, resume_plan, ResumePlan,
-        DEDUP_WINDOW,
+        listen_state as state, record_delivery_in_tx as record, resume_plan, ListenError,
+        ResumePlan, DEDUP_WINDOW,
     };
 }
 mod mcp_read;

@@ -14,6 +14,8 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 - ✅ **VERIFIED:** `mcp_listen` **3/0** (1 before the lane opened). Clippy, fmt, gate (21/21) rc=0. Falsified in situ, restored byte-identical.
 - ⚠️ **`.6.2.3` remains** — a malformed window is still silently emptied, and that path bypasses the window entirely.
 
+⚠️ **QUALIFIED 2026-09-19 by `SIGNOFF-REPAIR.6.2.3.1` (REPAIR-0290): these consequences are LATENT, not live.** The caller census finds that nothing outside `mcp_listen`'s own tests calls it — every other reference to `mcp_listen_state` in the tree is a test cleanup-plan entry. The sentences above are true of the CODE and were overstated about the deployment. ⭐ The repairs stand: code about to be wired is the cheapest moment to fix, and `.6.2.4` is the leaf that would wire the first caller.
+
 ✅ **THE MCP DEDUP WINDOW KEEPS THE NEWEST IDS (`.6.2.1`, REPAIR-0288).**
 
 - 🔴 **RED:** `the newest id is IN the window: first=Some("d-000") last=Some("d-063")` — the window had frozen on the first 64 ids it ever saw, so past that boundary nothing recent deduplicated and a replay was a **double delivery**.

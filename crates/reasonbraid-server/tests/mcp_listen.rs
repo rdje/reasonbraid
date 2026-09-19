@@ -358,3 +358,114 @@ async fn a_late_delivery_is_applied_and_the_cursor_does_not_rewind() {
         "a delivery above the mark advances BOTH halves"
     );
 }
+
+/// `SIGNOFF-REPAIR.6.2.3` — a malformed dedup window REFUSES the delivery and
+/// keeps the evidence.
+///
+/// 🔴 `serde_json::from_value(window).unwrap_or_default()` turned any window that
+/// is not an array of strings into an EMPTY one, so the subscription silently
+/// stopped deduplicating and a known delivery replayed and was ACCEPTED. ⛔ And
+/// it was self-erasing: the UPDATE that followed overwrote the malformed value
+/// with a fresh one-element array, destroying the only evidence that anything
+/// had been wrong.
+///
+/// **The decision is FAIL-CLOSED**, and the control asserts both halves of it:
+/// the delivery is refused with a typed error naming the subscription, and the
+/// malformed value is still in the column afterwards.
+#[tokio::test]
+async fn a_malformed_dedup_window_refuses_the_delivery_and_keeps_the_evidence() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    sqlx::query("INSERT INTO tenants (tenant_id) VALUES ($1)")
+        .bind("ten_aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee")
+        .execute(&pool)
+        .await
+        .expect("seed the tenant");
+    let tenant = "ten_aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+
+    let record = |sub: &'static str, id: &'static str, cursor: i64| {
+        let pool = pool.clone();
+        async move {
+            let mut tx = pool.begin().await.expect("begin");
+            let out =
+                reasonbraid_server::mcp_listen_internal::record(&mut *tx, tenant, sub, id, cursor)
+                    .await;
+            match out {
+                Ok(accepted) => {
+                    tx.commit().await.expect("commit");
+                    Ok(accepted)
+                }
+                Err(e) => Err(e.to_string()),
+            }
+        }
+    };
+
+    // A healthy subscription, and a second one that stays healthy throughout —
+    // the positive arm, so a repair that refused everything would fail here.
+    assert!(
+        record("sub-bad", "v-1", 1).await.unwrap(),
+        "the first accepts"
+    );
+    assert!(
+        record("sub-ok", "w-1", 1).await.unwrap(),
+        "the control accepts"
+    );
+
+    let corrupt = serde_json::json!({ "not": "an array" });
+    sqlx::query(
+        "UPDATE mcp_listen_state SET dedup_window = $1 \
+         WHERE tenant_id = $2 AND subscription_id = $3",
+    )
+    .bind(&corrupt)
+    .bind(tenant)
+    .bind("sub-bad")
+    .execute(&pool)
+    .await
+    .expect("corrupt the window");
+
+    // ── FAIL CLOSED ──────────────────────────────────────────────────────────
+    let refusal = record("sub-bad", "v-2", 2)
+        .await
+        .expect_err("a malformed window REFUSES rather than deduplicating nothing");
+    assert!(
+        refusal.contains("sub-bad"),
+        "the refusal names the subscription an operator has to go and look at: {refusal}"
+    );
+
+    // ⭐ THE EVIDENCE SURVIVES. The shipped code's UPDATE overwrote the malformed
+    // value on its way past, so by the time anyone noticed the duplicates the
+    // reason was gone. A refusal that still rewrote the row would pass the
+    // assertion above and destroy the same evidence.
+    let after: serde_json::Value = sqlx::query_scalar(
+        "SELECT dedup_window FROM mcp_listen_state \
+         WHERE tenant_id = $1 AND subscription_id = $2",
+    )
+    .bind(tenant)
+    .bind("sub-bad")
+    .fetch_one(&pool)
+    .await
+    .expect("the window after the refusal");
+    assert_eq!(
+        after, corrupt,
+        "the malformed value is UNTOUCHED — the refusal did not erase what an \
+         operator needs to diagnose it"
+    );
+
+    // ⛔ And the replay that the shipped code accepted is still refused, which is
+    // the defect's actual consequence and not merely its mechanism.
+    let replay = record("sub-bad", "v-1", 1)
+        .await
+        .expect_err("the known delivery is not silently re-accepted either");
+    assert!(replay.contains("sub-bad"), "{replay}");
+
+    // ── AND THE HEALTHY SUBSCRIPTION IS UNAFFECTED ───────────────────────────
+    assert!(
+        record("sub-ok", "w-2", 2).await.unwrap(),
+        "a well-formed window still accepts a new delivery — the refusal is \
+         scoped to the row that is broken, not to the surface"
+    );
+    assert!(
+        !record("sub-ok", "w-1", 1).await.unwrap(),
+        "and still deduplicates"
+    );
+}

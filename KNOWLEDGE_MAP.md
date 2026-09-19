@@ -203,6 +203,7 @@
 - [`2026-09-19_the-policy-library-is-shared-the-lifecycle-is-its-tenants.md`](docs/decisions/2026-09-19_the-policy-library-is-shared-the-lifecycle-is-its-tenants.md)
 - [`2026-09-19_the-policy-registry-is-a-shared-control-surface.md`](docs/decisions/2026-09-19_the-policy-registry-is-a-shared-control-surface.md)
 - [`2026-09-19_the-write-quota-counts-calls-not-effects.md`](docs/decisions/2026-09-19_the-write-quota-counts-calls-not-effects.md)
+- [`2026-09-20_a-command-cannot-outlive-its-authority.md`](docs/decisions/2026-09-20_a-command-cannot-outlive-its-authority.md)
 
 ## Promoted lessons
 

@@ -179,7 +179,7 @@ drift from the facts it describes.
 
 ```text
 queued → transport_received → consumed
-                   ↘ dead_lettered
+                   ↘ expired / revoked / dead_lettered
 ```
 
 | State | Means | Derived from |
@@ -187,6 +187,8 @@ queued → transport_received → consumed
 | `queued` | the row exists and the node has not confirmed holding it | no acknowledgement recorded |
 | `transport_received` | **the node process durably holds the command** — it has journalled it. The agent has not read it and has not acted | `acknowledged_at` set |
 | `consumed` | the agent acted: a work result came back for this command | `acknowledged_at` set **and** a `work_result` event for the command id |
+| `revoked` | the command's authority was **withdrawn**: the grant that admitted it has been revoked | the admitting grant's `status` is no longer `active` |
+| `expired` | the command's authority **lapsed**: the grant that admitted it reached its own expiry | the admitting grant's `expires_at` has passed |
 | `dead_lettered` | the row was quarantined; the quarantine **is** the dead letter | `quarantined_at` set |
 
 ⚠️ **`transport_received` is not an acknowledgement, and the two words are kept
@@ -197,14 +199,40 @@ acknowledgement will skip a re-offer it should make. This field published
 reason is recorded in
 `docs/decisions/2026-09-19_a-transport-receipt-is-not-an-acknowledgement.md`.
 
-⛔ **Four states of §10.6's full ladder are not derived, and the reason is that
-nothing produces them yet.** `offered` would need the server to record that a
-poll response carried the row; `acknowledged`, in §10.6's sense, needs
+### A command cannot outlive the authority that admitted it
+
+`expired` and `revoked` are the two ways an undelivered command's **authority**
+can end — by the passage of time, and by an act. Both are derived from the grant
+the command was admitted under: every inbox row carries the admitting
+authorization record (`authz_ref`), and every *allowed* record names a grant.
+
+Neither state introduces a number. **The ceiling on how long an undelivered
+command may wait is the admitting grant's own `expires_at`** — a bound the
+issuing tenant already set when it issued the grant. Before `migrations/0076` a
+command queued for a node that never came back was held forever: the only
+removal path the server has is the operator prune, and that deletes *delivered*
+rows only.
+
+⛔ **A row in either terminal is withheld from delivery, and that is what keeps
+the terminal terminal.** The handshake replay and the poll read the tail through
+one function, and it now skips rows whose authority has ended. Without that, a
+revoked row could still be delivered and acknowledged back into
+`transport_received` — a terminal the row had left.
+
+⚠️ **Withheld is not deleted.** The row stays, with its state visible at
+`GET /v1/nodes/inbox` and through the MCP `list_inbox` tool, so an operator can
+tell a command that expired while its node was away from one that never existed.
+That is the same distinction the directory draws between an *offline-known* node
+and an unknown one, one level down. The reasoning is recorded in
+`docs/decisions/2026-09-20_a-command-cannot-outlive-its-authority.md`.
+
+⛔ **Two states of §10.6's full ladder are still not derived, and the reason is
+that nothing produces them yet.** `offered` would need the server to record that
+a poll response carried the row; `acknowledged`, in §10.6's sense, needs
 acknowledgement semantics that are explicit per event type, and the channel's
-cursor ack covers every row up to a cursor whatever their types; `expired` and
-`revoked` need the retention and revocation re-delivery machinery. A state with
-no producer is an advertisement rather than a fact, so none of them appears in
-the vocabulary this surface publishes.
+cursor ack covers every row up to a cursor whatever their types. A state with no
+producer is an advertisement rather than a fact, so neither appears in the
+vocabulary this surface publishes.
 
 ## Duplicate safety
 

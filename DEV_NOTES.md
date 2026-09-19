@@ -1,5 +1,114 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — The ladder had two terminals and no clock, and the clock was already in the schema
+
+`SIGNOFF-REPAIR.11.24.1.1.2` opened on a sentence that sounds like a design
+question — *what should the max age of an undelivered command be?* — and the
+first useful thing I did was refuse to answer it.
+
+**Root cause.** Not a missing sweeper. I censused every write to `node_inbox` in
+the server before writing anything: two quarantine `UPDATE`s, two acknowledge
+`UPDATE`s, one `DELETE`. The `DELETE` is the operator prune and its predicate is
+`acknowledged_at IS NOT NULL AND acknowledged_at <= $3 AND quarantined_at IS
+NULL`. Delivered rows only. So *held forever* is not rhetoric about a gap in the
+roadmap — an undelivered row is unreachable by every removal path the code has,
+and migration 0021's header claim that `expired` *rides the retention/prune
+machinery* was wrong when it was written: retention could never have reached an
+undelivered row, because the only retention verb requires the acknowledgement
+that undelivered means you do not have.
+
+**Where the answer came from.** §10.6 draws `expired / revoked` as a pair
+branching off the ladder, and pairs in a specification usually mean something.
+These two are the two ways an undelivered command's *authority* can end: by the
+passage of time, and by an act. Once that reading is on the table the derivation
+writes itself, because this repository already has exactly one predicate for
+"does authority stand" — `authority::grant_is_live`, which `SIGNOFF-REPAIR.9.3.1`
+created by collapsing five divergent spellings of that question into one:
+
+```sql
+status = 'active' AND valid_from <= now() AND expires_at > now()
+```
+
+`status <> 'active'` is the act. `expires_at <= now()` is the time. The new view
+adds no sixth spelling, and drops `valid_from` only because a grant that already
+admitted a command had begun by construction.
+
+**The premise I had to prove before I could use it.** The whole derivation hangs
+on every dispatched inbox row reaching a grant. That is not something to assume
+from a schema diagram: `authorization_records.grant_id` is nullable. It is true
+by construction, and the construction is in `authority/selection.rs` —
+`Decision::Allowed` is returned only from the branch that carries
+`grant: Some(grant)`, while the grant-less `AuthoritySelection::absent()` is
+`Denied`. A work item is enqueued only on `AuthorizationOutcome::Allowed`. So the
+link is total, and it is total for a reason rather than by observation.
+
+**The max age, which I did not choose.** `SIGNOFF-REPAIR.11.6`'s rule is to
+measure the population before proposing a rule over it, and the leaf restated the
+prohibition explicitly. So I censused the bounds that already exist: the cached
+admission allow (60 s — recovers by re-ask, so it bounds nothing), the node
+certificate (600 s — rotates), the lease (60 s — presence, not delivery), the
+budget reservation (10 minutes — see below). None of them is a delivery-age
+ceiling. What *is* one is the admitting grant's own `expires_at`: a command
+cannot outlive the authority that admitted it, and that bound was set by the
+tenant that issued the grant. §9.2 asks for exactly that shape — *retention
+depends on the operation's retry horizon and consequences*. This leaf ships no
+number.
+
+**Two cheaper derivations, both refused, and the refusals took longer than the
+repair.** The tenant revocation epoch was free — `node_inbox.revocation_epoch`
+and `tenants.revocation_epoch` both ship, and comparing them is one line. It is
+wrong: that comparison is `CachedDecision::is_invalidated`, whose verdict is
+`CacheVerdict::Stale`, which means *re-ask the authority store*, not *denied* —
+and any revocation anywhere in the tenant moves the epoch, including one that
+never touched this command's grant. Publishing `revoked` for a command whose
+authority is intact would have been `migrations/0075`'s defect committed again
+one migration later: a §10.6 word used for a fact that is not the one §10.6
+names. Node suspension was refused for a different reason worth keeping:
+`node_presence` (0017) makes `suspended` deliberately reversible so the
+replacement ritual works, and a terminal derived from a reversible predicate is
+a terminal a row can leave.
+
+**The precedence, and the fact that refuted my first draft.** I wrote the CASE
+with both terminals below the delivery states, reasoning that only an undelivered
+row can expire. Then I went to write the control and looked at `acknowledge`:
+
+```sql
+UPDATE node_inbox SET acknowledged_at = $3 WHERE node_id = $1 AND cursor <= $2
+```
+
+Every row up to the acked cursor — including rows `replay` withheld. A withheld
+row at cursor 3 gains an `acknowledged_at` the moment the node acks a delivered
+row at cursor 4, so a terminal placed below `transport_received` is a terminal the
+row pops out of with nothing delivered. The shipped order is `dead_lettered` →
+`consumed` → `revoked` → `expired` → `transport_received` → `queued`, and that
+sequence is now an assertion in the suite rather than a paragraph in a migration.
+
+**The filter is not a nicety.** `replay` — the one function the handshake and the
+poll both read the tail through — gains the same predicate, because without it a
+row could reach `revoked` and then be delivered and acknowledged back out. The
+rows are withheld, never dropped, which is the reconnect answer the leaf owed:
+`PHASE-3.2.2`'s offline-KNOWN-versus-unknown distinction, applied to a command
+instead of to a node, and the same shape quarantine already uses.
+
+**Validation.** `node_work` 10/10; the delta measured on both sides (8 static
+`#[tokio::test]` at `592994f`, 10 here) rather than inferred, which is the habit
+`.13.4.2` caught me in. `node_channel` 40/40, `node_inbox` 8/8, `quarantine` 1/1,
+`node_replacement` 2/2, `mcp_listen` 6/6. Falsified twice, each in situ with
+sha256 matched after restore: reverting `THEN 'revoked'` to `THEN 'queued'` fails
+one control with `left: "queued"`; removing the replay predicate fails both with
+`left: Some(1)`.
+
+**Two things I found and did not fix here, each with a leaf rather than a
+sentence.** `.11.24.1.1.2.1`: the cursor ack records a transport receipt for a
+row the transport never carried — masked today because `dead_lettered` and now
+both terminals outrank it in the view, and it has to argue against a recorded
+decision (`.1.2.3`) rather than an oversight. `.11.24.1.1.2.2`: the dispatch
+creates the work item's budget reservation with a ten-minute window and the
+engine stops counting an expired active hold, so a node polling at minute eleven
+runs against a ceiling that has already re-lent its allowance — and the honest
+question there is what should happen to such a delivery, not whether ten minutes
+is the right number.
+
 ## 2026-09-19 — Where did the 39 come from?
 
 I published `node_channel` *40 passed (39 before)*. I ran that suite exactly

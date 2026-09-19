@@ -1573,3 +1573,232 @@ async fn a_dead_lettered_command_replays_and_redispatches() {
         "the replayed command dispatched exactly once — one contribution landed"
     );
 }
+
+/// The delivery state of one node's single inbox row, read through the view the
+/// `GET /v1/nodes/inbox` and MCP `list_inbox` surfaces both publish.
+///
+/// Assertion-only SQL, which this suite permits: the fact under test IS the
+/// derivation, so reading it at its source is the honest measurement.
+async fn delivery_state(pool: &PgPool, node_id: &str) -> String {
+    sqlx::query_scalar("SELECT delivery_state FROM node_inbox_state WHERE node_id = $1")
+        .bind(node_id)
+        .fetch_one(pool)
+        .await
+        .expect("the node has exactly one inbox row")
+}
+
+/// The role's active grant — the one that admitted the ACCEPT transaction, and
+/// therefore the authority the dispatched work item carries.
+async fn role_grant(pool: &PgPool, tenant: &str) -> String {
+    sqlx::query_scalar(
+        "SELECT grant_id FROM authority_grants WHERE tenant_id = $1 AND status = 'active' \
+         AND subject_kind = 'role'",
+    )
+    .bind(tenant)
+    .fetch_one(pool)
+    .await
+    .expect("the role's active grant")
+}
+
+/// The node still holds a usable certificate — the OTHER reason `replay` can
+/// return an empty tail (`SIGNOFF-REPAIR.4.1.3.1`). Asserting it stays true is
+/// what makes an empty tail attributable to the authority predicate rather than
+/// to the credential one: a control must prove the RIGHT thing happened, not
+/// merely that the wrong number is absent (`.6.2.1`, `.6.2.2`, `.6.2.4`).
+async fn credential_is_usable(pool: &PgPool, node_id: &str) -> bool {
+    sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM node_certificates \
+         WHERE node_id = $1 AND revoked_at IS NULL AND expires_at > now())",
+    )
+    .bind(node_id)
+    .fetch_one(pool)
+    .await
+    .expect("certificate probe")
+}
+
+/// Dispatch one work item into the role's inbox and return the fixture around it.
+async fn dispatch_one_work_item(
+    client: &reqwest::Client,
+    base: &str,
+    key: &str,
+) -> (String, String, String, String, String, String) {
+    let (tenant, human, role, thread, cert_hex, key_hex) = bootstrap(client, base).await;
+    let (status, _) = command(
+        client,
+        base,
+        &format!("/v1/threads/{thread}/commands"),
+        &human,
+        &envelope(
+            "thread.invite",
+            &format!("{key}-inv"),
+            json!({ "tenant_id": tenant, "agent_role": role }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "invite succeeds");
+    accept_invitation(client, base, &role, &thread, &tenant, &format!("{key}-acc")).await;
+    (tenant, human, role, thread, cert_hex, key_hex)
+}
+
+/// THE §10.6 `revoked` TERMINAL (`SIGNOFF-REPAIR.11.24.1.1.2`).
+///
+/// An undelivered command whose ADMITTING grant is revoked reaches §10.6's
+/// `revoked` terminal, stops being offered, and — the arm that decided the
+/// view's precedence — stays there when a later cursor acknowledgement sweeps
+/// past it.
+#[tokio::test]
+async fn a_revoked_grant_makes_its_undelivered_command_revoked_and_withholds_it() {
+    let _g = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (tenant, human, role, _thread, cert_hex, key_hex) =
+        dispatch_one_work_item(&client, &server.base(), "key-rvk").await;
+
+    // THE POSITIVE CONTROL FIRST: before the revocation the row is `queued` and
+    // the tail actually carries it. Without this, an empty tail after the
+    // revocation would prove nothing — the suite would pass on a delivery path
+    // that never worked.
+    assert_eq!(
+        delivery_state(&pool, &role).await,
+        "queued",
+        "the dispatched row starts queued"
+    );
+    let (view, _token, _epoch) =
+        handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
+    assert_eq!(
+        view["replay"].as_array().map(Vec::len),
+        Some(1),
+        "the tail carries the work item while its authority stands: {view}"
+    );
+
+    // Revoke the grant that admitted the ACCEPT — the transaction the work item
+    // rides — through the PUBLIC route. The human keeps its own admin grant.
+    let grant = role_grant(&pool, &tenant).await;
+    let (status, revoked) = admin_revoke(
+        &client,
+        &server.base(),
+        &format!("/v1/admin/grants/{grant}/revoke"),
+        &human,
+        &tenant,
+    )
+    .await;
+    assert_eq!(status, 200, "the revocation succeeds: {revoked}");
+
+    assert_eq!(
+        delivery_state(&pool, &role).await,
+        "revoked",
+        "the undelivered command reads §10.6's `revoked` once its grant is withdrawn"
+    );
+    assert!(
+        credential_is_usable(&pool, &role).await,
+        "the node's certificate is still usable, so an empty tail is the AUTHORITY \
+         predicate's doing and not the credential one's"
+    );
+    let (view, token, epoch) = handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
+    assert_eq!(
+        view["replay"].as_array().map(Vec::len),
+        Some(0),
+        "a revoked command is withheld from the tail: {view}"
+    );
+
+    // THE ARM THAT DECIDED THE PRECEDENCE. `acknowledge` marks every row up to
+    // the acked cursor, withheld rows included, so a terminal placed BELOW
+    // `transport_received` would be a terminal this ack pops the row out of.
+    //
+    // The token is THIS handshake's — a re-handshake bumps the lease epoch and
+    // fences the previous one — and the cursor is the ledger's own high-water
+    // mark, because the channel refuses an ack AHEAD of it (`cursor_ahead`).
+    // The sweep under test is the ack's `cursor <= $2` predicate, not an
+    // out-of-range number.
+    let high_water: i64 =
+        sqlx::query_scalar("SELECT COALESCE(MAX(cursor), 0) FROM node_inbox WHERE node_id = $1")
+            .bind(&role)
+            .fetch_one(&pool)
+            .await
+            .expect("the node's ledger high-water cursor");
+    let response = client
+        .post(format!("{}/v1/nodes/ack", server.base()))
+        .json(&json!({
+            "channel_version": CHANNEL_VERSION,
+            "node_id": role,
+            "ack_cursor": high_water,
+            "fencing_token": token,
+            "lease_epoch": epoch,
+        }))
+        .send()
+        .await
+        .expect("ack request");
+    let ack_status = response.status().as_u16();
+    let ack_body: Value = response.json().await.expect("ack json");
+    assert_eq!(
+        ack_status, 200,
+        "the ack is accepted (cursor {high_water}): {ack_body}"
+    );
+    assert_eq!(
+        delivery_state(&pool, &role).await,
+        "revoked",
+        "a cursor acknowledgement does not move a revoked row into `transport_received` — \
+         the row was never offered, and a terminal a sweep can leave is not a terminal"
+    );
+}
+
+/// THE §10.6 `expired` TERMINAL (`SIGNOFF-REPAIR.11.24.1.1.2`).
+///
+/// The ceiling is the admitting grant's OWN `expires_at` — a bound the issuing
+/// tenant set, never a number this project chose (`.11.6`). A command cannot
+/// outlive the authority that admitted it.
+///
+/// ⚠️ The grant is aged with direct SQL, the one fixture mutation this suite
+/// makes: the alternative is waiting out the dev grant's 365-day lifetime, and
+/// the aged column is the FIXTURE's fact (when the tenant's grant ends), not the
+/// fact under test (what the view derives from it).
+#[tokio::test]
+async fn an_expired_grant_makes_its_undelivered_command_expired_and_withholds_it() {
+    let _g = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (tenant, _human, role, _thread, cert_hex, key_hex) =
+        dispatch_one_work_item(&client, &server.base(), "key-exp").await;
+
+    assert_eq!(
+        delivery_state(&pool, &role).await,
+        "queued",
+        "the dispatched row starts queued"
+    );
+    let (view, _token, _epoch) =
+        handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
+    assert_eq!(
+        view["replay"].as_array().map(Vec::len),
+        Some(1),
+        "the tail carries the work item while its authority stands: {view}"
+    );
+
+    let grant = role_grant(&pool, &tenant).await;
+    sqlx::query(
+        "UPDATE authority_grants SET expires_at = now() - interval '1 hour' WHERE grant_id = $1",
+    )
+    .bind(&grant)
+    .execute(&pool)
+    .await
+    .expect("age the admitting grant past its own expiry");
+
+    assert_eq!(
+        delivery_state(&pool, &role).await,
+        "expired",
+        "the undelivered command reads §10.6's `expired` once its grant's own window closes"
+    );
+    assert!(
+        credential_is_usable(&pool, &role).await,
+        "the node's certificate is still usable, so an empty tail is the AUTHORITY \
+         predicate's doing and not the credential one's"
+    );
+    let (view, _token2, _epoch2) =
+        handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
+    assert_eq!(
+        view["replay"].as_array().map(Vec::len),
+        Some(0),
+        "an expired command is withheld from the tail: {view}"
+    );
+}

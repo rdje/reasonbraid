@@ -239,6 +239,18 @@ eligibility before ranking. Dependence indicators, never an independence score.
       -- crates` returns **0 files**, and §10.6's
       `expired` terminal has no producer either.
       Owned now by `SIGNOFF-REPAIR.11.24.1.1.2`.
+      ✅ **DISCHARGED by `SIGNOFF-REPAIR.11.24.1.1.2`
+      (REPAIR-0300).** §10.6's `expired` and `revoked` are
+      the two ways an undelivered command's AUTHORITY ends
+      — time and an act — and both derive from the admitting
+      grant (`migrations/0076`). ⛔ **The max age is DERIVED,
+      never chosen: it is that grant's own `expires_at`**, a
+      bound the issuing tenant set, which is §9.2's shape.
+      The rows are WITHHELD from the tail, never dropped, so
+      a reconnecting node's operator can tell a command that
+      expired while the node was away from one that never
+      existed — THIS leaf's own offline-KNOWN-versus-unknown
+      distinction, one level down.
       Frontier → `.2.3`.
     Acceptance: the offline-known vs unknown distinction is measured
       (the expired-lease node reads offline-with-expiry; the unknown
@@ -587,6 +599,25 @@ eligibility before ranking. Dependence indicators, never an independence score.
       `acknowledged` are owed at
       `SIGNOFF-REPAIR.11.24.1.1.1`; `expired` and
       `revoked` at `.11.24.1.1.2`.
+
+    Annotated again by `SIGNOFF-REPAIR.11.24.1.1.2`
+      (REPAIR-0300); the Done list stays byte-unchanged
+      for the same reason:
+    - ✅ **`expired` AND `revoked` ARE NOW DERIVED**, so
+      the goal line's ladder is short by two states
+      rather than four. ⛔ **The Done list's claim that
+      they *ride the retention/prune machinery* was
+      WRONG, and the correction is the finding**: the
+      inbox prune deletes `acknowledged_at IS NOT NULL`
+      rows only, so retention could never have reached
+      an undelivered one. They ride the ADMITTING
+      GRANT instead — §10.6's pair is the two ways an
+      undelivered command's authority ends, by time and
+      by an act (`migrations/0076`,
+      `docs/decisions/2026-09-20_a-command-cannot-
+      outlive-its-authority.md`).
+    - ⚪ `offered` and a per-event-type `acknowledged`
+      remain owed at `.11.24.1.1.1`, unchanged.
   - ID: `PHASE-3.5.2`
     Status: `done`
     Goal: the subscriptions + the wake policies — the profile's

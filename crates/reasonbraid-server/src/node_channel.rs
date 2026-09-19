@@ -656,6 +656,23 @@ impl NodeChannelState {
     /// cursor the node reports (a node that never saw it simply has a hole in its
     /// ledger — cursor acknowledgement still marks it terminal).
     ///
+    /// # Delivery requires LIVE AUTHORITY (`SIGNOFF-REPAIR.11.24.1.1.2`)
+    ///
+    /// A row whose admitting grant has been revoked or has passed its expiry is
+    /// withheld. That is not a second opinion about authority: it is what keeps
+    /// §10.6's `expired` and `revoked` TERMINAL. `migrations/0076` derives both
+    /// from the same two facts, and without this predicate a row could reach a
+    /// terminal and then be delivered and acknowledged into
+    /// `transport_received` — a terminal the row LEFT, and a view that lies.
+    ///
+    /// The predicate is the negation of [`super::authority::grant_is_live`]'s
+    /// own two reasons (`SIGNOFF-REPAIR.9.3.1` collapsed five spellings of that
+    /// question into one; this adds no sixth). Like the credential check below
+    /// it is a FILTER, not a refusal: the rows are withheld and stay inspectable
+    /// at `GET /v1/nodes/inbox`, so an operator can see that a command was never
+    /// delivered and why — `PHASE-3.2.2`'s offline-KNOWN-versus-unknown
+    /// distinction applied to a command rather than to a node.
+    ///
     /// # Delivery requires a usable credential (`SIGNOFF-REPAIR.4.1.3.1`)
     ///
     /// `.4.1.3` bounded a revoked node's session to the remaining lease but left
@@ -702,6 +719,10 @@ impl NodeChannelState {
                     policy_digest, decided_at, revocation_epoch \
              FROM node_inbox \
              WHERE node_id = $1 AND cursor > $2 AND quarantined_at IS NULL \
+               AND NOT EXISTS (SELECT 1 FROM authorization_records r \
+                                 JOIN authority_grants g ON g.grant_id = r.grant_id \
+                                WHERE r.record_id = node_inbox.authz_ref \
+                                  AND (g.status <> 'active' OR g.expires_at <= now())) \
                AND EXISTS (SELECT 1 FROM node_certificates c \
                            WHERE c.node_id = $1 \
                              AND c.revoked_at IS NULL AND c.expires_at > now()) \

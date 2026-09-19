@@ -1,5 +1,65 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — Both times, the command was narrower than the sentence
+
+Third pass of *ensure your findings hold*, over this session's five commits. Two
+of twenty-two claims failed, and they failed the same way — which is the only
+reason this note is worth writing.
+
+**The first.** I published that `git grep -n "accepted_at\|proposed_at" -- crates`
+returns *exactly one hit outside the two writes*. It returns two. The *one* came
+from a `grep -v` I had piped onto my own command while exploring, to hide a line
+range I had already read. The filter never made it into the sentence, so the
+sentence promised a number the quoted command cannot produce.
+
+**The second.** I published that *nothing consumes the reported count*, evidenced
+by `git grep -n "\.acknowledged\b"` returning no hit "over the node and server
+sources". Over `crates/*/src` that is true. Over `crates` it is two, and one of
+them is an assertion — `marked.acknowledged == 3`. The control passes, and the
+conclusion holds for a reason I can state: its rows are neither quarantined nor
+authority-ended, so three is still three. But I had scoped my evidence to exclude
+the only place in the repository that could have refuted me, and *nothing
+consumes* is a much stronger sentence than *no production code consumes*.
+
+Same mechanism twice: **the command was narrower than the sentence.** One
+narrowing was a pipe, the other a path. Neither was in the published claim.
+
+**What I did not do, and why that is the finding.** I did not write a third
+knowledge note. `an-absence-claim-is-a-census-over-the-corpus` already says state
+the population before asserting absence. `a-delta-is-a-second-measurement` already
+says a sentence must name something a command produced. Both failures are
+instances of notes this repository already holds — and I promoted an adjacent one
+five commits ago and then did not consult either. A note saying *read your own
+notes* is not a method. `.11.6`'s rule cuts both ways: measure the population
+before proposing a rule, and the population here says the layer is adequate.
+
+**What the pass confirmed.** Twenty claims held, and the two I most wanted to
+check held by better routes than the ones that produced them. The grant-link
+totality — the premise the whole terminal family rests on — I originally
+established by reading `selection.rs`. This time I enumerated its return points:
+there are two, one guarded by `decision == Allowed` and built with
+`grant: Some(grant)`, the other returning either a refusal (stored only when the
+decision is *not* Allowed) or `absent()`, which is `Denied` with `grant: None`.
+`Allowed ⟹ grant is Some` is structural. And all four test deltas re-derived on
+both sides, which is the class the previous pass caught me on.
+
+**Two numbers moved under me, inside one session.** `LIVE_STATUS.md` still said
+`node_inbox` has one `DELETE` — it has three now, and two of them are mine, added
+by the very repairs that bullet's finding set in motion. It also still said
+`authority_grants` carries no `revoked_at`, with a trigger; the trigger fired one
+commit later. Both annotated rather than deleted: they were true when written and
+they are their own findings' evidence. The book was current on both, so the drift
+was one document rather than the corpus — which is the first time that census has
+come back clean on the mdBook.
+
+**One gap that is not a wrong number.** `migrations/0077` ships a backfill and
+nothing drives it. Every pg suite applies the migration, so the SQL parses and the
+upgrade path runs, and I took that as coverage. It is not: a join that matched
+nothing would look exactly the same. That is `.7.1.2.2.1`'s lesson — a green gate
+is not evidence a suite runs — applied to a data migration, and it is the kind of
+thing only a re-derivation pass finds, because the original commit's tests were
+all green and all beside the point.
+
 ## 2026-09-20 — The census that refuted the leaf that asked for it
 
 One commit ago I found a third table with the same shape as the one I was

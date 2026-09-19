@@ -111,6 +111,12 @@ receipt means. That needs its own argument and its own control:
   (`sha256` matched): dropping `AND quarantined_at IS NULL` fails the quarantine
   control; dropping the authority clause fails the `node_work` control with
   `Some(2026-09-19T22:09:17Z)` where `None` was required.
-- Nothing consumes the reported count: `git grep -n "\.acknowledged\b"` over the
-  node and server sources returns no hit, so the narrower predicate changes no
-  caller's behaviour beyond the column itself.
+- No PRODUCTION code consumes the reported count: `git grep -n "\.acknowledged\b"`
+  over `crates/*/src` returns no hit. 🔴 **CORRECTED by `SIGNOFF-REPAIR.13.4.3`:
+  this line first said "over the node and server sources returns no hit" and used
+  it to conclude the narrowing changes no caller.** Over `crates` — tests included
+  — the same command returns **2** hits, and one of them ASSERTS the value
+  (`crates/reasonbraid-server/tests/node_channel.rs:4434`, `marked.acknowledged == 3`). That control passes,
+  because its rows are neither quarantined nor authority-ended and 3 is still 3 —
+  so the conclusion holds. But the evidence was scoped to exclude the one place
+  that could have refuted it, and the sentence did not say so.

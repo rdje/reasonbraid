@@ -23,9 +23,17 @@ here the schema itself establishes a pattern that the missing column breaks, and
 ## The decision: no column, and the opening argument is withdrawn
 
 **There is no such reader.** `git grep -n "accepted_at\|proposed_at" -- crates`
-returns exactly **one** hit outside the two writes, and it is a third write — the
-re-proposal resetting `accepted_at = NULL`. Neither column appears in any
-`SELECT`. The two instants this table records are **written and read by nothing**.
+🔴 **CORRECTED by `SIGNOFF-REPAIR.13.4.3`: this paragraph first said the command
+returned "exactly one hit outside the two writes", and that number is FALSE.**
+The unfiltered command returns **2** hits, both in `federation_admin.rs` — line
+304 (the accept `UPDATE`) and line 231 (the re-proposal resetting
+`accepted_at = NULL`) — and both are writes. The *1* came from a `grep -v` I
+applied to my own command and did not carry into the sentence. **A measurement's
+scope is part of the number.**
+
+The finding is unchanged, and stands on the corrected count: **both** hits are
+writes, neither column appears in any `SELECT`, and the two instants this table
+records are **written and read by nothing**.
 
 So the pattern is a writing habit, not a contract anyone depends on, and the
 argument that a reader would infer the third column from the other two is refuted
@@ -86,8 +94,10 @@ this decision rests on, not because it is owed a repair.
 - The reader census above, produced by `git grep -n "federation_agreements" --
   crates/reasonbraid-server/src crates/reasonbraid-cli/src` and read site by site
   rather than counted.
-- `git grep -n "accepted_at\|proposed_at" -- crates` → **1** hit outside the
-  writes, itself a write.
+- `git grep -n "accepted_at\|proposed_at" -- crates` → **2** hits, both writes
+  (`federation_admin.rs:231` and `:304`), and no `SELECT` among them. 🔴 First
+  published as *1 hit outside the two writes* — a `grep -v` artifact, corrected
+  by `SIGNOFF-REPAIR.13.4.3`.
 - No code changed, so there is nothing to falsify and nothing to regress. The
   discriminating evidence is the census, and it was capable of the other answer:
   a single `SELECT … accepted_at` would have shipped the column.

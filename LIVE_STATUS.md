@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **SEVEN PUBLISHED CLAIMS RE-DERIVED; SIX HOLD, ONE WAS WRONG (`.6.1.5.3.1`, REPAIR-0282).**
+
+Verified against `docs/CLAIM_VERIFICATION.md` — each claim re-derived by a route that does not share a parent with the one that produced it.
+
+- 🔴 **`reads 40 site-global tables → 29` is really `38 → 29`.** Run at `4c5c8e6`, the commit before `migrations/0073`, the census answers **38**. `40` was `.7.1.2`'s figure, stale since `migrations/0072`; it was READ out of `MEMORY.md`, never measured. ⛔ **The arithmetic never closed:** the same bullet published *9 tables left*, and 40 − 9 is 31. 38 − 9 = 29. Corrected in `CHANGELOG.md`, `LIVE_STATUS.md` and the tree.
+- ⭐ **The repair is DURABILITY, not arithmetic.** `census_registry_read_reach.py` now names the five live documents that restate its count and refuses with both counts and the instruction to SUBTRACT. Its sibling has done so since `.7.1.1.1` — **which is exactly why the write figure `39/30 → 26/17` was right in the same commit.**
+- ✅ **The strongest claim was CONSERVATIVE.** *"Twenty suites could not start"* rested on one measured suite; measured per item with the plans reverted, **all 20 server suites `0 passed`**, plus `cli_end_to_end` 0/5 — **21 targets**, and `reasonbraid-mcp` lost 2 of 6.
+- ✅ **Five more hold** by independent routes: the 15 write sites, the 27 purge plans (28 hits, one classified out), the MCP claim, the write census, and the eleven gated verbs (which independently confirmed ten read verbs).
+- ⚠️ **One earlier figure is NOT reconstructible and is named rather than judged:** `.7.1.2.2`'s `29 tables → 27` matches no quantity either baseline pins, after two refuted hypotheses. Not a claim it is wrong — Leg 3 answered `no`. `.7.1.2.2.3` owns it with `residue 16 → 14`.
+
 ✅ **THE LIFECYCLE READS ARE BOUND TO THEIR OWN TENANT (`.6.1.5.3`, REPAIR-0281).** The third half of `.6.1.5`: the rows got an owner, the writes got a gate, and the reads are now narrowed to it.
 
 - 🔴 **`publications::stage` PROBED A PROJECTION FOR EXISTENCE ONLY** — a publication could be staged against **another tenant's compiled bytes**. ⛔ The predicate was written and every arm still passed; **falsification found it**, because no control had ever staged across the boundary.
@@ -44,7 +54,7 @@ Not the five the leaf was opened with: every mutating verb over a publication or
 - 🔎 **`policy_projections` has NO ancestor**, so its tenant is its AUTHOR's and its history derives from nothing. DOC-0071's verdict stands; its stated reason (*"each starts in a tenant's thread"*) does not reach this one table.
 - ✅ **Backfill coverage MEASURED, not asserted:** `policy_proposals` **1/3**, `policy_projections` **0/2**, the other seven 1/2. The refusals are an orphaned chain, a thread present under TWO tenants, and every projection. ⛔ Removing `HAVING count(*) = 1` takes 1/3 to **2/3**, so the ambiguity clause is load-bearing.
 - ⚠️ **This LABELS rows; it does not GATE writes**, and the control asserts as much: Mallory still stages Alice's proposal and still records drift against Alice's publication. Owned by `.6.1.5.2.1`. ⛔ The reads are asserted UNCHANGED, so the leaf cannot have delivered `.6.1.5.3` by accident.
-- ✅ **The censuses follow the repair: writes 39/30 → 26/17, reads 40 site-global tables → 29.** 13 rows left and 0 joined; 9 tables left and 0 joined. 🔎 That is also a COVERAGE LOSS — the read census watches tables *without* a tenant dimension, so all nine left it with their 28 readers still unbound. The population is pinned by name in `.6.1.5.3`.
+- ✅ **The censuses follow the repair: writes 39/30 → 26/17, reads 38 site-global tables → 29.** 13 rows left and 0 joined; 9 tables left and 0 joined. 🔎 That is also a COVERAGE LOSS — the read census watches tables *without* a tenant dimension, so all nine left it with their 28 readers still unbound. The population is pinned by name in `.6.1.5.3`.
 - ✅ **VERIFIED:** `policy` **17/0**, `migration_upgrade` **5/0**, `mcp_write` 5/0, plus twenty-seven suites whose purge plans the migration touched — 0 failed. Clippy rc=0; fmt rc=0; gate green; book + links rc=0. Falsified seven times and restored byte-identical; the decisive arm proves the control measures the ANCHOR, failing `left: Some(mallory) / right: Some(alice)` against a caller-derived implementation.
 - 🔎 **Found by the regression run and OWNED, not reported:** `routing evaluation` in that order fails `evaluation` 2/1, the reverse passes both. `tests/evaluation.rs` asserts the content of `evaluation_trials` and never purges it. Independent of this leaf; `.7.1.2.2.2`.
 

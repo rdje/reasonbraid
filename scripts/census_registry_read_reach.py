@@ -59,6 +59,29 @@ ROOT = Path(__file__).resolve().parents[1]
 
 BASELINE = ROOT / ".doctrine" / "registry_read_reach_baseline.tsv"
 
+# ⛔ THE LIVE DOCUMENTS THAT RESTATE THIS CENSUS'S FIGURE (`SIGNOFF-REPAIR.13.4`'s
+# corpus rule, as a mechanism rather than a habit). Its sibling
+# `census_shared_registry_writes.py` has carried this list since `.7.1.1.1`; this
+# census did not, and that difference is not academic:
+#
+#   `.7.1.2` published `40 site-global tables`, which was true. `migrations/0072`
+#   then bound both routing journals and took it to 38, and no leaf restated it.
+#   `SIGNOFF-REPAIR.6.1.5.2` read `40` out of MEMORY.md, carried it forward, and
+#   published `40 → 29` — a movement of eleven where only nine tables had left.
+#   The write figure in the very same commit was correct, because THAT census
+#   refuses with its corpus named and forces a re-derivation.
+#
+# ⚠️ The refusal below names these files so that a reader who refreshes the
+# baseline cannot leave the prose behind. A number appearing in N places has N
+# chances to be stale; prefer the one derived source.
+RESTATING_DOCUMENTS = (
+    "CHANGELOG.md",
+    "LIVE_STATUS.md",
+    "MEMORY.md",
+    "docs/TASK_TREE.md",
+    "docs/tasks/SIGNOFF-REPAIR.md",
+)
+
 # A Rust string literal, `\`-continuation included — sqlx statements in this
 # repository are written as one literal broken over lines with a trailing `\`,
 # so DOTALL is required and a line-anchored pattern silently sees a third of them.
@@ -344,12 +367,33 @@ def check(rows: list[dict[str, object]], path: Path | None = None) -> int:
     print("⛔ Re-adjudicate before refreshing. The verdicts are in")
     print("   docs/decisions/2026-09-19_the-policy-registry-is-a-shared-control-surface.md;")
     print("   a new reader on a shared CONTROL surface is a design change, not a refresh.")
+    print()
+    print(f"⛔ This census's count is {len(current)} today and {len(pinned)} in the")
+    print("   baseline. It is RESTATED in these live documents, and a correction is")
+    print("   not complete until they have been censused (`SIGNOFF-REPAIR.13.4`):")
+    for document in RESTATING_DOCUMENTS:
+        print(f"      {document}")
+    print()
+    print("   ⚠️ Carrying the old figure forward is how `40 → 29` was published for a")
+    print("   movement in which nine tables left a population of 38. Subtract, and if")
+    print("   the arithmetic does not close, the starting figure is the stale one.")
     return 1
 
 
 def self_test() -> int:
     """Falsify the three assumptions this census would be worthless without."""
     failures = []
+
+    # 0. ⛔ THE RESTATING CORPUS IS NAMED AND TRACKED. Without this list the
+    #    refusal cannot tell a reader where the number is repeated, which is how
+    #    `40 → 29` was published for a movement of nine out of 38
+    #    (`SIGNOFF-REPAIR.6.1.5.3.1`). An untracked path here is a refusal that
+    #    names a file nobody can open.
+    missing_documents = [d for d in RESTATING_DOCUMENTS if not (ROOT / d).exists()]
+    if missing_documents or not RESTATING_DOCUMENTS:
+        failures.append(
+            f"the restating corpus is empty or untracked: {missing_documents or 'empty'}"
+        )
 
     binding = _binding_module()
     dimensioned = binding.tenant_dimensioned_tables()

@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-19 — Subtract, and if the arithmetic does not close, the starting figure is the stale one
+
+- Asked to verify my own findings, I re-derived seven. Six held. The seventh was a number I never measured: I read `40 site-global tables` out of `MEMORY.md` and published `40 → 29`.
+- ⭐ **The tell was sitting in my own sentence.** The same bullet said *"9 tables left and 0 joined"*. Forty minus nine is thirty-one. I wrote both halves, in one line, and never subtracted — because the two halves came from different places and I was checking each for internal consistency rather than against each other.
+- 🔎 **The sibling instrument is the whole explanation for why the write figure was right in the same commit.** `census_shared_registry_writes.py` refuses with the five live documents that restate its count NAMED; it made me re-derive `39/30 → 26/17`. The read census had no such list, so nothing stopped me carrying its number. Same author, same hour, same care — one instrument demanded a measurement and the other accepted a memory.
+- ⛔ **That is the argument against "be more careful" as a remedy, made on myself.** The care was identical. The difference was mechanical.
+- 🔎 **And the strongest claim I made turned out to be understated.** *"Twenty suites could not start"* came from one measured suite plus the gate's plan list — a per-item claim leaning on a container's answer, which is the exact shape `CLAIM_VERIFICATION` §3 warns reproduces faithfully while getting it wrong. Measuring per item took twenty minutes and moved the number the other way: twenty-one targets fully down, plus a partial. A claim can fail its verification by being too small.
+- ⚠️ **One figure from an earlier leaf I could not reconstruct at all**, after testing two hypotheses. I have not called it wrong, because I cannot; I have called it unreproducible, which is a different and checkable statement, and opened a leaf for it. The temptation to round that up to "probably wrong" or down to "probably fine" is the thing to resist.
+- promotion: pending — *a figure carried between documents is stale by default; the instrument that produced it must name the documents that restate it*, with the arithmetic test as its cheapest tripwire.
+
 ## 2026-09-19 — A predicate with no arm is not a repair
 
 - I added eleven read predicates and the suite passed. Ten of them, neutralized one at a time, turned the suite red at their own surface. The eleventh did not move at all.

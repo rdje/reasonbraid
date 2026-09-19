@@ -99,9 +99,16 @@ binding constraint rather than beside it.
    records the director's instruction that the LAN must fully work first. A
    HOSTED classifier in the deliberation path makes the LAN **incomplete by
    design** — a deliberation could not complete without reaching the internet.
-   ⛔ Until it is known whether Jev can be self-hosted or run on-device, this is
-   post-LAN by the project's own standing rule. **The published documentation
-   does not say**, and that is the question to put to typesafe.ai.
+   ⛔ **SETTLED 2026-09-19 from the vendor's own GitHub** (`https://github.com/typesafe-ai`,
+   supplied by the director): the published repositories are **client SDKs only**
+   — `typesafe-sdk-js` and `typesafe-sdk-python` ("the official … library for the
+   TypeSafe API"), a `system-one-adapter-python` that is itself "backed by LLM
+   APIs", and a `skills` repo. The organisation forks `vllm` and `LLaDA` but
+   publishes **no deployable model, inference server or on-device runtime**. Jev
+   is a managed hosted service.
+   ⭐ So this is not an open question awaiting an answer: **Jev cannot satisfy the
+   LAN bar today**, and is post-LAN by the project's own standing rule. Revisit
+   only if typesafe.ai ships a self-hostable runtime.
 2. ⚠️ **Data locality (CLAUDE.md §13).** A hosted call also sends deliberation
    content off-volume and off-site. That needs its own decision about what may
    leave, independent of whether the LAN bar is met.
@@ -111,6 +118,17 @@ binding constraint rather than beside it.
    abstention itself, as a confidence threshold in Rust. ⛔ A threshold is a
    POLICY decision with a decision record and a leaf, not a constant someone
    picks — and `.11.6`'s rule applies: no rule before its population.
+
+## The credential question, answered before it is spent on
+
+⚠️ The director offered to obtain a `TYPESAFE_API_KEY` for testing. **It is not
+the blocker and should not be bought yet.** Two things stand in front of it, and
+neither is unlocked by a credential: no defect was found that this repairs, and
+the hosted-only deployment fails the LAN bar. A key would enable a measurement
+nobody is waiting on. ⭐ The moment it becomes worth having is when the routing
+SHADOW lane is scheduled — `routing_recommendations` binds nothing, so a
+classifier can be measured against the deterministic table there at leisure — and
+that lane is not on the frontier.
 
 ## What is NOT decided
 

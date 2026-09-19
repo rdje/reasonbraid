@@ -97,6 +97,27 @@ Before drawing a conclusion from a located instance:
 (see [[a-control-is-calibrated-against-the-renderer]]). It is about making sure you
 asked the authority about the right object.
 
+## Two near-misses in one hour, and what caught them
+
+`SIGNOFF-REPAIR.11.4.7.3` produced two wrong answers that were never committed,
+both from a key wider than the thing it named:
+
+- **A grep that matched prose.** Classifying which test files need a database by
+  `grep -q DATABASE_URL` marked `server_boot.rs` database-backed. The file's own
+  header says *"neither run needs PostgreSQL"* — the match was in a sentence
+  explaining why. One step from publishing *"37 tests no gate can execute"*.
+- **A line window that spilled.** Reading each leaf's status with
+  `sed -n "N,N+60p" | grep -m1 '^- Status:'` crossed into the NEXT leaf's section
+  and reported a `pending` leaf as `done`. That would have closed a release
+  blocker on work that has not started. Bounding each leaf between its own
+  heading and the next one fixed it.
+
+⭐ Neither wrong answer was contradicted by the tool that produced it — both were
+plausible and both came back clean. What caught them was asking the same question
+a **second way**: reading the file instead of the grep, and bounding the section
+instead of counting lines. When a key is a guess about structure, the check is
+not a better regex; it is a different instrument.
+
 ## Related
 
 - [[a-census-is-as-wide-as-its-key]] — the same failure from the other side: a key

@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **G3'S SEVEN CLAIMS RE-DERIVED — AND ITS EVIDENCE POINTERS NO LONGER RESOLVE (`.11.4.7.3`, REPAIR-0264).**
+
+**3 stand · 1 narrows · 3 had to be re-earned**, against **38 tests, 0 failures** across every suite the record cites (`policy` 14/14, `invitations` 6/6, `compiler` 8/8, `publisher` 7/7, `reconciler` 3/3).
+
+- 🔴 **G3 cites its evidence by test POSITION.** `policy.rs` went **11 → 14** tests; **2 of 10** pointers now name a different test, including `policy 10` — the **correction clause's only evidence** — which today resolves to a publication-authority test. ⭐ Three more are unresolvable from the document: the suite's count equalled the highest index cited, so `publisher 2` is ambiguous, and `publisher` now holds **7**.
+- 🔴 **AUTHORITY had to be re-earned and its own citations could never have caught the defect**: `authority_holds(pool, grant_id)` asked whether a grant EXISTS, never whether the caller HOLDS it, at 5 sites in 4 spellings. ⚠️ Residual OPEN: `GrantAction` cannot express a publication or correction target.
+- ⛔ **A 'cited evidence no gate can run' concern was RAISED AND REFUTED** — all six suites absent from `SERVER_SUITES` are offline and CI runs them.
+- ⚠️ **Blocker C2's cell was stale by two** (*four remain* where three of five were re-derived); corrected, with the command to re-derive it. **`.11.4.7.4` is the last open child — closing it closes C2.**
+- ⛔ The 2026-09-07 record and Demonstration B stay byte-unchanged; no gate proposed.
+
 ✅ **THE LEASE WAS WRITTEN BY ONE CLOCK AND READ BY ANOTHER, SO THE PUBLISHED 60 s TTL WAS NOMINAL (`.4.2.3.1`, REPAIR-0263).**
 
 🔴 **`node_leases.lease_expires_at` was written `Utc::now() + LEASE_TTL` by the server process and compared against `now()` by the database**, so the real duration was `60 s ± S` for whatever `S` the two clocks disagreed by. Driven ten minutes ahead at the writer's own parameter, the unrepaired product granted **660.0 s of lease on the database clock** — both writers, **38 passed / 2 failed**.

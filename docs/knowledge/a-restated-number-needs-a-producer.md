@@ -82,6 +82,21 @@ which reads as a historical record and is therefore trusted like one. ⛔ A leaf
 census is history; a leaf's *Owns* line is a plan, and a plan written from a
 stale census is a plan for the wrong work. Re-derive at the moment you act.
 
+⭐ **A POINTER goes stale the same way a number does, and more quietly.** Third
+instance, from `SIGNOFF-REPAIR.11.4.7.3`: a gate record cited its evidence as
+`policy 4`, `policy 10`, `publisher 2` — indices into a test file's source
+order. Three tests were inserted later and **2 of 10 pointers now name a
+different test**, one of them a clause's only evidence. A number that goes stale
+can at least look wrong; a position always resolves to *something*, so it has no
+failure mode at all.
+
+⚠️ **And the notation was already broken when it was written.** At that moment
+`publisher` held exactly 2 tests, `reconciler` 3 and `compiler` 8 — each equal to
+the highest index cited against it — so `publisher 2` read equally well as *the
+suite's two tests* and as *test number two*, and the author never had to choose.
+The readings separate only later. **A notation that is unambiguous only while a
+coincidence holds is already ambiguous.** Cite the test by name.
+
 ## Why the gate was tempting
 
 ⚠️ Because the defect is real and the rule sounds obviously correct. The trap is

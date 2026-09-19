@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-19 — G3's seven claims re-derived, and its evidence pointers no longer resolve (`SIGNOFF-REPAIR.11.4.7.3`)
+
+**3 stand · 1 narrows · 3 had to be re-earned** — blocker C2's third of five gate records, measured against **38 tests, 0 failures** across every suite the record cites.
+
+- 🔴 **The finding came before any verdict: G3 cites its evidence by test POSITION, and positions are not identities.** `policy.rs` went **11 → 14** tests, and **2 of the 10** cited pointers now name a different test — including `policy 10`, the **correction clause's only evidence**, which today resolves to a publication-authority test. The other eight survive by accident: all three inserts landed after the highest index they use.
+- ⭐ **Three more pointers are unresolvable from the document at all.** When the record was written `publisher` held exactly **2** tests, `reconciler` **3** and `compiler` **8** — each equal to the highest index cited against it — so `publisher 2` is ambiguous between *the suite's two tests* and *test number two*. The readings have diverged: `publisher` now holds **7**.
+- 🔴 **The AUTHORITY clause is the strongest verdict, and its own citations could never have caught the defect.** `.9.3.1` measured `corrections.rs::authority_holds(pool, grant_id)` taking the grant id **and nothing else** — asking whether a grant EXISTS, never whether the caller HOLDS it — at **5 sites in 4 spellings**, the approval surface among them. `policy 1` and `policy 4` are green against both the defective and the repaired code. ⚠️ Residual OPEN: `GrantAction` cannot express a publication or correction target.
+- ⭐ **On PUBLICATION the sharp point is where a defect sat, not how many there were:** `.9.2.1.1` found a vacuous third leg inside `the_publish_verb_drives_the_git_half` — one of the two tests that clause cites. Part of the evidence was hollow when the gate was taken.
+- ⛔ **A concern RAISED AND REFUTED rather than published:** `run_pg_tests.sh publisher reconciler` answers `unknown suite(s)`, which read as cited evidence no gate can execute. All **six** files absent from `SERVER_SUITES` are **offline** and CI's `cargo test --all` runs them; `server_boot` looked database-backed only because a grep matched its prose. No gap, no leaf.
+- ⚠️ **The blocker register's C2 cell was stale by two** — it said *four remain* while three of five records had been re-derived. Corrected, with the command to re-derive it rather than read it. `.11.4.7.4` (G4 and G5) is the last open child; closing it closes C2.
+- ⛔ The 2026-09-07 gate record and `docs/evidence/2026-09-07_demonstration-b.md` are **byte-unchanged**, and no doctrine gate is proposed (`.11.6`: four hand-written records is not a population). Decision: `docs/decisions/2026-09-19_g3-seven-claims-re-derived.md`.
+
 ## 2026-09-19 — The lease was written by one clock and read by another, so the published 60 s TTL was nominal (`SIGNOFF-REPAIR.4.2.3.1`)
 
 🔴 **`node_leases.lease_expires_at` was WRITTEN `Utc::now() + LEASE_TTL` by the server process and COMPARED against `now()` by the database.** With the two apart by `S`, a lease was live for `60 s ± S` — and nothing anywhere would have noticed them parting.

@@ -39,3 +39,9 @@ docs/tasks/PHASE-7.md	channel: the repo is PRIVATE, the ADR-001 gate);
 # The leaf's own REPRODUCTION command. The literal sentence is the evidence that
 # the old pattern did not match it; rewording it would destroy the reproduction.
 docs/tasks/SIGNOFF-REPAIR.md	printf '%s\n' "model has no external owners yet (the repo is private) —" \
+
+# A preserved historical QUOTATION. `SIGNOFF-REPAIR.11.4.7.3` re-derives the 2026-09-07
+# gate record and has to quote the sentence it is adjudicating; the same sentence is already
+# listed above against that record. The paragraph around it states that the premise is STALE
+# and that the repository is public. Quotes history, instructs nothing.
+docs/decisions/2026-09-19_g3-seven-claims-re-derived.md	sentence — *"the authority/correction model has no external owners yet (the repo is private)"*,

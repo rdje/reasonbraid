@@ -5,6 +5,14 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+⏳ **THE PRE-PUSH FLAKE IS CAUGHT, LOCALIZED TO CHILD-PROCESS START, AND IT HAS A TWIN (`.11.26` + `.11.2.7`, DOC-0079).**
+
+- ✅ **Caught with the output retained** — the standing instruction `.11.26` wrote for itself, paying for itself. `Ran 73 tests in 375.967s` / **`FAILED (errors=9)`** against a normal ~21 s.
+- ⭐ **The instrument localized it in ONE pass**: 8 of 8 failing children stall in the **`download`** phase at **15,239–15,251 ms**, where passing runs record **144–209 ms**; `version` and `command` never reached. That phase runs **no network** — a stubbed `curl` copying a local file — so the 15 s is spent STARTING a fresh child.
+- ⛔ **The candidate was produced DELIBERATELY and REFUTED**: a fresh 191 MB signed bundle extracted immediately before the suite → **21.314 s, 73 OK**, `syspolicyd` 66–81 % throughout. Second lever to fail, after repeated `cargo build`s.
+- 🔴 **And `.11.2.7` — open five days — is the SAME defect**: same command, same three modules, same byte-identical code, same refused hypothesis. Ownership consolidates onto `.11.26`; neither closes without the other.
+- ⛔ Swap read the **identical 5,719 MB** in the failing and the passing run, so the used total does not discriminate; the paging RATE is what neither leaf has measured.
+
 ✅ **THE HOLDER IS TWO CRASHPAD HANDLERS OUTSIDE THE OWNED GROUP, AND THE HOLD DOES NOT REPRODUCE (`.11.25.1`, REPAIR-0323).**
 
 ⭐ A diagnosis that closed four open unknowns and shipped no product change.

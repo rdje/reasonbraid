@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-20 — The pre-push flake is caught, localized to child-process start, and it has a twin (`SIGNOFF-REPAIR.11.26`, `.11.2.7`)
+
+`REASONBRAID-DOC-0079`. A capture, a refuted lever and a consolidation; no code changed.
+
+- ✅ **Caught, during the previous commit's own verification, with the output retained** — which is the standing instruction `SIGNOFF-REPAIR.11.26` wrote for itself two commits ago, paying for itself a second time. `Ran 73 tests in 375.967s` / **`FAILED (errors=9)`**, against a normal ~21 s and 73 OK.
+- ⭐ **The per-phase instrument localized it in one pass, which is what it was built for.** All nine errors are `subprocess.TimeoutExpired`, and every failing child carries `started_at` with no completion in the **same** phase: `download`, 8 of 8, at **15,239–15,251 ms** where the passing runs record **144–209 ms**. `version` and `command` are absent — never reached.
+- ⭐ **And that phase executes no network.** The tests put a stub `curl` on `PATH`: a freshly written 0o700 Python script that copies a local archive. So the fifteen seconds is spent **starting a small, local, brand-new child**, which is why the bound's own value was never the defect — it sits 8.4× above the worst of 240 normal observations, and these exceed it by 75× the phase's median.
+- ⭐ **The failures are consecutive**, at 15.3-second intervals across the whole `BrowserSetupTests` class: the machine enters a state in which exec'ing a fresh child costs ~15 s and stays in it, rather than a per-child random tail.
+- ⛔ **The candidate was produced deliberately, as the leaf's acceptance demands, and it did not reproduce.** A fresh **191 MB signed browser bundle** — roughly two thousand new Mach-O files for the Gatekeeper policy daemon to evaluate — was downloaded and extracted immediately before the suite: **21.314 s, 73 OK**, every `download` phase at 144–211 ms, with `syspolicyd` between **66 % and 81 %** throughout. So *the policy daemon is busy* joins *the machine was busy* as an explanation this leaf has **withdrawn under measurement**, and it is the second lever to fail after repeated `cargo build`s.
+- 🔴 **And the flake has a twin that nobody had noticed: `SIGNOFF-REPAIR.11.2.7`**, opened five days earlier by a different caller. Same command — one of `COMMIT.md`'s four pre-push gates — same three modules, same byte-identical code, same `TimeoutExpired` on a deadline'd subprocess, and the same `syspolicyd`-and-swap hypothesis recorded and refused by both. Two leaves were open on one phenomenon, each measuring it alone. Ownership consolidates onto `.11.26`, which carries the instrument; neither closes without the other.
+- ⭐ **Their evidence converges from opposite directions.** `.11.2.7` observed `rustc` children at **0.0 % CPU blocked on paging**; `.11.26` concluded from its loaded-collision arm that *a stall insensitive to CPU load is a blocking wait, not starvation*. Neither knew of the other.
+- ⛔ **Swap does not discriminate either, measured on its own terms:** `vm.swapusage` read **5,719 of 7,168 MB** during the captured failure and the **identical 5,719 MB** while the suite then passed in 21.3 s. It is a high-water mark, so the quantity that could discriminate is the paging **rate** — which neither leaf has measured, and which the narrowed acceptance now names.
+- ⚠ **What is still not known:** what a stalled `download` child is blocked ON. The next step is sampling that child while it is stuck rather than trying another lever against the suite as a whole, and no bound is to be moved until it is.
+
 ## 2026-09-20 — The holder is two crashpad handlers outside the owned group, and the hold does not reproduce (`SIGNOFF-REPAIR.11.25.1`)
 
 `REASONBRAID-REPAIR-0323`. A diagnosis and a tracked instrument; no product source changed.

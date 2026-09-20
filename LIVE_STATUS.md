@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **THE MANIFEST DIGEST WAS THE CALLER'S, AND THE STORED VALUE HAD NO READER AT ALL (`.9.2.1.3.1`, REPAIR-0338).**
+
+- 🔴 `stage` took `manifest_digest` from the request body, checked only its SHAPE, and stored it. Outside `publications.rs` **nothing in the workspace reads it** — the census over crates, book, scripts, migrations and deploy returns one migration line and test fixtures.
+- 🔴 **`publish` composes its OWN manifest and never consulted the row**, so the field a governance record presents as its manifest digest was whatever the caller typed, and the published bytes were hashed from something else.
+- 🔴 **ADR-020 §15.7 steps (2)–(4) already say the SERVER compiles, hashes and then stores it.** The code did the opposite. ⭐ `.9.2.1.3` one column over.
+- ✅ One `publications::manifest` definition for both verbs; derived at staging; a supplied digest is an ASSERTION checked against it (the shape `expected_effective` already has here); `publish` refuses a disagreement before writing.
+- ⭐ **The falsification found a defect in the control**: the staging leg asserted the RESPONSE, so a neutralization binding a different value into the INSERT left it green. It reads the COLUMN now.
+- ⚠️ **Wire change measured by the suite, not predicted**: seven fixture bodies across six further tests were sending the PROJECTION digest — re-seeded, not relaxed. ⚠️ ADR-020's hermetic manifest worker stays unshipped and is not claimed.
+- ✅ 4 suites, **146 tests, 0 failed**.
+
 🔴 **THE THIRD PUBLICATION TRANSITION TOOK NO AUTHORITY, AND THE COMMENT DESCRIBING THE REPAIR SAID THERE WERE THREE (`.9.2.1.2.1`, REPAIR-0337).**
 
 - 🔴 `POST /v1/policy-publications/{id}/failed` admitted on **enrolment plus tenant ownership alone**. A predicate per handler — not a file-wide grep — returns **1, 0, 1** across `effective`, `failed`, `publish`. `.9.2.1.2` bound the other two; its own title is *"Both publish verbs"*, so `failed` was never in its population.

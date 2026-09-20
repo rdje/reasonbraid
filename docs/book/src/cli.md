@@ -72,6 +72,56 @@ repository that cannot be opened at all is reported as a repository failure
 rather than as a verdict about the ids — an unreadable store must not read as a
 forged publication.
 
+### The manifest digest is the server's
+
+`POST /v1/policy-publications` stages a publication. The row it writes carries a
+`manifest_digest`, and **the server computes it** — ADR-020 makes the digest the
+product of compiling and hashing the publication manifest, not something the
+request supplies:
+
+```json
+{
+  "publication_id": "pub-7",
+  "proposal_id": "prop-7",
+  "decision_id": "dec-7",
+  "approval_id": "app-7",
+  "projection_id": "proj-7"
+}
+```
+
+The manifest is the canonical JSON of the publication's five references plus the
+projection's digest, and it is the same manifest the publish verb writes into
+the repository — one definition, so the digest stored at staging and the bytes
+published later cannot describe different things.
+
+`manifest_digest` may still be sent, and then it is an **assertion**, checked
+against the digest the server derives — the shape `expected_effective` already
+has on the publish verb. A value that disagrees is refused, naming both:
+
+```text
+400 invalid_command — the asserted manifest digest `sha256:88…` is not this
+publication's — its manifest digest is `sha256:09…`
+```
+
+⚠️ **This is a change to a shipped request shape.** `manifest_digest` used to be
+**required**, was checked only for the `sha256:<64 hex>` shape, and was then
+stored and read by nothing at all — the publish verb composed its own manifest
+and never looked at the row. Every client in this repository was sending the
+*projection's* digest, which is a different value, so those requests are now
+refused until the field is dropped. Sending no digest is the supported shape.
+
+The stored digest finally has a reader: the publish verb composes the manifest
+it is about to write, digests it, and refuses when that disagrees with the one
+staging recorded. That catches the case the field exists for — the compiled
+inputs moving under a publication that was already staged — and it refuses
+before anything is written, never after.
+
+⚠️ **An honest limit.** ADR-020 §15.7 step 2 says the manifest is compiled in a
+clean hermetic worker. It is not: the server composes it in process. What this
+binds is the digest to the manifest *this system publishes*, which is the
+invariant the stored value needed; the hermetic compilation step is a separate,
+unshipped part of that ADR.
+
 ### Who may publish
 
 A staged publication has exactly **three** exits, and all three now require an

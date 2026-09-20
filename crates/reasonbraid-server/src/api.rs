@@ -3949,15 +3949,30 @@ async fn publish_publication(
     let projection = crate::projections::load(&state.pool, &publication.projection_id)
         .await
         .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
-    let manifest = serde_json::to_string(&serde_json::json!({
-        "publication_id": publication.publication_id,
-        "proposal_id": publication.proposal_id,
-        "decision_id": publication.decision_id,
-        "approval_id": publication.approval_id,
-        "projection_id": publication.projection_id,
-        "projection_digest": projection.digest,
-    }))
-    .expect("the manifest serializes");
+    // `.9.2.1.3.1`: ONE definition of the manifest, shared with `stage`, so
+    // the bytes written here and the digest stored there cannot drift.
+    let manifest = crate::publications::manifest(
+        &publication.publication_id,
+        &publication.proposal_id,
+        &publication.decision_id,
+        &publication.approval_id,
+        &publication.projection_id,
+        &projection.digest,
+    );
+    // ⛔ THE STORED DIGEST FINALLY HAS A READER (`.9.2.1.3.1`). Until here it
+    // was written at staging and consulted by nothing, so a publication could
+    // be published against a manifest that did not match the one it was staged
+    // under. The comparison happens BEFORE the publisher is called: a
+    // disagreement is a typed refusal, never a write followed by a complaint.
+    let composed_digest = crate::publications::manifest_digest(&manifest);
+    if composed_digest != publication.manifest_digest {
+        return Err(ControlApiError::invalid_command(format!(
+            "publication `{publication_id}` was staged under manifest digest `{}`, \
+             and the manifest this publish composes digests to `{composed_digest}` — \
+             the compiled inputs moved under the staged publication",
+            publication.manifest_digest
+        )));
+    }
     let refs = crate::publisher::publish(
         repo_path.path(),
         &publication_id,

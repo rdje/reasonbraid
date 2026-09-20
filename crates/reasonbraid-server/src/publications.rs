@@ -12,9 +12,19 @@ use sqlx::PgPool;
 /// The publication-state vocabulary (the §15.7 machine's typed states).
 pub const PUBLICATION_STATES: [&str; 3] = ["staged", "effective", "failed"];
 
-/// The publication submission (`.4.2`): the references the machine verifies
-/// and the manifest digest (the ADR-011 shape over the compiled bundle, the
-/// lock, and the authority basis).
+/// The publication submission (`.4.2`): the references the machine verifies.
+///
+/// ⛔ **`manifest_digest` is NOT an input** (`SIGNOFF-REPAIR.9.2.1.3.1`).
+/// ADR-020 §15.7 makes the digest the SERVER's product of steps (2)–(3) —
+/// *compile the canonical bundle + the publication manifest … hash …
+/// the manifest* — and step (4) STORES it. It used to arrive in the request,
+/// be shape-checked, and be written into the row where nothing ever read it.
+///
+/// ⚠️ The field survives as an OPTIONAL ASSERTION: when a caller supplies one
+/// it must equal the digest staging derives, or the request is refused naming
+/// both. That is the shape the publish verb's `expected_effective` already
+/// uses on this same surface — a client stating what it believes, checked
+/// rather than trusted.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PublicationInput {
@@ -23,7 +33,40 @@ pub struct PublicationInput {
     pub decision_id: String,
     pub approval_id: String,
     pub projection_id: String,
-    pub manifest_digest: String,
+    #[serde(default)]
+    pub manifest_digest: Option<String>,
+}
+
+/// The publication manifest (ADR-020 §15.7 step 2), as ONE definition.
+///
+/// ⛔ Both the digest `stage` stores and the bytes `publish` writes are
+/// computed from this function, so they cannot drift. Before
+/// `SIGNOFF-REPAIR.9.2.1.3.1` the manifest was composed inline in the publish
+/// handler and the stored digest came from the request — two values that were
+/// never the same thing and were never compared.
+pub fn manifest(
+    publication_id: &str,
+    proposal_id: &str,
+    decision_id: &str,
+    approval_id: &str,
+    projection_id: &str,
+    projection_digest: &str,
+) -> String {
+    serde_json::to_string(&serde_json::json!({
+        "publication_id": publication_id,
+        "proposal_id": proposal_id,
+        "decision_id": decision_id,
+        "approval_id": approval_id,
+        "projection_id": projection_id,
+        "projection_digest": projection_digest,
+    }))
+    .expect("the manifest serializes")
+}
+
+/// `sha256:<hex>` over the manifest bytes (ADR-020 §15.7 step 3).
+pub fn manifest_digest(manifest: &str) -> String {
+    use sha2::{Digest, Sha256};
+    format!("sha256:{:x}", Sha256::digest(manifest.as_bytes()))
 }
 
 /// The stored publication row.
@@ -57,6 +100,14 @@ pub enum PublicationError {
         state: String,
     },
     MalformedDigest(String),
+    /// A caller asserted a manifest digest that is not the one staging derives
+    /// (`SIGNOFF-REPAIR.9.2.1.3.1`). ⛔ BOTH values are named: a refusal that
+    /// said only "wrong" would leave a caller unable to tell a stale client
+    /// from a moved projection.
+    DigestMismatch {
+        asserted: String,
+        derived: String,
+    },
     EmptyObjectIds,
     /// Declared Git object ids that name nothing in the publication
     /// repository (`SIGNOFF-REPAIR.9.2.1.3`).
@@ -100,6 +151,15 @@ impl std::fmt::Display for PublicationError {
             }
             PublicationError::MalformedDigest(d) => {
                 write!(f, "digest `{d}` is not the ADR-011 `sha256:<64 hex>` shape")
+            }
+            PublicationError::DigestMismatch { asserted, derived } => {
+                write!(
+                    f,
+                    "the asserted manifest digest `{asserted}` is not this \
+                     publication's — its manifest digest is `{derived}` \
+                     (the server composes and hashes the manifest; a request \
+                     need not carry one at all)"
+                )
             }
             PublicationError::EmptyObjectIds => {
                 write!(f, "the effective publication records its Git object ids")
@@ -197,10 +257,14 @@ pub async fn stage(
     tenant_id: &str,
     input: &PublicationInput,
 ) -> Result<StoredPublication, PublicationError> {
-    if !is_sha256_hex(&input.manifest_digest) {
-        return Err(PublicationError::MalformedDigest(
-            input.manifest_digest.clone(),
-        ));
+    // ⚠️ The shape check keeps its original POSITION — before any record is
+    // looked up — so a malformed assertion is still refused without disclosing
+    // anything about the proposal it names. Only its subject changed: it now
+    // grades an OPTIONAL assertion rather than a required input.
+    if let Some(asserted) = &input.manifest_digest {
+        if !is_sha256_hex(asserted) {
+            return Err(PublicationError::MalformedDigest(asserted.clone()));
+        }
     }
     // ⛔ `tenant_id` joins the read `SIGNOFF-REPAIR.6.1.5.2`: a publication's
     // tenant is its PROPOSAL's, not its caller's. The publication is staged FROM
@@ -272,19 +336,42 @@ pub async fn stage(
     // are a function of that tenant's own resolution request. The decision and
     // the approval need no such predicate: both are matched to `proposal_id`,
     // and the proposal has already been proved the caller's.
-    let projection: Option<bool> = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM policy_projections \
-         WHERE projection_id = $1 AND tenant_id = $2)",
+    //
+    // ⭐ `SIGNOFF-REPAIR.9.2.1.3.1`: this probe now returns the projection's
+    // DIGEST rather than an `EXISTS`, because the manifest is composed from it.
+    // Absence still answers exactly as it did — `UnknownProjection`, under the
+    // same tenant predicate — so the refusal this query produces is unchanged.
+    let projection_digest: Option<String> = sqlx::query_scalar(
+        "SELECT digest FROM policy_projections \
+         WHERE projection_id = $1 AND tenant_id = $2",
     )
     .bind(&input.projection_id)
     .bind(tenant_id)
-    .fetch_one(pool)
+    .fetch_optional(pool)
     .await
     .map_err(|_| PublicationError::UnknownProjection(input.projection_id.clone()))?;
-    if !projection.unwrap_or(false) {
+    let Some(projection_digest) = projection_digest else {
         return Err(PublicationError::UnknownProjection(
             input.projection_id.clone(),
         ));
+    };
+    // ADR-020 steps (2)–(3), finally performed here rather than delegated to
+    // the caller: compose the manifest, hash it, and store THAT.
+    let derived_digest = manifest_digest(&manifest(
+        &input.publication_id,
+        &input.proposal_id,
+        &input.decision_id,
+        &input.approval_id,
+        &input.projection_id,
+        &projection_digest,
+    ));
+    if let Some(asserted) = &input.manifest_digest {
+        if asserted != &derived_digest {
+            return Err(PublicationError::DigestMismatch {
+                asserted: asserted.clone(),
+                derived: derived_digest.clone(),
+            });
+        }
     }
     let inserted = sqlx::query(
         "INSERT INTO policy_publications \
@@ -296,7 +383,7 @@ pub async fn stage(
     .bind(&input.decision_id)
     .bind(&input.approval_id)
     .bind(&input.projection_id)
-    .bind(&input.manifest_digest)
+    .bind(&derived_digest)
     .bind(&proposal_tenant)
     .execute(pool)
     .await;
@@ -313,7 +400,7 @@ pub async fn stage(
         approval_id: input.approval_id.clone(),
         projection_id: input.projection_id.clone(),
         state: "staged".to_string(),
-        manifest_digest: input.manifest_digest.clone(),
+        manifest_digest: derived_digest,
         git_object_ids: Vec::new(),
         failed_reason: None,
     })

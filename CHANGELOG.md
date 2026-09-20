@@ -1,5 +1,20 @@
 # CHANGELOG.md
 
+## 2026-09-20 — The manifest digest is the server's, and the stored value finally has a reader (`SIGNOFF-REPAIR.9.2.1.3.1`)
+
+`REASONBRAID-REPAIR-0338`. Found while measuring what the staging verb validates for `.9.2.1.2.2`.
+
+- 🔴 **`stage` took `manifest_digest` from the request, checked only its SHAPE, and wrote it into the row.** Outside `publications.rs` nothing in the workspace read it — `git grep -n "manifest_digest"` over crates, book, scripts, migrations and deploy returns one migration line and test fixtures.
+- 🔴 **`publish` composed its OWN manifest and never consulted the stored digest.** So the field a governance record presents as its manifest digest was whatever the caller typed, and the bytes actually published were hashed from something else.
+- 🔴 **ADR-020 §15.7 already decided it, and the code did the opposite**: *"compile the canonical bundle + the publication manifest in a clean worker … hash … the manifest … in ONE transaction store the `publication_staged` row, the manifest digest"*. The digest is the server's product of steps (2)–(3), not an input to step (4).
+- ⭐ **This is `.9.2.1.3` one column over** — that leaf found `git_object_ids` *recorded without being looked for* and closed scoped to that column. The same sentence was true of `manifest_digest`.
+- ✅ **The decision, with the two rejected readings named.** The column means SHA-256 of the publication manifest; the server derives it; a supplied value survives as an **assertion** checked against the derivation — the shape `expected_effective` already has on the publish verb. *Define it as the projection digest* would make the name false; *refuse any supplied digest* would discard a client's ability to state what it expects.
+- ✅ **One `publications::manifest` definition for both verbs**, so the digest stored at staging and the bytes published later cannot describe different things. `publish` now refuses when they disagree, before the publisher is called.
+- ⭐ **Falsified in situ twice, and the second pass found a defect in the control itself.** Neutralizing the staging derivation left the staging leg GREEN, because it asserted the RESPONSE while the response still carried the derived value. The leg now reads the COLUMN back with SQL and goes red by name. Both files restored byte-identical (`cmp -s`).
+- ⚠️ **A wire-contract change to a shipped verb.** `manifest_digest` used to be required. The suite measured the blast radius rather than a grep predicting it: **seven fixture bodies across six further tests** were all sending the projection digest. Re-seeded by dropping the field, not relaxed.
+- ⚠️ Limit stated: ADR-020's hermetic manifest worker is still unshipped. What this binds is the digest to the manifest *this system publishes*.
+- **No regression:** 4 suites, **146 tests, 0 failed**; `--lib` 133 passed; clippy `-D warnings` rc=0; `make gate` green; `make book` rc=0.
+
 ## 2026-09-20 — The third publication transition took no authority (`SIGNOFF-REPAIR.9.2.1.2.1`)
 
 `REASONBRAID-REPAIR-0337`. Found by the verb enumeration `.9.3.4.1` owes before it can name any action.

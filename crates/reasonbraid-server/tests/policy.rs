@@ -1850,10 +1850,31 @@ async fn the_publication_stages_and_marks_its_typed_state() {
     )
     .await;
     assert_eq!(status, 200, "the projection records: {projection}");
-    let manifest_digest = projection["digest"].as_str().unwrap().to_string();
+    let projection_digest = projection["digest"].as_str().unwrap().to_string();
+
+    // `.9.2.1.3.1`: the manifest digest this control INDEPENDENTLY derives.
+    // ⛔ Recomputed here rather than read from the server, and deliberately not
+    // by calling the production helper: a control that asks the code under test
+    // what the answer is passes for an unrelated reason
+    // (`docs/knowledge/a-control-that-passes-for-an-unrelated-reason.md`).
+    let derived_digest = |publication_id: &str| -> String {
+        let manifest = serde_json::to_string(&json!({
+            "publication_id": publication_id,
+            "proposal_id": "pb-prop",
+            "decision_id": "pb-dec",
+            "approval_id": "pb-app",
+            "projection_id": "pb-proj",
+            "projection_digest": projection_digest,
+        }))
+        .expect("the manifest serializes");
+        use sha2::Digest as _;
+        format!("sha256:{:x}", sha2::Sha256::digest(manifest.as_bytes()))
+    };
 
     // 1. The publication stages (the references verified, the staged
-    // state).
+    // state). ⛔ `.9.2.1.3.1`: the body no longer carries `manifest_digest`.
+    // It used to send the PROJECTION's digest — which is not a manifest digest
+    // and was stored, unread, as though it were.
     let (status, publication) = post(
         &client,
         &base,
@@ -1865,12 +1886,45 @@ async fn the_publication_stages_and_marks_its_typed_state() {
             "decision_id": "pb-dec",
             "approval_id": "pb-app",
             "projection_id": "pb-proj",
-            "manifest_digest": manifest_digest,
         }),
     )
     .await;
     assert_eq!(status, 200, "the publication stages: {publication}");
     assert_eq!(publication["state"], json!("staged"));
+
+    // 1a. `.9.2.1.3.1` — THE STORED DIGEST IS THE SERVER'S. ADR-020 §15.7
+    // steps (2)-(4) make the manifest digest the server's product of compiling
+    // and hashing the manifest, not an input to the transaction that stores
+    // the row. It used to be whatever the caller typed, shape-checked and read
+    // by nothing.
+    assert_eq!(
+        publication["manifest_digest"].as_str().unwrap(),
+        derived_digest("pb-pub"),
+        "the staged row carries the digest of its OWN manifest: {publication}"
+    );
+    // ⭐ AND THE STORED COLUMN, not only the answer. The first version of this
+    // leg asserted the RESPONSE alone, and the falsification run caught it: a
+    // neutralization that bound a different value into the INSERT while the
+    // response kept the derived one left this assertion green and was found
+    // two verbs later. The row is what `publish` reads, so the row is what
+    // this leg must read.
+    let stored: String = sqlx::query_scalar(
+        "SELECT manifest_digest FROM policy_publications WHERE publication_id = 'pb-pub'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("the staged row reads back");
+    assert_eq!(
+        stored,
+        derived_digest("pb-pub"),
+        "the COLUMN carries the derived digest, not merely the response"
+    );
+    assert_ne!(
+        publication["manifest_digest"].as_str().unwrap(),
+        projection_digest,
+        "the manifest digest is not the projection digest — that confusion is \
+         what this leaf repaired: {publication}"
+    );
 
     // `.9.2.1.3` — a declared object id that resolves to nothing is REFUSED,
     // and this is the exact shape the fixture itself used to send. Until that
@@ -1969,7 +2023,6 @@ async fn the_publication_stages_and_marks_its_typed_state() {
             "decision_id": "pb-dec",
             "approval_id": "pb-app",
             "projection_id": "ghost",
-            "manifest_digest": manifest_digest,
         }),
     )
     .await;
@@ -1985,7 +2038,6 @@ async fn the_publication_stages_and_marks_its_typed_state() {
             "decision_id": "ghost-dec",
             "approval_id": "pb-app",
             "projection_id": "pb-proj",
-            "manifest_digest": manifest_digest,
         }),
     )
     .await;
@@ -2064,7 +2116,6 @@ async fn the_publication_stages_and_marks_its_typed_state() {
             "decision_id": "pb-dec-2",
             "approval_id": "pb-app-2",
             "projection_id": "pb-proj",
-            "manifest_digest": manifest_digest,
         }),
     )
     .await;
@@ -2094,6 +2145,62 @@ async fn the_publication_stages_and_marks_its_typed_state() {
     let publications = publications.as_array().unwrap();
     assert_eq!(publications.len(), 2, "{publications:?}");
     assert_eq!(publications[0]["publication_id"], json!("pb-pub-2"));
+
+    // 6a. `.9.2.1.3.1` — A SUPPLIED digest is an ASSERTION checked against the
+    // derivation —
+    // the shape `expected_effective` already uses on the publish verb. The
+    // projection digest, which every caller used to send, is refused by name.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-publications",
+        &human_id,
+        &json!({
+            "publication_id": "pb-pub-asserted",
+            "proposal_id": "pb-prop",
+            "decision_id": "pb-dec",
+            "approval_id": "pb-app",
+            "projection_id": "pb-proj",
+            "manifest_digest": projection_digest,
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "a manifest digest that does not describe the manifest refuses: {refused}"
+    );
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("manifest digest"),
+        "{refused}"
+    );
+
+    // 6b. THE MATCHED PAIR: the same request with the digest the server would
+    // derive is ADMITTED. Without this leg, a repair that refused every
+    // supplied digest would pass 1b.
+    let (status, asserted) = post(
+        &client,
+        &base,
+        "/v1/policy-publications",
+        &human_id,
+        &json!({
+            "publication_id": "pb-pub-asserted",
+            "proposal_id": "pb-prop",
+            "decision_id": "pb-dec",
+            "approval_id": "pb-app",
+            "projection_id": "pb-proj",
+            "manifest_digest": derived_digest("pb-pub-asserted"),
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the correct assertion is admitted: {asserted}");
+    assert_eq!(
+        asserted["manifest_digest"].as_str().unwrap(),
+        derived_digest("pb-pub-asserted"),
+        "{asserted}"
+    );
 }
 
 #[tokio::test]
@@ -2267,7 +2374,11 @@ async fn the_publish_verb_drives_the_git_half() {
         )
         .await;
         assert_eq!(status, 200, "the approval records");
-        let (status, projection) = post(
+        // ⛔ `.9.2.1.3.1`: the staging body below no longer sends
+        // `manifest_digest`, so this response is no longer read — it used to
+        // supply `projection["digest"]`, which is not a manifest digest, and
+        // the row stored it unread.
+        let (status, _projection) = post(
             &client,
             &base,
             "/v1/policy-projections",
@@ -2294,7 +2405,6 @@ async fn the_publish_verb_drives_the_git_half() {
                 "decision_id": decision_id,
                 "approval_id": approval_id,
                 "projection_id": format!("{proposal_id}-proj"),
-                "manifest_digest": projection["digest"],
             }),
         )
         .await;
@@ -2341,6 +2451,64 @@ async fn the_publish_verb_drives_the_git_half() {
         json!("staged"),
         "the refused publish left the publication staged: {staged}"
     );
+
+    // 1a. `.9.2.1.3.1` — THE PUBLISH VERB VERIFIES THE MANIFEST IT IS ABOUT TO
+    // WRITE against the digest staging derived. Before this leaf the stored
+    // digest had no reader at all: `publish` composed its own manifest and
+    // never consulted the row.
+    //
+    // ⭐ The tamper is REAL, not fabricated: the projection's digest column is
+    // moved after the publication was staged, which is precisely the case a
+    // stored digest exists to catch — the compiled inputs changing under a
+    // staged publication. It is restored afterwards, so leg 2 still measures
+    // the Git half and not this leg's leftovers.
+    let true_projection_digest: String = sqlx::query_scalar(
+        "SELECT digest FROM policy_projections WHERE projection_id = 'pu-prop-proj'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("the projection digest reads");
+    sqlx::query("UPDATE policy_projections SET digest = $2 WHERE projection_id = $1")
+        .bind("pu-prop-proj")
+        .bind(format!("sha256:{}", "b".repeat(64)))
+        .execute(&pool)
+        .await
+        .expect("the projection digest moves under the staged publication");
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-publications/pu-pub/publish",
+        &human_id,
+        &json!({ "repo_path": "live", "owning_authority": grant_id }),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "a manifest that disagrees with the staged digest refuses: {refused}"
+    );
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("manifest digest"),
+        "the refusal names the digest comparison, not the repository: {refused}"
+    );
+    // ⛔ NOTHING WAS WRITTEN. A refusal that had already published and then
+    // complained would satisfy the status assertion above and be the worse
+    // outcome, so the state is re-read rather than assumed.
+    let (status, still) = get(&client, &base, "/v1/policy-publications", &human_id).await;
+    assert_eq!(status, 200, "{still}");
+    assert_eq!(
+        still[0]["state"],
+        json!("staged"),
+        "the refused publish left the publication staged: {still}"
+    );
+    sqlx::query("UPDATE policy_projections SET digest = $2 WHERE projection_id = $1")
+        .bind("pu-prop-proj")
+        .bind(&true_projection_digest)
+        .execute(&pool)
+        .await
+        .expect("the projection digest is restored");
 
     // 2. The publish drives the Git half: the bare repo + the verb → the
     // record marks effective with the ref ids. The location is named RELATIVE
@@ -3066,7 +3234,6 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
                     "decision_id": decision_id,
                     "approval_id": approval_id,
                     "projection_id": format!("{proposal_id}-proj"),
-                    "manifest_digest": projection_digest.clone(),
                 }),
             )
             .await;
@@ -3397,7 +3564,7 @@ async fn the_drift_corrections_and_outcomes_ride_the_records() {
         )
         .await;
         assert_eq!(status, 200, "the approval records");
-        let (status, projection) = post(
+        let (status, _projection) = post(
             &client,
             &base,
             "/v1/policy-projections",
@@ -3424,7 +3591,6 @@ async fn the_drift_corrections_and_outcomes_ride_the_records() {
                 "decision_id": decision_id,
                 "approval_id": approval_id,
                 "projection_id": format!("{publication_id}-proj"),
-                "manifest_digest": projection["digest"],
             }),
         )
         .await;
@@ -3830,7 +3996,7 @@ async fn the_scheduled_reviews_evaluate_the_triggers() {
     )
     .await;
     assert_eq!(status, 200, "the approval records");
-    let (status, projection) = post(
+    let (status, _projection) = post(
         &client,
         &base,
         "/v1/policy-projections",
@@ -3857,7 +4023,6 @@ async fn the_scheduled_reviews_evaluate_the_triggers() {
             "decision_id": "rv-dec",
             "approval_id": "rv-app",
             "projection_id": "rv-proj",
-            "manifest_digest": projection["digest"],
         }),
     )
     .await;
@@ -5067,7 +5232,7 @@ async fn the_lifecycle_row_carries_the_tenant_that_owns_it() {
         &json!({
             "publication_id": "lto-pub", "proposal_id": "lto-prop",
             "decision_id": "lto-dec", "approval_id": "lto-app",
-            "projection_id": "lto-proj", "manifest_digest": alice_projection["digest"],
+            "projection_id": "lto-proj",
         }),
     )
     .await;
@@ -5394,48 +5559,36 @@ async fn the_lifecycle_verbs_refuse_another_tenants_publication() {
                          "quorum": { "participants": [alice_id], "denominator": 1, "abstentions": [] } }),
             ).await;
             assert_eq!(status, 200, "approval {n} records");
-            let (status, projection) = post(
+            let (status, _projection) = post(
                 &client, &base, "/v1/policy-projections", &alice_id,
                 &json!({ "projection_id": proj, "target": "generic",
                          "resolution": { "policies": [ { "policy_id": "gtn-policy", "version": "1.0.0" } ],
                                          "target": { "layer": "organization", "target": "*" } } }),
             ).await;
             assert_eq!(status, 200, "projection {n} records");
-            (
-                prop,
-                dec,
-                app,
-                proj,
-                publication,
-                projection["digest"].clone(),
-            )
+            (prop, dec, app, proj, publication)
         }
     };
 
     // ── ARM 1: `POST /v1/policy-publications` — stage another tenant's proposal
-    let (prop1, dec1, app1, proj1, pub1, digest1) = stage_chain(1).await;
-    let staging = |who: String,
-                   prop: String,
-                   dec: String,
-                   app: String,
-                   proj: String,
-                   publication: String,
-                   digest: Value| {
-        let client = client.clone();
-        let base = base.clone();
-        async move {
-            post(
-                &client,
-                &base,
-                "/v1/policy-publications",
-                &who,
-                &json!({ "publication_id": publication, "proposal_id": prop,
+    let (prop1, dec1, app1, proj1, pub1) = stage_chain(1).await;
+    let staging =
+        |who: String, prop: String, dec: String, app: String, proj: String, publication: String| {
+            let client = client.clone();
+            let base = base.clone();
+            async move {
+                post(
+                    &client,
+                    &base,
+                    "/v1/policy-publications",
+                    &who,
+                    &json!({ "publication_id": publication, "proposal_id": prop,
                           "decision_id": dec, "approval_id": app,
-                          "projection_id": proj, "manifest_digest": digest }),
-            )
-            .await
-        }
-    };
+                          "projection_id": proj }),
+                )
+                .await
+            }
+        };
     let (status, refused) = staging(
         mallory_id.clone(),
         prop1.clone(),
@@ -5443,7 +5596,6 @@ async fn the_lifecycle_verbs_refuse_another_tenants_publication() {
         app1.clone(),
         proj1.clone(),
         pub1.clone(),
-        digest1.clone(),
     )
     .await;
     assert_eq!(
@@ -5464,7 +5616,6 @@ async fn the_lifecycle_verbs_refuse_another_tenants_publication() {
         app1.clone(),
         proj1.clone(),
         pub1.clone(),
-        digest1.clone(),
     )
     .await;
     assert_eq!(status, 200, "the owner still stages: {staged}");
@@ -5497,17 +5648,8 @@ async fn the_lifecycle_verbs_refuse_another_tenants_publication() {
     );
 
     // ── ARM 3: `/failed`, on the second publication, still staged.
-    let (prop2, dec2, app2, proj2, pub2, digest2) = stage_chain(2).await;
-    let (status, _) = staging(
-        alice_id.clone(),
-        prop2,
-        dec2,
-        app2,
-        proj2,
-        pub2.clone(),
-        digest2,
-    )
-    .await;
+    let (prop2, dec2, app2, proj2, pub2) = stage_chain(2).await;
+    let (status, _) = staging(alice_id.clone(), prop2, dec2, app2, proj2, pub2.clone()).await;
     assert_eq!(status, 200, "the second publication stages");
     let (status, refused) = post(
         &client,
@@ -5545,17 +5687,8 @@ async fn the_lifecycle_verbs_refuse_another_tenants_publication() {
     assert_eq!(failed["state"], json!("failed"), "{failed}");
 
     // ── ARM 4: `/publish`, on the third publication, still staged.
-    let (prop3, dec3, app3, proj3, pub3, digest3) = stage_chain(3).await;
-    let (status, _) = staging(
-        alice_id.clone(),
-        prop3,
-        dec3,
-        app3,
-        proj3,
-        pub3.clone(),
-        digest3,
-    )
-    .await;
+    let (prop3, dec3, app3, proj3, pub3) = stage_chain(3).await;
+    let (status, _) = staging(alice_id.clone(), prop3, dec3, app3, proj3, pub3.clone()).await;
     assert_eq!(status, 200, "the third publication stages");
     // ⛔ THIS ARM ASSERTS THE REPOSITORY, NOT ONLY THE STATUS, AND IT HAD TO.
     // Falsification found it passing for an unrelated reason: with the handler's
@@ -5962,7 +6095,7 @@ async fn every_lifecycle_read_is_bound_to_its_own_tenant() {
                 &who,
                 &json!({ "publication_id": ids("pub"), "proposal_id": ids("prop"),
                          "decision_id": ids("dec"), "approval_id": ids("app"),
-                         "projection_id": ids("proj"), "manifest_digest": projection["digest"] }),
+                         "projection_id": ids("proj") }),
             )
             .await;
             assert_eq!(status, 200, "{tag}: the publication — {out}");
@@ -6080,8 +6213,7 @@ async fn every_lifecycle_read_is_bound_to_its_own_tenant() {
             "/v1/policy-publications",
             &alice_id,
             &json!({ "publication_id": format!("rdb-a-{suffix}-pub"), "proposal_id": prop,
-                     "decision_id": dec, "approval_id": app, "projection_id": projection,
-                     "manifest_digest": DIGEST }),
+                     "decision_id": dec, "approval_id": app, "projection_id": projection }),
         )
         .await;
         assert_eq!(status, expected, "{note}: {out}");

@@ -1,5 +1,49 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — A control that reads the reply cannot see the record disagree
+
+`.9.2.1.3.1` made the staging verb derive its own manifest digest instead of
+storing the caller's. The control asserted the obvious thing:
+
+```rust
+assert_eq!(publication["manifest_digest"].as_str().unwrap(), derived_digest("pb-pub"));
+```
+
+Then the falsification. Neutralizing the derivation — binding the request's
+value back into the `INSERT` and leaving everything else alone — turned two
+*other* tests red and left **this one green**.
+
+The reason is the shape of the code, not a typo. `stage` builds its answer and
+its row from the same function, so it returns:
+
+```rust
+Ok(StoredPublication { …, manifest_digest: derived_digest })   // the reply
+    …
+    .bind(&derived_digest)                                     // the row
+```
+
+Neutralize only the `.bind` and the two diverge. The response still carries the
+right value; the column holds the wrong one; and an assertion over the response
+reports success about a row it never looked at.
+
+**The rule the instance supports:** when a repair is about what gets *stored*,
+the control reads the store. A reply is the code under test describing itself,
+and the whole reason to write a control is to ask something else. The leg now
+ends with a `SELECT manifest_digest FROM policy_publications`, and the same
+neutralization turns it red by name — `left: "sha256:00"`.
+
+⚠️ Two things this is NOT. It is not an argument against asserting responses:
+the response leg stayed, because a caller that gets a stale digest back has a
+real problem too. And it is not new in kind — it is
+`a-control-that-passes-for-an-unrelated-reason` in a specific dress, which is
+why it is recorded here and not promoted. If a second instance turns up, the
+note it earns is *assert the record, not the reply*.
+
+⭐ Worth saying plainly: the falsification is what found this, one commit after
+the control was written and passing. A green control and a control that can
+fail for the right reason are different claims, and only one of them is
+established by running the suite.
+
 ## 2026-09-20 — A shared checker is only as complete as its call list
 
 `.9.2.1.2` bound both publication verbs to a grant the caller holds, and did it

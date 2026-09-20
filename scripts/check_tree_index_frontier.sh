@@ -53,14 +53,38 @@ frontier_row1() {
   '
 }
 
-# The leaf an index cell names, normalised: a cell may write the full
-# `TREE.1.2.3` or the dot-prefixed shorthand `.1.2.3`.
+# Every reading of the leaf an index cell names, one per line: a cell may write
+# the full `TREE.1.2.3` or the dot-prefixed shorthand `.1.2.3`.
+#
+# 🔴 THE SHORTHAND IS AMBIGUOUS UNDER A TREE WHOSE NAME ENDS IN A NUMBER, and
+# the literal concatenation below used to be the only reading. `PHASE-1` and the
+# shorthand for `PHASE-1.1.1` concatenate to `PHASE-1.1.1.1`, a leaf that exists
+# nowhere, because the tree's trailing `1` IS the leaf path's first segment.
+# Measured by `SIGNOFF-REPAIR.11.4.2.4`'s census, which the same bug cost 34
+# false disagreements before it was found. ⛔ This gate never fired on it only
+# because it checks the ACTIVE tree, and the active tree's name ends in a
+# letter — a latent defect waiting for the next `PHASE-N` tree to go active,
+# which is the whole reason it is fixed here rather than noted.
 cell_leaf() {
-  local tree="$1" cell="$2" token
+  local tree="$1" cell="$2" token num rest
   token="$(printf '%s' "$cell" | grep -oE '`(([A-Z][A-Z0-9-]*)?\.[0-9][0-9.]*)`' | head -1 | tr -d '`')"
   [ -n "$token" ] || return 0
   case "$token" in
-    .*) printf '%s%s\n' "$tree" "$token" ;;
+    .*)
+      printf '%s%s\n' "$tree" "$token"
+      # ⛔ The second reading is offered ONLY when the token's first segment IS
+      # the tree's trailing number. Without that guard `PHASE-8` + `.5.3` also
+      # yields `PHASE-5.3` — another tree's leaf — and an extra reading that can
+      # match anything turns this gate into one that cannot refuse. The existing
+      # self-test's prerequisite control caught exactly that, which is the case
+      # for keeping a control that looks redundant.
+      case "$tree" in
+        *-[0-9]|*-[0-9][0-9])
+          num="${tree##*-}"; rest="${token#.}"
+          [ "${rest%%.*}" = "$num" ] && printf '%s%s\n' "${tree%-*}-" "$rest"
+          ;;
+      esac
+      ;;
     *)  printf '%s\n' "$token" ;;
   esac
 }
@@ -90,6 +114,13 @@ if [ "${1:-}" = "--self-test" ]; then
 
   [ "$(cell_leaf DEMO '`.4.5` — the shorthand')" = "DEMO.4.5" ] || {
     echo "SELF-TEST: the dot-shorthand did not normalise" >&2; fails=$((fails+1)); }
+  # A tree whose name ends in a number must offer BOTH readings, literal first.
+  [ "$(cell_leaf PHASE-1 '`.1.1.1` — the shorthand')" = "$(printf 'PHASE-1.1.1.1\nPHASE-1.1.1')" ] || {
+    echo "SELF-TEST: a numbered tree name offered only the literal reading" >&2; fails=$((fails+1)); }
+  [ "$(cell_leaf SIGNOFF-REPAIR '`.11.4.2` — no trailing number')" = "SIGNOFF-REPAIR.11.4.2" ] || {
+    echo "SELF-TEST: a letter-ending tree name gained a spurious second reading" >&2; fails=$((fails+1)); }
+  [ "$(cell_leaf PHASE-8 '`.5.3` — a token whose first segment is NOT the tree number')" = "PHASE-8.5.3" ] || {
+    echo "SELF-TEST: a non-matching first segment still produced a second reading" >&2; fails=$((fails+1)); }
   [ "$(cell_leaf DEMO '`DEMO.4.5` — the full form')" = "DEMO.4.5" ] || {
     echo "SELF-TEST: the full form did not survive" >&2; fails=$((fails+1)); }
   [ "$(cell_leaf DEMO 'index only — no leaf named here')" = "" ] || {
@@ -98,7 +129,7 @@ if [ "${1:-}" = "--self-test" ]; then
     echo "SELF-TEST: the prerequisite cell did not resolve to its own shorthand" >&2; fails=$((fails+1)); }
 
   [ "$fails" -eq 0 ] || exit 1
-  echo "$HEADLINE self-test: numbered row 1 extracted, a completed tree's dash row correctly yields none, 4 cell shapes normalised"
+  echo "$HEADLINE self-test: numbered row 1 extracted, a completed tree's dash row correctly yields none, 7 cell shapes normalised, the second reading offered only when the token's first segment IS the tree's trailing number"
   exit 0
 fi
 
@@ -128,7 +159,9 @@ while IFS='|' read -r _ treecell statuscell frontiercell _; do
   checked=$((checked + 1))
   named="$(cell_leaf "$tree" "$frontiercell")"
   [ -n "$named" ] || continue                # the cell claims no leaf
-  if [ "$named" != "$row1" ]; then
+  # A match on EITHER reading is agreement; the first is what a message quotes.
+  if ! printf '%s\n' "$named" | grep -qxF "$row1"; then
+    named="$(printf '%s\n' "$named" | head -1)"
     if [ "$errs" -eq 0 ]; then
       echo "$HEADLINE: the tree index names a frontier its own tree does not:" >&2
     fi

@@ -296,7 +296,11 @@ def normalise_leaf(tree: str | None, leaf: str) -> list[str]:
     if not leaf.startswith("."):
         return [leaf]
     readings = [f"{tree}{leaf}"]
-    if TREE_TRAILING_NUMBER.search(tree):
+    m = TREE_TRAILING_NUMBER.search(tree)
+    # ⛔ ONLY when the shorthand's first segment IS that trailing number. Without
+    # the guard `PHASE-8` + `.5.3` also yields `PHASE-5.3` — another tree's leaf
+    # — and a reading that can match anything is a checker that cannot refuse.
+    if m and leaf[1:].split(".")[0] == m.group(0)[1:]:
         readings.append(TREE_TRAILING_NUMBER.sub("-", tree) + leaf[1:])
     return readings
 
@@ -595,6 +599,8 @@ def self_test() -> int:
           normalise_leaf("DEMO", ".3") == ["DEMO.3"] and normalise_leaf("DEMO", "OTHER.3") == ["OTHER.3"])
     check("a tree whose name ends in a number offered only the literal reading",
           normalise_leaf("PHASE-1", ".1.1.1") == ["PHASE-1.1.1.1", "PHASE-1.1.1"])
+    check("a shorthand whose first segment is NOT the tree's number gained a second reading",
+          normalise_leaf("PHASE-8", ".5.3") == ["PHASE-8.5.3"])
     check("a derive hint standing BEFORE the token did not win",
           classify_latest("derive with `git log -1 --oneline`; review baseline `9c2d2ba`.")[0]
           == "derived")

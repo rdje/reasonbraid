@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE POINTER-CURRENCY GATE THE DECLINED GENERATOR LEFT OWED (`.11.4.2.4.1`, REPAIR-0349).**
+
+- ⭐ **`POINTER-CURRENCY` ships and WRITES NOTHING**, so the generator's entire risk surface — `next_action` and 222 curated-prose bullets — is untouched by construction rather than by care. `make gate` is now **23 checks**.
+- ⛔ **Calibrated over the whole history: 646 pointer versions, 16 breaches across 15 commits, and 0 on today's tree.** The last number is stated, not left implicit: this gate catches nothing present and its value is preventing recurrence.
+- ⛔ **Its message names WHICH copy moved** — in 5 of the 10 frontier instances the TREE's row 1 was the stale one, so a gate asserting *the pointer is wrong* would be wrong half the time and would teach bypass.
+- 🔴 **The first falsification returned rc=0 on all three breaks**: the check reads the INDEX and the breaks were in the working tree. A gate reading different bytes from the ones in front of you is indistinguishable from one with nothing to say. The divergence is now ANNOUNCED.
+- 🔴 **The calibration then disagreed with the census — 151 fires where the history has 16** — and the disagreement was the finding: the gate's history walk started at today's HEAD, so **136 of 140** flagged cases had the commit under test as their own owner. The rule was right; the harness was not.
+- ✅ **`check_tree_index_frontier.sh`'s shorthand bug FIXED, not deferred** — it produced a leaf that exists nowhere for any tree whose name ends in a number, latent only because the active tree's name ends in a letter. 🔴 My first formulation of the fix was refused by that gate's own self-test for matching too much.
+- ⚠️ **`.11.4.2.4`'s figures are PINNED to `1fb5a94` one commit after publication** — `645` was already `646` the same day. The defect counts did not move; the fifth instance of *true when taken, published unpinned*.
+
 ✅ **THE RESUME POINTER'S DERIVABLE FIELDS, MEASURED OVER 645 VERSIONS — AND THE GENERATOR DECLINED ON THE NUMBER (`.11.4.2.4`, REPAIR-0348).**
 
 - ⛔ **THE DENOMINATOR IS THE FINDING.** A field reading *derive on read* carries no value and cannot be wrong, so a rate over all 645 versions is not a rate. Over what CARRIED a value: `latest_commit` **7 wrong of 162** (4.3%), the frontier leaf **10 of 385** (2.6%), the ahead-of-origin count **152 of 173** transitions (88%).

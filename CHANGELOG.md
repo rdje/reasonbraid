@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-20 — The pointer-currency gate the declined generator left owed, and the shorthand bug that made its own census lie (`SIGNOFF-REPAIR.11.4.2.4.1`)
+
+`REASONBRAID-REPAIR-0349`. `.11.4.2.4` measured `MEMORY_ARCHITECTURE.md` §6's *prefer derived over hand-written* and declined the generator. This is the alternative it owed.
+
+- ⭐ **`POINTER-CURRENCY` ships and WRITES NOTHING.** `MEMORY.md`'s `latest_commit` must be HEAD or the commit being made, and its frontier leaf and status must agree with the active tree's row 1. Because it has no write path, the generator's entire risk surface — `next_action` and 222 curated-prose bullets — is untouched by construction rather than by care. `make gate` is now 23 checks.
+- ⛔ **Calibrated over the whole history: 646 pointer versions, 16 breaches across 15 commits, 0 on today's tree.** That last figure is stated rather than left implicit — the gate catches nothing present and its value is preventing recurrence. The 16 reconcile exactly with `.11.4.2.4`'s 17 hand-classified instances minus the one unflaggable in principle.
+- ⛔ **The message names WHICH copy moved.** In 5 of the 10 frontier instances the TREE's row 1 was the stale copy, so a gate asserting *the pointer is wrong* would be wrong half the time and would teach bypass.
+- 🔴 **The first falsification returned rc=0 on all three breaks.** The check reads the INDEX — correct, because the index is what a commit carries — and the breaks were in the working tree. A gate reading different bytes from the ones in front of you is indistinguishable from a gate with nothing to say. The divergence is now announced on stderr.
+- 🔴 **Then the calibration disagreed with the census — 151 fires where the history has 16 — and the disagreement was the finding.** The gate's history walk started at today's HEAD while judging months-old commits, so it could see the very commit under test: **136 of 140** flagged cases had that commit as their own owner, and 0 had an owner in the future. The rule was right; the harness was not. Neither instrument alone would have surfaced it.
+- ✅ **Falsified in four directions on the real files**, each restored byte-identical — including the arm where the TREE's row 1 moves instead of the pointer, which is what proves the gate is not simply asserting a direction.
+- ✅ **`check_tree_index_frontier.sh`'s shorthand bug is FIXED, not deferred.** Its `cell_leaf` concatenated literally, producing a leaf that exists nowhere for any tree whose name ends in a number — latent only because the active tree's name ends in a letter. 🔴 My first formulation of the fix was refused by that gate's own prerequisite self-test, because offering the second reading unconditionally turns one tree's shorthand into another tree's leaf: a reading that matches anything is a checker that cannot refuse.
+- ⚠️ **`.11.4.2.4`'s figures are pinned to `1fb5a94` one commit after publication** — `645` was already `646` the same day. The defect counts did not move and nothing is withdrawn; it is the fifth instance of *true when taken, published unpinned*.
+- ⚠️ **The census and the gate are NOT independent**: different rules, shared parser — `docs/CLAIM_VERIFICATION.md` §1's *the classifier was shared*, named here rather than discovered later. No product code, schema or test touched.
+
 ## 2026-09-20 — The pointer's derivable fields, measured over 645 versions — and the generator declined on the number (`SIGNOFF-REPAIR.11.4.2.4`)
 
 `REASONBRAID-REPAIR-0348`. `MEMORY_ARCHITECTURE.md` §6 prefers a *derived* resume pointer over a hand-written one. Nothing had ever measured whether the hand-written one actually drifts.
@@ -409,38 +423,25 @@
 - ⚠ **What survives is smaller and honest.** Under the adjudicated practice — the pointer is updated periodically, not every commit — `latest_commit` naming an older commit is normal. What this session actually paid was a **findability** cost: layer A could not say what the last four commits did, so it was reconstructed from `git log`. That is the class `scripts/census_memory_warnings.py` already names.
 - ⭐ **The one option the prior ruling does not touch is `MEMORY_ARCHITECTURE.md` §6's**: *prefer derived over hand-written — a small script can regenerate the current-state block from `git log` plus each tree's frontier row, so it cannot drift.* It adds no rule the project must follow and flags no commit; it removes the predicate's subject instead of checking it. That is what the leaf now owns, and its acceptance forbids adding the refused `commit-msg` predicate.
 
-## 2026-09-20 — 10.4 GB of reproducible payload retired, and a third unretired population measured (`SIGNOFF-REPAIR.7.3.4.1`)
-
-`REASONBRAID-DOC-0080`. The scheduled artifact cleanup, and what it could not reach.
-
-- ✅ **`scripts/census_retained_fixtures.py --retire --confirm` reduced 195 fixtures and dropped 10,364,871,724 bytes**, keeping every log, receipt and configuration file and writing a `retired.json` per fixture naming exactly what was dropped. **0 fixtures deleted**; two were kept whole by its own refusals — one named by four tracked files (cited evidence) and one whose receipt says `shutdown-unverified` rather than `stopped`.
-- 🔴 **And the cleanup measured a third population the instrument does not enumerate.** `crates/reasonbraid-browse/src/lifetime.rs` retains its whole workspace whenever the render did not succeed **or** cleanup was unconfirmed — and a tripped time budget is a legitimate, documented outcome — so `.project-data/browser/run-*` accumulates one per refused render with no retirement rule at all: **48 workspaces, 880,130,713 bytes, 99.99 % reproducible payload, 95,280 bytes of evidence**, every one carrying a `completion.json`.
-- ⭐ **That is the retention rule's own founding shape in a third place.** The rule was written over 37 fixtures at 1,896,248,619 bytes and 99.93 % payload; this population is 48 at 880 MB and 99.99 %. The instrument reduced 10.4 GB and left all 880 MB of it untouched, because it enumerates two populations and this is not one of them.
-- ⚠ **The retention itself is not the defect.** The workspace IS the diagnostic evidence for an unconfirmed cleanup — `SIGNOFF-REPAIR.11.25` and `.11.25.1` both depended on it. What is missing is the retirement.
-- ⭐ **The clause is ATTACHED to `SIGNOFF-REPAIR.7.3.4` rather than counted as covered**, because that leaf's Sources line names the extraction worker and enumerates mechanisms, so a census driven by it cannot see a finding inside its surface — which is `SIGNOFF-REPAIR.11.24`'s shape exactly. The bounded work is `.7.3.4.1`, whose acceptance requires the safety checks to be **re-derived** for the new population rather than copied: a browser workspace's `owner.json` records a process group, and the instrument's standing rule is that a recorded id is only ever asked whether it exists, never signalled.
-- ✅ **This ledger took its thirty-third rotation in the same commit** (`SIGNOFF-REPAIR.11.4.1`), because appending the entry above crossed the 96,000-byte threshold: **8 records rotated into Git history, 16 kept, lossless** — 24 predecessor records = 16 kept + 8 rotated, checked by comparing headings rather than asserted. ⭐ Every figure in the footer below was **re-derived from the named object** (94,291 bytes, 347 lines, 24 entries, blob and SHA-256), and the published retrieval command was RUN: a rotation notice whose command fails is the retrieval failure the footer itself warns about.
-- ⛔ **No storage quota is set.** A deployment-level ceiling is the parent leaf's, and `SIGNOFF-REPAIR.11.6` forbids a number chosen before its population is measured across real deployments rather than one developer's probe session.
-
 The entries before those above were rotated into reachable Git history at the
-**thirty-fifth rotation** (`SIGNOFF-REPAIR.11.4.2.4`, which owns this ledger’s rotation). The exact predecessor — every
+**thirty-sixth rotation** (`SIGNOFF-REPAIR.11.4.2.4.1`, which owns this ledger’s rotation). The exact predecessor — every
 byte this file held immediately before the rotation — is:
 
 ```bash
-git show f8f837efb1049f608d14e2332d89d8866175bbe2:CHANGELOG.md
+git show 1fb5a9449b872769c2191e2272fc4fb53dc7bdcc:CHANGELOG.md
 ```
 
-That snapshot is 94872 bytes and 447 lines, and contains 32 dated
-entries; its Git blob is `98baa18ac9c05d756578666c77273aaf8e08b471` and its SHA-256 is
-`4e9c79ca56766556a65ce3c4db94d61262372f2c34bf06530f6feae5957a67a1`. It carries the thirty-fourth rotation's
+That snapshot is 95656 bytes and 452 lines, and contains 32 dated
+entries; its Git blob is `7fe40b67f60c8421971b591c92e80ac414d82a3f` and its SHA-256 is
+`44102e2f80839adf7ff45cb92e4c4253f7aced5c2bdecbd880d9f2c4bb23ea25`. It carries the thirty-fifth rotation's
 notice in turn, and each earlier notice names the one before it, so the chain
 walks all the way back. `docs/decisions/2026-09-09_changelog-rotation.md` holds
 the first transition's evidence.
 
-⛔ **One record rotated out, 32 kept, lossless** — 32 predecessor records = 31 kept + 1 rotated, checked by comparing
-headings rather than asserted. Every figure above was re-derived from the named object with `git rev-parse`,
-`git cat-file -s` and `shasum -a 256`, and the retrieval command was RUN: the rotated entry (*the pre-push flake is
-caught, localized to child-process start, and it has a twin*) is present in its output. A rotation notice whose command
-fails is the retrieval failure this footer itself warns about.
+⛔ **1 record rotated out, 32 kept, lossless** — 32 predecessor records = 31 kept + 1 rotated, checked by
+comparing headings rather than asserted. Every figure above was re-derived from the named object with `git rev-parse`,
+`git cat-file -s` and `shasum -a 256`, and the retrieval command was RUN. A rotation notice whose command fails is the
+retrieval failure this footer itself warns about.
 
 Use `git log --follow -- CHANGELOG.md` for earlier versions. Keep the reachable
 Git history when cloning or handing off; a shallow checkout may need the named

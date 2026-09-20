@@ -1,5 +1,50 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — Two instruments that disagree are worth more than two that agree
+
+`SIGNOFF-REPAIR.11.4.2.4.1` shipped `POINTER-CURRENCY`, the gate its parent leaf
+left owed after declining §6's generator. The gate itself is small. What was
+worth the day is how its two defects were found.
+
+**Defect one was found by a falsification that failed to falsify.** Three
+deliberate breaks were written into `MEMORY.md` and the check returned rc=0 on
+all three. Not because the rules were wrong — because the check reads the INDEX,
+which is what a commit carries, and the breaks were unstaged. The check was
+right and the test was meaningless, and the two are indistinguishable from the
+outside. This repository has now met that shape four times. The preference stays;
+the divergence is announced, so nobody can read a hand-run as a verdict on what
+is on screen.
+
+**Defect two was found because two instruments disagreed.** The census said the
+history holds 17 defects. The gate, calibrated over the same history, fired 151
+times. Neither number is self-evidently wrong, and the temptation is to trust
+the newer instrument. Classifying the 140 excess instead: **136 had the very
+commit under test as the owner of the work unit it named** — the gate's history
+walk started at today's `HEAD`, so it could see the commit it was judging, and a
+pointer correctly naming its own commit looked like one reusing an old id. At
+real pre-commit time `HEAD` is the parent and that commit does not exist yet.
+The rule was right; the harness was wrong.
+
+**The part worth keeping is that neither instrument could have found it alone.**
+The gate would have shipped with a calibration claiming it blocks 151 of 646
+commits, which is the shape `SIGNOFF-REPAIR.11.9`'s rejected gate had at 114 of
+131 — a number that would have been read as *this rule is too aggressive* rather
+than as *this harness is looking at the wrong history*. The census would have
+gone on reporting 17 with nothing to contradict it. What surfaced the defect is
+that they were asked the same question by different routes and came back with
+answers that could not both be true.
+
+And a third, smaller: **my first fix for `check_tree_index_frontier.sh` was
+refused by that gate's own self-test.** The shorthand `.5.3` under tree `PHASE-8`
+was being offered a second reading — `PHASE-5.3`, another tree's leaf. A reading
+that can match anything is a checker that cannot refuse, and the control that
+caught it is one that looks redundant until the moment it isn't.
+
+Promotion: **declined** — recorded in the leaf. Defects one and two are both
+`an-instruments-zero-describes-its-reach`, promoted two commits ago, met from
+the calibration side. `SIGNOFF-REPAIR.11.6`'s threshold wants a statement the
+layer lacks; the layer has this one.
+
 ## 2026-09-20 — A rate needs a denominator, and a field that says "derive it" is not in the denominator
 
 `MEMORY_ARCHITECTURE.md` §6 prefers a derived resume pointer to a hand-written

@@ -258,7 +258,7 @@ ROLE_B="$(cli enroll role agent-b --tenant "$TENANT" --json | jq -r .principal_i
 # The `.1.2.1` enrollment bootstrap: the dev wiring's node id IS the role wire
 # id it serves. One token per node, bound to the dev host claim; the node
 # consumes it with its dev secret, and every later handshake proves the secret.
-log "issuing one-time enrollment tokens and node dev secrets (`.1.2.1`)"
+log "issuing one-time enrollment tokens and node dev secrets (\`.1.2.1\`)"
 ISSUE_A="$(cli node issue-token --node "$ROLE_A" --host-claim dev-host --as organizer --tenant "$TENANT" --json)"
 TOKEN_A="$(printf '%s' "$ISSUE_A" | jq -r .token_id)"
 NONCE_A="$(printf '%s' "$ISSUE_A" | jq -r .nonce)"
@@ -306,7 +306,7 @@ THREAD_A="$(cli thread create --subject "is the claim justified?" \
 [ -n "$THREAD_A" ] || { fail "thread A created"; exit 1; }
 log "thread A: $THREAD_A"
 
-log "inviting agent-a — a PENDING invitation (`.1.3.1`: no work yet)"
+log "inviting agent-a — a PENDING invitation (\`.1.3.1\`: no work yet)"
 cli thread invite --thread "$THREAD_A" --agent agent-a --as organizer >/dev/null
 log "agent-a ACCEPTS — the accept dispatches the work WITH a reservation"
 cli thread accept --thread "$THREAD_A" --as agent-a >/dev/null

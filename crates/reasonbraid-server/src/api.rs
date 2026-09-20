@@ -3664,6 +3664,12 @@ async fn list_policy_projections(
 /// `POST /v1/policy-publications` — stage one publication (`.4.2`): the
 /// §15.7 steps 1–4's record half (the references verified, the manifest
 /// digest, the staged state).
+///
+/// `.9.2.1.2.2`: the caller names an `owning_authority` it HOLDS, and the row
+/// records it. ⛔ This was the last of the four publication verbs on enrolment
+/// alone, and the reason it binds is not symmetry: `stage` never reads the
+/// proposal's policy and checks the projection only for existence and tenant,
+/// so the stager chooses the bytes the approval will publish (`.9.2.1.3.2`).
 async fn stage_publication(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -3679,6 +3685,16 @@ async fn stage_publication(
             "an unenrolled principal stages no publication",
         ));
     };
+    // `.9.2.1.2.2`: authorized BEFORE any record is looked up, in the order
+    // the three transition verbs already use — and the absence is graded here
+    // rather than left to the deserializer, so all four verbs answer one
+    // question with one refusal.
+    let Some(owning_authority) = input.owning_authority.as_deref() else {
+        return Err(ControlApiError::invalid_command(
+            "the owning_authority is required",
+        ));
+    };
+    held_publication_grant(&state, &principal, owning_authority).await?;
     match crate::publications::stage(&state.pool, &caller_tenant, &input).await {
         Ok(row) => Ok(Json(row)),
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
@@ -3802,11 +3818,13 @@ async fn mark_publication_failed(
     }
 }
 
-/// All THREE publication transitions are bound to a grant the caller HOLDS
+/// All FOUR publication verbs are bound to a grant the caller HOLDS
 /// (`SIGNOFF-REPAIR.9.2.1.2` for `effective` and `publish`, `.9.2.1.2.1` for
-/// `failed`), in the shape `deployments::register_target` already uses: the
-/// request names an `owning_authority` and [`authority::grant_held_by`]
-/// decides.
+/// `failed`, `.9.2.1.2.2` for `stage`), in the shape
+/// `deployments::register_target` already uses: the request names an
+/// `owning_authority` and [`authority::grant_held_by`] decides. This wrapper
+/// serves the three that take an untyped body; `stage_publication` calls
+/// [`held_publication_grant`] directly because its input is typed.
 ///
 /// ⛔ That is THE predicate (`.9.3.1`), never a sixth spelling of the question.
 /// Naming a grant and holding one are exactly what that repair found conflated
@@ -3835,6 +3853,22 @@ async fn held_publication_authority(
         .get("owning_authority")
         .and_then(|v| v.as_str())
         .ok_or_else(|| ControlApiError::invalid_command("the owning_authority is required"))?;
+    held_publication_grant(state, principal, owning_authority).await
+}
+
+/// The DECISION itself, over a grant id this caller already has in hand.
+///
+/// ⛔ Split out by `SIGNOFF-REPAIR.9.2.1.2.2` so the staging verb can ask the
+/// same question, and split rather than copied for the reason the wrapper
+/// above records: this is THE predicate (`.9.3.1`), never a fourth spelling.
+/// The three transition verbs take an untyped body and read the field out of
+/// it; `stage_publication` takes a TYPED input and already has the value, so
+/// the shared thing is the decision and not the extraction.
+async fn held_publication_grant(
+    state: &ApiState,
+    principal: &GrantSubject,
+    owning_authority: &str,
+) -> Result<(), ControlApiError> {
     let held = authority::grant_held_by(&state.pool, owning_authority, principal)
         .await
         .map_err(|_| ControlApiError::internal())?;

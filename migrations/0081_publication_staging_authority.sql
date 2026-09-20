@@ -1,0 +1,35 @@
+-- 0081_publication_staging_authority.sql — SIGNOFF-REPAIR.9.2.1.2.2:
+-- the staging verb decides what an approval publishes, so it names an
+-- authority and the row records it.
+--
+-- ⛔ THE MEASUREMENT THAT DECIDES IT, because the schema already encoded a
+-- coherent answer the other way. Four of the eight policy-lifecycle tables
+-- carry an authority reference and four do not, and the correspondence is
+-- EXACT: `policy_versions.owning_authority` (0038), `policy_approvals`'
+-- `approver` + `grant_id` (0040), `deployment_targets.owning_authority`
+-- (0043) and `policy_drift_corrections.authority_grant` (0044) are precisely
+-- the four surfaces that check a grant. Under that reading the chain's
+-- authority-bearing acts are the APPROVAL and the publication TRANSITIONS,
+-- and staging is bookkeeping between them.
+--
+-- 🔴 That reading rests on staging being unable to choose what gets published,
+-- and it can. `stage` never reads the proposal's `policy_id` or
+-- `policy_version`, and its projection predicate is existence plus tenant —
+-- so a stager pairs an approval with any projection in the tenant and
+-- `publish` writes that projection's bytes (`SIGNOFF-REPAIR.9.2.1.3.2` owns
+-- the correspondence gap itself). Staging decides CONTENT.
+--
+-- ⚠️ NULLABLE, and historical rows STAY NULL. `migrations/0073` took exactly
+-- this disposition for the lifecycle tenant column: a backfill here would have
+-- to invent an author for a publication staged before anyone was asked for
+-- one, and an invented authority reference is worse than an absent one. The
+-- read path treats NULL as *staged before this was recorded*, never as
+-- *staged by nobody*.
+--
+-- ⛔ NOT a foreign key to `authority_grants`. The column records WHICH grant
+-- was held at staging time, and grants are revocable — an FK would make
+-- revoking a grant either fail or cascade, and both would rewrite history.
+-- `policy_versions.owning_authority` and `deployment_targets.owning_authority`
+-- are unconstrained for the same reason.
+
+ALTER TABLE policy_publications ADD COLUMN owning_authority TEXT;

@@ -1886,6 +1886,9 @@ async fn the_publication_stages_and_marks_its_typed_state() {
             "decision_id": "pb-dec",
             "approval_id": "pb-app",
             "projection_id": "pb-proj",
+            // `.9.2.1.2.2`: staging names a grant the caller holds, like its
+            // three transitions.
+            "owning_authority": grant_id,
         }),
     )
     .await;
@@ -2007,6 +2010,7 @@ async fn the_publication_stages_and_marks_its_typed_state() {
             "decision_id": "pb-dec",
             "approval_id": "pb-app",
             "projection_id": "pb-proj",
+            "owning_authority": grant_id,
             "manifest_digest": "not-a-digest",
         }),
     )
@@ -2023,6 +2027,7 @@ async fn the_publication_stages_and_marks_its_typed_state() {
             "decision_id": "pb-dec",
             "approval_id": "pb-app",
             "projection_id": "ghost",
+            "owning_authority": grant_id,
         }),
     )
     .await;
@@ -2038,6 +2043,7 @@ async fn the_publication_stages_and_marks_its_typed_state() {
             "decision_id": "ghost-dec",
             "approval_id": "pb-app",
             "projection_id": "pb-proj",
+            "owning_authority": grant_id,
         }),
     )
     .await;
@@ -2116,6 +2122,7 @@ async fn the_publication_stages_and_marks_its_typed_state() {
             "decision_id": "pb-dec-2",
             "approval_id": "pb-app-2",
             "projection_id": "pb-proj",
+            "owning_authority": grant_id,
         }),
     )
     .await;
@@ -2161,6 +2168,7 @@ async fn the_publication_stages_and_marks_its_typed_state() {
             "decision_id": "pb-dec",
             "approval_id": "pb-app",
             "projection_id": "pb-proj",
+            "owning_authority": grant_id,
             "manifest_digest": projection_digest,
         }),
     )
@@ -2191,6 +2199,7 @@ async fn the_publication_stages_and_marks_its_typed_state() {
             "decision_id": "pb-dec",
             "approval_id": "pb-app",
             "projection_id": "pb-proj",
+            "owning_authority": grant_id,
             "manifest_digest": derived_digest("pb-pub-asserted"),
         }),
     )
@@ -2405,6 +2414,7 @@ async fn the_publish_verb_drives_the_git_half() {
                 "decision_id": decision_id,
                 "approval_id": approval_id,
                 "projection_id": format!("{proposal_id}-proj"),
+                "owning_authority": grant_id,
             }),
         )
         .await;
@@ -3029,6 +3039,187 @@ async fn the_failed_transition_requires_an_authority_the_caller_holds() {
     );
 }
 
+/// `SIGNOFF-REPAIR.9.2.1.2.2` — the STAGING verb created a publication on
+/// enrolment alone, while all three of its transitions required a grant the
+/// caller HOLDS.
+///
+/// ⛔ The half-bound aggregate is not the whole reason it binds. `.9.2.1.3.2`
+/// measured that `stage` never reads the proposal's policy and checks the
+/// projection only for existence and tenant, so the stager chooses the bytes
+/// the approval will publish — staging decides CONTENT, not bookkeeping.
+///
+/// Three legs, the same three questions the sibling controls ask, so the four
+/// publication verbs can be read against each other.
+#[tokio::test]
+async fn the_staging_verb_requires_an_authority_the_caller_holds() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, alice) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "ps-alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "alice enrolls: {alice}");
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    let alice_tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    let alice_grant = format!("grt_{alice_id}");
+
+    let (status, bob) = enroll(&client, &base, json!({ "kind": "human", "name": "ps-bob" })).await;
+    assert_eq!(status, 200, "bob enrolls: {bob}");
+    let bob_id = bob["principal_id"].as_str().unwrap().to_string();
+    let bob_grant = format!("grt_{bob_id}");
+    assert_ne!(alice["tenant_id"], bob["tenant_id"], "distinct tenants");
+
+    // The approved chain, seeded directly. ⛔ The full proposal -> decision ->
+    // approval -> projection walk is already driven end to end by
+    // `the_publication_stages_and_marks_its_typed_state`; re-deriving it here
+    // would put the thing under test — the authority binding — behind a second
+    // copy of that pipeline, which is the shape `.9.2.1.2` recorded refusing.
+    sqlx::query(
+        "INSERT INTO policy_proposals \
+         (proposal_id, policy_id, policy_version, thread_id, status, tenant_id) \
+         VALUES ('ps-prp', 'ps-policy', '1.0.0', 'ps-thread', 'approved', $1)",
+    )
+    .bind(&alice_tenant)
+    .execute(&pool)
+    .await
+    .expect("the approved proposal seeds");
+    sqlx::query(
+        "INSERT INTO policy_decisions \
+         (decision_id, proposal_id, rule, electorate, verdict_event_id, tenant_id) \
+         VALUES ('ps-dec', 'ps-prp', 'majority', '{}'::jsonb, 'ps-evt', $1)",
+    )
+    .bind(&alice_tenant)
+    .execute(&pool)
+    .await
+    .expect("the decision seeds");
+    sqlx::query(
+        "INSERT INTO policy_approvals \
+         (approval_id, proposal_id, decision_id, approver, grant_id, quorum, tenant_id) \
+         VALUES ('ps-app', 'ps-prp', 'ps-dec', $1, $2, '{}'::jsonb, $3)",
+    )
+    .bind(&alice_id)
+    .bind(&alice_grant)
+    .bind(&alice_tenant)
+    .execute(&pool)
+    .await
+    .expect("the approval seeds");
+    sqlx::query(
+        "INSERT INTO policy_projections \
+         (projection_id, target, digest, bytes, unrepresentable, tenant_id) \
+         VALUES ('ps-proj', 'generic', $1, 'body', '[]'::jsonb, $2)",
+    )
+    .bind(DIGEST)
+    .bind(&alice_tenant)
+    .execute(&pool)
+    .await
+    .expect("the projection seeds");
+
+    let body = |authority: Option<&str>| {
+        let mut b = json!({
+            "publication_id": "ps-pub",
+            "proposal_id": "ps-prp",
+            "decision_id": "ps-dec",
+            "approval_id": "ps-app",
+            "projection_id": "ps-proj",
+        });
+        if let Some(a) = authority {
+            b["owning_authority"] = json!(a);
+        }
+        b
+    };
+
+    let staged_rows = |label: &'static str, want: i64| {
+        let pool = pool.clone();
+        async move {
+            let n: i64 = sqlx::query_scalar(
+                "SELECT count(*) FROM policy_publications WHERE publication_id = 'ps-pub'",
+            )
+            .fetch_one(&pool)
+            .await
+            .expect("the publications count");
+            assert_eq!(n, want, "{label}: a refused stage must write nothing");
+        }
+    };
+
+    // Leg A — an enrolled principal naming NO authority is refused. Enrolment
+    // plus a tenant-owned approved chain used to be the whole predicate.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-publications",
+        &alice_id,
+        &body(None),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "staging without an authority refuses: {refused}"
+    );
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("owning_authority"),
+        "⛔ the refusal is the TYPED one its three siblings give, not the \
+         deserializer's bare 422: {refused}"
+    );
+    staged_rows("leg A", 0).await;
+
+    // Leg B — a real, active grant held by SOMEONE ELSE is refused. ⭐ Grant
+    // ids are derivable (`grt_<principal_id>`), so naming one is not holding
+    // one — the conflation `.9.3.1` found on five surfaces.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-publications",
+        &alice_id,
+        &body(Some(&bob_grant)),
+    )
+    .await;
+    assert_eq!(
+        status, 403,
+        "staging under another principal's grant refuses: {refused}"
+    );
+    assert_eq!(refused["code"], json!("unauthorized"), "{refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("HOLDS"),
+        "{refused}"
+    );
+    staged_rows("leg B", 0).await;
+
+    // Leg C — THE MATCHED PAIR: the same request, one field different, and the
+    // publication stages. The row RECORDS the authority it was staged under,
+    // which is the half a check alone would not deliver.
+    let (status, staged) = post(
+        &client,
+        &base,
+        "/v1/policy-publications",
+        &alice_id,
+        &body(Some(&alice_grant)),
+    )
+    .await;
+    assert_eq!(status, 200, "the holder stages: {staged}");
+    assert_eq!(staged["state"], json!("staged"), "{staged}");
+    let recorded: Option<String> = sqlx::query_scalar(
+        "SELECT owning_authority FROM policy_publications WHERE publication_id = 'ps-pub'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("the staged row reads back");
+    assert_eq!(
+        recorded.as_deref(),
+        Some(alice_grant.as_str()),
+        "the COLUMN records the authority the publication was staged under"
+    );
+}
+
 #[tokio::test]
 async fn the_deployment_rides_the_effective_publication_per_target() {
     let _guard = guard().await;
@@ -3234,6 +3425,7 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
                     "decision_id": decision_id,
                     "approval_id": approval_id,
                     "projection_id": format!("{proposal_id}-proj"),
+                    "owning_authority": grant_id,
                 }),
             )
             .await;
@@ -3591,6 +3783,7 @@ async fn the_drift_corrections_and_outcomes_ride_the_records() {
                 "decision_id": decision_id,
                 "approval_id": approval_id,
                 "projection_id": format!("{publication_id}-proj"),
+                "owning_authority": grant_id,
             }),
         )
         .await;
@@ -4023,6 +4216,7 @@ async fn the_scheduled_reviews_evaluate_the_triggers() {
             "decision_id": "rv-dec",
             "approval_id": "rv-app",
             "projection_id": "rv-proj",
+            "owning_authority": grant_id,
         }),
     )
     .await;
@@ -5232,7 +5426,7 @@ async fn the_lifecycle_row_carries_the_tenant_that_owns_it() {
         &json!({
             "publication_id": "lto-pub", "proposal_id": "lto-prop",
             "decision_id": "lto-dec", "approval_id": "lto-app",
-            "projection_id": "lto-proj",
+            "projection_id": "lto-proj", "owning_authority": alice_grant,
         }),
     )
     .await;
@@ -5572,25 +5766,35 @@ async fn the_lifecycle_verbs_refuse_another_tenants_publication() {
 
     // ── ARM 1: `POST /v1/policy-publications` — stage another tenant's proposal
     let (prop1, dec1, app1, proj1, pub1) = stage_chain(1).await;
-    let staging =
-        |who: String, prop: String, dec: String, app: String, proj: String, publication: String| {
-            let client = client.clone();
-            let base = base.clone();
-            async move {
-                post(
-                    &client,
-                    &base,
-                    "/v1/policy-publications",
-                    &who,
-                    &json!({ "publication_id": publication, "proposal_id": prop,
-                          "decision_id": dec, "approval_id": app,
-                          "projection_id": proj }),
-                )
-                .await
-            }
-        };
+    // ⛔ `.9.2.1.2.2`: the caller names its OWN grant. ARM 1 measures TENANT
+    // containment, so mallory must be PAST the authority gate — the shape
+    // ARMs 2-4 already use, and without it this arm would keep asserting 400
+    // while silently measuring the new authority refusal instead.
+    let staging = |who: String,
+                   grant: String,
+                   prop: String,
+                   dec: String,
+                   app: String,
+                   proj: String,
+                   publication: String| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            post(
+                &client,
+                &base,
+                "/v1/policy-publications",
+                &who,
+                &json!({ "publication_id": publication, "proposal_id": prop,
+                      "decision_id": dec, "approval_id": app,
+                      "projection_id": proj, "owning_authority": grant }),
+            )
+            .await
+        }
+    };
     let (status, refused) = staging(
         mallory_id.clone(),
+        mallory_grant.clone(),
         prop1.clone(),
         dec1.clone(),
         app1.clone(),
@@ -5611,6 +5815,7 @@ async fn the_lifecycle_verbs_refuse_another_tenants_publication() {
     );
     let (status, staged) = staging(
         alice_id.clone(),
+        alice_grant.clone(),
         prop1.clone(),
         dec1.clone(),
         app1.clone(),
@@ -5649,7 +5854,16 @@ async fn the_lifecycle_verbs_refuse_another_tenants_publication() {
 
     // ── ARM 3: `/failed`, on the second publication, still staged.
     let (prop2, dec2, app2, proj2, pub2) = stage_chain(2).await;
-    let (status, _) = staging(alice_id.clone(), prop2, dec2, app2, proj2, pub2.clone()).await;
+    let (status, _) = staging(
+        alice_id.clone(),
+        alice_grant.clone(),
+        prop2,
+        dec2,
+        app2,
+        proj2,
+        pub2.clone(),
+    )
+    .await;
     assert_eq!(status, 200, "the second publication stages");
     let (status, refused) = post(
         &client,
@@ -5688,7 +5902,16 @@ async fn the_lifecycle_verbs_refuse_another_tenants_publication() {
 
     // ── ARM 4: `/publish`, on the third publication, still staged.
     let (prop3, dec3, app3, proj3, pub3) = stage_chain(3).await;
-    let (status, _) = staging(alice_id.clone(), prop3, dec3, app3, proj3, pub3.clone()).await;
+    let (status, _) = staging(
+        alice_id.clone(),
+        alice_grant.clone(),
+        prop3,
+        dec3,
+        app3,
+        proj3,
+        pub3.clone(),
+    )
+    .await;
     assert_eq!(status, 200, "the third publication stages");
     // ⛔ THIS ARM ASSERTS THE REPOSITORY, NOT ONLY THE STATUS, AND IT HAD TO.
     // Falsification found it passing for an unrelated reason: with the handler's
@@ -6095,7 +6318,7 @@ async fn every_lifecycle_read_is_bound_to_its_own_tenant() {
                 &who,
                 &json!({ "publication_id": ids("pub"), "proposal_id": ids("prop"),
                          "decision_id": ids("dec"), "approval_id": ids("app"),
-                         "projection_id": ids("proj") }),
+                         "projection_id": ids("proj"), "owning_authority": grant }),
             )
             .await;
             assert_eq!(status, 200, "{tag}: the publication — {out}");
@@ -6213,7 +6436,8 @@ async fn every_lifecycle_read_is_bound_to_its_own_tenant() {
             "/v1/policy-publications",
             &alice_id,
             &json!({ "publication_id": format!("rdb-a-{suffix}-pub"), "proposal_id": prop,
-                     "decision_id": dec, "approval_id": app, "projection_id": projection }),
+                     "decision_id": dec, "approval_id": app, "projection_id": projection,
+                     "owning_authority": format!("grt_{alice_id}") }),
         )
         .await;
         assert_eq!(status, expected, "{note}: {out}");

@@ -129,11 +129,20 @@ A staged publication has exactly **three** exits, and all three now require an
 
 | Verb | What it does to the record |
 | --- | --- |
+| `POST /v1/policy-publications` | **stages** the publication — creates the record |
 | `POST /v1/policy-publications/{id}/publish` | writes the publication into the repository and marks it `effective` |
 | `POST /v1/policy-publications/{id}/effective` | marks it `effective` for a Git half performed out of band |
 | `POST /v1/policy-publications/{id}/failed` | marks it `failed`, with a reason |
 
-All three used to admit **any enrolled principal**: enrolment in any tenant was
+Staging is on that list because **staging chooses what the approval publishes**.
+It was the last of the four to be bound, and the reason it is bound is not
+symmetry: the verb never reads the proposal's policy, and it checks the
+projection only for existence and tenancy — so the caller who stages picks the
+compiled bytes that the approval will be used to publish. The publication row
+now records the grant it was staged under, alongside the other governance
+records that name theirs.
+
+All four used to admit **any enrolled principal**: enrolment in any tenant was
 the whole predicate. The refusal is now:
 
 ```text
@@ -144,7 +153,13 @@ Naming a grant is not holding one. Grant ids are derivable from a principal id,
 so a check that asked only whether an active grant *exists* would be no check at
 all; the server compares the grant's subject to the authenticated caller.
 
-⚠️ **`failed` was bound last, and it was the one that mattered most.** The first
+⚠️ **An approval still does not pin the bytes.** Binding staging says *who* may
+pair an approval with a projection; it does not say the pairing is right.
+Nothing yet requires the projection to carry the policy version the proposal was
+approved for, so an approval for one policy can still publish another's compiled
+bytes. That is tracked as `SIGNOFF-REPAIR.9.2.1.3.2` and is **not** fixed here.
+
+⚠️ **`failed` was bound before `stage`, and each was the one that mattered.** The first
 repair covered `publish` and `effective`; `failed` kept admitting on enrolment
 for a further stretch. Each of the three states is **terminal** — the other two
 verbs refuse a publication that is no longer `staged` — so failing a publication

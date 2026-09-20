@@ -33,6 +33,19 @@ pub struct PublicationInput {
     pub decision_id: String,
     pub approval_id: String,
     pub projection_id: String,
+    /// The grant the caller HOLDS (`SIGNOFF-REPAIR.9.2.1.2.2`). ⛔ Staging was
+    /// the one publication verb left on enrolment alone, and it is the verb
+    /// that decides WHICH projection an approval publishes.
+    ///
+    /// ⚠️ Modelled `Option` although it is REQUIRED, and the reason is the
+    /// wire contract rather than the semantics: this input is typed, so a
+    /// missing required field is refused by the deserializer as a bare `422`
+    /// with a plain-text body — while the three transition verbs read the same
+    /// field out of an untyped body and answer `400 invalid_command`. Four
+    /// verbs asking one question must not give two different refusals, so the
+    /// absence is graded here and answers exactly as its siblings do.
+    #[serde(default)]
+    pub owning_authority: Option<String>,
     #[serde(default)]
     pub manifest_digest: Option<String>,
 }
@@ -79,6 +92,11 @@ pub struct StoredPublication {
     pub projection_id: String,
     pub state: String,
     pub manifest_digest: String,
+    /// The grant the publication was STAGED under (`.9.2.1.2.2`). `None` means
+    /// the row predates the column — *staged before this was recorded*, never
+    /// *staged by nobody* (`migrations/0081`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owning_authority: Option<String>,
     pub git_object_ids: Vec<String>,
     pub failed_reason: Option<String>,
 }
@@ -100,6 +118,8 @@ pub enum PublicationError {
         state: String,
     },
     MalformedDigest(String),
+    /// The staging request named no authority (`SIGNOFF-REPAIR.9.2.1.2.2`).
+    MissingAuthority,
     /// A caller asserted a manifest digest that is not the one staging derives
     /// (`SIGNOFF-REPAIR.9.2.1.3.1`). ⛔ BOTH values are named: a refusal that
     /// said only "wrong" would leave a caller unable to tell a stale client
@@ -148,6 +168,12 @@ impl std::fmt::Display for PublicationError {
                 state,
             } => {
                 write!(f, "publication `{publication_id}` is at stage `{state}` — the transition does not apply")
+            }
+            PublicationError::MissingAuthority => {
+                write!(
+                    f,
+                    "the owning_authority is required — staging names a grant the caller HOLDS"
+                )
             }
             PublicationError::MalformedDigest(d) => {
                 write!(f, "digest `{d}` is not the ADR-011 `sha256:<64 hex>` shape")
@@ -201,6 +227,9 @@ type PublicationRow = (
     String,
     String,
     Value,
+    Option<String>,
+    // `owning_authority` (`.9.2.1.2.2`) — NULL for rows staged before it was
+    // recorded, never a claim that nobody staged them.
     Option<String>,
 );
 
@@ -257,6 +286,12 @@ pub async fn stage(
     tenant_id: &str,
     input: &PublicationInput,
 ) -> Result<StoredPublication, PublicationError> {
+    // ⛔ `.9.2.1.2.2`: graded HERE as well as in the handler. The handler must
+    // answer first, because authorization precedes every lookup; this arm is
+    // what makes the core safe for a caller that is not that handler.
+    let Some(owning_authority) = input.owning_authority.clone() else {
+        return Err(PublicationError::MissingAuthority);
+    };
     // ⚠️ The shape check keeps its original POSITION — before any record is
     // looked up — so a malformed assertion is still refused without disclosing
     // anything about the proposal it names. Only its subject changed: it now
@@ -376,7 +411,8 @@ pub async fn stage(
     let inserted = sqlx::query(
         "INSERT INTO policy_publications \
          (publication_id, proposal_id, decision_id, approval_id, projection_id, state, \
-          manifest_digest, tenant_id) VALUES ($1, $2, $3, $4, $5, 'staged', $6, $7)",
+          manifest_digest, tenant_id, owning_authority) \
+         VALUES ($1, $2, $3, $4, $5, 'staged', $6, $7, $8)",
     )
     .bind(&input.publication_id)
     .bind(&input.proposal_id)
@@ -385,6 +421,7 @@ pub async fn stage(
     .bind(&input.projection_id)
     .bind(&derived_digest)
     .bind(&proposal_tenant)
+    .bind(&owning_authority)
     .execute(pool)
     .await;
     if inserted.is_err() {
@@ -401,6 +438,7 @@ pub async fn stage(
         projection_id: input.projection_id.clone(),
         state: "staged".to_string(),
         manifest_digest: derived_digest,
+        owning_authority: Some(owning_authority),
         git_object_ids: Vec::new(),
         failed_reason: None,
     })
@@ -517,7 +555,7 @@ pub async fn load(
 ) -> Result<StoredPublication, PublicationError> {
     let row: Option<PublicationRow> = sqlx::query_as(
         "SELECT publication_id, proposal_id, decision_id, approval_id, projection_id, state, \
-             manifest_digest, git_object_ids, failed_reason \
+             manifest_digest, git_object_ids, failed_reason, owning_authority \
              FROM policy_publications WHERE publication_id = $1",
     )
     .bind(publication_id)
@@ -534,6 +572,7 @@ pub async fn load(
         manifest_digest,
         git_object_ids,
         failed_reason,
+        owning_authority,
     )) = row
     else {
         return Err(PublicationError::UnknownProposal(
@@ -548,6 +587,7 @@ pub async fn load(
         projection_id,
         state,
         manifest_digest,
+        owning_authority,
         git_object_ids: serde_json::from_value(git_object_ids).expect("the object ids parse"),
         failed_reason,
     })
@@ -562,7 +602,7 @@ pub async fn load(
 pub async fn list(pool: &PgPool, tenant_id: &str) -> Result<Vec<StoredPublication>, sqlx::Error> {
     let rows: Vec<PublicationRow> = sqlx::query_as(
         "SELECT publication_id, proposal_id, decision_id, approval_id, projection_id, state, \
-             manifest_digest, git_object_ids, failed_reason \
+             manifest_digest, git_object_ids, failed_reason, owning_authority \
              FROM policy_publications WHERE tenant_id = $1 ORDER BY created_at DESC",
     )
     .bind(tenant_id)
@@ -581,6 +621,7 @@ pub async fn list(pool: &PgPool, tenant_id: &str) -> Result<Vec<StoredPublicatio
                 manifest_digest,
                 git_object_ids,
                 failed_reason,
+                owning_authority,
             )| StoredPublication {
                 publication_id,
                 proposal_id,
@@ -589,6 +630,7 @@ pub async fn list(pool: &PgPool, tenant_id: &str) -> Result<Vec<StoredPublicatio
                 projection_id,
                 state,
                 manifest_digest,
+                owning_authority,
                 git_object_ids: serde_json::from_value(git_object_ids)
                     .expect("the object ids parse"),
                 failed_reason,

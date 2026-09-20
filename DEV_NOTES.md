@@ -1,5 +1,54 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — The schema was an argument, and the code refuted it
+
+Deciding whether `POST /v1/policy-publications` should require a held grant, I
+censused the schema instead of reasoning about it. Eight policy-lifecycle
+tables; four carry an authority reference:
+
+```text
+policy_versions.owning_authority          (0038)   policy_proposals    — none (0039)
+policy_approvals.approver + grant_id      (0040)   policy_decisions    — none (0039)
+deployment_targets.owning_authority       (0043)   policy_projections  — none (0041)
+policy_drift_corrections.authority_grant  (0044)   policy_publications — none (0042)
+```
+
+The correspondence is exact: the four tables with an authority column are
+precisely the four surfaces that check a grant. That is not an accident, it is a
+design — and it says the chain's authority-bearing acts are the **approval** and
+the publication **transitions**, with everything between them as bookkeeping
+inside an already tenant-bound flow. Under that reading, binding `stage` makes
+the ladder less consistent, not more.
+
+I nearly wrote that down as the decision. What stopped it was asking one more
+question: *what does a stager actually control?*
+
+```bash
+awk '/^pub async fn stage\(/,/^}/' crates/…/publications.rs \
+  | grep -nE "policy_id|policy_version|policy_proposals"
+# -> one line: SELECT status, tenant_id FROM policy_proposals
+```
+
+`stage` never reads the proposal's policy. Its projection predicate is existence
+plus tenant. The decision and the approval are each matched to `proposal_id`;
+the projection — **the only reference carrying the bytes** — is not. So the
+stager pairs an approval with any projection in the tenant, and `publish` writes
+those bytes.
+
+The "bookkeeping" reading depended on staging being unable to choose what gets
+published. It can. The premise was false, so the argument went the other way.
+
+⭐ The general shape, and the reason this is written down rather than just
+decided: **a schema is a record of intent, and intent is refutable by the code
+that runs.** A consistency argument over table columns is real evidence — it
+told me something true about how this system was meant to work — but it cannot
+outrank a measurement of what the code permits. The order matters: census the
+intent, then check whether the code still honours the premise it rests on.
+
+⚠️ And the refuting measurement was itself a finding worth more than the leaf
+that found it (`.9.2.1.3.2`): an approval for one policy can publish another's
+compiled bytes. Binding the verb restricts who can do that. It does not stop it.
+
 ## 2026-09-20 — A control that reads the reply cannot see the record disagree
 
 `.9.2.1.3.1` made the staging verb derive its own manifest digest instead of

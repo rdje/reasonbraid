@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-20 — The staging verb decides what an approval publishes, so it names an authority (`SIGNOFF-REPAIR.9.2.1.2.2`)
+
+`REASONBRAID-REPAIR-0339`. The last of the four publication verbs on enrolment alone.
+
+- ⛔ **The argument for leaving it alone was strong, and it was refuted by a measurement rather than by preference.** Censused: four of the eight policy-lifecycle tables carry an authority reference — `policy_versions` (0038), `policy_approvals` (0040), `deployment_targets` (0043), `policy_drift_corrections` (0044) — and they are EXACTLY the four surfaces that check a grant. Under that reading the chain's authority-bearing acts are the approval and the publication transitions, and staging is bookkeeping between them.
+- 🔴 **That reading requires staging to be unable to choose what gets published, and it can.** `stage` never reads the proposal's `policy_id` or `policy_version`, and its projection predicate is existence plus tenant — so the stager pairs an approval with any projection in the tenant, and `publish` writes that projection's bytes. Staging decides CONTENT.
+- ⛔ Two more facts, each a command: the aggregate was **half-bound** (three of four verbs since `.9.2.1.2.1`), and staging is **unbounded** — the only uniqueness is the caller-chosen `publication_id`, so one approval yields unlimited publications.
+- ✅ `migrations/0081` adds the **nullable** `owning_authority`; historical rows stay NULL, which is `migrations/0073`'s disposition for an unattributable lifecycle row. A backfill would invent an author.
+- ✅ **Four verbs, one predicate.** `held_publication_grant` is the decision split out of `held_publication_authority` — split rather than copied, because the three transitions read the field out of an untyped body and the typed staging input already has it.
+- 🔴 **The four would have given TWO different refusals.** A typed `Json<T>` handler rejects a missing field as a bare `422` with a plain-text body, while its siblings answer `400 {code, message}`. Graded by hand here; the class is owned at `.9.2.1.2.3`.
+- ⭐ **Falsified in situ**: replacing the check with `let _ = owning_authority;` fails leg B by name, with the response carrying bob's grant. `api.rs` restored byte-identical.
+- ⚠️ **What this does NOT fix**, said in the book too: it restricts who may pair an approval with a projection; it does not make the pairing correct. `.9.2.1.3.2` owns that.
+- **No regression:** 5 suites including `migration_upgrade`, **155 tests, 0 failed**; `--lib` 133 passed; clippy `-D warnings` rc=0; gate green; book rc=0.
+
 ## 2026-09-20 — The manifest digest is the server's, and the stored value finally has a reader (`SIGNOFF-REPAIR.9.2.1.3.1`)
 
 `REASONBRAID-REPAIR-0338`. Found while measuring what the staging verb validates for `.9.2.1.2.2`.

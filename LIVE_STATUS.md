@@ -5,6 +5,21 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **AN APPROVAL FOR ONE POLICY CAN PUBLISH ANOTHER'S BYTES — OPEN, OWNED AT `.9.2.1.3.2`.**
+
+- 🔴 `stage` never reads the proposal's `policy_id` or `policy_version`, and its projection predicate is `projection_id = $1 AND tenant_id = $2`. The decision and the approval ARE each matched to the proposal; **the one reference that carries the BYTES is not**, and `publish` writes them.
+- ⚠️ The projection verb is itself unbound — registering the projection needs only enrolment.
+- ⭐ ADR-020 §15.7 step (1) already asks to *"verify the decision, the approvals, the authority proof, and the IMMUTABLE INPUTS"*. ⛔ The right invariant must be DECIDED: a projection resolves a SET for a target, so *the resolved set contains the proposal's version* is the candidate — and `policy_projections` may not store enough to answer it.
+- ⛔ **NOT fixed by `.9.2.1.2.2`**, and the book says so: binding staging says WHO may pair an approval with a projection, not that the pairing is right.
+
+✅ **THE STAGING VERB DECIDES WHAT AN APPROVAL PUBLISHES, SO IT NAMES AN AUTHORITY (`.9.2.1.2.2`, REPAIR-0339).**
+
+- ⛔ **The argument for leaving it was strong and was refuted by a measurement.** Four of the eight policy-lifecycle tables carry an authority reference and they are EXACTLY the four surfaces that check a grant — so staging looked like bookkeeping between two authorized acts. 🔴 That rests on staging being unable to choose what gets published, and it can (above).
+- ⛔ Two more facts: the aggregate was **half-bound** (three of four verbs), and staging is **unbounded** — the only uniqueness is the caller-chosen `publication_id`.
+- ✅ `migrations/0081`: the **nullable** `owning_authority`; historical rows stay NULL (`0073`'s disposition). ✅ `held_publication_grant` splits the DECISION out so four verbs share one predicate.
+- 🔴 **The four would have given two different refusals** — a typed `Json<T>` handler's missing field is a bare `422` with a plain-text body. Graded by hand here; the class is `.9.2.1.2.3`.
+- ✅ 5 suites including `migration_upgrade`, **155 tests, 0 failed**; thirteen staging bodies plus a shared closure re-seeded, ARM 1 of the containment control now naming mallory's OWN grant.
+
 🔴 **THE MANIFEST DIGEST WAS THE CALLER'S, AND THE STORED VALUE HAD NO READER AT ALL (`.9.2.1.3.1`, REPAIR-0338).**
 
 - 🔴 `stage` took `manifest_digest` from the request body, checked only its SHAPE, and stored it. Outside `publications.rs` **nothing in the workspace reads it** — the census over crates, book, scripts, migrations and deploy returns one migration line and test fixtures.

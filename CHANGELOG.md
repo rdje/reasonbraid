@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-21 — The Markdown-target positional census, and the ratchet declined because its only firing would be the report of the defect (`SIGNOFF-REPAIR.11.4.2.6.5.1`)
+
+`REASONBRAID-DOC-0094`. `census_positional_refs.py` reports `unresolved=0` across 597 occurrences — a true statement about a population that does not contain Markdown targets. This counts that population.
+
+- **131 occurrences, 37 distinct targets**: 127 in-range, 3 ambiguous, 1 past-end-of-file, 0 unresolved. **9** sit in a live document or the book; **17** target a prepend-only file, where a line reference is broken by construction rather than by neglect.
+- ⛔ **The gate is DECLINED on the measurement.** A ratchet on the prepend-only class, priced over the 30 most recent commits touching tracked Markdown, would have fired on **1** — and that one is the commit that REPORTED the defect, which added 11 such references while quoting the broken pointer to name it. ⭐ **A count of mentions cannot separate a use from a mention**, and a rule whose only firing in thirty commits is against the report of the defect punishes reporting. The instrument ships with no `--check` arm and says why.
+- ⭐ **The live population is a SYMPTOM, not a defect of its own.** All 9 live references resolve; 3 are the deliberate mentions; the other 6 sit inside `LIVE_STATUS.md`'s correction LOG — historical content in a live file, which is the two-roles finding one commit back. Splitting the roles makes them history, where they belong. **Nothing live needs repair, measured rather than assumed.**
+- 🔴 **The prepend test was wrong twice and both wrong answers were zero.** `b.endswith(a)` reported 0 of 24 prepends for `DEV_NOTES.md`, which is 100% prepend-only, because a `# Title` header means an entry lands after it; stripping the title still gave 0% for `LIVE_STATUS.md`, whose insertion point is below a preamble AND a section heading. Neither number was published.
+- 🔴 **The derivation found a fifth prepend-only document the hand-picked list had missed**, and adding it exposed a basename-key bug in an instrument one commit old — a second `INDEX.md` would have marked `docs/adr/INDEX.md` as broken by construction. Now keyed on the resolved path, with a control.
+- 🔴 **And the first prepend control failed for a reason that was not the code**: a four-line fixture cannot exercise a 95%-of-lines rule. Second instrument in two commits to need a fixture scaled to its rule. `--self-test` **20 controls**. No gate registered; `census_positional_refs.py` byte-unchanged.
+
 ## 2026-09-21 — The status file's snapshot is 1.58% of it, and its one positional pointer never resolved (`SIGNOFF-REPAIR.11.4.2.6.5`)
 
 `REASONBRAID-DOC-0093`. The last ungoverned core live document, measured and decided — nothing migrated.

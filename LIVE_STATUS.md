@@ -5,6 +5,13 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE MARKDOWN-TARGET POSITIONAL CENSUS, AND THE RATCHET DECLINED ON ITS OWN PRICING (`.11.4.2.6.5.1`, DOC-0094).**
+
+- **131 occurrences, 37 targets**: 127 in-range, 3 ambiguous, 1 past-end-of-file, 0 unresolved. **9** live-or-book, **17** targeting a prepend-only file where a line reference is broken by construction.
+- ⛔ **Gate DECLINED on the measurement** — priced over 30 commits it would fire on **1**, the commit that REPORTED the defect. ⭐ A count of mentions cannot separate a use from a mention; a rule that only ever fires on the report punishes reporting. Ships with no `--check` and says why.
+- ⭐ **The live population is a SYMPTOM**: 3 of the 9 are deliberate mentions and the other 6 sit inside this file's own correction LOG — history in a live file, resolved by `.11.4.2.6.6` splitting the roles. **Nothing live needs repair.**
+- 🔴 The prepend test was wrong TWICE, both answers zero; the derivation found a FIFTH prepend-only document the hand list missed; adding it exposed a basename-key bug in a one-commit-old instrument; and the first control failed on a fixture too small for its own rule. `--self-test` **20 controls**.
+
 ✅ **THIS FILE CARRIES TWO INFORMATION ROLES, AND THE ONE IT IS NAMED FOR IS 1.58% OF IT (`.11.4.2.6.5`, DOC-0093).**
 
 - 🔎 **615,710 bytes in ONE `##` section holding 318 prepended entries; the 14-row current-status table is 9,726 B at line 2,639, with 570,411 B (92.6%) before it.** Widest line **7,305 B** — wider than the whole layer-A pointer cap. `README.md` sends readers here for current progress and 92.6% of what they load is a log they did not ask for.

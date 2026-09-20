@@ -1,0 +1,19 @@
+# Prepend-only tracked documents — path<TAB>measured share<TAB>window<TAB>measured at.
+#
+# A document is PREPEND-ONLY when new content is inserted ABOVE existing content
+# rather than appended below it. The consequence this registry exists for: a
+# positional reference into such a file (`FILE.md:1719`) is invalidated by the
+# very next entry, so it is broken by construction rather than by neglect
+# (`SIGNOFF-REPAIR.11.4.2.6.5`, `docs/decisions/2026-09-21_live-status-carries-two-roles-and-a-pointer-that-never-resolved.md`).
+#
+# Derived, never hand-edited: `python3 -B scripts/census_markdown_positions.py --measure-prepend`
+# re-derives every row. The test is header-agnostic — the longest common SUFFIX of
+# consecutive versions must cover at least 95% of the older version's lines — because
+# two earlier formulations returned 0 for files that are plainly prepend-only:
+# `b.endswith(a)` misses a fixed `# Title` header, and stripping only the title
+# misses a preamble plus a section heading.
+LIVE_STATUS.md	90%	24 versions	2026-09-21
+CHANGELOG.md	91%	24 versions	2026-09-21
+DEV_NOTES.md	100%	24 versions	2026-09-21
+ROADMAP.md	93%	17 versions	2026-09-21
+docs/tasks/artifacts/signoff_review/INDEX.md	100%	21 versions	2026-09-21

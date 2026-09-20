@@ -1,5 +1,92 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — The rule whose only firing would be the report of the defect
+
+I set out to extend a gate and ended up declining one, which is the right outcome
+and took a measurement to reach.
+
+Yesterday's finding was a stale line-number citation into a prepend-only file.
+The obvious follow-up is a rule: do not add positional references into files that
+get written from the top, because the next entry breaks them. This repository
+already has the shape for it — a ratchet, which refuses a RISE against HEAD
+rather than demanding a clean corpus, and which `RELATIVE-LEAF-REF` uses.
+
+Before registering anything the ratchet has to be priced, so I counted how many
+of the last thirty commits touching tracked Markdown would have raised the count.
+
+One. Commit `87d2b6f`. That is the commit I made an hour earlier, whose entire
+subject is the stale citation, and which added eleven such references because it
+quotes the broken pointer in order to name it as broken.
+
+**A count of mentions cannot separate a use from a mention.** The rule would have
+fired exactly once in thirty commits, against the report of the defect it exists
+to prevent. That is not a threshold problem to be tuned; it is the rule being
+unable to see the difference between someone doing the bad thing and someone
+writing it down.
+
+This repository already has that scar. `check_self_tests.sh` records in its own
+header that registering it put its flag's literal text into the doctrine
+registry's description, so discovery found the enforcer and ran it, recursively.
+A control that searches for a string it contains. Same family: an instrument that
+counts occurrences of a pattern will count its own discussion of the pattern.
+
+So the instrument ships with no `--check` arm, and its docstring says why, so that
+the gate cannot be added later by someone who thinks it was an oversight.
+
+The second thing the census found was better than the rule would have been. Of
+the 131 Markdown-target positional references, only 9 sit in a live document or
+the book. Three are my deliberate mentions. The other six are all inside
+`LIVE_STATUS.md`'s correction log — which is historical content living inside a
+live file, which is exactly the two-roles defect I measured yesterday. **They do
+not need a rule. They need the file split**, after which they are history, where
+a positional reference is a record of what someone read and is correctly frozen.
+The remaining 122 are in closed leaves and acceptance checklists, and editing
+those would rewrite the record of what was done.
+
+So: nothing in the live corpus requires repair. That is a measured result, not an
+absence of effort, and it is worth saying plainly because "I found 131 of
+something" reads like a backlog when it is a census.
+
+Three instrument failures on the way, and I am recording all of them because each
+one produced a confident number.
+
+The prepend-only test was wrong twice, and both wrong answers were **zero**. The
+first asked whether the old version is a suffix of the new one. That returns 0 of
+24 for `DEV_NOTES.md`, a file which is 100% prepend-only, because the file starts
+with `# DEV_NOTES.md` and a prepended entry lands *after* the header. The second
+stripped the title, which fixed two files and still returned 0% for
+`LIVE_STATUS.md`, whose insertion point is below a preamble *and* a section
+heading. Both times the instrument was confidently describing its own reach. The
+test that works asks the question without assuming where the header ends: take
+the longest common suffix in lines and require it to cover the old version.
+
+Then the working derivation corrected my own candidate list — it found a fifth
+prepend-only document I had not thought to check,
+`docs/tasks/artifacts/signoff_review/INDEX.md`, at 100%. That is the argument for
+deriving a registry instead of writing one.
+
+And adding that row immediately exposed a bug in the instrument I had written
+twenty minutes earlier: the prepend lookup keyed on the **basename**, so the
+moment a second `INDEX.md` existed in the registry, `docs/adr/INDEX.md` — a
+different file, not prepend-only — would have been reported as broken by
+construction. A key too loose returns the wrong instance, and mine was too loose
+for exactly as long as the registry had no collisions in it.
+
+Last one, and it is a repeat. My first control for the prepend test used a
+four-line fixture and failed — not because the code was wrong, but because a rule
+expressed as "95% of the older version's lines" cannot be exercised by a fixture
+where a two-line header is half the file. Two days ago the `LESSON-PROMOTION`
+race arm needed 400 lines for the same kind of reason. **A fixture has to be
+scaled to the rule, not merely realistic.** If a third arm needs this, it stops
+being an instance of an existing note and becomes its own.
+
+Promotion: declined and recorded in `SIGNOFF-REPAIR.11.4.2.6.5.1` — every
+statement is a further instance of an already-promoted note
+(`an-instruments-zero-describes-its-reach` twice,
+`a-key-too-loose-returns-the-wrong-instance`, and
+`a-self-test-cannot-be-tidier-than-the-real-input` for the second time in two
+commits). The last is the count to watch.
+
 ## 2026-09-21 — A pointer that was wrong the day it was written
 
 `LIVE_STATUS.md:1719`.

@@ -89,7 +89,13 @@ dev:
 # TSV and failed immediately for a reason worth keeping — make strips `\043` as
 # a comment inside `$(shell ...)`, so the awk program's own skip-comments rule
 # truncated the call.
-RELEASE_BIN_FLAGS := $(shell python3 -B scripts/census_release_binaries.py --release-flags)
+# ⛔ `=` and NOT `:=` (`SIGNOFF-REPAIR.6.8.1.1`). A simply-expanded `:=` is
+# evaluated when the Makefile is PARSED, so every `make` invocation — `gate`,
+# `check`, `hooks` — spawned this census, and a broken or missing script
+# printed an error on targets that have nothing to do with releasing.
+# Recursive expansion evaluates it only where it is used, which is once, in
+# the recipe below.
+RELEASE_BIN_FLAGS = $(shell python3 -B scripts/census_release_binaries.py --release-flags)
 
 release:
 	$(PROJECT_RUN) cargo build --release --bins

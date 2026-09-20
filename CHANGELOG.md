@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-20 — The derived release flags were evaluated on every make invocation (`SIGNOFF-REPAIR.6.8.1.1`)
+
+`REASONBRAID-REPAIR-0336`. A defect the previous commit introduced, found by asking what happens when the script it added is absent.
+
+- 🔴 **`RELEASE_BIN_FLAGS := $(shell …)` is simply-expanded, so `make` evaluates it when the Makefile is PARSED** — `gate`, `check`, `hooks` and every other target spawned the release-manifest census. Driven rather than reasoned about: renaming the script and running `make -n hooks` printed `can't open file '…/census_release_binaries.py'` above a target that has nothing to do with releasing.
+- ⛔ **The harm is coupling, not cost.** A tenth of a second is nothing; an instrument that can print an error during `make gate` is a dependency nobody declared, and on a fresh clone it is noise on every command.
+- ✅ **`=` rather than `:=`** — recursive expansion evaluates the variable where it is referenced, which is once, in the `release` recipe. Verified both directions: with the script renamed away `make -n hooks` is silent; with it restored `make -n release` resolves the same eight flags.
+- ⭐ **The absent-script probe IS the control.** A working script makes the two expansions indistinguishable, so the only way to tell *evaluated at parse time* from *evaluated when used* is to remove it.
+
 ## 2026-09-20 — A ledger row cited a version its own stated source no longer held (`SIGNOFF-REPAIR.6.8.2.1`)
 
 `REASONBRAID-REPAIR-0335`. Four ledger rows were un-revalidated; the sharpest finding was not staleness.

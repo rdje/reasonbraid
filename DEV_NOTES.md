@@ -1,5 +1,53 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — The first remote run found two things, and neither was in the code I wrote
+
+Three hundred commits went out. `supply-chain` passed, `doctrines` failed, and
+`rust` failed. Both failures had been sitting in the tree for days, invisible
+to every gate I had been running.
+
+**`doctrines`** was an instrument pinning my locale as ground truth — written
+up separately. **`rust`** was two stale expectations in
+`enrollment_transaction`, and the interesting part is how old they were.
+
+The failing assertions count rows in `usage_quotas`. A bootstrap expected 2 and
+got 4; a two-principal fixture expected 3 and got 5. `git log -S "usage_quotas"`
+names the commit in one line: `398ecc7`, three days ago, which gave every
+tenant two acquisition-default quota rows — a `resolver`/`*` and a
+`destination`/`*` — and backfilled existing tenants with a migration. Correct
+work. It simply did not move these two expectations, and nothing ran this suite
+afterwards to say so.
+
+**I read the source before touching either number**, and that ordering is the
+whole discipline here. Seeing 4 where 2 was expected, the fast move is to write
+4. But 4 is only right if four rows are *supposed* to exist —
+`insert_defaults_in_tx` inserts the tenant invite ceiling plus the two
+acquisition defaults, `insert_principal_default_in_tx` adds one per principal,
+and that is four. Had it been a double-insert, writing 4 would have laundered a
+real defect into a green suite, and the suite would then have been evidence
+*for* the bug.
+
+So the expectations now name the rows instead of counting them. A helper
+returns the sorted `(scope_kind, scope_id)` pairs and both controls assert the
+identities beside the total. **A count has no producer** — which is exactly why
+this drifted for three days — and a future row that changes the total now has
+to name itself in that list.
+
+⚠️ The honest reading of §16. The policy trades per-commit CI for focused
+checks and puts the full suite before the push. This is that trade being paid,
+precisely as designed: a PostgreSQL suite nobody ran for three days, caught by
+the first remote run. It is not an argument for running everything per commit —
+the full local checkpoint is measured at over two hours on this machine. It is
+an argument for the sentence `COMMIT.md` already contains and which I had been
+reading too narrowly: **the remote is the authoritative gate**, and until the
+remote has run, a green local tree is a hypothesis.
+
+⭐ Both of today's CI failures make the same point from different directions.
+One was an instrument that had only ever run in my locale. The other was a
+suite that had only ever run before a change. Neither was visible to anything I
+could do locally in under two hours — and both were visible to the runner in
+under five minutes.
+
 ## 2026-09-20 — The remote is the positive control a local gate cannot be
 
 Three hundred commits went out and the `doctrines` workflow came back red. The

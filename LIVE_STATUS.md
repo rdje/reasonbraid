@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **TWO ENROLLMENT EXPECTATIONS COUNTED QUOTA ROWS, AND THE ROW THAT MOVED THEM WAS THREE DAYS OLD (`.11.28`, REPAIR-0317).**
+
+- 🔴 The first push's `rust` workflow went red on `enrollment_transaction`, two tests down — and it **reproduces locally**, so it is a suite the four cheap pre-push gates do not run. Both failures are `count(*) FROM usage_quotas`: a bootstrap asserted 2 and observed **4**; a two-principal fixture asserted 3 and observed **5**.
+- ⭐ **The cause is three days old** (`git log -S`): `398ecc7` (`.11.14.3.14`, 2026-09-17) gave every tenant two acquisition defaults, `migrations/0068` backfilling existing ones. The expectations were not moved with it.
+- ⛔ **4 and 5 were established FROM THE SOURCE before either number was touched** — *adjust until it passes* is how a real double-insert gets laundered green.
+- ✅ **The expectations now NAME the rows** (`quota_scopes`: sorted `(scope_kind, scope_id)` pairs asserted beside the total). ⭐ A count has no producer; these pairs do.
+- ⚠️ **§16's trade being paid exactly as designed** — a pg suite nobody ran for three days, caught by the first remote run. ⛔ Not an argument for per-commit CI (the full local checkpoint is over two hours) but for what `COMMIT.md` says: **the remote is the authoritative gate**.
+- ✅ **VERIFIED:** `enrollment_transaction` **9/0**, against 7/2 before. No product code changed. Gate green; book rc=0.
+
 🔴 **A SELF-TEST THAT PINS ONE HOST'S COLLATION IS NOT GROUND TRUTH (`.11.27`, REPAIR-0316).**
 
 ⭐ The first push of this session turned the remote `doctrines` gate RED — the first time the runner judged any of this work.

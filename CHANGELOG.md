@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-20 — Two enrollment expectations counted quota rows, and the row that moved them was three days old (`SIGNOFF-REPAIR.11.28`)
+
+`REASONBRAID-REPAIR-0317`. The second half of the first push's red CI; a test-only change under `COMMIT.md`'s CI-repair exception.
+
+- 🔴 **`rust` failed on `enrollment_transaction`, two tests down, and it reproduces locally** — so not environment-dependent, just a suite the four cheap pre-push gates do not run. Both failures are a `count(*) FROM usage_quotas`: a bootstrap asserted 2 and observed **4**, a two-principal fixture asserted 3 and observed **5**.
+- ⭐ **The cause is three days old**, found with `git log -S "usage_quotas"`: `398ecc7` (`SIGNOFF-REPAIR.11.14.3.14`, 2026-09-17) gave every tenant two acquisition defaults — a `resolver`/`*` row and a `destination`/`*` row — with `migrations/0068` backfilling existing tenants. The expectations were not moved with it.
+- ⛔ **4 and 5 were established from the source before either number was touched.** `insert_defaults_in_tx` inserts the tenant invite ceiling plus the two acquisition defaults, and `insert_principal_default_in_tx` adds one write ceiling per principal. *Adjust the expectation until it passes* is how a real double-insert gets laundered into a green suite.
+- ✅ **The expectations now name the rows rather than counting them.** A `quota_scopes` helper returns the sorted `(scope_kind, scope_id)` pairs, and both controls assert the identities beside the total. ⭐ A count has no producer; these pairs do — which is precisely why this drifted, and the next row that moves the total has to name itself there.
+- ⚠️ **What this says about the policy, stated rather than implied.** §16 trades per-commit CI for focused checks and puts the full suite before the push; this is that trade being paid exactly as designed. ⛔ Not an argument to run everything per commit — the full local checkpoint is measured at over two hours — but for what `COMMIT.md` already says: the remote is the authoritative gate.
+- ✅ **VERIFIED:** `enrollment_transaction` **9 passed / 0 failed**, against 7 passed / 2 failed before. No product code changed. Doctrine gate green; `make book` rc=0; `handoff: OK`.
+
 ## 2026-09-20 — A self-test that pins one host's collation is not ground truth (`SIGNOFF-REPAIR.11.27`)
 
 `REASONBRAID-REPAIR-0316`. The first push of this session turned the remote `doctrines` gate red; this is the fix, and it is a CI-repair push under `COMMIT.md`'s standing exception.

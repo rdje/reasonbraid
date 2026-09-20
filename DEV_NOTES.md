@@ -1,5 +1,72 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — A pointer that was wrong the day it was written
+
+`LIVE_STATUS.md:1719`.
+
+That citation sits in a decision record from two days ago, attached to the text
+*"Historical G5 subtraction gate withdrew the quality-lift claim"*. I went looking
+at line 1719 because I am about to restructure that file and wanted to know which
+consumers a restructuring would break.
+
+Line 1719 is about git-lfs legacy version URLs. The cited text is at line 2,647.
+
+The obvious story is drift: `LIVE_STATUS.md` is prepend-only, 928 lines of
+correction entries have gone in above that row since the record was written, and
+every line number below them moved by 928. That story is true and it is not the
+interesting part.
+
+The interesting part is what happened when I checked the reference at its own
+commit. There is exactly one commit that touches that decision record, `b204c87`.
+At `b204c87`, line 1719 of `LIVE_STATUS.md` is `| --- | --- | --- |` — a Markdown
+table separator — and the cited text is at line 1728.
+
+**The pointer was wrong by nine lines the day it was written.** It then became
+wrong by 928. Two independent failures in one citation, and the first one had
+nothing to do with drift at all: someone counted to the top of the table instead
+of to the row.
+
+There is a detail here I keep turning over. The title of the record containing
+that citation ends: *"and G4's single test citation no longer resolves"*. It is a
+record whose subject is a citation that stopped resolving. It contains a citation
+that never did.
+
+I am not repairing it by editing it. `docs/decisions/` supersedes rather than
+mutates, and that record's own header says so in terms — it goes out of its way
+to state that the two gate records it corrects are byte-unchanged. Editing it to
+fix a line number would break a stronger contract than the one it violated. So
+the correction lives in a new record, which is what this directory is for, and
+the broken citation stays exactly where it is with a record pointing at it.
+
+What the instance earns is a rule, and the rule is narrower and harder than "keep
+citations up to date":
+
+> **Do not cite a line number into a prepend-only file.** Not "check it
+> occasionally" — do not write it. Every entry added at the top invalidates every
+> reference below it, so such a citation is broken by construction. The next
+> commit breaks it. There is no maintenance regime that fixes this, only a
+> different way of pointing: cite the row, the heading, the content.
+
+And the part that should have caught it did not, for a reason worth writing down.
+This repository has a `POSITIONAL-REF` doctrine and a census behind it. That
+census reports 597 positional references across 29 files with `unresolved=0`. It
+was green over this the entire time, because its population is positional
+references to **source** files — a `.rs` path followed by a line number. A positional reference whose
+target is a tracked Markdown file is not in its population at all.
+
+So the gate was not wrong. It was answering a different question than the one I
+assumed it answered, and `unresolved=0` was a true statement about a set that did
+not contain the instance. That is the same shape as
+`a-census-is-as-wide-as-its-key`, which I cited two days ago about a different
+census, in this same lane. Twice in one week, and both times the number was
+correct and the population was not what I thought.
+
+Promotion: declined and recorded in `SIGNOFF-REPAIR.11.4.2.6.5`. The prepend-only
+rule is a disposition about this repository's own files, so it is a decision
+record, carried where a reader of the broken citation will meet it. If a second
+prepend-only file ever acquires positional consumers it becomes a knowledge note;
+the count is one.
+
 ## 2026-09-21 — A control that fails for the same reason as its subject
 
 The bound probe reported that all five core live documents were bounded. One of

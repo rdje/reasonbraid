@@ -5,6 +5,13 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THIS FILE CARRIES TWO INFORMATION ROLES, AND THE ONE IT IS NAMED FOR IS 1.58% OF IT (`.11.4.2.6.5`, DOC-0093).**
+
+- 🔎 **615,710 bytes in ONE `##` section holding 318 prepended entries; the 14-row current-status table is 9,726 B at line 2,639, with 570,411 B (92.6%) before it.** Widest line **7,305 B** — wider than the whole layer-A pointer cap. `README.md` sends readers here for current progress and 92.6% of what they load is a log they did not ask for.
+- ✅ **Two lifecycles**: `bounded_snapshot` for the table (overwritten, small, FIRST), `rolling_ledger` for the log. ⛔ **The rotation shipped two commits ago is NOT the answer as it stands** — that boundary was QUOTED from a governing gate and this file has none, so one must be CREATED.
+- 🔴 **The one positional consumer NEVER resolved**: `LIVE_STATUS.md:1719` was a table separator at its citing record's own commit (content at 1728) and is 928 lines off today. ✅ The claim stands — the text is in the Phase-5 row below — and the repair is a CORRECTING RECORD, because decisions supersede rather than mutate. ⛔ **Never cite a line number into a prepend-only file.**
+- 🔴 `POSITIONAL-REF` was green over it: 597 occurrences, `unresolved=0`, population = SOURCE targets only. Owner `.11.4.2.6.5.1`. ⚠️ **This file has BOOK consumers**, so its migration (`.11.4.2.6.6`) touches a surface the director reads. No ceiling set, no history moved.
+
 ✅ **THE BOUND PROBE READS THE ENFORCER'S REASON, AND REFUSES OVER A TREE IT HAS NOT BASELINED (`.11.4.2.6.4`, REPAIR-0353).**
 
 - ⛔ **The `5 of 5` printed last commit was WRONG; the truth is 4 of 5.** Corrected by hand then; repaired mechanically now.

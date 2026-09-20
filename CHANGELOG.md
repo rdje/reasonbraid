@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-21 — The status file's snapshot is 1.58% of it, and its one positional pointer never resolved (`SIGNOFF-REPAIR.11.4.2.6.5`)
+
+`REASONBRAID-DOC-0093`. The last ungoverned core live document, measured and decided — nothing migrated.
+
+- 🔎 **The reader question the file exists to answer is answered by 1.58% of its bytes.** 615,710 bytes in ONE `##` section holding **318** prepended correction entries; the 14-row current-status table is **9,726 bytes at line 2,639**, with **570,411 bytes — 92.6% — before it**. Widest line **7,305 bytes**, wider than the whole layer-A pointer cap. `README.md` sends readers here for current progress.
+- ✅ **Two information roles, two lifecycles**: `bounded_snapshot` for the table, `rolling_ledger` for the log. ⛔ **The rotation shipped two commits ago is NOT its answer as it stands** — that boundary was QUOTED from the gate already governing its file, and this file has none, so a boundary must be CREATED, which is a different act with a different burden of proof.
+- 🔴 **The one positional consumer never resolved — wrong by 9 at birth and by 928 today.** `docs/decisions/2026-09-19_g4-g5-four-claims-re-derived.md` cites `LIVE_STATUS.md:1719`; at that record's own and only commit line 1719 is a table separator and the text is at 1728, and today it is at 2,647 because 928 lines were prepended above it in two days. ⭐ The record whose title ends *"and G4's single test citation no longer resolves"* contains a citation that never resolved.
+- ✅ **The claim is unaffected and nothing is withdrawn** — only the pointer failed. ⛔ The repair is a CORRECTING RECORD, not an edit: `docs/decisions/` supersedes rather than mutates, and the record under correction states that rule in its own header. **Do not cite a line number into a prepend-only file: every entry added at the top invalidates every reference below it.**
+- 🔴 **No gate could have caught it** — `census_positional_refs.py` reports `unresolved=0` across 597 occurrences because its population is positional references to SOURCE files. Owned by `.11.4.2.6.5.1` with a calibrate-first constraint, not routed.
+- ⚠️ **Unlike `DEV_NOTES.md`, this file has BOOK consumers** — both `qualification-review.md` and `roadmap.md` — so its migration touches a surface the director reads. Stated now rather than discovered later. No ceiling set, no boundary created, no history moved; the record under correction is byte-unchanged.
+
 ## 2026-09-21 — The bound probe reads the enforcer's reason, and refuses over a tree it has not baselined (`SIGNOFF-REPAIR.11.4.2.6.4`)
 
 `REASONBRAID-REPAIR-0353`. ⛔ **Stated first: the `5 of 5` the bound probe printed in the previous commit's session was WRONG. The truth was and is 4 of 5.** It was corrected by hand before anything shipped; the hand correction is not the repair, this is.

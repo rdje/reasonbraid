@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **ONE UNFINISHED LEAF MAY NOT HOLD TWO FRONTIER ROWS — AND I PRODUCED TWO OF THE FOUR INSTANCES MYSELF (`.11.22.1`, REPAIR-0344).**
+
+- 🔴 **The mechanism, observed rather than inferred**: closing a leaf vacates row 1, the next is PROMOTED to it, and nobody checks whether it already had a row. Two of the four happened in this leaf's own session and **both passed `make gate`**, because two `pending` rows for a `pending` leaf AGREE with it.
+- ⭐ **The gate then caught a FIFTH on its first working day**, in this leaf's own closing edit — refused instead of shipped.
+- ✅ Ships as **rule 3 of `FRONTIER-STATUS`**, not a gate of its own: one table, one parser; the calibration instrument IMPORTS the rule.
+- ⭐ **Calibrated over the WHOLE history**: **38 of 672** commits, **12 leaves**, `.11.14.3.10` holding the shape for **24 consecutive commits**; seven classified by hand, all real, no false positive.
+- 🔴 **The leaf's own census UNDERSTATED it** at *one leaf across 15 trees* — a snapshot of a transient defect measures how often it is REPAIRED, not how often it occurs.
+- ⭐ The RED was the live instance in the tracked file; the falsification restored a real historical pair, **exit status 1**, restored byte-identical. ⚠️ The first reading of that status was `head`'s, not the gate's.
+- ✅ **The caption is replaced by the CHECK** rather than a better sentence: a commit that makes the new line false is refused.
+
 ✅ **THE NINE UNREGISTERED REASON CODES, RECOMMENDED ONE BY ONE — AND THE ELEVEN WITH NO PRODUCER ARE THE LARGER HALF (`.11.7.1`, DOC-0086).**
 
 - 🔴 **The measurement that reframed it was not the one asked for: ELEVEN of the twenty REGISTERED codes have NO PRODUCER**, three of them arguably what one of the nine is a rename of. The registry drifts in BOTH directions.

@@ -25,10 +25,28 @@ leaf, and two files agreeing is exactly what it asks. `TASK-STATUS` requires one
 counts, never cell meaning. The defect lives in the seam between three checks
 each doing its own job.
 
-THE TWO RULES, and the second is the one that hurts:
+THE THREE RULES, and the second is the one that hurts:
 
   1. every row's status column equals its leaf's own status;
-  2. row 1's leaf is not finished.
+  2. row 1's leaf is not finished;
+  3. no UNFINISHED leaf holds more than one row (`SIGNOFF-REPAIR.11.22.1`).
+
+⭐ RULE 3 IS THE ONE THE FIRST TWO CANNOT SEE, and that is not a slip in them.
+When one leaf holds two `pending` rows and the leaf says `pending`, every row
+AGREES — rules 1 and 2 do exactly their job and the defect is in a property
+neither asks about. Measured over the WHOLE history rather than a window:
+**38 of 672 commits** touching a tracked tree would have been blocked, across
+**12 distinct leaves**, and `.11.14.3.10` carried the shape for **24 consecutive
+commits**. Seven firings were classified by hand and all seven are real
+duplications — a leaf promoted toward row 1 while an older row survived.
+Re-derive with `python3 -B scripts/census_frontier_duplicates.py --calibrate`.
+
+⚠️ A DUPLICATE ROW IS NOT A DEFECT IN GENERAL, and getting that wrong would
+condemn most of the corpus: `.11.22`'s census recorded *66 rows naming 49
+distinct leaves — 13 leaves carry 2 to 4 rows each*, because a leaf legitimately
+gets an OPENING row and, later, a closing `done` row beside it. Rule 3 counts
+only rows that BOTH still claim to be work, and a deferring `—` row is excluded
+for the same reason: it points at another row rather than asserting a status.
 
 ⚠️ A `done` ROW IS EXPLICITLY LEGAL. The table keeps closed leaves as recent
 history — most of it is closed rows — so this is not "no finished leaves in the
@@ -108,6 +126,21 @@ def frontier_rows(text: str) -> list[tuple[int, str, str, str]]:
     return rows
 
 
+def duplicate_rows(rows: list[tuple[int, str, str, str]]) -> list[tuple[str, list[tuple[int, str]]]]:
+    """[(leaf, [(line, order), …]), …] for each leaf holding >1 UNFINISHED row.
+
+    ⛔ THE ONE DEFINITION of rule 3 (`SIGNOFF-REPAIR.11.22.1`). The calibration
+    instrument imports it rather than restating it: two readings of one table is
+    the shape this whole lane is about.
+    """
+    unfinished: dict[str, list[tuple[int, str]]] = {}
+    for line, order, leaf, col in rows:
+        if col in DEFERRED or col in FINISHED:
+            continue
+        unfinished.setdefault(leaf, []).append((line, order))
+    return sorted((leaf, at) for leaf, at in unfinished.items() if len(at) > 1)
+
+
 def breaches(text: str) -> list[str]:
     """Every way this file's frontier table disagrees with its own leaves."""
     own = leaf_status(text)
@@ -130,6 +163,13 @@ def breaches(text: str) -> list[str]:
                 f"line {line}: ROW 1 names {leaf}, which is `{actual}` — "
                 "row 1 is the leaf a fresh session resumes from"
             )
+    for leaf, at in duplicate_rows(rows):
+        where = ", ".join(f"row {o} (line {l})" for l, o in at)
+        out.append(
+            f"{leaf} holds {len(at)} UNFINISHED rows — {where}. A reader cannot tell "
+            "whether that is one job or two; remove the superseded row, or give one a "
+            "deferring `—` status. (An opening row beside a later `done` row is LEGAL.)"
+        )
     return out
 
 
@@ -231,6 +271,64 @@ def self_test() -> int:
     # And a tree with no frontier table at all is not a breach.
     check("a tree with no frontier table", "#### SIGNOFF-REPAIR.1.1 — a\n\n- Status: `done`.\n", fragment=None)
 
+    # ── RULE 3, both directions (`SIGNOFF-REPAIR.11.22.1`) ────────────────────
+    one_leaf = "#### SIGNOFF-REPAIR.1.1 — a\n\n- Status: `pending`.\n"
+    check(
+        "two pending rows for one unfinished leaf",
+        tree(
+            "| 1 | `SIGNOFF-REPAIR.1.1` | `pending` | a |\n"
+            "| 5 | `SIGNOFF-REPAIR.1.1` | `pending` | b |",
+            one_leaf,
+        ),
+        fragment="holds 2 UNFINISHED rows",
+    )
+    check(
+        "`active` beside `pending` is still one leaf claimed twice",
+        tree(
+            "| 1 | `SIGNOFF-REPAIR.1.1` | `active` | a |\n"
+            "| 5 | `SIGNOFF-REPAIR.1.1` | `pending` | b |",
+            "#### SIGNOFF-REPAIR.1.1 — a\n\n- Status: `active`.\n",
+        ),
+        fragment="holds 2 UNFINISHED rows",
+    )
+    # ⭐ THE HISTORICAL FIXTURE, copied from `f56b8b6` where `.11.14.3.10`
+    # carried the shape for 24 consecutive commits. A rule calibrated on
+    # invented rows is calibrated on the author's imagination; this is the
+    # corpus's own instance, kept so the gate can never stop naming it.
+    check(
+        "the real historical duplicate (.11.14.3.10 at f56b8b6)",
+        tree(
+            "| 1a | `SIGNOFF-REPAIR.11.14.3.10` | `pending` | a |\n"
+            "| 1a | `SIGNOFF-REPAIR.11.14.3.10` | `pending` | a again |\n"
+            "| 1a0 | `SIGNOFF-REPAIR.11.14.3.10` | `pending` | the opening row |",
+            "#### SIGNOFF-REPAIR.11.14.3.10 — a\n\n- Status: `pending`.\n",
+        ),
+        fragment="holds 3 UNFINISHED rows",
+    )
+    # ⛔ THE LEGAL SHAPES, and they are most of the corpus. If either of these
+    # ever fires, rule 3 has become "no leaf twice", which would condemn the
+    # opening-then-closing pattern the table is built on.
+    check(
+        "an opening row beside a closing one, both updated to the closed leaf",
+        tree(
+            "| 1 | `SIGNOFF-REPAIR.1.2` | `pending` | the real frontier |\n"
+            "| 2 | `SIGNOFF-REPAIR.1.1` | `done` | the opening row, updated |\n"
+            "| 5 | `SIGNOFF-REPAIR.1.1` | `done` | the closing row |",
+            "#### SIGNOFF-REPAIR.1.1 — a\n\n- Status: `done`.\n\n"
+            "#### SIGNOFF-REPAIR.1.2 — b\n\n- Status: `pending`.\n",
+        ),
+        fragment=None,
+    )
+    check(
+        "a deferring row points at another rather than asserting a status",
+        tree(
+            "| 1 | `SIGNOFF-REPAIR.1.1` | `pending` | a |\n"
+            "| 8 | `SIGNOFF-REPAIR.1.1` | — | see row 1 |",
+            one_leaf,
+        ),
+        fragment=None,
+    )
+
     for f in failures:
         print(f"SELF-TEST FAILED: {f}", file=sys.stderr)
     if failures:
@@ -239,7 +337,10 @@ def self_test() -> int:
         "FRONTIER-STATUS self-test: an agreeing table passes, a done row kept as history is "
         "allowed, a stale pending row and a row-1 pointer at a closed leaf are each refused by "
         "name, both status forms read, `active` is not finished, a deferred cell is skipped, a "
-        "blank line ends the table, and a tree with no table is silent"
+        "blank line ends the table, and a tree with no table is silent; and rule 3 names two "
+        "pending rows for one leaf, names `active` beside `pending`, names the real historical "
+        "three-row instance, and stays silent for an opening-beside-closing pair and for a "
+        "deferring row"
     )
     return 0
 

@@ -1,5 +1,20 @@
 # CHANGELOG.md
 
+## 2026-09-20 — One unfinished leaf may not hold two frontier rows, and I produced two of the four instances myself (`SIGNOFF-REPAIR.11.22.1`)
+
+`REASONBRAID-REPAIR-0344`. Ships as **rule 3 of `FRONTIER-STATUS`**, calibrated over the whole history before it was proposed.
+
+- 🔴 **The mechanism, observed four times rather than inferred**: closing a leaf vacates row 1, the next leaf is PROMOTED to it, and nobody checks whether it already had a row further down. **Two of the four happened in this leaf's own session** — `a46a0fc` (`.11.7.1` at rows 1 and 4) and `20def51` (`.11.22.1` at rows 1 and 5) — and both passed `make gate`, because two `pending` rows for a `pending` leaf both AGREE with it.
+- ⭐ **And the gate caught a FIFTH on its first working day, in this leaf's own closing edit.** Promoting `.11.4.2` to the vacated row 1 while it held row 6 was refused by name. The four earlier instances shipped; this one did not.
+- ✅ **A further arm of `FRONTIER-STATUS`, not a gate of its own** — the three rules read one table, and a second gate would be a second parser of it. The calibration instrument IMPORTS the rule rather than restating it.
+- ⭐ **Calibrated over the WHOLE history** (`.11.6`): **38 of 672** commits touching a tracked tree would have been blocked, across **12 distinct leaves**, with `.11.14.3.10` carrying the shape for **24 consecutive commits**. Seven classified by hand, all seven real, **no false positive found**.
+- 🔴 **The leaf's own census understated the shape.** It recorded *exactly one leaf across all 15 trees* — true as a snapshot, and over history it is 12 leaves and 38 commits. **A snapshot of a transient defect measures how often it is repaired, not how often it occurs.**
+- ⛔ **A duplicate row is NOT a defect in general** — `.11.22`'s census counted 13 leaves carrying 2 to 4 rows each, because an opening row beside a later `done` row is the normal pattern. Rule 3 counts only rows that both still claim to be work, and both legal shapes are asserted silent in the self-test.
+- ⭐ **The RED was the live instance in the tracked file**, not a fabricated fixture. The falsification then restored `.11.14.3.10`'s real historical pair: **exit status 1**, one rule-3 message beside two rule-1 ones, file restored byte-identical. The real instance is kept permanently in the self-test.
+- ⚠️ **The first reading of that exit status was wrong and is recorded**: the gate was piped through `head -4`, so `$?` was `head`'s and printed `rc=0` for a run that had failed.
+- ✅ **The caption is replaced by the check, not by a better sentence.** It used to assert the duplicate pair had been removed — true when written, stale within days. A commit that makes the new line false is now refused.
+- ⚠️ An instrument self-correction: the census first reported *70 tracked trees*. `docs/tasks/*.md` is a git pathspec and git's `*` crosses `/`, so it had swept 54 evidence documents — the recursive-glob overstatement `.11.24.1.6.1` recorded, in a second instrument. The honest population is 16, and the scoped re-run returns the same 38 commits.
+
 ## 2026-09-20 — Recommend the nine unregistered reason codes one by one, and the eleven with no producer are the larger half of the answer (`SIGNOFF-REPAIR.11.7.1`)
 
 `REASONBRAID-DOC-0086`. Evidence for a v0.5.0 decision. No code changed and `ROADMAP.md` is untouched.

@@ -1,5 +1,61 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — A snapshot of a transient defect measures how often it is repaired
+
+`SIGNOFF-REPAIR.11.22.1` opened on a frontier table naming one unfinished leaf
+at two rows. Its census was careful and it was a snapshot:
+
+> A census over the `## Current Frontier` table of all **15** tracked trees
+> returns exactly **one** leaf carrying more than one UNFINISHED row.
+
+One instance across fifteen trees reads as *rare*. The leaf was written on that
+reading — worth a gate arm, maybe, if the calibration supported it.
+
+The calibration, over the whole history rather than HEAD:
+
+```text
+commits the rule would have BLOCKED: 38 of 672
+distinct leaves implicated         : 12
+  SIGNOFF-REPAIR.11.14.3.10: 24 commits
+  SIGNOFF-REPAIR.11.2.4:      5 commits
+  SIGNOFF-REPAIR.3.5.4:       4 commits
+  … eight more
+```
+
+Twelve leaves, not one. And `.11.14.3.10` held the shape for twenty-four
+consecutive commits — a defect that was present, in the table a fresh session
+resumes from, for the better part of a week.
+
+⭐ The reason the snapshot said "one" is not that the census was careless. It is
+that **the defect is transient**: someone eventually notices a duplicate row and
+deletes it. A count at HEAD therefore measures *how many instances happen to be
+un-repaired right now*, which is a function of how quickly they are repaired —
+not of how often they occur. The two numbers differ by whatever the mean
+lifetime is, and here that is large enough to turn 1 into 12.
+
+**The rule:** for a defect that gets repaired, a census at one commit is a
+lower bound with an unknown multiplier. If the question is *should we gate
+this*, walk the history.
+
+⚠️ And the leaf's prediction turned into an observation while I was working it.
+It said *"a later commit promoted the same leaf to row 1, the pair came back"*.
+I did exactly that twice during this session — `.11.7.1` at rows 1 and 4, then
+`.11.22.1` at rows 1 and 5 — and both commits passed `make gate`, because two
+`pending` rows for a `pending` leaf agree with the leaf and the two existing
+rules had nothing to object to. Then, closing this leaf, I did it a third time
+with `.11.4.2`, and the new rule refused the commit by name.
+
+⭐ Four instances shipped; the fifth did not. That is the clearest before/after
+this repository has produced for a gate, and it is worth noticing that the
+author who wrote the rule is the one it caught — a gate that only catches other
+people's mistakes is a gate nobody needed.
+
+⚠️ Held rather than promoted (`.11.20`): it sharpens
+`calibrate-over-the-history-that-contains-the-instance`, which is already in the
+layer and is the rule this leaf's acceptance was written from. It is recorded in
+the gate's own docstring. A second snapshot understating a recurrent shape would
+earn it a note.
+
 ## 2026-09-20 — An arm that consumes state needs its own fixture
 
 The coverage control for `SIGNOFF-REPAIR.9.3.4.2` has three arms over five

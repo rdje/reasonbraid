@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-20 — Ten commits re-derived: the four surfaced findings hold, and the one that moved is a set rather than a number (`SIGNOFF-REPAIR.13.4.5`)
+
+`REASONBRAID-REPAIR-0332`. The director's *ensure the findings hold*, a fifth time, over `REPAIR-0325`…`DOC-0085`.
+
+- ✅ **Finding 1 — `make release` signs 4 of 10 binaries — HOLDS**, and two routes independent of the original agree to the name: reading each crate manifest with `tomllib` plus the filesystem (no resolver at all) returns the same ten targets, and grepping the Makefile's own `--bin` flags returns four.
+- ✅ **Finding 2 — the `base64` split — HOLDS, and the third route is sharper than the original.** Reading the VENDORED manifests on disk splits the requirement strings the resolver collapses: `"0.22"` ×6, `"0.22.0"` ×3, `"0.22.1"` ×2 = 11 third-party crates, plus `reasonbraid-server` = **12**, against `"0.23"` ×1 — `rmcp 3.2.0`.
+- ✅ **Finding 3 — the MCP server named the SDK — HOLDS, and the structural route makes it upstream's trap rather than ours.** `ServerInfo::default()` → `Implementation::default()` → `from_build_env()` → **`env!("CARGO_CRATE_NAME")` evaluated inside rmcp**. Every rmcp server that takes the generated handler without overriding `get_info` presents itself to every client as `rmcp 3.2.0`.
+- ✅ **Finding 4 — PHASE-1's dialect — HOLDS.** A script sharing nothing with the census returns 194 phase-repeat / 46 suffix / 12 both / 0 neither over 252, matching the published figure exactly.
+- 🔴 **The one that moved is more interesting than a wrong count: the instrument census had the RIGHT NUMBER and the WRONG SET.** Two of the six named — `check_tree_index_frontier.sh` and `check_book_frontier.sh` — parse the Current Frontier table's row 1 and never look a leaf up; and one that does belong was missing: **`census_relative_leaf_refs.py`, the census that leaf produced.** Its author left his own instrument out of its own population.
+- ⛔ **The *22 instruments read `docs/tasks/`* figure is WITHDRAWN rather than corrected** — three successive automated predicates over the same 22 returned **6, 9 and 12**, and none is defensible without reading each file. The claim is now stated over a named set, with no count of the wider population published.
+- ⭐ **That is `an-instruments-first-population-describes-its-parser` met a fourth time, one commit after promoting it.** ✅ And the conclusion the set supports is unaffected and stronger: every instrument in the corrected set locates a leaf by a HEADING, and `check_frontier_status.py` wants three-to-six hashes, so a `##`-level lane would be invisible too.
+- 🔎 **One live-document claim was made false by this session's own work**: `LIVE_STATUS.md` said `reasonbraid-mcp`'s *only targets **are** a lib and a build script* — present tense — and `.6.8` gave it a binary and an integration test. Annotated, not rewritten; the load-bearing half (0 packages depend on it) re-derived and still true.
+- ⚪ The live corpus was censused rather than sampled: three sites found, three handled. The dated ledgers state these in the past tense and stay.
+
 ## 2026-09-20 — The listen gateway owes a dialler before an operator surface (`SIGNOFF-REPAIR.6.7`)
 
 `REASONBRAID-DOC-0084`. The leaf opened on exposure; the binding constraint is one layer below it.

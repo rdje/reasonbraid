@@ -5,6 +5,17 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **TEN COMMITS RE-DERIVED: THE FOUR SURFACED FINDINGS HOLD, AND THE ONE THAT MOVED IS A SET RATHER THAN A NUMBER (`.13.4.5`, REPAIR-0332).**
+
+⭐ The director's *ensure the findings hold*, a fifth time — every claim re-derived by a route that did NOT produce it.
+
+- ✅ **`make release` signs 4 of 10 binaries** — confirmed by two routes independent of the original: manifests + filesystem with no resolver, and the Makefile's own `--bin` flags.
+- ✅ **The `base64` split** — the vendored manifests on disk give **11 third-party crates + `reasonbraid-server` = 12** requiring `^0.22`, against **1** requiring `^0.23` (`rmcp`).
+- ✅ **The MCP server named the SDK** — and structurally: `Implementation::default()` is `env!("CARGO_CRATE_NAME")` evaluated INSIDE rmcp, so every rmcp server that skips `get_info` presents itself as `rmcp 3.2.0`. An upstream trap, not only ours.
+- ✅ **PHASE-1's dialect** — an independent script returns 194 / 46 / 12 / 0 over 252, matching exactly.
+- 🔴 **The instrument census had the RIGHT NUMBER and the WRONG SET.** Two of the six named read the frontier TABLE, not a node; and the one missing was **the census that leaf itself produced.** ⛔ The *22 read `docs/tasks/`* figure is WITHDRAWN — three predicates over it returned 6, 9 and 12. ⭐ The conclusion is unaffected and stronger: all six locate by HEADING, and one wants three-to-six hashes.
+- 🔎 **One live claim was made false by this session's own work** (`reasonbraid-mcp`'s *only targets are a lib and a build script*) — annotated, with the load-bearing half re-derived and still true.
+
 ✅ **THE LISTEN GATEWAY OWES A DIALLER BEFORE AN OPERATOR SURFACE (`.6.7`, DOC-0084).**
 
 - 🔴 The leaf opened on exposure; **the binding constraint is that there is nothing to operate.** `pub trait ListenUpstream` has exactly **one** implementor in the workspace and it is in the test suite — no production type dials anything.
@@ -351,7 +362,7 @@ And that is a property of the code rather than a figure of speech, found by cens
 
 The director's *ensure the findings hold*, put a second time and applied to `REPAIR-0292`…`0298`. Every re-derivation by a route that did NOT produce the number.
 
-- ✅ **The headline holds by the TOOLCHAIN rather than by a grep.** `cargo metadata`'s resolved graph: **0 workspace packages depend on `reasonbraid-mcp`**, whose only targets are a `lib` and a build script. Falsified further — the only reference outside `crates/` and `docs/` is `scripts/run_pg_tests.py`, the test runner.
+- ✅ **The headline holds by the TOOLCHAIN rather than by a grep.** `cargo metadata`'s resolved graph: **0 workspace packages depend on `reasonbraid-mcp`**, whose only targets are a `lib` and a build script. Falsified further — the only reference outside `crates/` and `docs/` is `scripts/run_pg_tests.py`, the test runner. ⚠️ **ANNOTATED by `.13.4.5` (2026-09-20): the second half is no longer true and this session made it false.** `.6.8` gave the crate a `rb-mcp` binary and a `stdio_transport` integration test, so its targets are now four. The first half still holds — **0 workspace packages depend on it**, re-derived by `cargo metadata --no-deps` — and that was always the load-bearing half: the crate is reachable through its own BINARY, not through a dependant.
 - ✅ **The rename's argument came back STRONGER.** It rested on one producer; enumerating every writer of `acknowledged_at` finds **two** production paths (`node.rs:315`, `worker.rs:187`) and **both journal every command before acking**.
 - ✅ **`PresenceState::Busy` is never constructed — said by the COMPILER**, not by a search: removing `#[allow(dead_code)]` yields `warning: variant Busy is never constructed`.
 - ✅ **The 23 PHASE rows and 18 pairs the whole adjudication rests on did not move**, and they are the same 18. Also holding: `ask_network` 0, the offline expiry 0, `sse-stream` unvendored, `presence_state` 5 call sites, the book's MCP absence at `fdd3106`, three chapters' render figures, **7/7 mutations re-caught**, and the census's five figures at their own commit.

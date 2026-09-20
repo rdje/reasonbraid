@@ -100,12 +100,39 @@ than one honest permanent row.
 
 ## The instrument census this rests on
 
-**22 instruments read `docs/tasks/`.** Six locate a leaf by its heading or `ID:`
-line — `check_task_status.sh`, `check_frontier_status.py`,
-`check_tree_index_frontier.sh`, `check_book_frontier.sh`,
-`check_task_acceptance.sh`, `census_goal_receipt_gap.py` — and
-`check_leaf_id_unique.sh` `exec`s the last of those, so seven by effect. The
-other fifteen read the tree files for staged-file checks, prose predicates or
-link resolution and never resolve an id to a node. ⚠️ Hand-checked by grepping
-each for its locator, after an automated predicate over the same 22 disagreed
-with two of them — the count is small enough to check and was.
+🔴 **CORRECTED by `SIGNOFF-REPAIR.13.4.5` (2026-09-20). The first version of
+this section got the number right and the SET wrong**, which is the failure
+`docs/CLAIM_VERIFICATION.md` §3 names: a container-level check confirming an
+item-level claim.
+
+**Five instruments resolve a leaf id to its own NODE, and `check_leaf_id_unique.sh`
+`exec`s one of them — six by effect:**
+
+| Instrument | How it locates the node |
+| --- | --- |
+| `census_goal_receipt_gap.py` | `^#{2,6}` headings and `ID:` lines |
+| `census_relative_leaf_refs.py` | the same two |
+| `check_frontier_status.py` | ``^#{3,6} <LEAF> — `` , then that section's `Status:` |
+| `check_task_acceptance.sh` | `section_of <tree> <LEAF>` |
+| `check_task_status.sh` | segments the file at `^#+[ \t]+` |
+| `check_leaf_id_unique.sh` | delegates — it `exec`s `census_goal_receipt_gap.py --gate` |
+
+⛔ **Two instruments the first version named do NOT belong.**
+`check_tree_index_frontier.sh` and `check_book_frontier.sh` read the *Current
+Frontier table's row 1*, not a node: they compare one table cell to another and
+never look a leaf up. ⛔ **And one that does belong was missing —
+`census_relative_leaf_refs.py`, the census this very record publishes.** Its
+author left it out of its own population.
+
+⚠️ **The "22 instruments read `docs/tasks/`" figure is withdrawn rather than
+corrected.** `grep -l "docs/tasks"` returns 22, but that mixes code that reads a
+tree with prose that mentions the path, and three successive automated
+predicates over the same 22 returned **6, 9 and 12**. None of them is
+defensible without reading each file, so the claim is now stated over a **named
+set** and no count of the wider population is published.
+
+⭐ **The conclusion is unaffected and is in fact stronger.** Every instrument in
+the table above locates a leaf by a *heading*, and `check_frontier_status.py`
+requires three to six hashes — so a lane declared at `##` would be invisible to
+it too. A lane with no heading is unreachable by all six, which is what this
+record's second decision rests on.

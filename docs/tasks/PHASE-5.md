@@ -305,7 +305,7 @@ and honest inconclusive outcomes.
       leaf sit on different surfaces: the CLOSE side (the
       outcome is a two-variant enum today — `decided`/
       `inconclusive` — vs §13.4's twelve; no minority report
-      exists; the `.1.5.3` decided-with-unresolved refusal is
+      exists; the `PHASE-1.5.3` decided-with-unresolved refusal is
       the two-valued ancestor of the family rule) and the
       CONTRIBUTION side (the kind vocabulary has no
       `evidence_request` or `verdict`; the `evidence_reference`
@@ -319,7 +319,7 @@ and honest inconclusive outcomes.
       mapping to `accepted_by_rule`/`deadlocked`; the canonical
       name persists on the event + the projection; the
       decision-family/failure-family rule replaces the
-      `.1.5.3` two-valued check — a decision terminal with a
+      `PHASE-1.5.3` two-valued check — a decision terminal with a
       non-empty unresolved register is the typed refusal) + the
       minority report riding the close (the synthesizer
       identity, the input event range, the source links, the
@@ -331,7 +331,7 @@ and honest inconclusive outcomes.
       aliases (→ `accepted_by_rule`/`deadlocked`) and NEVER
       persist (the event body + the projection's new
       `close_outcome` carry the canonical name); the
-      `.1.5.3` refusal generalized to the FAMILY rule
+      `PHASE-1.5.3` refusal generalized to the FAMILY rule
       (`is_decision_family`: the four decision terminals +
       `decided` refuse a non-empty unresolved register; the
       eight failure terminals accept and carry it); the
@@ -1275,7 +1275,7 @@ the twelve) — `\.rs$`.
 
 - [x] **REPRODUCE / ISSUE** — the pre-leaf close: a two-valued
   outcome (`decided`/`inconclusive` — §13.4 lists twelve); no
-  minority report; the `.1.5.3` refusal was the two-valued
+  minority report; the `PHASE-1.5.3` refusal was the two-valued
   ancestor of the family rule.
 - [x] **ROOT CAUSE (WHY + WHERE)** — `git grep -c
   "close_outcome\|MinorityReportInput\|is_decision_family"

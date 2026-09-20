@@ -347,7 +347,7 @@ reopens the applicable portions of G4–G7.
       — the articulated contract: the quarantine is a ROW
       FACT (the evidence stays; the preservation survives
       the disposition), the retention cleanup stays the
-      explicit operator action (the `.1.2.3` shape), no
+      explicit operator action (the `PHASE-1.2.3` shape), no
       quarantine path may delete the evidence it cites.
     Roadmap: §16.11
     Done (`2026-09-08`): the census measured every
@@ -1022,7 +1022,7 @@ reopens the applicable portions of G4–G7.
     revocation/tenant-isolation tests (the channel +
     the `.1.2` mTLS + the `.1.3.1` RLS suites), (3) the
     non-escalation + the confused-deputy suite (the
-    `.2.7.1` four legs), (4) the SSRF/rebinding/
+    `PHASE-2.7.1` four legs), (4) the SSRF/rebinding/
     redirect/archive-bomb suite (the Phase-4 matrix +
     the extraction refusals), (6) the dependency/
     SBOM/provenance/signing pipeline (the `.2.3`
@@ -1066,7 +1066,7 @@ reopens the applicable portions of G4–G7.
       1 + the mTLS 1 + the RLS 1 suites, the guard);
       (3) the non-escalation + the confused-deputy —
       SHIPPED (the escalation suite's four adversarial
-      legs, the `.2.7.1` record); (4) the
+      legs, the `PHASE-2.7.1` record); (4) the
       SSRF/DNS-rebinding/redirect/archive-bomb —
       SHIPPED (the ssrf 4 + the fetcher 16 + the
       extraction 9); (5) the prompt-injection
@@ -1142,7 +1142,7 @@ reopens the applicable portions of G4–G7.
       (the three preconditions), never a claim.
     Acceptance:
     - [x] **ROOT CAUSE (WHY + WHERE)** — the `.5` lane's
-      exit needs the gate package (the `.1.8.2`/
+      exit needs the gate package (the `PHASE-1.8.2`/
       `.6.2`/`.7.2` pattern); the three external gaps
       make the honest outcome the machinery-exit, not
       the exposure claim. Evidence: `make gate` → 13/13

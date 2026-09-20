@@ -1,5 +1,53 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — Three times in two commits, the majority class was my own parser
+
+I wrote `scripts/census_relative_leaf_refs.py` to answer one question: how many
+relative leaf references like `` `.2.3` `` are ambiguous across trees. It ran
+three times before it told me anything about the repository.
+
+**Run one** returned 267 `foreign` references concentrated in
+`docs/tasks/artifacts/`. `git ls-files docs/tasks/*.md` matches recursively, so
+it had swept 24 evidence documents that define no leaves at all — nothing in
+them *could* resolve. The majority class was the glob.
+
+**Run two** returned `PHASE-1.md` as 114 `foreign` + 80 `dangling` out of 252.
+That is not a corpus with a few slips in it, which is what made me look: the file
+writes `` `.1.6.1` `` for `PHASE-1.6.1`, repeating its own phase number. 194
+correct references, in a dialect the parser did not know.
+
+**Run three** returned 76 `dangling`, 62 in one tree, and I published a leaf
+premise from it: *lane 11 has 195 children and no node, and every reference to it
+resolves to nothing*. Classified against the leaf each reference sits **inside**
+rather than against the tree, 44 of them resolve perfectly — they are sibling
+references, where writing the five-component id would be less readable, not more.
+**Not one of the 76 referred to a lane.** The leaf I had opened was about a
+problem that does not exist.
+
+⭐ **The question that would have caught all three, asked earlier:** *if my
+instrument were right, would this corpus ever have worked?* A tree in daily use
+does not contain 194 broken cross-references in one file. When a census says
+otherwise, the young thing is usually the wrong one.
+
+⛔ **And a green `--self-test` is no defence at all here.** All three runs came
+from an instrument whose self-test passed: the arms tested the predicate I had in
+mind, and the defect was that my model of the corpus was incomplete. A self-test
+proves the parser does what you meant. It cannot tell you that what you meant is
+the wrong shape.
+
+Promoted, on the third instance: `docs/knowledge/an-instruments-first-population-
+describes-its-parser.md`. The trigger for it had been armed one commit earlier by
+`SIGNOFF-REPAIR.11.24.1.6`, which is the only reason I counted rather than
+shrugging.
+
+⚠️ **The second-order cost is the one worth remembering.** That same parent leaf
+had already used run two's numbers to CALIBRATE and register a gate. With the
+corrected classifier the prices move — `internally-ambiguous` from 0 rises in 30
+commits to 5, which is more than the 3 that got another class declined — so the
+gate had to be re-priced and narrowed one commit after it shipped. A number
+published from an instrument's first population does not stay inside the sentence
+that published it.
+
 ## 2026-09-20 — The first version of this measurement said the opposite, and the fixture was why
 
 `SIGNOFF-REPAIR.11.24.1.3.2` had one question to settle: when a git acquisition

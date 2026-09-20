@@ -58,7 +58,7 @@ Implementation ownership and remaining verification are in `docs/tasks/SIGNOFF-R
     block LIFTS and the lane decomposes. Measured: the
     TRUST contracts ship + are measured (the `.1.2`
     mTLS workload identity + the cert proof, the `.2.4`
-    enrollment policy's staged ladder, the `.2.7`
+    enrollment policy's staged ladder, the `PHASE-2.7`
     revocation drill, the audit linkage groundwork —
     the Phase-7 guard of record); the COMPATIBILITY
     contracts ship (the versioned wire envelopes, the

@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-20 — A task tree has three relative-reference dialects, and not one of those references meant a lane (`SIGNOFF-REPAIR.11.24.1.6.1`)
+
+`REASONBRAID-REPAIR-0330`. The leaf's premise, refuted by its own census.
+
+- 🔴 **It opened on a number its parent produced** — 62 of 76 `dangling` references in `SIGNOFF-REPAIR.md`, the top three being 20 × lane 9, 16 × lane 11 and 6 × lane 10 — and concluded that a lane of 195 children is unaddressable. **Classified against their ENCLOSING LEAF rather than against the tree, every one resolves and ZERO referred to a lane:** 44 are a third dialect (`ancestor` — `.11` inside `SIGNOFF-REPAIR.3.3.4.3` is its sibling), 21 are cross-tree in PHASE-1's dialect, 4 are elided-prefix compounds, 1 is a deliberate non-reference.
+- ✅ **A lane is an organising number, not a node.** Only 4 of 14 top-level numbers are headings, and those 4 are leaves owning work directly; declaring the other ten would create nodes with no goal, no acceptance and no terminal state. Nothing cites a lane, so nothing is owed.
+- ⭐ **THE INSTRUMENT'S THIRD SELF-DESCRIPTION IN TWO COMMITS** — a recursive glob, a single-dialect reading, and a `dangling` class calling 44 correct sentences broken. Each time the majority class of the first run was a property of the parser. **Promoted:** `docs/knowledge/an-instruments-first-population-describes-its-parser.md`.
+- ⛔ **The ratchet is RE-PRICED one commit after it was registered.** With the corrected classifier, `dangling` rises in **0 of 30** commits while `internally-ambiguous` rises in **5** — more than the 3 that got `foreign` declined — so it is declined on the same rule and the gate watches `dangling` alone. ⚠️ Not a re-base: `--check` recomputes the `HEAD` baseline with the CURRENT classifier, so both sides move together. The baseline fell **32 → 1** because the corpus was repaired.
+- ✅ **31 references rewritten, each resolved by SUBJECT** rather than by the-only-id-that-exists, confirmed against each target's Goal line. ⚠️ One graded weaker and said so: `PHASE-8.md`'s *the `.2.7` revocation drill* resolved to `PHASE-2.7` by subject adjacency, because `PHASE-7.2.7` does not exist.
+- ⭐ **One `dangling` row remains and is correct** — a control citing a deliberately absent heading to assert that such a citation must not read as anchored. The census cannot tell an example from a use, and teaching it to would be worse than one honest permanent row.
+- ✅ **The instrument census the acceptance asked for:** 22 instruments read `docs/tasks/`; six locate a leaf by its heading or `ID:` line, and `check_leaf_id_unique.sh` `exec`s one of them. Hand-checked after an automated predicate disagreed with two — which corrects this leaf's own earlier bounded claim of *four*.
+- ✅ **VERIFIED:** doctrine gate all green; the instrument's `--self-test` **11/11** with the declined-class arm now guarding BOTH declines, so a later edit that widens the ratchet turns it red; `make book` rc=0; fmt rc=0; `handoff: OK`. No Rust changed.
+
 ## 2026-09-20 — A release identity must be publishable, or the signature is ceremonial (`SIGNOFF-REPAIR.11.24.1.4.1`)
 
 `REASONBRAID-REPAIR-0329`. The re-key recovery from the previous commit had nowhere to end.

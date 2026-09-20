@@ -43,6 +43,20 @@ status**. `PHASE-8.4.4` wrote *the `.2.3` distribution-channel deferral* meaning
 notice that; only a reader of the surrounding words can
 (`SIGNOFF-REPAIR.11.24.1.6`).
 
+A relative reference may also be **relative to an ancestor of the leaf it is
+written inside**. A sentence in `SIGNOFF-REPAIR.3.3.4.3` writing `` `.11` ``
+means its sibling `SIGNOFF-REPAIR.3.3.4.11`, which is more readable than the
+five-component id — 44 references use this. ⚠️ It is a real dialect, not
+sloppiness, and it is why a reference can be ambiguous **inside one tree**: the
+same token may name a sibling and a tree-level leaf, and both exist.
+
+⛔ **A LANE IS AN ORGANISING NUMBER, NOT A NODE.** `SIGNOFF-REPAIR.11` groups 195
+leaves and has no heading of its own, and that is correct: a lane has no goal, no
+acceptance and no terminal state, so declaring one would create a leaf that can
+never be `done`. Measured with the rest: **nothing cites a lane** — every
+reference that looked like one turned out to be a sibling reference
+(`SIGNOFF-REPAIR.11.24.1.6.1`).
+
 ⚠️ **One tree is written in a different dialect, recorded here rather than
 migrated.** `PHASE-1.md` writes `` `.1.6.1` `` for `PHASE-1.6.1`, repeating its
 own phase number — 194 of its 252 references read that way, against 46 in the
@@ -51,11 +65,13 @@ edit with a real chance of introducing the errors it would be fixing, for no
 reader who is not already there. New work uses the dominant dialect.
 
 `scripts/census_relative_leaf_refs.py` measures the corpus, and its `--check`
-arm is a registered ratchet: a reference that resolves **nowhere**, or **both
-ways inside one tree**, may not become more numerous than it is at `HEAD`.
-⚠️ It does **not** catch a wrong cross-tree reference — that class is 2178
-strong and only the words distinguish a right one from a wrong one. The rule
-above is what catches those, and it is a rule for authors rather than a gate.
+arm is a registered ratchet: a reference that resolves under **no dialect at
+all** may not become more numerous than it is at `HEAD`. ⚠️ It does **not**
+catch a wrong cross-tree reference — that class is over two thousand strong and
+only the words distinguish a right one from a wrong one — and it does **not**
+gate ambiguity, which rose in 5 of 30 commits and is an honest property of a
+corpus with three dialects. The rule above is what catches those, and it is a
+rule for authors rather than a gate.
 
 ## When a tree completes
 

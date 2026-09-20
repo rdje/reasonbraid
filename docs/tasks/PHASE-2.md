@@ -605,7 +605,7 @@ Implementation and verification belong to `docs/tasks/SIGNOFF-REPAIR.md`.
   Note: gap census (`2026-09-07`, on pickup): EXISTS — the `.1.2.2`
     lease/fencing (60s TTL, token rotation per handshake, heartbeats
     renew, stale tokens refused; `grep -n LEASE_TTL node_channel.rs` →
-    line 77) + the `.1.2.3` quarantine/prune (manual, operator verbs,
+    line 77) + the `PHASE-1.2.3` quarantine/prune (manual, operator verbs,
     reason-stored) + the no-silent-retry rule (outcome_unknown → proof or
     adjudication). MISSING — a capability-aware RETRY policy (§14.6: the
     provider-accepted-but-unproven class; `grep -rn 'retry' server/node
@@ -1516,7 +1516,7 @@ subtraction record + the G6–G7 feed ship. The next executable work is
   channel — shipped across two phases; the broker trigger is named). No code
   changed. Frontier → `.2.2`.
 - `2026-09-07`: `.2` decomposed at the contract seams — the census found
-  the `.1.2.2` lease/fencing + the `.1.2.3` quarantine/prune EXIST in
+  the `.1.2.2` lease/fencing + the `PHASE-1.2.3` quarantine/prune EXIST in
   their Phase-1 forms while the retry policy, the dead-letter/replay
   surface, and ADR-005 are open; children `.2.1` (ADR-005
   accepted-with-evidence) → `.2.2` (lease/fencing hardening) → `.2.3`
@@ -2183,7 +2183,7 @@ best-effort report + the replayed-decision refresh + the dedup accessor),
 `crates/reasonbraid-node/tests/worker_dead_letter.rs`,
 `crates/reasonbraid-server/tests/node_work.rs` — all code paths.
 
-- [x] **REPRODUCE / ISSUE** — quarantine was one-way: the `.1.2.3`
+- [x] **REPRODUCE / ISSUE** — quarantine was one-way: the `PHASE-1.2.3`
   verbs marked + pruned, nothing auto-quarantined after the `.2.3`
   terminal refusals and nothing re-delivered a dead-lettered command
   (`grep -rn 'replay' api.rs` → no verb before this leaf).

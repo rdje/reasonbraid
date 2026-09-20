@@ -5,6 +5,14 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **A TASK TREE HAS THREE RELATIVE-REFERENCE DIALECTS, AND NOT ONE OF THOSE REFERENCES MEANT A LANE (`.11.24.1.6.1`, REPAIR-0330).**
+
+- 🔴 **The leaf's premise was refuted by its own census.** It opened on *lane 11 has 195 children and no node, and every reference to it resolves to nothing*. Classified against their ENCLOSING LEAF: 44 are a third dialect (`ancestor` — a sibling reference), 21 cross-tree in PHASE-1's dialect, 4 elided-prefix compounds, 1 deliberate non-reference. **Zero meant a lane.**
+- ✅ **A lane is an organising number, not a node** — only 4 of 14 are headings, and a lane has no goal, acceptance or terminal state. Nothing cites one.
+- ⭐ **The instrument's THIRD self-description in two commits** — recursive glob, single dialect, and a `dangling` class calling 44 correct sentences broken. **Promoted** to `docs/knowledge/an-instruments-first-population-describes-its-parser.md`.
+- ⛔ **The ratchet is RE-PRICED one commit after registration**: `dangling` rises in **0 of 30**, `internally-ambiguous` in **5** — more than the 3 that got `foreign` declined — so it is declined too and the gate watches `dangling` alone. ⚠️ Not a re-base; the baseline fell **32 → 1** because the corpus was repaired.
+- ✅ 31 references rewritten, each resolved by SUBJECT; one graded weaker and said so. One `dangling` row remains and is correct.
+
 ✅ **A RELEASE IDENTITY MUST BE PUBLISHABLE, OR THE SIGNATURE IS CEREMONIAL (`.11.24.1.4.1`, REPAIR-0329).**
 
 - 🔴 `verify` and `certify verify` both took the PRIVATE key and derived the public one; `keygen` exported nothing. **The only party who could verify a release was the party who signed it** — the check caught accidental corruption, never forgery.

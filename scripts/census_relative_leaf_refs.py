@@ -129,7 +129,7 @@ def suffix_of(leaf_id: str) -> str:
 TRAILING_NUMBER = re.compile(r"^(.*)-(\d+)$")
 
 
-def readings(tree: str, ref: str) -> list[str]:
+def readings(tree: str, ref: str, enclosing: str | None = None) -> list[tuple[str, str]]:
     """Every leaf id a relative reference could be naming, in its own tree.
 
     🔴 **TWO DIALECTS COEXIST, and this function is where that was discovered
@@ -144,11 +144,29 @@ def readings(tree: str, ref: str) -> list[str]:
     * `phase-repeat` — for a tree ending in `-N`, a reference whose first
       component is that same `N` may be the full id with the word `PHASE`
       dropped: `.1.6.1` in `PHASE-1` is `PHASE-1` + `.6.1`.
+    * `ancestor`     — the reference is relative to an ANCESTOR of the leaf it
+      is written inside. A sentence in `SIGNOFF-REPAIR.3.3.4.3` writing `.11`
+      means its sibling `SIGNOFF-REPAIR.3.3.4.11`, and one in
+      `SIGNOFF-REPAIR.3.3.4.10.3` writing `pre-.10.3` means itself.
 
-    A reference is reported against every reading that resolves, so a census
-    that found only one dialect would have said so, and one that finds a
-    reference satisfying BOTH reports it as genuinely ambiguous inside a single
-    tree rather than quietly preferring one.
+    🔴 **THE THIRD DIALECT WAS FOUND BY `SIGNOFF-REPAIR.11.24.1.6.1` AND IT IS
+    THE LARGEST CLASS OF WHAT THIS CENSUS FIRST CALLED `dangling`** — 44 of 76.
+    That leaf opened believing those were references to an undeclared LANE
+    (*lane 11 has 195 children and no node*), classified them against their
+    enclosing leaf, and found most of them resolve perfectly: they are sibling
+    references inside deep lanes, where writing the full five-component id would
+    be less readable, not more. ⛔ An instrument that did not know this dialect
+    reported 44 correct sentences as broken — its THIRD instance of a census
+    describing its own parser, after the recursive glob and the phase-repeat
+    reading.
+
+    ⚠️ The bare tree is deliberately NOT among the ancestor prefixes: it is the
+    `suffix` reading, and counting it twice would make every reference look like
+    it satisfied two dialects.
+
+    A reference is reported against every reading that resolves. Ambiguity is
+    judged on the distinct LEAVES reached, not on the number of dialects — two
+    readings that arrive at the same leaf are one answer, not a disagreement.
     """
     candidates = [("suffix", tree + ref)]
     match = TRAILING_NUMBER.match(tree)
@@ -157,6 +175,11 @@ def readings(tree: str, ref: str) -> list[str]:
         parts = ref.split(".")  # ['', 'a', 'b', ...]
         if len(parts) > 2 and parts[1] == number:
             candidates.append(("phase-repeat", f"{head}-{number}." + ".".join(parts[2:])))
+    if enclosing:
+        pieces = enclosing.split(".")
+        # Longest ancestor first; stop before the bare tree name.
+        for cut in range(len(pieces), 1, -1):
+            candidates.append(("ancestor", ".".join(pieces[:cut]) + ref))
     return candidates
 
 
@@ -174,17 +197,24 @@ def classify(paths: list[str], read) -> list[dict]:
     rows: list[dict] = []
     for path in paths:
         tree = tree_name(path)
+        enclosing: str | None = None
         for number, line in enumerate(read(path).splitlines(), start=1):
+            m = HEADING_ID.match(line) or LIST_ID.match(line)
+            if m:
+                enclosing = m.group(1)
             for ref in REL_REF.findall(line):
-                # Which readings of this reference name a leaf THIS tree defines.
-                resolved = [
-                    dialect
-                    for dialect, leaf in readings(tree, ref)
+                # Which readings of this reference name a leaf THIS tree defines,
+                # and WHICH leaf each one reaches.
+                hits = [
+                    (dialect, leaf)
+                    for dialect, leaf in readings(tree, ref, enclosing)
                     if leaf in defined.get(tree, set())
                 ]
+                resolved = sorted({dialect for dialect, _ in hits})
+                targets = {leaf for _, leaf in hits}
                 homes = by_suffix.get(ref, set())
                 elsewhere = sorted(homes - {tree})
-                if len(resolved) > 1:
+                if len(targets) > 1:
                     kind = "internally-ambiguous"
                 elif resolved and elsewhere:
                     kind = "shared"
@@ -202,6 +232,8 @@ def classify(paths: list[str], read) -> list[dict]:
                         "ref": ref,
                         "kind": kind,
                         "dialects": resolved,
+                        "enclosing": enclosing,
+                        "targets": sorted(targets),
                         "also_in": elsewhere,
                     }
                 )
@@ -343,10 +375,15 @@ def self_test() -> int:
             and ratchet({"dangling": 2}, {"dangling": 1}) == [],
         )
     )
-    # 11 ⛔ `foreign` is DECLINED, priced at 3 rises in 30 commits against 1 —
-    #    so a rise in it must NOT fire, and that is a decision worth guarding.
+    # 11 ⛔ THE DECLINED CLASSES, priced at 5 and 2 rises in 30 against 0 — a
+    #    rise in either must NOT fire, and the decline is the decision worth
+    #    guarding, because it is the part a later edit would quietly undo.
     arms.append(
-        ("a rise in the declined `foreign` class does not fire", ratchet({"foreign": 1}, {"foreign": 9}) == []),
+        (
+            "a rise in a declined class does not fire",
+            ratchet({"foreign": 1}, {"foreign": 9}) == []
+            and ratchet({"internally-ambiguous": 1}, {"internally-ambiguous": 9}) == [],
+        )
     )
 
     passed = sum(1 for _, ok in arms if ok)
@@ -424,7 +461,19 @@ def calibrate(count: int) -> int:
     return 0
 
 
-WATCHED = ("dangling", "internally-ambiguous")
+# 🔴 **RE-PRICED, ONE COMMIT AFTER THIS GATE WAS REGISTERED.**
+# `SIGNOFF-REPAIR.11.24.1.6` calibrated the ratchet over `dangling` AND
+# `internally-ambiguous` at 1 and 0 rises in 30 commits — with a classifier that
+# did not yet know the `ancestor` dialect. `SIGNOFF-REPAIR.11.24.1.6.1` found
+# that dialect, and with it the numbers move: `dangling` 76 → 32 and rises in
+# **0 of 30**, while `internally-ambiguous` 126 → 785 and rises in **5 of 30**.
+#
+# ⛔ Five in thirty is MORE than the 3-in-30 that got `foreign` declined, so
+# `internally-ambiguous` is declined on the same rule rather than kept because
+# it was in the first draft. A reference written inside a deep leaf genuinely
+# can mean its sibling or its tree-level namesake, and both exist; that is a
+# property of the corpus to report, not a rise to block ordinary writing over.
+WATCHED = ("dangling",)
 
 
 def ratchet(head: dict[str, int], now: dict[str, int]) -> list[tuple[str, int, int]]:
@@ -445,20 +494,19 @@ def ratchet(head: dict[str, int], now: dict[str, int]) -> list[tuple[str, int, i
 def check() -> int:
     """The RATCHET: neither unresolvable class may RISE against `HEAD`.
 
-    ⛔ **A ratchet rather than a floor, and the number is why.** 76 `dangling`
-    and 126 `internally-ambiguous` references exist today; demanding zero would
-    be a gate red on arrival, which is a gate somebody turns off
-    (`SIGNOFF-REPAIR.11.5`). Calibrated over the 30 commits touching
-    `docs/tasks/` before it was written: `dangling` rose in **1**,
-    `internally-ambiguous` in **0**. A gate that fires once in thirty commits,
-    each time on a genuinely unfollowable new reference, is affordable.
+    ⛔ **A ratchet rather than a floor, and the number is why.** `dangling`
+    references exist today; demanding zero would be a gate red on arrival, which
+    is a gate somebody turns off (`SIGNOFF-REPAIR.11.5`). Re-calibrated over the
+    30 commits touching `docs/tasks/` with the `ancestor`-aware classifier:
+    `dangling` rose in **0**. A reference that resolves under NO dialect is a
+    reference nobody can follow, and adding one is never ordinary work.
 
-    ⛔ **`foreign` is DELIBERATELY NOT RATCHETED, and the number is the reason
-    rather than a preference.** It rose in **3 of 30** — ten times the rate —
-    because a cross-tree reference is ordinary, intended work. It is also the
-    SAFE class: it cannot silently resolve to the wrong leaf, because it does
-    not resolve in its own tree at all. Gating the safe class at ten times the
-    cost is the trade this declines.
+    ⛔ **Two classes are DELIBERATELY NOT RATCHETED, each with its number.**
+    `internally-ambiguous` rose in **5 of 30** and `foreign` in **2 of 30**;
+    both are above the bar, and both are honest properties of a corpus that
+    grew three dialects. `foreign` is the SAFE class besides — it cannot
+    silently resolve to the wrong leaf, because it does not resolve in its own
+    tree at all.
 
     ⚠️ **AND IT DOES NOT CATCH THE INSTANCE THAT OPENED THE LEAF**, said plainly
     rather than implied. `PHASE-8.4.4`'s `.2.3` is `shared` — it resolves in its
@@ -479,9 +527,10 @@ def check() -> int:
         )
     if breaches:
         print(
-            "  A relative reference like `.2.3` resolves against its OWN tree. One that\n"
-            "  resolves NOWHERE (`dangling`) or BOTH ways (`internally-ambiguous`) is one a\n"
-            "  reader cannot follow. Write a reference to another tree IN FULL —\n"
+            "  A relative reference like `.2.3` resolves against its own tree, an ancestor\n"
+            "  of the leaf it sits in, or (in PHASE-1) its own phase number. One that\n"
+            "  resolves under NO dialect is one a reader cannot follow at all.\n"
+            "  Write a reference to another tree IN FULL —\n"
             "  `PHASE-7.2.3` — as docs/TASK_TREE_README.md states.\n"
             "  List them: python3 -B scripts/census_relative_leaf_refs.py --detail dangling",
             file=sys.stderr,

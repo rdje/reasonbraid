@@ -1031,7 +1031,7 @@ of a URI is not a promise the core can resolve it.
     G4 proof — the refusals the lanes already measure, assembled
     into ONE suite the gate reads) → `.7.2` the G4 gate record +
     the subtraction record (the gate package: Met with the named
-    deferrals — the Phase-1 `.1.8.2` pattern).
+    deferrals — the Phase-1 `PHASE-1.8.2` pattern).
   Done (`2026-09-07`): the census mapped the G4 exit against the
     shipped surface: the explicit-failure machinery EXISTS and is
     measured across the lanes — the 18-case SSRF refusal matrix,
@@ -1081,7 +1081,7 @@ of a URI is not a promise the core can resolve it.
   - ID: `PHASE-4.7.2`
     Status: `done`
     Goal: the G4 gate record + the subtraction record — the
-      gate package (the Phase-1 `.1.8.2` pattern): the G4 record
+      gate package (the Phase-1 `PHASE-1.8.2` pattern): the G4 record
       (Met, with the named deferrals — the R3 container gate
       (hostile JS refused by default), the RX delivery (the
       capability-call lane), the media formats beyond the four

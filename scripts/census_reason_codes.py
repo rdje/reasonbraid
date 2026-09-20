@@ -38,7 +38,22 @@ ROOT = Path(__file__).resolve().parent.parent
 # local error value, not something a client can receive.
 EMITTING_CRATES = ("reasonbraid-server",)
 
-_CODE_LITERAL = re.compile(r'code:\s*"([a-z_]+)"')
+# ⛔ BOTH EMISSION FORMS, and the second was missing for as long as this
+# instrument has existed (`SIGNOFF-REPAIR.13.4.6.1`). A wire code reaches a
+# client two ways in this codebase:
+#
+#   ControlApiError { code: "scope_hidden", … }   a Rust STRUCT FIELD
+#   json!({ "code": "undeclared_region", … })     a QUOTED JSON KEY
+#
+# The original pattern read only the first. `undeclared_region` is returned as
+# a real `400` from `api.rs::site_registry_response`, is asserted by two
+# suites, and was documented NOWHERE — while this census printed *"… not
+# documented in the book: 0"*. A gate that reports full coverage over a set it
+# cannot see completely is worse than no gate, because it is believed.
+#
+# ⚠️ The alternation is deliberately NOT `"?code"?` — that would also match
+# `code` inside a longer identifier. Each form is spelled out.
+_CODE_LITERAL = re.compile(r'(?:\bcode:|"code"\s*:)\s*"([a-z_]+)"')
 _REGISTRY = re.compile(r'KnownReasonCode::[A-Za-z]+ => "([a-z_]+)"')
 # The book's table rows: | `code` | … |
 _BOOK_ROW = re.compile(r"^\|\s*`([a-z_]+)`\s*\|")
@@ -327,6 +342,20 @@ def self_test() -> int:
     check("literal-tight", _CODE_LITERAL.findall('code:"a_b"'), ["a_b"])
     check("literal-spaced", _CODE_LITERAL.findall('code:   "a_b"'), ["a_b"])
     check("literal-ignores-non-snake", _CODE_LITERAL.findall('code: "A-B"'), [])
+    # ⛔ `SIGNOFF-REPAIR.13.4.6.1` — THE SECOND EMISSION FORM. A wire code
+    # reaches a client either as a Rust struct field or as a quoted JSON key,
+    # and reading only the first hid `undeclared_region` — emitted, tested,
+    # and undocumented — while this census reported full book coverage.
+    check("json-key-form", _CODE_LITERAL.findall('json!({ "code": "a_b" })'), ["a_b"])
+    check("json-key-spaced", _CODE_LITERAL.findall('"code"   :   "a_b"'), ["a_b"])
+    # ⭐ THE POSITIVE CONTROL FOR THE NEW ARM: the old pattern must NOT find
+    # the JSON form, or this test passes for an unrelated reason and the arm
+    # is not what is doing the work.
+    check("the OLD pattern misses the json form",
+          re.compile(r'code:\s*"([a-z_]+)"').findall('json!({ "code": "a_b" })'), [])
+    # ⛔ And the widening must not match `code` inside a longer identifier.
+    check("not a suffix of another field", _CODE_LITERAL.findall('reason_code: "a_b"'), [])
+    check("not a suffix in the json form", _CODE_LITERAL.findall('"status_code": "a_b"'), [])
 
     # ---- `SIGNOFF-REPAIR.7.2.10`: the SECOND vocabulary --------------------
     acq = acquisition_kinds()

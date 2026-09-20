@@ -1,6 +1,18 @@
-answers: should §9.8 gain the reason codes this build emits beyond it; is not_found a duplicate of scope_hidden; do not_found and scope_hidden leak existence; what is the difference between quota_exceeded, rate_limited and budget_unavailable; why does the registry contain codes nothing emits; should every unconfigured surface get its own reason code; is commit_outcome_unconfirmed the same thing as provider_outcome_unknown
+answers: should §9.8 gain the reason codes this build emits beyond it; what is undeclared_region and why was it missing from the count; is not_found a duplicate of scope_hidden; do not_found and scope_hidden leak existence; what is the difference between quota_exceeded, rate_limited and budget_unavailable; why does the registry contain codes nothing emits; should every unconfigured surface get its own reason code; is commit_outcome_unconfirmed the same thing as provider_outcome_unknown
 
 # The nine unregistered reason codes, recommended one by one (`SIGNOFF-REPAIR.11.7.1`)
+
+🔴 **CORRECTED 2026-09-20 BY `SIGNOFF-REPAIR.13.4.6.1`: THE POPULATION IS TEN.**
+The tenth is `undeclared_region`, and it was missing for a reason worth more
+than the code itself — `census_reason_codes.py` matched only `code: "…"`, a Rust
+struct field, while this one is emitted through `json!({"code": "…"})`. It was
+therefore invisible to the census, absent from `docs/book/src/errors.md`, and
+the `REASON-CODE-DOC` gate reported *not documented in the book: 0* over a set
+one short. The matcher now reads both forms and the book documents it.
+⚠️ **The title's number is deliberately not chased**, for the reason `.11.7.1`
+gives: it names the population at writing, and every move is a recorded
+correction rather than a silent edit. Re-derive with
+`python3 -B scripts/census_reason_codes.py`, never from this document.
 
 - Date: 2026-09-20 · Leaf: `SIGNOFF-REPAIR.11.7.1` · Decision record (a RECOMMENDATION; it changes no code and no frozen document)
 
@@ -84,6 +96,23 @@ about this server's own transaction and one about a provider call. ⇒ Recommend
 distinguishes them. A client's handling is identical either way: inspect before
 retrying.
 
+### B2. The tenth code, added by the correction above
+
+**`undeclared_region` (400).** Both regions must be **declared** before they can
+be paired — a DOMAIN refusal from the site registry, raised after the authority
+check has passed. ⇒ Recommend: **add as published, in §A's group.** It names a
+condition §9.8 has no word for; `invalid_command` is the nearest registered code
+and would collapse *your request is malformed* into *the registry cannot express
+this pairing yet*, which are different facts and lead to different client
+behaviour.
+
+⚠️ **The interesting part is not the verdict, it is what the omission says about
+the method.** This record's own population came from an instrument, and the
+instrument had a blind spot that made the set look complete. ⛔ A recommendation
+is only ever as complete as the census under it, and *the census printed a zero*
+is not evidence of coverage — it is evidence the census found nothing, which is
+a different claim.
+
 ### C. Generalise rather than add (1) — and it is the recommendation with the longest reach
 
 **`publication_repository_unconfigured` (503).**
@@ -140,7 +169,7 @@ month*, and only one of those is fixed by waiting.
 - ⛔ No edit to `ROADMAP.md` §9.8. This is evidence for a v0.5.0 decision, and
   the director's is the decision.
 - The `.11.7` finding is now spendable: a per-code recommendation exists, with
-  the measurement behind each.
+  the measurement behind each — **ten codes**, after `.13.4.6.1`'s correction.
 - ⚠️ **Three follow-on questions this record deliberately does not answer**,
   because each is a change to shipped behaviour rather than to a published list:
   whether the twenty-three `not_found` sites or the three `scope_hidden` ones

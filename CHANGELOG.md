@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-20 — The census could only see one of the two ways a wire code is emitted (`SIGNOFF-REPAIR.13.4.6.1`)
+
+`REASONBRAID-REPAIR-0345`. Found by `.13.4.6`'s verification pass, which re-derived the emitted set by a second route.
+
+- 🔴 **`undeclared_region` is a shipping wire code that was documented nowhere, while the gate said the book was complete.** It is returned as a real `400` from `api.rs::site_registry_response` on the site-registry pairing route and is asserted by two suites — and `grep -c undeclared_region docs/book/src/errors.md` returned **0** while `REASON-CODE-DOC` printed *"… not documented in the book: 0"*.
+- ⛔ **The cause is one regex.** `_CODE_LITERAL` was `code:\s*"…"` — a Rust STRUCT FIELD. This code goes out through `json!({"code": "undeclared_region"})`, a QUOTED JSON KEY, which that pattern cannot match. A gate that reports full coverage over a set it cannot see completely is worse than no gate, because it is believed.
+- ✅ **Both forms are read now**, spelled out rather than collapsed into `"?code"?`, which would also match `code` inside a longer identifier. The gate went **exit 1** naming the code, then **exit 0** once `errors.md` gained the row: emitted 18 → 19, unregistered 9 → 10, undocumented 0 → 1 → 0, truthfully.
+- ⭐ **The load-bearing self-test case is the positive control**: the OLD pattern must NOT find the JSON form, so the new arm is demonstrably what does the work. Two more assert the widening does not match `reason_code:` or `"status_code":`. 31 controls pass, up from 26.
+- ⛔ **`DOC-0086` is amended, not rewritten.** Its title still says *nine* — the number names the population at writing, and every move is a recorded correction rather than a silent edit. It gains a correction banner, a §B2 verdict for the tenth code (**add as published**), and the observation that matters more than the verdict: **a recommendation is only as complete as the census under it, and *the census printed a zero* is not evidence of coverage.**
+
 ## 2026-09-20 — Eighteen claims re-derived: fourteen hold, four were true when taken, and the pass found two defects of its own (`SIGNOFF-REPAIR.13.4.6`)
 
 `REASONBRAID-DOC-0088`. The director's *ensure the findings hold*, a sixth time, over this session's eleven commits. Every claim re-derived by a route that did **not** produce it.

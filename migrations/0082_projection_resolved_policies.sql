@@ -1,0 +1,38 @@
+-- 0082_projection_resolved_policies.sql — SIGNOFF-REPAIR.9.2.1.3.2:
+-- the projection records WHICH policy versions it resolved, so a publication
+-- can be required to carry the one its proposal was approved for.
+--
+-- 🔴 THE DEFECT THIS EXISTS FOR, reproduced live before the column was added:
+-- `publications::stage` matched the decision and the approval to
+-- `proposal_id` and checked the projection only with
+-- `projection_id = $1 AND tenant_id = $2`. The projection is the ONE reference
+-- that carries the bytes, and `publish` writes them — so a publication staged
+-- proposal `cp-prp` (approved for `cp-approved`) against projection
+-- `cp-other-proj` (compiled from `cp-other` alone) and returned 200. An
+-- approval for one policy published another's compiled bytes.
+--
+-- ⛔ WHY A COLUMN RATHER THAN READING THE BYTES. `render_generic` does print
+-- `[policy version]` per clause, so the set looks recoverable from `bytes` —
+-- and it is not. `render_lock` renders the LOCK rows, not the clauses; and the
+-- compiler DROPS every unrepresentable clause from the body before rendering,
+-- so a policy that resolved but whose clauses cannot ride the target leaves no
+-- trace in the text while being genuinely part of the resolution. A predicate
+-- parsed out of a rendered artefact would answer a different question from the
+-- one the approval asks, and would answer it differently per target.
+--
+-- ⚠️ NULLABLE, and a NULL FAILS CLOSED rather than admitting. A projection
+-- recorded before this column cannot be SHOWN to carry the approved policy,
+-- and `publications::owned_by` already takes exactly this disposition for an
+-- unattributable governance row: an unowned record that anyone may advance is
+-- worse than one that is frozen. The refusal says the set is unrecorded rather
+-- than claiming the policy is absent — those are different facts and an
+-- operator needs to tell them apart. Re-register the projection to unfreeze it;
+-- it is derived from the library and costs one call.
+--
+-- ⛔ NOT backfilled. The resolved set is a function of the SEVEN-STEP
+-- resolution at the time the projection was compiled — the library has moved
+-- since, so re-resolving now would record a set the artefact was not built
+-- from, which is the invented-provenance failure `0081` refuses for the same
+-- reason.
+
+ALTER TABLE policy_projections ADD COLUMN resolved_policies JSONB;

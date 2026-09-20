@@ -153,11 +153,41 @@ Naming a grant is not holding one. Grant ids are derivable from a principal id,
 so a check that asked only whether an active grant *exists* would be no check at
 all; the server compares the grant's subject to the authenticated caller.
 
-⚠️ **An approval still does not pin the bytes.** Binding staging says *who* may
-pair an approval with a projection; it does not say the pairing is right.
-Nothing yet requires the projection to carry the policy version the proposal was
-approved for, so an approval for one policy can still publish another's compiled
-bytes. That is tracked as `SIGNOFF-REPAIR.9.2.1.3.2` and is **not** fixed here.
+### A publication carries the policy it was approved for
+
+Staging pairs an approval with a projection, and the projection is what gets
+published. Until `SIGNOFF-REPAIR.9.2.1.3.2` nothing connected the two: the
+decision and the approval were each matched to the proposal, and the projection
+— the one reference that carries the bytes — was checked only for existence and
+tenancy. **An approval for one policy could publish another's compiled bytes.**
+
+Staging now requires the projection's resolved set to contain the proposal's
+`(policy_id, version)`:
+
+```text
+400 invalid_command — projection `p-other` does not carry policy `p-approved`
+version 1.0.0, which is what this proposal was approved for
+```
+
+⚠️ **A projection legitimately carries more than the proposal's policy.** It
+resolves a *set* for a target layer, and that set is what a deployment consumes.
+The rule is containment, not identity: an approval occasions the publication of
+a resolved set that includes it. A set that does not include it at all is
+refused.
+
+⚠️ **A projection recorded before this is frozen, deliberately.** The resolved
+set is stored as of compilation, and rows that predate the column have none —
+so they cannot be *shown* to carry the approved policy and staging refuses them,
+saying the set is unrecorded rather than that the policy is missing:
+
+```text
+400 invalid_command — projection `p-old` records no resolved policy set, so it
+cannot be shown to carry the approved policy — re-register it to record one
+```
+
+Re-registering the projection records a set and unfreezes it. It is not
+backfilled: the resolved set is a function of the library *at compile time*, and
+re-resolving now would record a set the artefact was not built from.
 
 ⚠️ **`failed` was bound before `stage`, and each was the one that mattered.** The first
 repair covered `publish` and `effective`; `failed` kept admitting on enrolment

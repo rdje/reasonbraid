@@ -5,12 +5,14 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
-🔴 **AN APPROVAL FOR ONE POLICY CAN PUBLISH ANOTHER'S BYTES — OPEN, OWNED AT `.9.2.1.3.2`.**
+✅ **AN APPROVAL FOR ONE POLICY COULD PUBLISH ANOTHER'S BYTES — CLOSED (`.9.2.1.3.2`, REPAIR-0340).**
 
-- 🔴 `stage` never reads the proposal's `policy_id` or `policy_version`, and its projection predicate is `projection_id = $1 AND tenant_id = $2`. The decision and the approval ARE each matched to the proposal; **the one reference that carries the BYTES is not**, and `publish` writes them.
-- ⚠️ The projection verb is itself unbound — registering the projection needs only enrolment.
-- ⭐ ADR-020 §15.7 step (1) already asks to *"verify the decision, the approvals, the authority proof, and the IMMUTABLE INPUTS"*. ⛔ The right invariant must be DECIDED: a projection resolves a SET for a target, so *the resolved set contains the proposal's version* is the candidate — and `policy_projections` may not store enough to answer it.
-- ⛔ **NOT fixed by `.9.2.1.2.2`**, and the book says so: binding staging says WHO may pair an approval with a projection, not that the pairing is right.
+- 🔴 **Reproduced live, not argued**: two registered policies, a projection each, an approved proposal for one — staging it against the OTHER projection returned **200**, `state: staged`. Same tenant on both, so tenancy is not what separates them.
+- 🔴 The cause is a missing join. `stage` matched the decision and the approval to `proposal_id`; the projection — **the one reference carrying the BYTES** — was checked with `projection_id = $1 AND tenant_id = $2`, and `publish` writes those bytes. ⭐ ADR-020 §15.7 step (1) already asked to *verify … the immutable inputs*.
+- ✅ `migrations/0082` records the resolved `(policy_id, version)` set; `stage` requires the proposal's to be in it. ⛔ **From the RESOLUTION, never parsed from the bytes** — the compiler drops unrepresentable clauses before rendering and `render_lock` renders lock rows, so a parse answers a neighbouring question, differently per target.
+- ⛔ **An unrecorded set FAILS CLOSED, in its own variant** — *unrecorded* is not *absent*. No backfill: re-resolving now would record a set the artefact was not built from. ⭐ That arm caught a sibling control's directly-seeded projection the same run it shipped.
+- ⚠️ **The residual is PUBLISHED**: a projection resolves a SET for a target layer and legitimately carries policies the proposal did not name — the rule is containment, not identity. ⛔ The projection verb stays unbound, answered explicitly with a trigger.
+- ✅ 5 suites, **156 tests, 0 failed**.
 
 ✅ **THE STAGING VERB DECIDES WHAT AN APPROVAL PUBLISHES, SO IT NAMES AN AUTHORITY (`.9.2.1.2.2`, REPAIR-0339).**
 

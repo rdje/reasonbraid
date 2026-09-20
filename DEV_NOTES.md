@@ -1,5 +1,60 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — A value you can read out of a rendered artefact is not the same value
+
+Publications had to start requiring that the projection they publish carries
+the policy the proposal was approved for. The obvious question: where is the
+resolved policy set?
+
+It looks like it is already on disk. `render_generic` writes one heading per
+clause:
+
+```text
+## clause-1 [org-baseline 1.0.0]
+```
+
+So `policy_projections.bytes` appears to contain exactly the `(policy_id,
+version)` pairs the check needs, and a column looks like a migration nobody has
+to run. Two facts kill that.
+
+**The renderer is per target.** `render_lock` renders the LOCK rows, not the
+clauses. A `lock` projection's bytes carry a different vocabulary, so one parser
+cannot serve the check and the same predicate would answer differently for two
+targets of the same resolution.
+
+**And the renderer is lossy, in the direction that matters.** `compile` filters
+unrepresentable clauses out *before* rendering:
+
+```rust
+let representable: Vec<InputClause> = clauses.iter().filter(|clause| { … }).cloned().collect();
+let body = match request.target.as_str() { "generic" => render_generic(&representable), … };
+```
+
+A policy that resolved, and whose clauses cannot ride this target, appears in
+`unrepresentable` and **nowhere in the body**. Parsing the bytes would say that
+policy is not in the projection. The resolution says it is. Both are true of
+different questions, and the approval is asking the resolution's.
+
+⭐ The rule: **a value recovered from a rendered artefact answers a question
+about the rendering, not about the input.** When a check needs to know what went
+*in*, record what went in. The renderer is a lossy, target-specific projection
+of it — that is its job.
+
+So `migrations/0082` stores the set, taken from `resolution.resolved` at compile
+time, and rows older than the column fail closed rather than being backfilled:
+the library has moved, and re-resolving now would record a set the artefact was
+not built from.
+
+⭐ The fail-closed arm earned its keep immediately. A sibling control seeds its
+projection with direct SQL, so it had no resolved set — and that control went
+red on the new refusal in the same run the check shipped. A disposition with a
+live witness outside its own test is a much stronger thing than one with an
+assertion written to match it.
+
+⚠️ Held, not promoted (`.11.20`): this is close enough to
+`a-control-that-passes-for-an-unrelated-reason` that a third instance should
+decide whether it is its own note.
+
 ## 2026-09-20 — The schema was an argument, and the code refuted it
 
 Deciding whether `POST /v1/policy-publications` should require a held grant, I

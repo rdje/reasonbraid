@@ -120,6 +120,17 @@ pub enum PublicationError {
     MalformedDigest(String),
     /// The staging request named no authority (`SIGNOFF-REPAIR.9.2.1.2.2`).
     MissingAuthority,
+    /// The projection does not carry the policy version the proposal was
+    /// approved for (`SIGNOFF-REPAIR.9.2.1.3.2`).
+    ProjectionMissesApprovedPolicy {
+        projection_id: String,
+        policy_id: String,
+        policy_version: String,
+    },
+    /// The projection predates `migrations/0082` and records no resolved set,
+    /// so the question cannot be answered. ⛔ A DIFFERENT fact from the
+    /// variant above, and said so: *unrecorded* is not *absent*.
+    ProjectionResolvedSetUnrecorded(String),
     /// A caller asserted a manifest digest that is not the one staging derives
     /// (`SIGNOFF-REPAIR.9.2.1.3.1`). ⛔ BOTH values are named: a refusal that
     /// said only "wrong" would leave a caller unable to tell a stale client
@@ -173,6 +184,25 @@ impl std::fmt::Display for PublicationError {
                 write!(
                     f,
                     "the owning_authority is required — staging names a grant the caller HOLDS"
+                )
+            }
+            PublicationError::ProjectionMissesApprovedPolicy {
+                projection_id,
+                policy_id,
+                policy_version,
+            } => {
+                write!(
+                    f,
+                    "projection `{projection_id}` does not carry policy `{policy_id}` \
+                     version {policy_version}, which is what this proposal was approved \
+                     for — a publication may not publish bytes its approval never covered"
+                )
+            }
+            PublicationError::ProjectionResolvedSetUnrecorded(p) => {
+                write!(
+                    f,
+                    "projection `{p}` records no resolved policy set, so it cannot be \
+                     shown to carry the approved policy — re-register it to record one"
                 )
             }
             PublicationError::MalformedDigest(d) => {
@@ -311,13 +341,20 @@ pub async fn stage(
     // ⚠️ This LABELS the row; it does not GATE the write. `stage` still admits
     // any enrolled principal to stage another tenant's approved proposal —
     // measured, and owned by `.6.1.5.2.1` rather than quietly widened here.
-    let proposal: Option<(String, Option<String>)> =
-        sqlx::query_as("SELECT status, tenant_id FROM policy_proposals WHERE proposal_id = $1")
-            .bind(&input.proposal_id)
-            .fetch_optional(pool)
-            .await
-            .map_err(|_| PublicationError::UnknownProposal(input.proposal_id.clone()))?;
-    let Some((status, proposal_tenant)) = proposal else {
+    // ⭐ `SIGNOFF-REPAIR.9.2.1.3.2`: the proposal's POLICY joins the read. The
+    // decision and the approval were always matched to `proposal_id`; the
+    // projection — the one reference that carries the bytes — was not, and
+    // this is the value that lets it be.
+    let proposal: Option<(String, Option<String>, String, String)> = sqlx::query_as(
+        "SELECT status, tenant_id, policy_id, policy_version \
+         FROM policy_proposals WHERE proposal_id = $1",
+    )
+    .bind(&input.proposal_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| PublicationError::UnknownProposal(input.proposal_id.clone()))?;
+    let Some((status, proposal_tenant, approved_policy_id, approved_policy_version)) = proposal
+    else {
         return Err(PublicationError::UnknownProposal(input.proposal_id.clone()));
     };
     // ⛔ `SIGNOFF-REPAIR.6.1.5.2.1`: the proposal must be the caller's. A foreign
@@ -376,8 +413,8 @@ pub async fn stage(
     // DIGEST rather than an `EXISTS`, because the manifest is composed from it.
     // Absence still answers exactly as it did — `UnknownProjection`, under the
     // same tenant predicate — so the refusal this query produces is unchanged.
-    let projection_digest: Option<String> = sqlx::query_scalar(
-        "SELECT digest FROM policy_projections \
+    let projection: Option<(String, Option<Value>)> = sqlx::query_as(
+        "SELECT digest, resolved_policies FROM policy_projections \
          WHERE projection_id = $1 AND tenant_id = $2",
     )
     .bind(&input.projection_id)
@@ -385,11 +422,44 @@ pub async fn stage(
     .fetch_optional(pool)
     .await
     .map_err(|_| PublicationError::UnknownProjection(input.projection_id.clone()))?;
-    let Some(projection_digest) = projection_digest else {
+    let Some((projection_digest, resolved_policies)) = projection else {
         return Err(PublicationError::UnknownProjection(
             input.projection_id.clone(),
         ));
     };
+    // ⛔ `SIGNOFF-REPAIR.9.2.1.3.2` — THE CORRESPONDENCE. `publish` writes this
+    // projection's bytes, and the authority for writing them is the approval
+    // of a proposal that names a policy version. The bytes must carry it.
+    //
+    // ⚠️ The projection legitimately carries MORE than the proposal's policy —
+    // it resolves a SET for a target layer, and that is what a deployment
+    // consumes. The accepted, published residual is therefore that an approval
+    // occasions the publication of a resolved set that includes it; what is
+    // refused is a set that does not include it at all.
+    //
+    // ⛔ An UNRECORDED set fails CLOSED, and says which fact it is reporting.
+    // `owned_by` takes the same disposition for an unattributable publication:
+    // a governance record that cannot be shown to carry what was approved is
+    // worse admitted than frozen.
+    let Some(resolved_policies) = resolved_policies else {
+        return Err(PublicationError::ProjectionResolvedSetUnrecorded(
+            input.projection_id.clone(),
+        ));
+    };
+    let resolved: Vec<crate::policy::PolicyRef> = serde_json::from_value(resolved_policies)
+        .map_err(|_| {
+            PublicationError::ProjectionResolvedSetUnrecorded(input.projection_id.clone())
+        })?;
+    if !resolved
+        .iter()
+        .any(|p| p.policy_id == approved_policy_id && p.version == approved_policy_version)
+    {
+        return Err(PublicationError::ProjectionMissesApprovedPolicy {
+            projection_id: input.projection_id.clone(),
+            policy_id: approved_policy_id,
+            policy_version: approved_policy_version,
+        });
+    }
     // ADR-020 steps (2)–(3), finally performed here rather than delegated to
     // the caller: compose the manifest, hash it, and store THAT.
     let derived_digest = manifest_digest(&manifest(

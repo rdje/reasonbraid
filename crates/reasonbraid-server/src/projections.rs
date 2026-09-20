@@ -26,6 +26,15 @@ pub struct StoredProjection {
     pub digest: String,
     pub bytes: String,
     pub unrepresentable: Vec<reasonbraid_policy_compiler::Unrepresentable>,
+    /// The `(policy_id, version)` pairs the seven-step resolution produced
+    /// (`SIGNOFF-REPAIR.9.2.1.3.2`), so a publication can be required to carry
+    /// the policy its proposal was approved for.
+    ///
+    /// ⚠️ `None` means the row predates `migrations/0082` — *the set was never
+    /// recorded*, never *the set is empty*. Staging FAILS CLOSED on it, and the
+    /// refusal says which of the two it is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_policies: Option<Vec<crate::policy::PolicyRef>>,
 }
 
 /// The typed refusal reasons.
@@ -89,10 +98,30 @@ pub async fn project(
         .map_err(ProjectionError::Compile)?;
     let unrepresentable =
         serde_json::to_value(&artifact.unrepresentable).expect("the unrepresentables serialize");
+    // `SIGNOFF-REPAIR.9.2.1.3.2`: the resolved `(policy_id, version)` set, so a
+    // publication can be required to carry the policy its proposal was
+    // approved for. ⛔ Taken from the RESOLUTION rather than from the rendered
+    // bytes: the compiler drops every unrepresentable clause before rendering,
+    // so a policy that resolved and could not ride this target leaves no trace
+    // in the text while genuinely being part of the set.
+    let mut resolved_policies: Vec<crate::policy::PolicyRef> = Vec::new();
+    for clause in &resolution.resolved {
+        if !resolved_policies
+            .iter()
+            .any(|p| p.policy_id == clause.policy_id && p.version == clause.version)
+        {
+            resolved_policies.push(crate::policy::PolicyRef {
+                policy_id: clause.policy_id.clone(),
+                version: clause.version.clone(),
+            });
+        }
+    }
+    let resolved_policies_json =
+        serde_json::to_value(&resolved_policies).expect("the resolved set serializes");
     let inserted = sqlx::query(
         "INSERT INTO policy_projections \
-         (projection_id, target, digest, bytes, unrepresentable, tenant_id) \
-         VALUES ($1, $2, $3, $4, $5, $6)",
+         (projection_id, target, digest, bytes, unrepresentable, tenant_id, resolved_policies) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
     )
     .bind(&request.projection_id)
     .bind(&artifact.target)
@@ -100,6 +129,7 @@ pub async fn project(
     .bind(&artifact.bytes)
     .bind(&unrepresentable)
     .bind(tenant_id)
+    .bind(&resolved_policies_json)
     .execute(pool)
     .await;
     if inserted.is_err() {
@@ -114,20 +144,30 @@ pub async fn project(
         digest: artifact.digest,
         bytes: artifact.bytes,
         unrepresentable: artifact.unrepresentable,
+        resolved_policies: Some(resolved_policies),
     })
 }
 
 /// Load one projection row (the `.4.3.2` publish verb reads the bundle +
 /// the digest it publishes).
 pub async fn load(pool: &PgPool, projection_id: &str) -> Result<StoredProjection, ProjectionError> {
-    let row: Option<(String, String, String, String, serde_json::Value)> = sqlx::query_as(
-        "SELECT projection_id, target, digest, bytes, unrepresentable          FROM policy_projections WHERE projection_id = $1",
+    let row: Option<(
+        String,
+        String,
+        String,
+        String,
+        serde_json::Value,
+        Option<serde_json::Value>,
+    )> = sqlx::query_as(
+        "SELECT projection_id, target, digest, bytes, unrepresentable, resolved_policies \
+         FROM policy_projections WHERE projection_id = $1",
     )
     .bind(projection_id)
     .fetch_optional(pool)
     .await
     .map_err(|_| ProjectionError::Duplicate(projection_id.to_string()))?;
-    let Some((projection_id, target, digest, bytes, unrepresentable)) = row else {
+    let Some((projection_id, target, digest, bytes, unrepresentable, resolved_policies)) = row
+    else {
         return Err(ProjectionError::Duplicate(format!(
             "projection `{projection_id}` (the publish references a REGISTERED projection)"
         )));
@@ -139,6 +179,7 @@ pub async fn load(pool: &PgPool, projection_id: &str) -> Result<StoredProjection
         bytes,
         unrepresentable: serde_json::from_value(unrepresentable)
             .expect("the unrepresentables parse"),
+        resolved_policies: resolved_policies.and_then(|value| serde_json::from_value(value).ok()),
     })
 }
 
@@ -149,8 +190,15 @@ pub async fn load(pool: &PgPool, projection_id: &str) -> Result<StoredProjection
 /// by NOBODY — `.7.1.2.2`'s disposition, and the reason the backfill's coverage
 /// is published as a measured count rather than assumed complete.
 pub async fn list(pool: &PgPool, tenant_id: &str) -> Result<Vec<StoredProjection>, sqlx::Error> {
-    let rows: Vec<(String, String, String, String, serde_json::Value)> = sqlx::query_as(
-        "SELECT projection_id, target, digest, bytes, unrepresentable \
+    let rows: Vec<(
+        String,
+        String,
+        String,
+        String,
+        serde_json::Value,
+        Option<serde_json::Value>,
+    )> = sqlx::query_as(
+        "SELECT projection_id, target, digest, bytes, unrepresentable, resolved_policies \
          FROM policy_projections WHERE tenant_id = $1 ORDER BY created_at DESC",
     )
     .bind(tenant_id)
@@ -159,13 +207,17 @@ pub async fn list(pool: &PgPool, tenant_id: &str) -> Result<Vec<StoredProjection
     Ok(rows
         .into_iter()
         .map(
-            |(projection_id, target, digest, bytes, unrepresentable)| StoredProjection {
-                projection_id,
-                target,
-                digest,
-                bytes,
-                unrepresentable: serde_json::from_value(unrepresentable)
-                    .expect("the unrepresentables parse"),
+            |(projection_id, target, digest, bytes, unrepresentable, resolved_policies)| {
+                StoredProjection {
+                    projection_id,
+                    target,
+                    digest,
+                    bytes,
+                    unrepresentable: serde_json::from_value(unrepresentable)
+                        .expect("the unrepresentables parse"),
+                    resolved_policies: resolved_policies
+                        .and_then(|value| serde_json::from_value(value).ok()),
+                }
             },
         )
         .collect())

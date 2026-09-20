@@ -378,7 +378,11 @@ pub async fn list(pool: &PgPool) -> Result<Vec<RegisteredPolicy>, sqlx::Error> {
 // ── The layering + the precedence (`.1.3`, ADR-019) ────────────────────────────────
 
 /// One policy reference in the resolution request (the id + the version).
-#[derive(Debug, Clone, Deserialize)]
+///
+/// ⚠️ `Serialize` since `SIGNOFF-REPAIR.9.2.1.3.2`: the same shape is what a
+/// projection stores as its resolved set, and one type for one concept beats a
+/// second struct that must be kept in step.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PolicyRef {
     pub policy_id: String,

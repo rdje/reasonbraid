@@ -1,5 +1,20 @@
 # CHANGELOG.md
 
+## 2026-09-20 — A publication carries the policy its proposal was approved for (`SIGNOFF-REPAIR.9.2.1.3.2`)
+
+`REASONBRAID-REPAIR-0340`. The measurement that decided `.9.2.1.2.2`, repaired.
+
+- 🔴 **An approval for one policy could publish another's compiled bytes, and it was reproduced live.** Two registered policies, a projection each, an approved proposal for one of them — staging it against the OTHER projection returned **200**, `state: staged`. Both projections belong to the same tenant, so tenancy cannot be what separates them.
+- 🔴 The cause is a missing join: `stage` matched the decision and the approval to `proposal_id`, and checked the projection — **the one reference that carries the bytes** — with `projection_id = $1 AND tenant_id = $2`. `publish` writes those bytes.
+- ⭐ ADR-020 §15.7 step (1) already asked for it: *"verify the decision, the approvals, the authority proof, and the IMMUTABLE INPUTS."*
+- ✅ **The rule is containment, not identity**, and the residual is published rather than hidden: a projection resolves a SET for a target layer and legitimately carries policies the proposal did not name. What is refused is a set that does not carry the proposal's policy at all.
+- ⛔ **The set is recorded in a column, from the RESOLUTION, never parsed from the rendered bytes** — `render_lock` renders lock rows rather than clauses, and the compiler drops every unrepresentable clause before rendering, so a policy that resolved and cannot ride this target leaves no trace in the text. A parse would answer a neighbouring question, differently per target.
+- ⛔ **An unrecorded set FAILS CLOSED, in its own error variant**, because *unrecorded* is not *absent* and an operator must tell them apart. `publications::owned_by`'s disposition, applied. No backfill: re-resolving now would record a set the artefact was not built from.
+- ⭐ **The fail-closed arm caught a fixture the same run it shipped** — a sibling control's directly-seeded projection had no resolved set and went red on it. That is a live witness for the disposition beyond its own control.
+- ⛔ The projection verb stays **unbound**, answered explicitly rather than left open: the laundering path is closed at the join instead of at the door. A trigger is recorded.
+- ⭐ **Falsified in situ**: `if false && !resolved.iter().any(…)` fails leg A by name, printing the laundering. Restored byte-identical.
+- **No regression:** 5 suites, **156 tests, 0 failed**; `--lib` 133 passed; clippy `-D warnings` rc=0; gate green; book rc=0.
+
 ## 2026-09-20 — The staging verb decides what an approval publishes, so it names an authority (`SIGNOFF-REPAIR.9.2.1.2.2`)
 
 `REASONBRAID-REPAIR-0339`. The last of the four publication verbs on enrolment alone.

@@ -3039,6 +3039,218 @@ async fn the_failed_transition_requires_an_authority_the_caller_holds() {
     );
 }
 
+/// `SIGNOFF-REPAIR.9.2.1.3.2` — the publication verified that its projection
+/// EXISTED and never that it was the proposal's, so an approval for one policy
+/// published another's compiled bytes.
+///
+/// ⛔ `stage` matched the decision and the approval to `proposal_id` and left
+/// the ONE reference that carries the bytes unmatched: the projection probe was
+/// `projection_id = $1 AND tenant_id = $2`. `publish` writes
+/// `projection.bytes`, so the authority for writing them was the approval of a
+/// proposal that had nothing to do with them.
+///
+/// ⭐ Two policies, two projections, one approval — the matched pair is the
+/// whole control: the SAME staging request differing only in which projection
+/// it names is refused for the foreign one and admitted for the proposal's own.
+#[tokio::test]
+async fn a_publication_carries_the_policy_its_proposal_was_approved_for() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "cp-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+    let grant_id = format!("grt_{human_id}");
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
+
+    // TWO registered policies, so a projection of one is a real artefact of
+    // the other's tenant rather than a fabricated row.
+    for (policy_id, statement) in [
+        ("cp-approved", "the approved rule"),
+        ("cp-other", "a rule nobody approved"),
+    ] {
+        let (status, registered) = register_policy(
+            &client,
+            &base,
+            &human_id,
+            &json!({
+                "policy_id": policy_id,
+                "version": "1.0.0",
+                "digest": DIGEST,
+                "lifecycle": "draft",
+                "title": policy_id,
+                "owning_authority": grant_id,
+                "clauses": [ { "id": format!("{policy_id}-c1"), "statement": statement } ],
+            }),
+        )
+        .await;
+        assert_eq!(status, 200, "{policy_id} registers: {registered}");
+    }
+
+    // A projection PER policy. Both belong to this tenant, so tenancy cannot
+    // be what separates them — only the correspondence can.
+    let mut digests = std::collections::HashMap::new();
+    for policy_id in ["cp-approved", "cp-other"] {
+        let (status, projection) = post(
+            &client,
+            &base,
+            "/v1/policy-projections",
+            &human_id,
+            &json!({
+                "projection_id": format!("{policy_id}-proj"),
+                "target": "generic",
+                "resolution": {
+                    "policies": [ { "policy_id": policy_id, "version": "1.0.0" } ],
+                    "target": { "layer": "organization", "target": "*" },
+                },
+            }),
+        )
+        .await;
+        assert_eq!(
+            status, 200,
+            "the {policy_id} projection records: {projection}"
+        );
+        digests.insert(
+            policy_id,
+            projection["digest"].as_str().unwrap().to_string(),
+        );
+    }
+    assert_ne!(
+        digests["cp-approved"], digests["cp-other"],
+        "the two projections are genuinely different artefacts"
+    );
+
+    // The approved chain, for `cp-approved` ONLY. Seeded directly for the
+    // reason the sibling controls record: the full walk is driven end to end
+    // elsewhere, and re-deriving it here would put the correspondence check
+    // behind a second copy of that pipeline.
+    sqlx::query(
+        "INSERT INTO policy_proposals \
+         (proposal_id, policy_id, policy_version, thread_id, status, tenant_id) \
+         VALUES ('cp-prp', 'cp-approved', '1.0.0', 'cp-thread', 'approved', $1)",
+    )
+    .bind(&tenant_id)
+    .execute(&pool)
+    .await
+    .expect("the approved proposal seeds");
+    sqlx::query(
+        "INSERT INTO policy_decisions \
+         (decision_id, proposal_id, rule, electorate, verdict_event_id, tenant_id) \
+         VALUES ('cp-dec', 'cp-prp', 'majority', '{}'::jsonb, 'cp-evt', $1)",
+    )
+    .bind(&tenant_id)
+    .execute(&pool)
+    .await
+    .expect("the decision seeds");
+    sqlx::query(
+        "INSERT INTO policy_approvals \
+         (approval_id, proposal_id, decision_id, approver, grant_id, quorum, tenant_id) \
+         VALUES ('cp-app', 'cp-prp', 'cp-dec', $1, $2, '{}'::jsonb, $3)",
+    )
+    .bind(&human_id)
+    .bind(&grant_id)
+    .bind(&tenant_id)
+    .execute(&pool)
+    .await
+    .expect("the approval seeds");
+
+    let stage = |publication_id: &'static str, projection_id: String| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let grant_id = grant_id.clone();
+        async move {
+            post(
+                &client,
+                &base,
+                "/v1/policy-publications",
+                &human_id,
+                &json!({
+                    "publication_id": publication_id,
+                    "proposal_id": "cp-prp",
+                    "decision_id": "cp-dec",
+                    "approval_id": "cp-app",
+                    "projection_id": projection_id,
+                    "owning_authority": grant_id,
+                }),
+            )
+            .await
+        }
+    };
+
+    // Leg A — the FOREIGN projection. `cp-other` was never proposed and never
+    // approved, and this request would publish its bytes under `cp-approved`'s
+    // approval.
+    let (status, refused) = stage("cp-pub-foreign", "cp-other-proj".to_string()).await;
+    assert_eq!(
+        status, 400,
+        "a projection that does not carry the approved policy refuses: {refused}"
+    );
+    let message = refused["message"].as_str().unwrap_or_default().to_string();
+    assert!(
+        message.contains("cp-approved") && message.contains("cp-other-proj"),
+        "the refusal names the policy that is missing and the projection that \
+         does not carry it: {refused}"
+    );
+    let n: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM policy_publications WHERE publication_id = 'cp-pub-foreign'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("the publications count");
+    assert_eq!(n, 0, "the refused staging wrote nothing");
+
+    // Leg B — THE MATCHED PAIR: the same request, the same approval, one field
+    // different, and it stages. If leg A's refusal came from the tenant check,
+    // the approval chain, the authority or the manifest, this would be refused
+    // too.
+    let (status, staged) = stage("cp-pub-own", "cp-approved-proj".to_string()).await;
+    assert_eq!(
+        status, 200,
+        "the proposal's OWN projection stages: {staged}"
+    );
+    assert_eq!(staged["state"], json!("staged"), "{staged}");
+
+    // Leg C — a projection whose resolved set is UNKNOWN (the pre-migration
+    // shape) cannot be shown to carry the approved policy, so it is refused.
+    // ⛔ Fail CLOSED, the disposition `publications::owned_by` already takes
+    // for an unattributable governance row: a publication that cannot be shown
+    // to carry what was approved is worse admitted than frozen.
+    sqlx::query("UPDATE policy_projections SET resolved_policies = NULL WHERE projection_id = $1")
+        .bind("cp-approved-proj")
+        .execute(&pool)
+        .await
+        .expect("the historical shape is restored on one row");
+    let (status, refused) = stage("cp-pub-legacy", "cp-approved-proj".to_string()).await;
+    assert_eq!(
+        status, 400,
+        "a projection with no recorded resolved set refuses: {refused}"
+    );
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("records no resolved policy set"),
+        "the refusal says WHY it cannot answer rather than claiming the policy \
+         is absent: {refused}"
+    );
+}
+
 /// `SIGNOFF-REPAIR.9.2.1.2.2` — the STAGING verb created a publication on
 /// enrolment alone, while all three of its transitions required a grant the
 /// caller HOLDS.
@@ -3110,10 +3322,16 @@ async fn the_staging_verb_requires_an_authority_the_caller_holds() {
     .execute(&pool)
     .await
     .expect("the approval seeds");
+    // ⛔ `.9.2.1.3.2`: the seed records the RESOLVED SET, because a projection
+    // that does not is frozen by design — and this fixture found that out the
+    // hard way, failing leg C on the fail-closed refusal until the column was
+    // seeded. The set matches the proposal's policy, since this control is
+    // about AUTHORITY and must not be refused by the correspondence check.
     sqlx::query(
         "INSERT INTO policy_projections \
-         (projection_id, target, digest, bytes, unrepresentable, tenant_id) \
-         VALUES ('ps-proj', 'generic', $1, 'body', '[]'::jsonb, $2)",
+         (projection_id, target, digest, bytes, unrepresentable, tenant_id, resolved_policies) \
+         VALUES ('ps-proj', 'generic', $1, 'body', '[]'::jsonb, $2, \
+                 '[{\"policy_id\": \"ps-policy\", \"version\": \"1.0.0\"}]'::jsonb)",
     )
     .bind(DIGEST)
     .bind(&alice_tenant)

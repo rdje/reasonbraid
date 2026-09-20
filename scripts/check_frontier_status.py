@@ -29,7 +29,22 @@ THE THREE RULES, and the second is the one that hurts:
 
   1. every row's status column equals its leaf's own status;
   2. row 1's leaf is not finished;
-  3. no UNFINISHED leaf holds more than one row (`SIGNOFF-REPAIR.11.22.1`).
+  3. no UNFINISHED leaf holds more than one row (`SIGNOFF-REPAIR.11.22.1`);
+  4. no blank line sits INSIDE the frontier table (`.13.4.6.2`).
+
+⛔ RULE 4 IS THE ONE THAT KEEPS THE OTHER THREE HONEST, and it was missing.
+A blank line ENDS a GFM table, so one inserted after the delimiter row makes
+`frontier_rows` correctly return nothing — and then rules 1 to 3 have nothing
+to object to and this gate exits **0** over a table nobody can read.
+⚠️ Rule 4 is deliberately NOT *the heading is present and no rows parsed*: that
+formulation refused 5 of the 16 tracked trees, because a completed tree
+legitimately writes a dash row or prose instead of a table. Driven,
+not argued: `.13.4.6` inserted one blank line into the live tree and measured
+exit 0. ⚠️ The shape is not hypothetical — `SIGNOFF-REPAIR.11.19` was opened on
+exactly this blank line being present in this very table, and `.13.4.6`'s
+calibration measured its cost: at **10** historical commits the parser saw zero
+rows, which is why one leaf's duplicate shape counts 24 through this gate and
+34 through a direct grep.
 
 ⭐ RULE 3 IS THE ONE THE FIRST TWO CANNOT SEE, and that is not a slip in them.
 When one leaf holds two `pending` rows and the leaf says `pending`, every row
@@ -141,6 +156,47 @@ def duplicate_rows(rows: list[tuple[int, str, str, str]]) -> list[tuple[str, lis
     return sorted((leaf, at) for leaf, at in unfinished.items() if len(at) > 1)
 
 
+def severed_table(text: str) -> list[str]:
+    """RULE 4 (`SIGNOFF-REPAIR.13.4.6.2`) — a blank line INSIDE the frontier
+    table, with pipe lines on both sides.
+
+    ⛔ THE FIRST FORMULATION WAS *the heading is present and no rows parsed*,
+    and running it refused **5 of the 16** tracked trees on two shapes that are
+    both correct: `PHASE-0` writes a completed tree's `| — | — | — | … |` dash
+    row, which carries no backticked leaf id for `ROW` to match, and `PHASE-1`
+    replaces the table with prose. Neither is a severed table. `.11.6` again —
+    the rule was proposed ahead of its population, and the population refused it.
+
+    ⭐ The defect's actual signature is narrow and unambiguous: a blank line
+    with `|` lines above AND below it inside the frontier section. GFM ends the
+    table at that blank, so everything after it renders as a paragraph and this
+    gate's parser stops there — which is how a table can silently stop being
+    checked while every rule still passes.
+    """
+    lines = text.split("\n")
+    try:
+        start = next(i for i, l in enumerate(lines) if l.rstrip() == HEADING)
+    except StopIteration:
+        return []
+    end = next((i for i in range(start + 1, len(lines))
+                if lines[i].startswith("## ")), len(lines))
+    section = lines[start:end]
+    for n, line in enumerate(section):
+        if line.strip():
+            continue
+        before = any(l.startswith("|") for l in section[:n])
+        after = any(l.startswith("|") for l in section[n + 1:])
+        if before and after:
+            return [
+                f"line {start + n + 1}: a BLANK LINE sits inside the frontier table, with rows "
+                "above and below it. A blank line ends a GFM table, so the rows below render as "
+                "a paragraph and this gate's parser stops there — every rule above then passes "
+                "over a table nobody is checking (SIGNOFF-REPAIR.11.19 shipped exactly this, "
+                "and .13.4.6 measured 10 commits where the parser saw zero rows)."
+            ]
+    return []
+
+
 def breaches(text: str) -> list[str]:
     """Every way this file's frontier table disagrees with its own leaves."""
     own = leaf_status(text)
@@ -163,6 +219,7 @@ def breaches(text: str) -> list[str]:
                 f"line {line}: ROW 1 names {leaf}, which is `{actual}` — "
                 "row 1 is the leaf a fresh session resumes from"
             )
+    out.extend(severed_table(text))
     for leaf, at in duplicate_rows(rows):
         where = ", ".join(f"row {o} (line {l})" for l, o in at)
         out.append(
@@ -305,6 +362,32 @@ def self_test() -> int:
         ),
         fragment="holds 3 UNFINISHED rows",
     )
+    # ── RULE 4, both directions (`SIGNOFF-REPAIR.13.4.6.2`) ──────────────────
+    check(
+        "a blank line severs the table",
+        tree(
+            "| 1 | `SIGNOFF-REPAIR.1.1` | `pending` | a |\n\n"
+            "| 2 | `SIGNOFF-REPAIR.1.2` | `pending` | b |",
+            "#### SIGNOFF-REPAIR.1.1 — a\n\n- Status: `pending`.\n\n"
+            "#### SIGNOFF-REPAIR.1.2 — b\n\n- Status: `pending`.\n",
+        ),
+        fragment="BLANK LINE sits inside the frontier table",
+    )
+    # ⛔ THE TWO SHAPES THE FIRST FORMULATION WRONGLY REFUSED, both copied from
+    # the real corpus. If either fires, rule 4 has reverted to *the heading is
+    # present and no rows parsed*, which refused 5 of 16 tracked trees.
+    check(
+        "a completed tree's dash row (PHASE-0's shape)",
+        f"{HEADING}\n\n| Order | Leaf | Status | Why next |\n| --- | --- | --- | --- |\n"
+        "| — | — | — | **Tree complete** — next executable work is `PHASE-1.1` |\n",
+        fragment=None,
+    )
+    check(
+        "a completed tree that replaced the table with prose (PHASE-1's shape)",
+        f"{HEADING}\n\n**Tree complete.** The next executable work is `PHASE-2.1`.\n",
+        fragment=None,
+    )
+
     # ⛔ THE LEGAL SHAPES, and they are most of the corpus. If either of these
     # ever fires, rule 3 has become "no leaf twice", which would condemn the
     # opening-then-closing pattern the table is built on.
@@ -340,7 +423,8 @@ def self_test() -> int:
         "blank line ends the table, and a tree with no table is silent; and rule 3 names two "
         "pending rows for one leaf, names `active` beside `pending`, names the real historical "
         "three-row instance, and stays silent for an opening-beside-closing pair and for a "
-        "deferring row"
+        "deferring row; and rule 4 names a blank line that severs the table while staying "
+        "silent for a completed tree's dash row and for one that replaced the table with prose"
     )
     return 0
 

@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-20 — A blank line silently disabled every frontier rule, and my first formulation of the fix refused five correct trees (`SIGNOFF-REPAIR.13.4.6.2`)
+
+`REASONBRAID-REPAIR-0346`. Found by `.13.4.6`'s verification pass, which drove it rather than reasoning about it.
+
+- 🔴 **One blank line after the frontier table's delimiter row and `check_frontier_status.py` exits 0** over a table it parsed as zero rows. A blank line ends a GFM table, `frontier_rows` correctly stops, and rules 1–3 then have nothing to object to. ⚠️ Not hypothetical: `SIGNOFF-REPAIR.11.19` shipped exactly this, and the calibration measured its cost — **10** commits where the parser saw zero rows, which is why one leaf's duplicate shape counts 24 through the gate and **34** through a direct grep.
+- 🔴 **My first formulation was wrong, and running it is what said so.** *The heading is present and no rows parsed* is the obvious reading, and it refused **5 of the 16** tracked trees: `PHASE-0` writes a completed tree's `| — | — | — |` dash row, which carries no backticked leaf id, and `PHASE-1` replaces the table with prose. ⛔ `.11.6` — no rule before its population — violated in the leaf that cites it, and caught within a minute because the rule was run before it was believed.
+- ✅ **Narrowed to the mechanism**: a blank line with pipe lines on **both** sides, inside the frontier section. Unambiguous, cannot fire on either legal shape, and exactly what GFM reacts to.
+- ⛔ **Both wrongly-refused shapes are now self-test cases asserted SILENT**, copied from the real corpus rather than invented — if either fires, rule 4 has reverted.
+- ⭐ **The guard moves from luck to design.** Until now the only thing that noticed a severed table was a neighbouring instrument's real-file probe, written for another reason. It is kept as a second belt: it asks a different question (*does the parser still find rows*) and would catch a parser that broke some other way.
+- Verified: the `.11.19` shape restored into the live table gives **exit 1** naming the line; restored byte-identically, **exit 0**. Self-test now 16 cases.
+
 ## 2026-09-20 — The census could only see one of the two ways a wire code is emitted (`SIGNOFF-REPAIR.13.4.6.1`)
 
 `REASONBRAID-REPAIR-0345`. Found by `.13.4.6`'s verification pass, which re-derived the emitted set by a second route.

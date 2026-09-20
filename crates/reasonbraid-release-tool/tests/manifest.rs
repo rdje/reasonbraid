@@ -181,3 +181,226 @@ fn the_manifest_signs_and_the_refusals_are_typed() {
 
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// 🔴 **THE SIGNING-KEY INCIDENT'S RECOVERY, DRIVEN END TO END**
+/// (`SIGNOFF-REPAIR.11.24.1.4`). `docs/runbooks/signing-key-incident.md` says
+/// *re-sign the SAME manifest content (the digests unchanged)*, and until
+/// `re-sign` existed no command could do it.
+///
+/// ⛔ **And `generate` could not stand in for it, which this control measures
+/// FIRST rather than asserting.** Two `generate` runs over an UNCHANGED binary
+/// produce different manifests, because `created_at` is `Utc::now()` — so a
+/// re-key performed that way publishes a new manifest rather than the same one
+/// under a new identity. That leg is the reason the verb exists; without it a
+/// reader would take the new command for a convenience.
+#[test]
+fn the_manifest_re_signs_under_a_new_identity_and_the_old_one_stops_verifying() {
+    let dir = temp_dir();
+    let bin_dir = dir.join("bin");
+    std::fs::create_dir_all(&bin_dir).expect("the bin dir");
+    std::fs::write(bin_dir.join("rb"), b"binary-a-content").expect("write bin");
+    let old_key = dir.join("compromised.pk8");
+    let new_key = dir.join("recovered.pk8");
+    let manifest = dir.join("release-manifest.json");
+    let sig = dir.join("release-manifest.json.sig");
+    let new_sig = dir.join("release-manifest.json.sig.rekeyed");
+
+    assert!(
+        run(&["keygen", "--key", old_key.to_str().unwrap()])
+            .status
+            .success(),
+        "the compromised identity"
+    );
+    let generate = |out: &std::path::Path| {
+        let out = run(&[
+            "generate",
+            "--key",
+            old_key.to_str().unwrap(),
+            "--bin-dir",
+            bin_dir.to_str().unwrap(),
+            "--bin",
+            "rb",
+            "--out",
+            out.to_str().unwrap(),
+        ]);
+        assert!(out.status.success(), "the generate: {out:?}");
+    };
+    generate(&manifest);
+    let original = std::fs::read(&manifest).expect("the manifest bytes");
+
+    // LEG 0 — `generate` is NOT a re-signature, even over an unchanged binary.
+    let second = dir.join("second-manifest.json");
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    generate(&second);
+    assert_ne!(
+        std::fs::read(&second).expect("the second manifest"),
+        original,
+        "leg 0: two generates over one unchanged binary differ — `created_at` is now()"
+    );
+
+    // LEG 1 — the same key cannot perform the recovery, and says so instead of
+    // writing a signature identical to the one already there.
+    let refusal = run(&[
+        "re-sign",
+        "--key",
+        old_key.to_str().unwrap(),
+        "--manifest",
+        manifest.to_str().unwrap(),
+        "--sig",
+        new_sig.to_str().unwrap(),
+    ]);
+    assert!(!refusal.status.success(), "leg 1: the same key is refused");
+    assert!(
+        String::from_utf8_lossy(&refusal.stderr).contains("no re-key happened"),
+        "leg 1: and the refusal names why: {refusal:?}"
+    );
+    assert!(!new_sig.exists(), "leg 1: a refused re-sign writes nothing");
+
+    // LEG 2 — the recovery itself.
+    assert!(
+        run(&["keygen", "--key", new_key.to_str().unwrap()])
+            .status
+            .success(),
+        "the recovered identity"
+    );
+    let out = run(&[
+        "re-sign",
+        "--key",
+        new_key.to_str().unwrap(),
+        "--manifest",
+        manifest.to_str().unwrap(),
+        "--sig",
+        new_sig.to_str().unwrap(),
+    ]);
+    assert!(out.status.success(), "leg 2: the re-sign: {out:?}");
+
+    // ⭐ THE PROPERTY THE WHOLE VERB IS FOR: the manifest did not change.
+    assert_eq!(
+        std::fs::read(&manifest).expect("the manifest after"),
+        original,
+        "leg 2: the manifest's bytes are untouched — the digests are unchanged"
+    );
+    // And the old signature survives: it is the incident's evidence.
+    assert!(
+        sig.exists(),
+        "leg 2: the original signature is not overwritten"
+    );
+
+    let verify = |key: &std::path::Path, signature: &std::path::Path| {
+        run(&[
+            "verify",
+            "--key",
+            key.to_str().unwrap(),
+            "--bin-dir",
+            bin_dir.to_str().unwrap(),
+            "--manifest",
+            manifest.to_str().unwrap(),
+            "--sig",
+            signature.to_str().unwrap(),
+        ])
+        .status
+        .success()
+    };
+    assert!(
+        verify(&new_key, &new_sig),
+        "leg 2: the manifest verifies under the recovered identity"
+    );
+    // ⛔ THE TWO NEGATIVE LEGS, and both are needed. The first says the new
+    // signature belongs to the new key alone; the second says the OLD identity
+    // has not somehow inherited it.
+    assert!(
+        !verify(&old_key, &new_sig),
+        "leg 3: the compromised identity does not verify the new signature"
+    );
+    assert!(
+        !verify(&new_key, &sig),
+        "leg 3: nor does the recovered identity verify the old one"
+    );
+    // ⭐ POSITIVE CONTROL in the same run: the old pairing still verifies, so
+    // the two refusals above are about the identities and not about a broken
+    // fixture.
+    assert!(
+        verify(&old_key, &sig),
+        "leg 3: the original key still verifies the original signature"
+    );
+
+    // LEG 4 — an existing signature path is never overwritten, and a file that
+    // is not a manifest is never signed as one.
+    let again = run(&[
+        "re-sign",
+        "--key",
+        new_key.to_str().unwrap(),
+        "--manifest",
+        manifest.to_str().unwrap(),
+        "--sig",
+        new_sig.to_str().unwrap(),
+    ]);
+    assert!(!again.status.success(), "leg 4: the overwrite refuses");
+    let junk = dir.join("not-a-manifest.json");
+    std::fs::write(&junk, b"{\"hello\":\"world\"}").expect("write the junk");
+    let junk_sig = dir.join("junk.sig");
+    let out = run(&[
+        "re-sign",
+        "--key",
+        new_key.to_str().unwrap(),
+        "--manifest",
+        junk.to_str().unwrap(),
+        "--sig",
+        junk_sig.to_str().unwrap(),
+    ]);
+    assert!(!out.status.success(), "leg 4: a non-manifest is refused");
+    assert!(!junk_sig.exists(), "leg 4: and nothing is signed");
+
+    // LEG 5 — 🔴 **THE LEG THAT MAKES "VERBATIM" MEAN SOMETHING.** Every
+    // manifest above round-trips through serde to its own bytes, so a `re-sign`
+    // that signed `canonical_bytes(&parsed)` instead of the file would pass all
+    // of them — the control would be measuring nothing about the property the
+    // verb is named for. A PRETTY-PRINTED manifest parses to the same struct
+    // and serializes to DIFFERENT bytes, which is the case that separates them:
+    // `verify` checks the signature against the file's own bytes, so a
+    // re-serializing implementation fails here and only here.
+    let pretty_dir = dir.join("pretty");
+    std::fs::create_dir_all(&pretty_dir).expect("the pretty dir");
+    let pretty = pretty_dir.join("release-manifest.json");
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&original).expect("the original manifest parses");
+    let pretty_bytes = serde_json::to_vec_pretty(&parsed).expect("the pretty bytes");
+    assert_ne!(
+        pretty_bytes, original,
+        "leg 5: the fixture is only meaningful if the bytes actually differ"
+    );
+    std::fs::write(&pretty, &pretty_bytes).expect("write the pretty manifest");
+    let pretty_sig = pretty_dir.join("release-manifest.json.sig");
+    let out = run(&[
+        "re-sign",
+        "--key",
+        new_key.to_str().unwrap(),
+        "--manifest",
+        pretty.to_str().unwrap(),
+        "--sig",
+        pretty_sig.to_str().unwrap(),
+    ]);
+    assert!(out.status.success(), "leg 5: the re-sign: {out:?}");
+    assert_eq!(
+        std::fs::read(&pretty).expect("the pretty manifest after"),
+        pretty_bytes,
+        "leg 5: the file is still the file"
+    );
+    let out = run(&[
+        "verify",
+        "--key",
+        new_key.to_str().unwrap(),
+        "--bin-dir",
+        bin_dir.to_str().unwrap(),
+        "--manifest",
+        pretty.to_str().unwrap(),
+        "--sig",
+        pretty_sig.to_str().unwrap(),
+    ]);
+    assert!(
+        out.status.success(),
+        "leg 5: the signature is over the FILE's bytes, not a re-serialization: {out:?}"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}

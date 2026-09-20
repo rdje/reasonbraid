@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-20 — A re-key signs the manifest, not the binaries (`SIGNOFF-REPAIR.11.24.1.4`)
+
+`REASONBRAID-REPAIR-0327`. The signing-key incident's recovery had a runbook and no command.
+
+- 🔴 **`docs/runbooks/signing-key-incident.md` prescribed *re-sign the SAME manifest content (the digests unchanged)*, and nothing could do it** — `git grep -ci "re-key\|rekey\|re_sign\|resign" -- crates` returned **0**.
+- 🔴 **And the obvious workaround is measurably wrong, which turns a drill inconvenience into a missing capability.** `generate` stamps `created_at: chrono::Utc::now()`, so two runs over ONE unchanged binary produce different bytes and different signatures — probed directly, same digest, `identical: NO`. A re-key done that way publishes a NEW release document rather than the same one under a new identity, and ADR-027 names *the manifest's own digest* as part of the verification unit.
+- 🔎 **The tool's own module header said the opposite**, and that is how a runbook came to describe an impossible recovery: it read *the byte-identical regeneration is the re-derivation contract*. What is byte-identical is a PARSED manifest re-serialized to its own bytes; what `verify` re-derives is each BINARY's digest. Corrected at the header and at the struct.
+- ✅ **`rb-release-manifest re-sign --key <new> --manifest <path> --sig <out>`** signs the manifest's bytes VERBATIM. ⛔ Parsed only to refuse a file that is not a manifest, never re-serialized. ⛔ The old signature is NOT checked first — the key it would check is the one presumed compromised, so requiring it would make the command unusable in the only case it exists for. ⭐ **The OLD key is refused by name**: Ed25519 signing is deterministic, so re-signing with it reproduces the existing signature exactly — a recovery that appears to succeed and re-keys nothing. ⛔ `--sig` is required and never overwritten, making the runbook's *keep the old signature* a rule the tool holds.
+- ⭐ **Leg 5 of the control exists because the control without it measured nothing about its own headline.** Every fixture manifest round-trips through serde to its own bytes, so an implementation signing the re-serialization would have passed every other leg. A PRETTY-PRINTED manifest parses to the same struct and serializes to different bytes, and `verify` checks the signature against the file's own bytes — that is the separating case.
+- ✅ **VERIFIED:** `cargo test -p reasonbraid-release-tool` → **2 passed, 0 failed** (1 before, measured both sides); strict clippy rc=0; fmt rc=0; `make book` rc=0; doctrine gate all green; `handoff: OK`. **Falsified three ways** — signing the re-serialization (leg 5), dropping the same-key refusal (leg 1), allowing the signature to be overwritten (leg 4) — the source restored from a byte-copy and the suite re-run green.
+- ⚠️ **NOT solved, and owned rather than noted (`SIGNOFF-REPAIR.11.24.1.4.1`, new):** `verify` and `certify verify` take the PRIVATE key and derive the public one from it, so a release can only be verified by whoever signed it and a re-key has no publishable end state. Inside ADR-027's distribution-channel deferral; the runbook now says so in its own words.
+
 ## 2026-09-20 — Resolution is not third-party-implementable in process, and the SDK's front door never mentioned resolvers at all (`SIGNOFF-REPAIR.11.24.1.5`)
 
 `REASONBRAID-DOC-0082`. A decision leaf: the resolver SDK's missing acquisition trait, adjudicated and recorded.

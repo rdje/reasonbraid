@@ -5,8 +5,18 @@
 //!
 //! The manifest is the SINGLE verification unit: the binaries verify
 //! through it, never individually. The canonical form is the struct's field
-//! order with the `binaries` map sorted (the byte-identical regeneration is
-//! the re-derivation contract).
+//! order with the `binaries` map sorted, so a manifest read back and
+//! re-serialized is byte-identical to itself.
+//!
+//! ⛔ **That is NOT a claim that `generate` is reproducible, and this header
+//! used to read as though it were** (`SIGNOFF-REPAIR.11.24.1.4`). It said *the
+//! byte-identical regeneration is the re-derivation contract*, which invites
+//! the conclusion that re-running `generate` over unchanged binaries
+//! reproduces the manifest. It does not: `created_at` is `Utc::now()`, so two
+//! runs over one unchanged binary produce different bytes and different
+//! signatures — measured, and the reason `re-sign` exists. What IS re-derived
+//! by `verify` is each BINARY's digest against the stored one; the manifest
+//! itself is a durable artefact to be kept, not one to be rebuilt.
 //!
 //! The release identity key is the dev placement: the releaser's own file
 //! (`--key`, default `release-key.pk8`, raw PKCS8 DER — gitignored). The
@@ -53,6 +63,46 @@ enum Cmd {
         #[arg(long, default_value = "0.1.0")]
         release_name: String,
     },
+    /// Re-sign an EXISTING manifest's exact bytes with another identity
+    /// (`SIGNOFF-REPAIR.11.24.1.4`) — the signing-key incident's recovery.
+    ///
+    /// ⛔ **This is not `generate` with a different key, and it cannot be.**
+    /// `generate` rebuilds the manifest from `--bin-dir`, which (a) needs the
+    /// original binaries still present and byte-identical — exactly what a
+    /// compromise investigation cannot assume — and (b) stamps a fresh
+    /// `created_at`, so it produces DIFFERENT BYTES even from identical
+    /// binaries. Measured: two `generate` runs over one unchanged binary
+    /// differ, and so do their signatures. A re-key performed that way
+    /// publishes a NEW manifest, not the same one under a new identity, and
+    /// anything pinning the manifest's own digest — which ADR-027 names as
+    /// part of the verification unit — breaks.
+    ///
+    /// ⭐ So this verb reads the manifest's bytes VERBATIM and signs those.
+    /// It parses them only to refuse a file that is not a manifest; it never
+    /// re-serializes, because a second canonicalization is a second chance to
+    /// produce different bytes.
+    ///
+    /// ⛔ It does NOT verify the old signature first, deliberately: the key
+    /// whose signature that would check is the one presumed lost or
+    /// compromised, so requiring it would make the command unusable in the
+    /// only situation it exists for. What the digests assert about the
+    /// binaries is unchanged and unaffected — that is why the manifest is
+    /// still worth re-signing at all.
+    #[command(name = "re-sign")]
+    Resign {
+        /// The NEW release identity (`keygen` it first).
+        #[arg(long, default_value = "release-key.pk8")]
+        key: PathBuf,
+        /// The existing manifest, signed byte-for-byte as it stands.
+        #[arg(long)]
+        manifest: PathBuf,
+        /// Where the new signature is written. Required and never
+        /// overwritten: the old signature is the incident's evidence, and
+        /// the runbook's "keep it" is a rule the tool should hold rather
+        /// than a sentence someone has to remember.
+        #[arg(long)]
+        sig: PathBuf,
+    },
     /// Verify the manifest: the stored digests re-derived against the
     /// binaries AND the signature over the manifest's exact bytes.
     Verify {
@@ -97,8 +147,10 @@ enum CertifyCmd {
     },
 }
 
-/// The manifest — the canonical field order; `binaries` is the SORTED map
-/// (the byte-identical regeneration contract).
+/// The manifest — the canonical field order; `binaries` is the SORTED map, so
+/// a parsed manifest re-serializes to its own bytes. ⚠️ `created_at` is what
+/// stops a fresh `generate` reproducing an earlier manifest; see the module
+/// header.
 #[derive(serde::Serialize, serde::Deserialize)]
 struct Manifest {
     release: String,
@@ -193,6 +245,59 @@ fn main() -> Result<(), String> {
                 "the manifest is at {} (the signature at {})",
                 out.display(),
                 sig_path.display()
+            );
+            Ok(())
+        }
+        Cmd::Resign { key, manifest, sig } => {
+            // ⛔ VERBATIM. The bytes that are signed are the bytes on disk —
+            // the whole point of the verb is that the manifest does not change.
+            let bytes = std::fs::read(&manifest)
+                .map_err(|e| format!("read the manifest {}: {e}", manifest.display()))?;
+            // Parsed only to refuse a file that is not a manifest. A signature
+            // is an assertion about what the bytes ARE, so signing an arbitrary
+            // file as a release manifest is the one thing this must not do.
+            let parsed: Manifest = serde_json::from_slice(&bytes)
+                .map_err(|e| format!("the manifest {} parses: {e}", manifest.display()))?;
+            let signing_key = load_key(&key)?;
+            let signature = hex(signing_key.sign(&bytes).as_ref());
+            // ⭐ THE SILENT NO-OP THIS VERB EXISTS TO AVOID. Ed25519 signing is
+            // deterministic, so re-signing with the SAME key reproduces the
+            // existing signature byte for byte — a recovery that appears to
+            // succeed and re-keys nothing. When the previous signature is
+            // where `generate` puts it, that is checkable, and it is checked.
+            let previous_path = std::path::PathBuf::from(format!("{}.sig", manifest.display()));
+            if let Ok(previous) = std::fs::read_to_string(&previous_path) {
+                if previous.trim() == signature {
+                    return Err(format!(
+                        "the key {} is the key that already signed {} — no re-key happened; \
+                         run `keygen` for a NEW identity first",
+                        key.display(),
+                        manifest.display()
+                    ));
+                }
+            }
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&sig)
+                .map_err(|e| {
+                    format!(
+                        "the signature {} cannot be created (an existing signature is never \
+                         overwritten — it is the incident's evidence; archive it, or pass a \
+                         different --sig): {e}",
+                        sig.display()
+                    )
+                })?;
+            use std::io::Write;
+            file.write_all(signature.as_bytes())
+                .map_err(|e| format!("write the signature {}: {e}", sig.display()))?;
+            eprintln!(
+                "the manifest {} is re-signed under {} ({} binaries, the digests unchanged); \
+                 the signature is at {}",
+                manifest.display(),
+                key.display(),
+                parsed.binaries.len(),
+                sig.display()
             );
             Ok(())
         }

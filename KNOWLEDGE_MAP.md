@@ -209,6 +209,7 @@
 - [`2026-09-20_a-git-snapshot-is-a-reference-because-its-bytes-are-not-an-identity.md`](docs/decisions/2026-09-20_a-git-snapshot-is-a-reference-because-its-bytes-are-not-an-identity.md)
 - [`2026-09-20_a-proof-carries-the-stores-own-bytes.md`](docs/decisions/2026-09-20_a-proof-carries-the-stores-own-bytes.md)
 - [`2026-09-20_a-proof-of-allowance-must-carry-its-own-window.md`](docs/decisions/2026-09-20_a-proof-of-allowance-must-carry-its-own-window.md)
+- [`2026-09-20_a-re-key-signs-the-manifest-not-the-binaries.md`](docs/decisions/2026-09-20_a-re-key-signs-the-manifest-not-the-binaries.md)
 - [`2026-09-20_a-receipt-is-earned-by-an-offer.md`](docs/decisions/2026-09-20_a-receipt-is-earned-by-an-offer.md)
 - [`2026-09-20_a-render-is-evidence-and-its-worker-must-describe-it.md`](docs/decisions/2026-09-20_a-render-is-evidence-and-its-worker-must-describe-it.md)
 - [`2026-09-20_a-retention-window-measures-time-in-the-state-it-retains.md`](docs/decisions/2026-09-20_a-retention-window-measures-time-in-the-state-it-retains.md)

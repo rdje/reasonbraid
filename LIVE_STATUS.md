@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **A RE-KEY SIGNS THE MANIFEST, NOT THE BINARIES (`.11.24.1.4`, REPAIR-0327).**
+
+- 🔴 The signing-key runbook prescribed *re-sign the SAME manifest content* and **no command could do it** (`git grep -ci` → 0).
+- 🔴 **And the workaround is measurably wrong**: `generate` stamps `created_at: Utc::now()`, so two runs over one unchanged binary differ — `identical: NO`. It publishes a NEW release document, and ADR-027 names the manifest's own digest as part of the verification unit.
+- 🔎 **The tool's module header said the opposite** (*the byte-identical regeneration is the re-derivation contract*) — how a runbook came to describe an impossible recovery. Corrected.
+- ✅ `re-sign` signs the bytes VERBATIM; ⭐ **refuses the OLD key by name** (deterministic Ed25519 reproduces the existing signature and re-keys nothing); never overwrites a signature — the runbook's evidence rule, held by the tool.
+- ⭐ **Leg 5 is load-bearing**: every fixture manifest round-trips to its own bytes, so a re-serializing implementation passed every other leg. A PRETTY-PRINTED manifest is the separating case. Falsified 3 ways, 3 legs.
+- ⚠️ **NOT solved, OWNED at `.11.24.1.4.1`:** `verify` takes the PRIVATE key, so a release is verifiable only by whoever signed it and a re-key has no publishable end state.
+
 ✅ **RESOLUTION IS NOT THIRD-PARTY-IMPLEMENTABLE IN PROCESS, AND THE SDK'S FRONT DOOR NEVER MENTIONED RESOLVERS AT ALL (`.11.24.1.5`, DOC-0082).**
 
 - 🔴 **`PHASE-8.4.1` deferred the acquisition trait to `.4.4`, and `.4.4` closed having delivered the ADR-027 allowlist ladder instead** — and the promise sat in `resolver.rs`'s module header, readable by any third party, the whole time.

@@ -206,33 +206,43 @@ where
         });
     }
 
-    let expires_at = at + held_for;
-    let reservation_id: String = sqlx::query_scalar(
-        "INSERT INTO budget_reservations \
+    let requested_expires_at = at + held_for;
+    // `SIGNOFF-REPAIR.11.30` — RETURNING, not the Rust-side value. `TIMESTAMPTZ`
+    // is MICROSECOND precision, so the row truncates whatever nanosecond instant
+    // was bound to it; the held-amount query above then lends against the
+    // truncated column. Reading the stored instants back is what makes the proof
+    // and the ledger one value instead of two that agree to within a microsecond.
+    let (reservation_id, expires_at, issued_at): (String, DateTime<Utc>, DateTime<Utc>) =
+        sqlx::query_as(
+            "INSERT INTO budget_reservations \
          (reservation_id, ceiling_id, tenant_id, thread_id, dimensions, status, expires_at, created_at) \
          VALUES (gen_random_uuid()::text, $1, $2, $3, $4, 'active', $5, $6) \
-         RETURNING reservation_id",
-    )
+         RETURNING reservation_id, expires_at, created_at",
+        )
     .bind(ceiling_id)
     .bind(tenant_id)
     .bind(thread_id)
     .bind(serde_json::to_value(requested).expect("dims serialize"))
-    .bind(expires_at)
-    .bind(at)
-    .fetch_one(&mut *tx)
-    .await
-    .map_err(|e| BudgetError::Unavailable {
-        detail: e.to_string(),
-    })?;
+        .bind(requested_expires_at)
+        .bind(at)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| BudgetError::Unavailable {
+            detail: e.to_string(),
+        })?;
 
     Ok(Reservation {
         reference: ReservationReference {
             reservation_id: reservation_id.clone(),
             dimensions: *requested,
-            issued_at: at,
-            // The SAME instant the held-amount query stops counting this row at
-            // (`SIGNOFF-REPAIR.11.24.1.1.2.2`) — one value, written once, so the
-            // proof the node verifies and the ledger that lends cannot disagree.
+            // The ledger's own `created_at`, for the same reason as the window
+            // below: a proof that dates itself from a second clock is a second
+            // derivation of a value the row already holds.
+            issued_at,
+            // The SAME instant the held-amount query stops counting this row
+            // at (`SIGNOFF-REPAIR.11.24.1.1.2.2`) — now literally the stored
+            // one (`.11.30`), so the proof the node verifies and the ledger
+            // that lends cannot disagree, not even by a truncated nanosecond.
             expires_at,
         },
         ceiling_id: ceiling_id.to_string(),

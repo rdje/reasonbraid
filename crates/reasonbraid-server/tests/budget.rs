@@ -500,3 +500,82 @@ async fn a_reset_breaker_trips_again_on_the_next_crossing() {
         "the reset breaker trips again on the next crossing"
     );
 }
+
+/// ⭐ `SIGNOFF-REPAIR.11.30` — THE PROOF CARRIES THE LEDGER'S OWN BYTES, and this
+/// control can FAIL ON ANY HOST. `node_work`'s equivalent assertion compares two
+/// instants that both come from `Utc::now()`, so on a host whose `CLOCK_REALTIME`
+/// is microsecond-granular (macOS: 20,000 samples, zero nonzero sub-microsecond
+/// digits) the truncation it is meant to catch cannot occur and the check is
+/// unfalsifiable. Here `at` is CHOSEN with nanosecond digits, so `TIMESTAMPTZ`'s
+/// microsecond truncation is guaranteed and the equality is a real question
+/// everywhere. The window matters because the held-amount query stops counting an
+/// active row at `expires_at > $2` against the STORED column: a reference carrying
+/// the pre-truncation instant outlives the capacity it proves.
+#[tokio::test]
+async fn the_reference_carries_the_stored_instants_not_the_ones_bound_to_the_insert() {
+    let _guard = budget_guard().await;
+    let Some(pool) = pool().await else {
+        return;
+    };
+    let tenant = "ten_00000000-0000-7000-8000-0000000011f0";
+    let thread = "thr_00000000-0000-7000-8000-0000000011f0";
+    let ceiling_id = ceiling(&pool, tenant, thread, 10, 1000).await;
+
+    // A deliberate 310 ns tail — the exact remainder the runner reported — so the
+    // row MUST differ from the bound value on every platform.
+    let at = "2026-09-20T08:55:40.449715310Z"
+        .parse::<chrono::DateTime<Utc>>()
+        .expect("a nanosecond-precision instant");
+    assert_ne!(
+        at.timestamp_subsec_nanos() % 1_000,
+        0,
+        "the fixture must carry sub-microsecond digits or it proves nothing"
+    );
+
+    let reservation = create_reservation(
+        &pool,
+        &ceiling_id,
+        tenant,
+        thread,
+        &dims(Some(1), Some(10)),
+        Duration::minutes(10),
+        at,
+    )
+    .await
+    .expect("the ceiling covers one call");
+
+    let (row_expires_at, row_created_at): (chrono::DateTime<Utc>, chrono::DateTime<Utc>) =
+        sqlx::query_as(
+            "SELECT expires_at, created_at FROM budget_reservations WHERE reservation_id = $1",
+        )
+        .bind(&reservation.reference.reservation_id)
+        .fetch_one(&pool)
+        .await
+        .expect("the issued reservation row");
+
+    assert_eq!(
+        reservation.reference.expires_at, row_expires_at,
+        "the reference's window is the ledger's own, not the instant bound to the insert"
+    );
+    assert_eq!(
+        reservation.reference.issued_at, row_created_at,
+        "the reference's issue instant is the ledger's own too"
+    );
+    assert_eq!(
+        reservation.expires_at, row_expires_at,
+        "the reservation's own window agrees with the row it wrote"
+    );
+
+    // THE POSITIVE CONTROL for the control: the fixture really is truncated by the
+    // store, so the two assertions above had something to catch.
+    assert_ne!(
+        row_expires_at,
+        at + Duration::minutes(10),
+        "the store must truncate the bound instant, or this test cannot fail"
+    );
+    assert_eq!(
+        row_expires_at.timestamp_subsec_nanos() % 1_000,
+        0,
+        "a stored TIMESTAMPTZ carries no sub-microsecond digits"
+    );
+}

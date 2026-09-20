@@ -32,9 +32,10 @@ against a proof it could not date. The ledger had re-lent the allowance while
 the work item still claimed it, which is exactly what §14.3 says reservations
 exist to prevent.
 
-The reference now carries **`expires_at`, the ledger's own instant**, written
-once by the statement that issues the row, so the proof and the ledger cannot
-disagree. A node handed a work item whose hold has lapsed refuses it before the
+The reference now carries **`expires_at`, the ledger's own instant** — read
+back out of the row with `RETURNING`, not computed a second time in the server,
+so the proof and the ledger cannot disagree. A node handed a work item whose
+hold has lapsed refuses it before the
 adapter is contacted and journals `failed_before_dispatch` with the reason — the
 same shape a budget denial at dispatch already takes. That is §14.4's rule:
 *surface partial result and missing work instead of consuming an unauthorized
@@ -48,6 +49,21 @@ the caller's grant.
 > **Wire change.** `reservation.expires_at` is a required field of the work
 > payload's reservation object, which is decoded with `deny_unknown_fields`. A
 > node and a server across this change do not interoperate: upgrade both.
+
+> **Why `RETURNING` and not arithmetic** (`SIGNOFF-REPAIR.11.30`). The first
+> version of this computed `at + held_for` in the server and put that value in
+> both the insert and the reference. PostgreSQL `TIMESTAMPTZ` is
+> **microsecond**-precision, so the row truncated it while the reference kept
+> the nanosecond original — and the held-amount query stops counting an active
+> reservation at `expires_at > $2`, reading the **stored** column. The ceiling
+> therefore re-lent the capacity up to 999 ns before the node stopped honouring
+> the proof: the same *two halves of one rule read different clocks* failure
+> this section exists to describe, one precision further down. `issued_at` is
+> read back for the same reason. The rule is general: **a value a node will
+> verify against the ledger is read out of the store, never recomputed beside
+> it.** The authority path reached the same conclusion independently — see
+> *Expiry, suspension and revocation*, where windows are normalized to
+> PostgreSQL microseconds before comparison.
 
 ## Settle, release, overrun
 

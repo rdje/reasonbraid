@@ -1,5 +1,21 @@
 # CHANGELOG.md
 
+## 2026-09-20 — Holding is not covering, and now the five administrative surfaces ask (`SIGNOFF-REPAIR.9.3.4.2`)
+
+`REASONBRAID-REPAIR-0343`. The `.9.3.4` lane closes: `.1` made the narrowing expressible, this makes it binding.
+
+- 🔴 **Driven, not argued.** With the caller's grant set to `["thread_contribute"]` — a real registered action, not a nonsense string — `POST /v1/policy-publications/cv-pub-a/failed` returned **200** with `"state":"failed"`, and the response carried the very `owning_authority` that authorized nothing of the kind. The caller HELD the grant; the grant reached nowhere near the verb.
+- ⛔ Not an omission in `.9.3.1`: until `.9.3.4.1` there was ONE administrative action, so there was no third question to ask.
+- ✅ **Both predicates return the row's `actions` and decide with `reasonbraid_core::action_covered`.** ⛔ The subsumption rule is **not** restated in SQL — `actions @> '["tenant_admin"]'::jsonb` would have been shorter and would have made one rule two definitions, drifting the moment either moved.
+- ⛔ **A grant whose `actions` will not parse covers NOTHING**, matching `boundary_from_row`, which returns `None` on the same failure. One wire name from a newer build makes the whole grant inert here — fail-closed in the right direction, and stated in the code.
+- ⛔ **`policy::resolve` is the ONE site entitled to ask about liveness alone.** It asks of every LOADED policy's owner whether that authority still stands: no caller, no verb, nothing to cover. Registering a policy version gains coverage but **not** held-ness — that stays `SIGNOFF-REPAIR.9.1`'s.
+- ⭐ **Arm 3 exercises the stored-boundary disposition END TO END.** `.9.3.4.1` argued the subsumption over a hand-built boundary; this drives a grant carrying literally `["tenant_admin"]` — the shape every pre-change row has — through all five HTTP surfaces. Without it, adding the vocabulary would have silently revoked five verbs from every enrolled tenant.
+- ⭐ **One knob**: all three arms change exactly one column and nothing else, so a difference in outcome can only be the coverage check.
+- ⚠️ **The suite taught me why each arm needs fresh ids.** An approval advances its proposal `decided → approved`, so arm 3's approval hit *"proposal is at stage `approved`"* — a STAGE refusal that would have read as a coverage refusal.
+- ⚠️ **The first neutralization was not a falsification and is recorded as such**: it broke the build, so the suite never ran. `MEMORY.md`'s *a build needs an exit status* caught it; `cargo build` rc=0 was checked before believing the second.
+- ⚠️ **Residual published, not closed**: a grant is narrowed by VERB and stays tenant-wide by OBJECT, because no selector can name a publication.
+- **No regression:** 7 suites, **192 tests, 0 failed**; `--lib` 134 passed; whole-workspace clippy `-D warnings` rc=0 (the predicates' signatures changed, so the compiler is the census of their callers); gate green; book rc=0.
+
 ## 2026-09-20 — The administrative action set extends, and `tenant_admin` subsuming it is what keeps every stored boundary working (`SIGNOFF-REPAIR.9.3.4.1`)
 
 `REASONBRAID-REPAIR-0342`. `.9.3.4`'s decision (DOC-0020) executed, with the disposition it left open.

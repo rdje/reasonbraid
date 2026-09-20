@@ -146,9 +146,15 @@ pub async fn register_target(
     if !TARGET_TYPES.contains(&input.target_type.as_str()) {
         return Err(DeploymentError::UnknownType(input.target_type.clone()));
     }
-    let held = crate::authority::grant_held_by(pool, &input.owning_authority, principal)
-        .await
-        .map_err(|_| DeploymentError::GhostAuthority(input.owning_authority.clone()))?;
+    // `.9.3.4.2`: HELD **and COVERING** `deployment_target_register`.
+    let held = crate::authority::grant_held_by(
+        pool,
+        &input.owning_authority,
+        principal,
+        reasonbraid_core::GrantAction::DeploymentTargetRegister,
+    )
+    .await
+    .map_err(|_| DeploymentError::GhostAuthority(input.owning_authority.clone()))?;
     if !held {
         return Err(DeploymentError::GhostAuthority(
             input.owning_authority.clone(),

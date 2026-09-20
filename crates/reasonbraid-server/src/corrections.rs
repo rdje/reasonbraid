@@ -208,9 +208,19 @@ async fn authority_holds(
     grant_id: &str,
     principal: &GrantSubject,
 ) -> Result<(), CorrectionError> {
-    let held = crate::authority::grant_held_by(pool, grant_id, principal)
-        .await
-        .map_err(|_| CorrectionError::GhostAuthority(grant_id.to_string()))?;
+    // `.9.3.4.2`: HELD **and COVERING** `policy_correction_record`. ⚠️ The
+    // refusal stays `GhostAuthority` deliberately: a grant that does not cover
+    // this verb is, for this surface, an authority that is not there — and
+    // distinguishing *you hold no such grant* from *your grant does not reach
+    // this verb* would tell a caller which of another principal's grants exist.
+    let held = crate::authority::grant_held_by(
+        pool,
+        grant_id,
+        principal,
+        reasonbraid_core::GrantAction::PolicyCorrectionRecord,
+    )
+    .await
+    .map_err(|_| CorrectionError::GhostAuthority(grant_id.to_string()))?;
     if !held {
         return Err(CorrectionError::GhostAuthority(grant_id.to_string()));
     }

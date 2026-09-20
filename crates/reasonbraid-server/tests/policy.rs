@@ -3059,6 +3059,218 @@ async fn the_failed_transition_requires_an_authority_the_caller_holds() {
     );
 }
 
+/// `SIGNOFF-REPAIR.9.3.4.2` — HOLDING IS NOT COVERING, at all five
+/// administrative surfaces.
+///
+/// `.9.3.1` and `.9.2.1.2` bound each surface to a grant the caller HOLDS.
+/// `.9.3.4.1` made the narrower verbs expressible. Neither made a surface ask
+/// whether the held grant's actions COVER the verb being attempted — so a
+/// grant minted for one administrative purpose still carried every other one,
+/// which is the gap `.9.3.4` opened on.
+///
+/// ⭐ THREE ARMS PER SURFACE, and the third is what makes the other two mean
+/// something: a grant carrying an unrelated action is REFUSED, the same grant
+/// carrying that surface's own action is ADMITTED, and the same grant
+/// carrying only `tenant_admin` is ADMITTED TOO — the subsumption `.9.3.4.1`
+/// chose as the disposition for every boundary stored before those names
+/// existed, exercised end to end rather than only in a unit test.
+///
+/// ⛔ Every arm drives FRESH ids. Four of the five surfaces are one-shot (a
+/// staged publication is spent, a target id is unique, a correction and an
+/// approval are their own rows), so reusing ids would make arm 3 fail on a
+/// duplicate and read as a coverage refusal.
+#[tokio::test]
+async fn a_held_grant_must_cover_the_administrative_verb_it_is_cited_for() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "cv-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+    let grant_id = format!("grt_{human_id}");
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
+
+    // ── The fixtures, seeded BEFORE the grant is narrowed ────────────────────
+    // ⛔ A PROPOSAL PER ARM. An approval advances its proposal `decided →
+    // approved`, so a second approval against one proposal is refused for a
+    // STAGE reason — which would read as a coverage refusal and make arm 3
+    // pass for the wrong reason. Found by the suite, not predicted.
+    for arm in ["a", "b", "c"] {
+        sqlx::query(
+            "INSERT INTO policy_proposals \
+             (proposal_id, policy_id, policy_version, thread_id, status, tenant_id) \
+             VALUES ($2, 'cv-policy', '1.0.0', 'cv-thread', 'decided', $1)",
+        )
+        .bind(&tenant_id)
+        .bind(format!("cv-prp-{arm}"))
+        .execute(&pool)
+        .await
+        .expect("the proposal seeds");
+        sqlx::query(
+            "INSERT INTO policy_decisions \
+             (decision_id, proposal_id, rule, electorate, verdict_event_id, tenant_id) \
+             VALUES ($2, $3, 'majority', '{}'::jsonb, 'cv-evt', $1)",
+        )
+        .bind(&tenant_id)
+        .bind(format!("cv-dec-{arm}"))
+        .bind(format!("cv-prp-{arm}"))
+        .execute(&pool)
+        .await
+        .expect("the decision seeds");
+    }
+    sqlx::query(
+        "INSERT INTO aggregate_state \
+         (tenant_id, aggregate_id, aggregate_type, aggregate_version, state) \
+         VALUES ($1, 'cv-thread', 'thread', 1, '{}'::jsonb)",
+    )
+    .bind(&tenant_id)
+    .execute(&pool)
+    .await
+    .expect("the thread aggregate seeds");
+    for arm in ["a", "b", "c"] {
+        sqlx::query(
+            "INSERT INTO policy_publications \
+             (publication_id, proposal_id, decision_id, approval_id, projection_id, state, \
+              manifest_digest, tenant_id, owning_authority) \
+             VALUES ($4, $5, $6, 'cv-app', 'cv-proj', 'staged', $1, $2, $3)",
+        )
+        .bind(DIGEST)
+        .bind(&tenant_id)
+        .bind(&grant_id)
+        .bind(format!("cv-pub-{arm}"))
+        .bind(format!("cv-prp-{arm}"))
+        .bind(format!("cv-dec-{arm}"))
+        .execute(&pool)
+        .await
+        .expect("the staged publication seeds");
+    }
+
+    // Narrow or widen the ONE grant every leg cites. ⭐ One column, one knob:
+    // every other input is identical across the arms, so a difference in
+    // outcome can only be the coverage check.
+    let set_actions = |names: &'static str| {
+        let pool = pool.clone();
+        let grant_id = grant_id.clone();
+        async move {
+            sqlx::query("UPDATE authority_grants SET actions = $2::jsonb WHERE grant_id = $1")
+                .bind(&grant_id)
+                .bind(names)
+                .execute(&pool)
+                .await
+                .expect("the grant's actions are set");
+        }
+    };
+
+    // Each surface, parameterised by arm so every attempt drives fresh ids.
+    let surfaces = |arm: &str| -> Vec<(&'static str, String, serde_json::Value)> {
+        vec![
+            (
+                "publication",
+                format!("/v1/policy-publications/cv-pub-{arm}/failed"),
+                json!({ "owning_authority": grant_id, "reason": "r" }),
+            ),
+            (
+                "deployment target",
+                "/v1/deployment-targets".to_string(),
+                json!({ "target_id": format!("cv-target-{arm}"),
+                        "target_type": "repository", "owning_authority": grant_id }),
+            ),
+            (
+                "correction",
+                "/v1/policy-corrections".to_string(),
+                json!({ "correction_id": format!("cv-corr-{arm}"),
+                        "publication_id": format!("cv-pub-{arm}"),
+                        "operation": "retraction", "authority_grant": grant_id,
+                        "reason": "r" }),
+            ),
+            (
+                "approval",
+                "/v1/policy-approvals".to_string(),
+                json!({ "approval_id": format!("cv-app-{arm}"),
+                        "proposal_id": format!("cv-prp-{arm}"),
+                        "decision_id": format!("cv-dec-{arm}"), "approver": human_id,
+                        "grant_id": grant_id,
+                        "quorum": { "participants": [human_id], "denominator": 1,
+                                    "abstentions": [] } }),
+            ),
+            (
+                "policy version",
+                "/v1/policies".to_string(),
+                json!({ "policy_id": format!("cv-reg-{arm}"), "version": "1.0.0",
+                        "digest": DIGEST, "lifecycle": "draft", "title": "cv",
+                        "owning_authority": grant_id,
+                        "clauses": [ { "id": "cv-c1", "statement": "a rule" } ],
+                        "reason": "the control registers a policy version" }),
+            ),
+        ]
+    };
+
+    // ⛔ The ORDER of the arms is chosen so the correction leg has a
+    // publication to correct: the correction runs against the SAME arm's
+    // publication, which the publication leg has just marked failed — a
+    // correction is a record ABOUT a publication and does not require it
+    // staged, so both legs of one arm are satisfiable.
+
+    // ── ARM 1: an unrelated action is REFUSED at every surface ───────────────
+    set_actions(r#"["thread_contribute"]"#).await;
+    for (label, path, body) in surfaces("a") {
+        let (status, refused) = post(&client, &base, &path, &human_id, &body).await;
+        assert_ne!(
+            status, 200,
+            "{label}: a grant that does not cover the verb is refused: {refused}"
+        );
+    }
+
+    // ── ARM 2: the surface's OWN action, and nothing else, is admitted ───────
+    // ⛔ Each leg sets only that surface's action, so admission cannot come
+    // from a grant that happens to carry everything.
+    let covering = [
+        r#"["policy_publication_write"]"#,
+        r#"["deployment_target_register"]"#,
+        r#"["policy_correction_record"]"#,
+        r#"["policy_proposal_approve"]"#,
+        r#"["policy_version_register"]"#,
+    ];
+    for (i, (label, path, body)) in surfaces("b").into_iter().enumerate() {
+        set_actions(covering[i]).await;
+        let (status, answered) = post(&client, &base, &path, &human_id, &body).await;
+        assert_eq!(
+            status, 200,
+            "{label}: the covering grant is admitted: {answered}"
+        );
+    }
+
+    // ── ARM 3: `tenant_admin` ALONE is admitted everywhere ───────────────────
+    // ⭐ This is the stored-boundary disposition `.9.3.4.1` chose, exercised
+    // END TO END over real routes: every grant written before the five names
+    // existed carries exactly this, and if the subsumption were not honoured
+    // here, adding the vocabulary would have silently revoked five verbs from
+    // every already-enrolled tenant.
+    set_actions(r#"["tenant_admin"]"#).await;
+    for (label, path, body) in surfaces("c") {
+        let (status, answered) = post(&client, &base, &path, &human_id, &body).await;
+        assert_eq!(
+            status, 200,
+            "{label}: a pre-change `tenant_admin` grant still works: {answered}"
+        );
+    }
+}
+
 /// `SIGNOFF-REPAIR.9.2.1.2.3` — the three publication transitions took an
 /// untyped `serde_json::Value`, so an unknown field was SILENTLY IGNORED and
 /// every required field was graded by hand.

@@ -3847,12 +3847,22 @@ async fn held_publication_grant(
     principal: &GrantSubject,
     owning_authority: &str,
 ) -> Result<(), ControlApiError> {
-    let held = authority::grant_held_by(&state.pool, owning_authority, principal)
-        .await
-        .map_err(|_| ControlApiError::internal())?;
+    // `.9.3.4.2`: HELD **and COVERING**. `policy_publication_write` is the one
+    // action for all four publication verbs — `.9.3.4.1` measured that
+    // splitting staging from the transitions had no operator need behind it.
+    let held = authority::grant_held_by(
+        &state.pool,
+        owning_authority,
+        principal,
+        GrantAction::PolicyPublicationWrite,
+    )
+    .await
+    .map_err(|_| ControlApiError::internal())?;
     if !held {
         return Err(ControlApiError::unauthorized(
-            "the publication verbs require an authority the caller HOLDS — naming a grant is not holding one",
+            "the publication verbs require an authority the caller HOLDS that COVERS \
+             `policy_publication_write` — naming a grant is not holding one, and holding \
+             one is not being authorized for this verb",
         ));
     }
     Ok(())

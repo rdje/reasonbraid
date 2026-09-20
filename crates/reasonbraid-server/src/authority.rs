@@ -407,45 +407,87 @@ where
 /// site act's transaction, and asking this question on a second connection would
 /// read the grants from outside the transaction that is about to commit the
 /// write it gates.
-pub(crate) async fn grant_is_live<'e, E>(executor: E, grant_id: &str) -> Result<bool, sqlx::Error>
+/// ⭐ `SIGNOFF-REPAIR.9.3.4.2` adds `wanted`: does the grant's action set COVER
+/// the verb being attempted? `None` asks only about liveness, and there is
+/// exactly one caller entitled to it — `policy::resolve`, which asks this of
+/// every LOADED policy's owner rather than of a caller's citation, so there is
+/// no verb to cover. Every other site names its action.
+pub(crate) async fn grant_is_live<'e, E>(
+    executor: E,
+    grant_id: &str,
+    wanted: Option<GrantAction>,
+) -> Result<bool, sqlx::Error>
 where
     E: sqlx::PgExecutor<'e>,
 {
-    let live: Option<bool> = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM authority_grants \
+    let actions: Option<Value> = sqlx::query_scalar(
+        "SELECT actions FROM authority_grants \
          WHERE grant_id = $1 AND status = 'active' \
-         AND valid_from <= now() AND expires_at > now())",
+         AND valid_from <= now() AND expires_at > now()",
     )
     .bind(grant_id)
-    .fetch_one(executor)
+    .fetch_optional(executor)
     .await?;
-    Ok(live.unwrap_or(false))
+    Ok(covers(actions, wanted))
 }
 
-/// Is this grant live AND HELD BY this principal?
+/// The coverage decision over a grant row's stored `actions`, shared by both
+/// predicates above (`SIGNOFF-REPAIR.9.3.4.2`) — and it defers to
+/// `reasonbraid_core::action_covered` rather than restating the subsumption
+/// rule, in SQL or anywhere else. A `tenant_admin` grant covering an
+/// administrative verb is ONE rule with ONE definition (`.9.3.4.1`).
+///
+/// ⛔ A row whose `actions` array does not parse covers NOTHING. That is
+/// fail-closed and it matches `boundary_from_row`, which returns `None` on the
+/// same failure: a build that cannot read a stored authority must not act on a
+/// guess about it. ⚠️ `Vec<GrantAction>` is strict, so ONE unknown name —
+/// a wire name written by a newer build — makes the whole grant unreadable and
+/// therefore inert here. Fail-closed in the right direction, and stated rather
+/// than discovered.
+fn covers(actions: Option<Value>, wanted: Option<GrantAction>) -> bool {
+    let Some(actions) = actions else {
+        return false;
+    };
+    let Some(wanted) = wanted else {
+        return true;
+    };
+    match serde_json::from_value::<Vec<GrantAction>>(actions) {
+        Ok(held) => reasonbraid_core::action_covered(&held, wanted),
+        Err(_) => false,
+    }
+}
+
+/// Is this grant live, HELD BY this principal, and does it COVER this verb?
 ///
 /// The predicate for every surface where a CALLER cites an authority. Citing
 /// one is not holding one: the dev enrolment mints `grt_<principal_id>`, so a
 /// grant id is derivable from any principal id a caller has seen, and a check
 /// that only asks whether the grant exists admits anyone who can name it.
+///
+/// ⭐ `SIGNOFF-REPAIR.9.3.4.2` adds the THIRD term, and it is the one `.9.3.1`
+/// named without being able to ask: holding is not covering. Until the
+/// administrative verbs existed (`.9.3.4.1`) there was nothing to ask it of —
+/// every administrative grant carried the single `tenant_admin` action, so a
+/// grant minted to record a correction equally authorized publishing.
 pub(crate) async fn grant_held_by(
     pool: &PgPool,
     grant_id: &str,
     principal: &GrantSubject,
+    wanted: GrantAction,
 ) -> Result<bool, sqlx::Error> {
     let (kind, id) = subject_parts(principal);
-    let held: Option<bool> = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM authority_grants \
+    let actions: Option<Value> = sqlx::query_scalar(
+        "SELECT actions FROM authority_grants \
          WHERE grant_id = $1 AND status = 'active' \
          AND valid_from <= now() AND expires_at > now() \
-         AND subject_kind = $2 AND subject_id = $3)",
+         AND subject_kind = $2 AND subject_id = $3",
     )
     .bind(grant_id)
     .bind(kind)
     .bind(id)
-    .fetch_one(pool)
+    .fetch_optional(pool)
     .await?;
-    Ok(held.unwrap_or(false))
+    Ok(covers(actions, Some(wanted)))
 }
 
 fn subject_parts(subject: &GrantSubject) -> (&'static str, String) {

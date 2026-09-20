@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **HOLDING IS NOT COVERING, AND NOW THE FIVE ADMINISTRATIVE SURFACES ASK — THE `.9.3.4` LANE IS CLOSED (`.9.3.4.2`, REPAIR-0343).**
+
+- 🔴 **Driven, not argued**: with the caller's grant set to `["thread_contribute"]`, `POST /…/failed` returned **200** with `state: failed`, the response carrying the very `owning_authority` that authorized nothing of the kind.
+- ✅ Both predicates return the row's `actions` and decide with `action_covered`. ⛔ **The subsumption is NOT restated in SQL** — that would make one rule two definitions. ⛔ A grant whose `actions` will not parse covers NOTHING, matching `boundary_from_row`.
+- ⛔ `policy::resolve` is the ONE site entitled to ask about liveness alone — it asks of a STORED row's owner, not of a caller. Registering a policy version gains COVERAGE, not HELD-NESS (that stays `.9.1`'s).
+- ⭐ **Arm 3 exercises the stored-boundary disposition END TO END**: a grant carrying literally `["tenant_admin"]` through all five HTTP surfaces. Without it, adding the vocabulary would have silently revoked five verbs from every enrolled tenant.
+- ⚠️ The first neutralization broke the BUILD and was not a falsification — `MEMORY.md`'s *a build needs an exit status* caught it.
+- ⚠️ **Residual PUBLISHED, not closed**: narrowed by VERB, tenant-wide by OBJECT — no selector can name a publication.
+- ✅ 7 suites, **192 tests, 0 failed**; whole-workspace clippy `-D warnings` rc=0.
+
 ✅ **THE ADMINISTRATIVE ACTION SET EXTENDS, AND `tenant_admin` SUBSUMING IT IS WHAT KEEPS EVERY STORED BOUNDARY WORKING (`.9.3.4.1`, REPAIR-0342).**
 
 - 🔴 `tenant_admin` was ONE action covering every administrative surface — a grant issued to record a correction equally permitted registering a deployment target and publishing. ✅ Five members, one per surface, enumerated from the six sites rather than invented.

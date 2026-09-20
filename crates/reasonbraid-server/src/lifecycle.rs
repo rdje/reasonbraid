@@ -528,9 +528,17 @@ pub async fn record_approval(
             &input.approver,
         ));
     }
-    let proof = crate::authority::grant_held_by(pool, &input.grant_id, principal)
-        .await
-        .map_err(|_| LifecycleError::invalid_proof(&input.grant_id, &input.approver))?;
+    // `.9.3.4.2`: HELD **and COVERING** `policy_proposal_approve`. ⚠️ The
+    // refusal stays `invalid_proof`, the same answer a wrong subject gets: an
+    // approval proof that does not reach this verb is not a proof.
+    let proof = crate::authority::grant_held_by(
+        pool,
+        &input.grant_id,
+        principal,
+        reasonbraid_core::GrantAction::PolicyProposalApprove,
+    )
+    .await
+    .map_err(|_| LifecycleError::invalid_proof(&input.grant_id, &input.approver))?;
     if !proof {
         return Err(LifecycleError::invalid_proof(
             &input.grant_id,

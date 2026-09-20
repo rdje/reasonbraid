@@ -70,12 +70,35 @@ grants stay tenant-wide *over their objects* while being specific about *which
 verb*. That residual is accepted rather than closed, and is recorded in
 `docs/decisions/2026-09-15_the-action-set-extends-the-target-selector-does-not.md`.
 
-⚠️ **The verbs do not yet check coverage at their own surfaces.** Each
-administrative surface requires a grant the caller *holds*; requiring that grant
-to *cover the verb being attempted* is a separate step, tracked as
-`SIGNOFF-REPAIR.9.3.4.2`. Until it lands, holding any administrative grant is
-what these surfaces ask for, and the narrower actions are expressible without
-yet being enforced.
+**Each surface checks that the held grant covers its own verb.** Three things
+are asked, and they are three different questions:
+
+1. Is the grant **live** — active, and inside its validity window?
+2. Is it **held** by the caller? Grant ids are derivable from a principal id, so
+   naming one is not holding one.
+3. Do its actions **cover** the verb being attempted?
+
+| Surface | Action it requires |
+| --- | --- |
+| `POST /v1/policies` | `policy_version_register` |
+| `POST /v1/policy-approvals` | `policy_proposal_approve` |
+| the four `/v1/policy-publications` verbs | `policy_publication_write` |
+| `POST /v1/policy-corrections` | `policy_correction_record` |
+| `POST /v1/deployment-targets` | `deployment_target_register` |
+
+A grant carrying only `tenant_admin` passes all five, by the subsumption above —
+which is what keeps authority issued before these names existed working
+unchanged.
+
+⚠️ **One site asks only about liveness, and deliberately.** Policy resolution
+checks that every *loaded* policy's owning authority still stands. That is a
+question about a stored row, not about a caller attempting a verb, so there is
+no verb to cover and none is required.
+
+⚠️ **Registering a policy version checks liveness and coverage, not holding.**
+A policy may legitimately be owned by an authority other than the caller's, so
+whether the registrar must *hold* the grant it names is a separate semantic
+question and is still open (`SIGNOFF-REPAIR.9.1`).
 
 For example, an inspection grant selecting only thread A can inspect A but cannot
 list every thread in the tenant. Adding `tenant_admin` to that thread-scoped grant

@@ -1,5 +1,50 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — An arm that consumes state needs its own fixture
+
+The coverage control for `SIGNOFF-REPAIR.9.3.4.2` has three arms over five
+surfaces, and the whole design is one knob: set `authority_grants.actions`,
+send the same request, watch the outcome change. Arm 1 sets an unrelated
+action and expects a refusal; arm 2 sets the surface's own action and expects
+admission; arm 3 sets `["tenant_admin"]` and expects admission by subsumption.
+
+Arm 3's approval leg failed:
+
+```text
+400 invalid_command — proposal `cv-prp` is at stage `approved`
+                      — a decision rides a `draft` proposal only
+```
+
+Not a coverage refusal. Arm 2's approval had advanced the proposal
+`decided → approved`, and arm 3 was approving an already-approved proposal.
+
+⭐ What makes this worth a note is which way the failure fell. It failed
+**loudly**, because arm 3 expects a 200 and got a 400. Had the arms run the
+other way round — the admitting arm first, the refusing arm second — the second
+arm would have asserted `status != 200`, got its 400 from the *stage* check,
+and **passed**. A control asserting "this is refused" is satisfied by any
+refusal, including one that has nothing to do with the thing under test.
+
+Four of the five surfaces are one-shot in the same way: a staged publication is
+spent, a target id is unique, a correction and an approval are their own rows.
+So each arm now drives fresh ids, with a proposal, a decision and a publication
+seeded per arm.
+
+**The rule:** when a control runs the same request under several conditions, and
+the request CONSUMES state, give every arm its own fixture. Otherwise the arms
+are not independent, and the ones asserting a refusal will absorb whatever
+refusal the earlier arms left behind.
+
+⚠️ This is the negative-assertion weakness in a new dress. `assert_ne!(status,
+200)` is a weak claim, and it is weakest exactly where the fixture is shared —
+which is why arm 1 of this control is the one that had to be checked against a
+*named* refusal rather than merely a non-200 in the arms where the message is
+available.
+
+⚠️ Held rather than promoted (`.11.20`): it is close to
+`a-control-that-passes-for-an-unrelated-reason`, and a second instance should
+decide whether the fixture-independence half earns its own note.
+
 ## 2026-09-20 — A control over a closed wire vocabulary is written in the wire spelling
 
 `SIGNOFF-REPAIR.9.3.4.1` added five members to `GrantAction`. The obvious way to

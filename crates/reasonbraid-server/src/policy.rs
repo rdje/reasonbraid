@@ -243,7 +243,19 @@ pub async fn register(
     // grant the REGISTRAR holds. A policy may legitimately be owned by an
     // authority other than the caller's, so that binding is a semantic
     // question and stays `SIGNOFF-REPAIR.9.1`'s.
-    if !crate::authority::grant_is_live(&mut *conn, &input.owning_authority).await? {
+    // `.9.3.4.2`: LIVE **and COVERING** `policy_version_register`. ⛔ This does
+    // NOT add held-ness — whether the owning authority must be a grant the
+    // REGISTRAR holds is a semantic question and stays `SIGNOFF-REPAIR.9.1`'s,
+    // exactly as the note below already says. Coverage is a question about the
+    // GRANT, answerable without knowing the caller, so asking it here widens
+    // nothing.
+    if !crate::authority::grant_is_live(
+        &mut *conn,
+        &input.owning_authority,
+        Some(reasonbraid_core::GrantAction::PolicyVersionRegister),
+    )
+    .await?
+    {
         return Ok(Err(PolicyError::GhostAuthority(
             input.owning_authority.clone(),
         )));
@@ -525,7 +537,12 @@ pub async fn resolve(
     // Step 1: the issuer authority — each owning grant must be ACTIVE and
     // unexpired (the label grants nothing; an expired grant grants nothing).
     for row in &loaded {
-        let valid = crate::authority::grant_is_live(pool, &row.owning_authority)
+        // ⛔ `None` — the ONE site entitled to ask about liveness alone
+        // (`.9.3.4.2`). This is not a caller citing an authority: it asks of
+        // every LOADED policy's owner whether that authority still stands, so
+        // there is no verb being attempted and no verb to cover. Passing an
+        // action here would refuse a policy whose owner is perfectly valid.
+        let valid = crate::authority::grant_is_live(pool, &row.owning_authority, None)
             .await
             .map_err(|_| PolicyError::expired_authority(&row.policy_id, &row.owning_authority))?;
         if !valid {

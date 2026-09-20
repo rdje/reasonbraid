@@ -5,6 +5,13 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE FROZEN ROADMAP AND THE CODE HELD TWO COPIES OF ONE LIST AND NOTHING RELATED THEM (`.11.7.1.1`, REPAIR-0347).**
+
+- ⭐ The director delegated the §9.8 freeze call. **The measurement it forced is the finding**: §9.8 and `KnownReasonCode` had never been compared — the census that produced every number in `DOC-0086` calls the enum *the §9.8 registry* and never opens `ROADMAP.md`. **20 and 20, symmetric difference empty.** They agreed by CARE.
+- ⛔ **DECIDED: §9.8 is NOT edited.** No erratum, so no licence — the roadmap parks *additions* unless they correct a security defect, a factual error or a Phase 0 blocker, and §9.8 states the registry accurately while the product has grown past it. v0.5.0 is the director's to declare.
+- ✅ **A REASON-CODE-PARITY arm asserts the two copies agree**, and runs FIRST: if that equality breaks, every other number the census prints is about a different list than the one it names. ⭐ The FIFTH instance of a class already carrying four registered gates. ⛔ Generating §9.8 from the enum was refused — that makes a frozen spec a build artefact.
+- ⭐ Falsified in **three** directions on the real documents, each restored byte-identical; the positive control **driven**, not merely written.
+
 🔴 **EIGHTEEN CLAIMS RE-DERIVED: FOURTEEN HOLD, FOUR WERE TRUE WHEN TAKEN, AND THE PASS FOUND TWO DEFECTS OF ITS OWN (`.13.4.6`, DOC-0088).**
 
 - ⭐ The director's *ensure the findings hold*, a SIXTH time. The strongest route was not a grep: renaming `held_publication_grant`'s definition made the **compiler** name exactly 4 call sites.

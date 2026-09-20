@@ -164,6 +164,37 @@ month*, and only one of those is fixed by waiting.
   producer, so the two sets differ in both directions and three of the nine are
   candidate renames rather than candidate additions.
 
+## The freeze question, decided (`SIGNOFF-REPAIR.11.7.1.1`, 2026-09-20)
+
+The director delegated this call. **§9.8 is not edited, and the reason is a
+measurement rather than caution.**
+
+⭐ **§9.8 and `KnownReasonCode` were compared for the first time**, and this
+record had assumed the answer: the census that produced every number above
+calls the Rust enum *the §9.8 registry* and never opens `ROADMAP.md`. Parsed
+from both: **20 and 20, symmetric difference empty in both directions.**
+
+⇒ **There is no erratum, so there is no licence.** The roadmap sends *proposed
+architecture additions* to a parking lot unless they correct a security defect,
+a factual error, or a Phase 0 blocker. §9.8 states the registry accurately; the
+product has grown past it, which is the ordinary relation between a
+specification and a build. Ten new codes are additions, and v0.5.0 is the
+director's to declare — the roadmap names its preconditions, not a licence, and
+the 2026-09-18 ruling puts LAN completeness first.
+
+⭐ **What WAS repairable, and is repaired:** the two lists are a second copy
+nothing derives, in a FROZEN document, so a divergence would be invisible and
+awkward to fix. `census_reason_codes.py --check` now asserts their equality —
+the fifth instance in this repository of a defect class already carrying four
+registered gates (`INDEX-FRONTIER`, `FRONTIER-STATUS`, `SCAFFOLD-COVERAGE`,
+`KNOWLEDGE-MAP`). ⛔ Generating §9.8 from the enum was refused: that would make
+a frozen specification a build artefact. The gate asserts equality and leaves
+both sides hand-written.
+
+⇒ **This record's status is unchanged and now durable**: it is the evidence a
+v0.5.0 pass consumes, and the day someone edits §9.8 the gate makes them move
+the enum with it.
+
 ## Consequences
 
 - ⛔ No edit to `ROADMAP.md` §9.8. This is evidence for a v0.5.0 decision, and

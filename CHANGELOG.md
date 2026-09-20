@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-20 — The frozen roadmap and the code held two copies of one list and nothing related them (`SIGNOFF-REPAIR.11.7.1.1`)
+
+`REASONBRAID-REPAIR-0347`. The director delegated `.11.7.1`'s freeze call; the measurement it forced is the finding.
+
+- 🔴 **§9.8 and `KnownReasonCode` had never been compared.** `DOC-0086` and the census that produced every number in it call the Rust enum *the §9.8 registry* — an assumed equality with a paragraph in a FROZEN document. Parsed from both: **20 and 20, symmetric difference empty in both directions.** They agreed by care, and nothing would have noticed if they stopped.
+- **The gap-claim census**: `git grep -ln ROADMAP.md -- scripts .githooks` returns 5 files; exactly one also mentions the enum, and it names the roadmap only in a docstring — `read_text` is called on `error.rs` and the book page, never on `ROADMAP.md`.
+- ⛔ **DECIDED: §9.8 is not edited.** There is no erratum, so there is no licence: the roadmap sends *proposed architecture additions* to a parking lot unless they correct a security defect, a factual error or a Phase 0 blocker. §9.8 states the registry accurately and the product has grown past it, which is the ordinary relation between a specification and a build. Ten codes are additions, and v0.5.0 is the director's to declare.
+- ✅ **What WAS repairable is repaired**: a **REASON-CODE-PARITY** arm asserts the two copies agree, and runs FIRST — if that equality has broken, every other number the census prints is about a different list than the one it names. ⭐ The fifth instance of a class this repository already gates four times (`INDEX-FRONTIER`, `FRONTIER-STATUS`, `SCAFFOLD-COVERAGE`, `KNOWLEDGE-MAP`).
+- ⛔ **Generating §9.8 from the enum was refused**: that makes a frozen specification a build artefact. The gate asserts equality and leaves both sides hand-written, which is what a freeze wants.
+- ⭐ **Falsified in three directions on the REAL documents**, each restored byte-identical: a name added to §9.8 (exit 1, named), a name added to the enum (exit 1, named), and the heading renamed so the parse collapses (exit 1 — an empty parse is a breach, `.13.4.6.2`'s lesson applied one commit after learning it).
+- ⭐ **The positive control was DRIVEN, not merely written**: neutralizing the parser so it can never match takes `--self-test` to exit 1 with *§9.8 parsed 0 codes from the REAL ROADMAP.md*. Without it, every parity case is satisfied by a parser that returns nothing for the real document.
+- ⚠️ This takes **no** position on which codes §9.8 should gain. The recommendation stands as evidence; the gate constrains the copies to agree, never to have particular content.
+
 ## 2026-09-20 — A blank line silently disabled every frontier rule, and my first formulation of the fix refused five correct trees (`SIGNOFF-REPAIR.13.4.6.2`)
 
 `REASONBRAID-REPAIR-0346`. Found by `.13.4.6`'s verification pass, which drove it rather than reasoning about it.

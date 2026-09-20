@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Census the §9.8 reason-code registry against the codes the product emits.
 
-`ROADMAP.md` §9.8 publishes the stable error model and
+`ROADMAP.md` §9.8 publishes the stable error model, and since
+`SIGNOFF-REPAIR.11.7.1.1` the `--check` arm ASSERTS that §9.8 and
+`KnownReasonCode` still say the same thing rather than assuming it. It also
 `reasonbraid_core::KnownReasonCode` mirrors it. The product also emits codes
 that postdate that list; `ReasonCode::Unknown` preserves them verbatim, which is
 the designed forward-compatibility path. What nothing publishes is WHICH codes
@@ -61,6 +63,29 @@ _BOOK_ROW = re.compile(r"^\|\s*`([a-z_]+)`\s*\|")
 _CODE_ONLY = re.compile(r'"([a-z_][a-z0-9_]*)"')
 
 BOOK_PAGE = ROOT / "docs" / "book" / "src" / "errors.md"
+ROADMAP_PAGE = ROOT / "ROADMAP.md"
+
+# §9.8's own fenced block: the names are pipe- and newline-separated inside it.
+_ROADMAP_98 = re.compile(r"### 9\.8 Error model\n.*?```text\n(.*?)\n```", re.S)
+
+
+def published_registry(text: str) -> list[str]:
+    """The codes §9.8 of `ROADMAP.md` PUBLISHES, read out of the document.
+
+    ⭐ `SIGNOFF-REPAIR.11.7.1.1`. Until this existed, this census called
+    `KnownReasonCode` *the §9.8 registry* and never opened `ROADMAP.md` — an
+    ASSUMED equality between a Rust enum and a paragraph in a FROZEN document.
+    They did agree, measured 20-to-20 with an empty symmetric difference; they
+    agreed by care, and nothing would have noticed if they stopped.
+
+    ⛔ An EMPTY result means the PARSER failed, not that §9.8 is empty, and the
+    caller grades it as a breach. `.13.4.6.2` is the lesson being applied
+    rather than repeated: a gate whose parse collapses silently passes.
+    """
+    m = _ROADMAP_98.search(text)
+    if not m:
+        return []
+    return sorted({c.strip() for c in re.split(r"[|\n]", m.group(1)) if c.strip()})
 
 
 def rust_sources(crate_names: tuple[str, ...]) -> list[Path]:
@@ -243,6 +268,34 @@ def run(mode: str) -> int:
         print(json.dumps(c, indent=2))
         return 0
     if mode == "check":
+        # ── REASON-CODE-PARITY (`SIGNOFF-REPAIR.11.7.1.1`) ────────────────
+        # ⛔ FIRST, because the rest of this gate calls the enum "the §9.8
+        # registry": if that equality has broken, every other number here is
+        # about a different list than the one it names.
+        published = published_registry(ROADMAP_PAGE.read_text())
+        reg_names = set(c["registry"])
+        if not published:
+            print("REASON-CODE-PARITY: §9.8's code block did not parse.", file=sys.stderr)
+            print(f"    {ROADMAP_PAGE.name} — expected a ```text block under "
+                  "'### 9.8 Error model'", file=sys.stderr)
+            print("  ⛔ An empty parse is a BREACH, not a pass: this census names the enum\n"
+                  "    'the §9.8 registry', and a parser that reads nothing would let that\n"
+                  "    claim go unchecked for ever (SIGNOFF-REPAIR.13.4.6.2).", file=sys.stderr)
+            return 1
+        only_doc = sorted(set(published) - reg_names)
+        only_code = sorted(reg_names - set(published))
+        if only_doc or only_code:
+            print("REASON-CODE-PARITY: §9.8 and KnownReasonCode are two copies of one "
+                  "list and they no longer agree.", file=sys.stderr)
+            for code in only_doc:
+                print(f"    in §9.8, NOT in the enum : {code}", file=sys.stderr)
+            for code in only_code:
+                print(f"    in the enum, NOT in §9.8 : {code}", file=sys.stderr)
+            print("  Move both together. ⛔ `ROADMAP.md` is FROZEN at v0.4.1 to errata,\n"
+                  "    security corrections and Phase 0 blockers — so if the enum grew, the\n"
+                  "    repair is almost certainly to shrink it back and record the addition as\n"
+                  "    evidence for v0.5.0, not to edit the specification.", file=sys.stderr)
+            return 1
         missing = c["emitted_undocumented"]
         if missing:
             print("REASON-CODE-DOC: a code the server emits is not in the book's table.", file=sys.stderr)
@@ -356,6 +409,34 @@ def self_test() -> int:
     # ⛔ And the widening must not match `code` inside a longer identifier.
     check("not a suffix of another field", _CODE_LITERAL.findall('reason_code: "a_b"'), [])
     check("not a suffix in the json form", _CODE_LITERAL.findall('"status_code": "a_b"'), [])
+
+    # ---- `SIGNOFF-REPAIR.11.7.1.1`: §9.8 <-> KnownReasonCode parity --------
+    synthetic = (
+        "### 9.8 Error model\n\nErrors are typed:\n\n"
+        "```text\nalpha | beta\ngamma\n```\n"
+    )
+    check("parity-parses-the-block", published_registry(synthetic), ["alpha", "beta", "gamma"])
+    check("parity-no-heading-is-empty", published_registry("### 9.9 Something\n"), [])
+    # ⭐ THE POSITIVE CONTROL, and it is the case that matters. Every check
+    # above is satisfied by a parser that returns [] for the real document,
+    # and [] is exactly what this arm treats as a breach — so without this the
+    # gate could be permanently red, or (worse, in an earlier design) silently
+    # green, for a reason no synthetic fixture would show.
+    real = published_registry(ROADMAP_PAGE.read_text())
+    if len(real) < 10:
+        failures.append(
+            f"parity: §9.8 parsed {len(real)} codes from the REAL ROADMAP.md; a parse that "
+            "collapses is what this arm exists to refuse, and a self-test built only from "
+            "fixtures would not see it"
+        )
+    # ⛔ And the equality itself, asserted here as well as in --check, because
+    # a self-test that never looks at the two real lists is a test of the regex.
+    if sorted(real) != sorted(registry()):
+        failures.append(
+            f"parity: §9.8 publishes {len(real)} codes and KnownReasonCode has "
+            f"{len(registry())}; the symmetric difference is "
+            f"{sorted(set(real) ^ set(registry()))}"
+        )
 
     # ---- `SIGNOFF-REPAIR.7.2.10`: the SECOND vocabulary --------------------
     acq = acquisition_kinds()

@@ -222,6 +222,7 @@
 - [`2026-09-20_the-listen-gateway-owes-a-dialler-before-an-operator-surface.md`](docs/decisions/2026-09-20_the-listen-gateway-owes-a-dialler-before-an-operator-surface.md)
 - [`2026-09-20_the-mcp-http-transports-are-blocked-by-one-upstream-split.md`](docs/decisions/2026-09-20_the-mcp-http-transports-are-blocked-by-one-upstream-split.md)
 - [`2026-09-20_the-mcp-server-transport-is-stdio-first.md`](docs/decisions/2026-09-20_the-mcp-server-transport-is-stdio-first.md)
+- [`2026-09-20_the-nine-unregistered-reason-codes-recommended-per-code.md`](docs/decisions/2026-09-20_the-nine-unregistered-reason-codes-recommended-per-code.md)
 - [`2026-09-20_the-tail-read-is-the-offer.md`](docs/decisions/2026-09-20_the-tail-read-is-the-offer.md)
 - [`2026-09-20_two-packs-produce-evidence-the-store-cannot-hold.md`](docs/decisions/2026-09-20_two-packs-produce-evidence-the-store-cannot-hold.md)
 

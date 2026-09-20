@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE NINE UNREGISTERED REASON CODES, RECOMMENDED ONE BY ONE — AND THE ELEVEN WITH NO PRODUCER ARE THE LARGER HALF (`.11.7.1`, DOC-0086).**
+
+- 🔴 **The measurement that reframed it was not the one asked for: ELEVEN of the twenty REGISTERED codes have NO PRODUCER**, three of them arguably what one of the nine is a rename of. The registry drifts in BOTH directions.
+- 🔴 **The leaf's own security flag is REFUTED.** `not_found` and `unknown_node` do NOT leak existence — every site answers foreign exactly as absent, in the emitting sources' own words. A vocabulary duplication, not a §9.8 breach.
+- ⭐ **The product voted 23 producers to 3** for two codes meaning the same thing — the evidence for which way a reconciliation goes. 🔴 `unknown_node`'s published justification is refuted by its own code.
+- ✅ 4 add · 3 reconcile · 1 **GENERALISE** (an open family; a registry that grows one code per surface is a list). ⭐ quota / rate / breaker / budget stated and all four KEPT.
+- ⛔ **No edit to `ROADMAP.md` and no code changed** — the freeze holds and the director's is the decision. Three follow-on questions named and deliberately unanswered.
+- 🔴 **A SECOND instance of `.11.22.1`'s frontier-duplication defect occurred in this commit's own editing**, by the exact mechanism that leaf describes; `FRONTIER-STATUS` was green throughout because both rows agreed. Recorded there as calibration evidence.
+
 ✅ **HOLDING IS NOT COVERING, AND NOW THE FIVE ADMINISTRATIVE SURFACES ASK — THE `.9.3.4` LANE IS CLOSED (`.9.3.4.2`, REPAIR-0343).**
 
 - 🔴 **Driven, not argued**: with the caller's grant set to `["thread_contribute"]`, `POST /…/failed` returned **200** with `state: failed`, the response carrying the very `owning_authority` that authorized nothing of the kind.

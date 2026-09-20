@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-20 — Recommend the nine unregistered reason codes one by one, and the eleven with no producer are the larger half of the answer (`SIGNOFF-REPAIR.11.7.1`)
+
+`REASONBRAID-DOC-0086`. Evidence for a v0.5.0 decision. No code changed and `ROADMAP.md` is untouched.
+
+- **The population, re-derived at closure** rather than read off the leaf's own sentences: registry **20**, emitted **18**, emitted-and-unregistered **9**. Exactly as the leaf's bullets predicted, `locator_digest_conflict` has left and `publication_repository_unconfigured` has arrived.
+- 🔴 **The measurement that reframed the question is not the one the leaf was opened to take: ELEVEN of the twenty registered codes have NO PRODUCER** — including `rate_limited`, `budget_unavailable` and `provider_outcome_unknown`, each arguably what one of the nine is a rename of. The registry and the emitted set differ in **both** directions, so *which of the nine to add* is the wrong shape of question on its own.
+- 🔴 **The leaf's own security flag is REFUTED.** It warned that `not_found` and `unknown_node` overlap `scope_hidden`'s existence-non-leak intent. Measured at every site, they do not leak: `api.rs` says *"Missing and foreign are ONE answer, so a caller learns nothing about another tenant's nodes"*, and `node_channel.rs` *"A node in ANOTHER tenant answers `unknown_node`, exactly as a node that does not exist"*. A vocabulary duplication, not a §9.8 breach.
+- ⭐ **The product voted 23 producers to 3** for two codes that mean the same thing on the wire — the evidence for which way a reconciliation should go, and a fact no amount of reading the two definitions would have produced.
+- 🔴 **`unknown_node`'s published justification is refuted by its own code**: the book says a client can tell *re-enrol* from *wrong id*, and a foreign node answers identically to an absent one. Keep the code, replace the reason.
+- ✅ **4 add as published · 3 reconcile first · 1 GENERALISE** — `publication_repository_unconfigured` is the second instance of an open family, and a registry that grows one code per surface is a list rather than a vocabulary.
+- ⭐ **The quota / rate / breaker / budget distinction is stated and all four kept.** Collapsing them is refused: a caller told only `rate_limited` cannot tell *slow down* from *your allowance is spent for the month*, and only one of those is fixed by waiting.
+- 🔴 **A second instance of `SIGNOFF-REPAIR.11.22.1`'s defect occurred in this commit's own editing, by the exact mechanism that leaf describes** — promoting a leaf to frontier row 1 without checking it already had row 4, leaving two `pending` rows for one unfinished leaf. `FRONTIER-STATUS` was green throughout, because both rows agreed; it spoke only once the leaf closed and they disagreed. Recorded at `.11.22.1` as calibration evidence, and the row removed.
+
 ## 2026-09-20 — Holding is not covering, and now the five administrative surfaces ask (`SIGNOFF-REPAIR.9.3.4.2`)
 
 `REASONBRAID-REPAIR-0343`. The `.9.3.4` lane closes: `.1` made the narrowing expressible, this makes it binding.

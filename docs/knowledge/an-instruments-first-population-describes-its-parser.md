@@ -41,6 +41,16 @@ confident, wrong majority class.
 Each time the finding was stated in the corpus's voice — *this tree is broken* —
 and each time the subject was the parser.
 
+⭐ **And run 1's trap had already been met in this repository, by a different
+instrument, and written down.** `knowledge-map/scripts/gen_knowledge_map.sh`
+carries it in its own header: *git's default wildcard matching crosses `/`, so a
+plain `docs/tasks/*.md` returns 69 paths where the shell's `ls` returns 15 — it
+reaches into `docs/tasks/artifacts/`*. Fifty-four extra entries, from the same
+directory, for the same reason. The instrument that hit it in run 1 was written
+after that comment existed and by someone who had read it. ⛔ **A recorded
+instance does not immunise the next instrument** — which is exactly why the
+check below is a question to ask rather than a fact to remember.
+
 ## The check, in one question
 
 > **"If my instrument were right, would this corpus ever have worked?"**

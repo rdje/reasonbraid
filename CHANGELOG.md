@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-20 — The MCP HTTP transports are blocked by one upstream split, and it is not ours to resolve (`SIGNOFF-REPAIR.6.6`)
+
+`REASONBRAID-DOC-0083`. Two leaves that asked separate dependency questions have one blocker.
+
+- **Measured with `cargo metadata`,** each rmcp feature added in turn and the manifest restored: `transport-io` and `client` each add **0** packages; `transport-streamable-http-client` adds **2** (`base64 0.23.1`, `sse-stream`), `-reqwest` **3**, and the server profile **3**. 🔴 **Every HTTP profile brings `base64 0.23.1`**, which `deny.toml`'s `multiple-versions = "deny"` forbids.
+- 🔴 **And it is not a matter of effort.** `base64 ^0.22` is required by **12** packages — `axum`, both `reqwest` majors, three `sqlx` crates, `hyper-util`, `tower-http`, `gix-transport`, `chromiumoxide`, `a2a-lf` and `reasonbraid-server` itself — against **1** requiring `^0.23`, `rmcp 3.2.0`. The project can neither raise the twelve nor lower the one; only upstream convergence resolves it.
+- ⭐ **That re-grades both deferrals from *not yet* to *blocked on a third party*** — a different status, and one a reader should not have to infer from a dependency table.
+- ✅ **The client transport is DECLINED and the listen gateway stays hand-written.** `.6.2.4`'s five-step ritual over a real socket is unaffected; what stays unavailable is the CLAIM, so ⛔ the prohibition on describing the listen transport as SDK-backed **stands rather than lifting with the leaf**.
+- ⛔ **Adding `base64` to `deny.toml`'s reviewed skip list is REFUSED.** Every entry there records why two majors coexist *without crossing a boundary*; `base64` is an encoding crate reached by the HTTP stack, the database driver and the git transport alike.
+- ⭐ **No leaf is opened for the wait.** The trigger is a one-line `cargo metadata` check for a single `base64` version, recorded in the decision — a leaf that waits on a third party is an unworkable frontier item.
+- ✅ **VERIFIED:** no code and no manifest changed — the three probe manifests were restored and `git status` on the crate manifest and `Cargo.lock` is clean, checked after each. fmt rc=0; `make book` rc=0; doctrine gate all green; `handoff: OK`. ⛔ Nothing to falsify (no behaviour changed), and the two zero-delta profiles are the control proving the instrument can report either answer.
+
 ## 2026-09-20 — The MCP tools are reachable, over a transport whose profile was priced rather than preferred (`SIGNOFF-REPAIR.6.8`)
 
 `REASONBRAID-REPAIR-0331`. Six implemented, authorized, live-tested MCP tools had no client that could reach them.

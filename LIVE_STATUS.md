@@ -5,6 +5,14 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE MCP HTTP TRANSPORTS ARE BLOCKED BY ONE UPSTREAM SPLIT, AND IT IS NOT OURS TO RESOLVE (`.6.6`, DOC-0083).**
+
+- 🔴 Two leaves that asked separate dependency questions have **one blocker**: every Streamable-HTTP profile (client, client-reqwest, server) brings `base64 0.23.1`, which `deny.toml`'s `multiple-versions = "deny"` forbids. `transport-io` and `client` each add **0** packages.
+- 🔴 **Not a matter of effort:** `base64 ^0.22` is required by **12** packages against **1** requiring `^0.23` (`rmcp 3.2.0`). Neither side can move from here.
+- ⭐ **Both deferrals re-graded from *not yet* to *blocked on a third party*.**
+- ✅ The listen gateway stays hand-written; ⛔ the prohibition on claiming SDK-level conformance **stands**. ⛔ Adding `base64` to the reviewed skip list is REFUSED.
+- ⭐ No leaf opened for the wait — the trigger is a one-line `cargo metadata` check.
+
 ✅ **THE MCP TOOLS ARE REACHABLE, OVER A TRANSPORT WHOSE PROFILE WAS PRICED (`.6.8`, REPAIR-0331).**
 
 - 🔴 0 workspace packages depended on `reasonbraid-mcp` (`cargo metadata`, not a grep); its only targets were a lib and a build script. Six tools, no client.

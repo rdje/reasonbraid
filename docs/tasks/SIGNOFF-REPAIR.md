@@ -3868,6 +3868,26 @@ grep -oE '`[a-z_]+`' docs/decisions/2026-09-16_evidence-is-shared-the-read-is-te
 
 - Status: `pending`; concrete parent-worker source boundary separated before .7.3.3 implementation.
 - Sources: crates/reasonbraid-server/src/extraction.rs writes stdin synchronously, waits for child exit before draining stdout, and reads the reply without a byte bound; descendants can keep pipes alive after direct-child exit. Own concurrent bounded pipes, total deadlines, descendant containment, deployment-level storage quotas and safe retention/retirement for failed/unconfirmed invocations. Direct-child completion and exclusive inputs alone do not close this boundary. Qualify pressure, cancellation, escaped writers and malicious worker/input controls before claiming full isolation.
+- ⭐ **ATTACHED CLAUSE — the BROWSER worker's retained workspaces are a third unretired population, and this goal line names only the extraction worker** (`REASONBRAID-DOC-0080`). ⚠️ That is `.11.24`'s shape exactly: a finding inside the owned surface — *safe retention/retirement for failed/unconfirmed invocations* — and outside the list of mechanisms the Sources line enumerates, so a census driven by that line cannot see it.
+- 🔴 **MEASURED, and it is the retention rule's own founding shape in a third place.** `crates/reasonbraid-browse/src/lifetime.rs` retains its whole workspace whenever the render did not succeed **or** cleanup was unconfirmed — and a tripped time budget is a legitimate, documented outcome, so an R3 deployment accumulates one per refused render with no retirement rule at all:
+
+| population | fixtures | bytes | reproducible payload | evidence kept |
+| --- | ---: | ---: | ---: | ---: |
+| browser lifetime controls + pg clusters (already ruled) | 37 | 1,896,248,619 | 99.93 % | 1.34 MB |
+| **`.project-data/browser/run-*` (this clause)** | **48** | **880,130,713** | **99.99 %** | **95,280 B** |
+
+- ⛔ **`scripts/census_retained_fixtures.py` enumerates two populations and this is not one of them**, so `--retire --confirm` reduced 195 fixtures and 10,364,871,724 bytes on 2026-09-20 and left all 880 MB of this one untouched. ⚠️ Every one of the 48 carries a `completion.json`, so they are receipt-bearing fixtures the existing rule — *keep the receipt, drop the reproducible payload* — already covers in principle.
+- ⚠️ **NOT a claim that the retention is wrong to happen.** The workspace IS the diagnostic evidence for an unconfirmed cleanup, which `.11.25` and `.11.25.1` both depended on. What is missing is the retirement, and the third population's ratio (99.99 %) says what it would cost to keep the receipts.
+- Verification / commit: pending; the retention half is bounded as `.7.3.4.1` below.
+
+##### SIGNOFF-REPAIR.7.3.4.1 — The browser worker's retained workspaces have no retirement rule
+
+- Opened: `pending` by `REASONBRAID-DOC-0080`, which measured the population while cleaning up after `.11.25.1`.
+- 🔴 **THE MEASUREMENT** is the table above: **48 workspaces, 880,130,713 bytes, 99.99 % reproducible payload, 95,280 bytes of evidence**, every one carrying a `completion.json`. The producer is `Lifetime::finish`, which retains the workspace unless the render succeeded AND cleanup was confirmed.
+- Owns: extending `scripts/census_retained_fixtures.py` to a third population, with the safety checks re-derived for it rather than copied — a browser workspace's `owner.json` records a **process group**, and the instrument's standing rule is that a recorded id is only ever asked whether it EXISTS, never signalled, because a numeric id may since have been recycled.
+- ⚠️ **Which bytes are evidence must be decided by measurement, not by extension**, as it was for the other two: `owner.json`, `completion.json`, `browser.stderr` and `chrome.log` are written *inside* the workspace beside `profile/` and `cache/`, so a rule that drops whole directories has to name them.
+- Acceptance: the third population is enumerated by the same instrument and obeys the same refusals (unparseable receipt, a live process group, a path off the repository volume, a fixture named by a tracked file, younger than `--min-age-hours`); the self-test gains a two-sided case for it and is shown RED against a mutation; a reduced fixture still answers the question `.11.25` used it for — which is whether the cleanup was confirmed and what the browser wrote to stderr.
+- ⛔ **No quota is set here.** A deployment-level storage ceiling is the parent's, and `.11.6` forbids a number chosen before its population is measured across real deployments rather than one developer's probe session.
 - Verification / commit: pending.
 
 ### SIGNOFF-REPAIR.7.4 — Evidence integrity and retention
@@ -8067,6 +8087,7 @@ done
 
 - Opened: `pending` by `.11.32`, which measured a false-positive-free rule and did not install it.
 - Status: `pending`.
+- 🔴 **A THIRD INSTANCE, 2026-09-20, and it is the one that prices this leaf: it happened in a COMMAND, not in a tracked file.** `REASONBRAID-DOC-0080` wrote a changelog line through `python3 -B -c "…"` — a **double-quoted** shell string containing `` `SIGNOFF-REPAIR.11.4.1` `` — and bash substituted the command’s output, leaving `()` in the published ledger beside `bash: SIGNOFF-REPAIR.11.4.1: command not found` on stderr. Caught only because the stderr landed in the same output as the gate result. ⛔ **`.11.32`’s census reads tracked `scripts/`, and every doctrine gate reads tracked files** — neither can see an interactive command, so this instance is outside the reach of the narrow rule this leaf was opened to install. ⭐ That sharpens the leaf rather than widening it: the RUNTIME arm it already names — *assert that a run printing `command not found` is a failed run* — is the only one of the two candidates that would have caught this, and the population is now 3 (two in `demo_two_host.sh`, one in a session command).
 - **THE WORK** — make the `.11.32` rule a doctrine check (registry entry, scaffold NEUTRAL list per SCAFFOLD-COVERAGE, and its own `--self-test` per the SELF-TEST doctrine, whose probe must not be a literal the file itself contains). ⛔ **Do not widen it to the 19-hit rule**; the 17 false positives are the check scripts' own self-test fixtures, and a gate that fires on those will be waived and then ignored.
 - ⭐ **Consider instead, or as well, a RUNTIME assertion**: the demonstration already runs in CI and already printed the evidence twice — a run whose stderr contains `command not found` is a failed run, and that catches the class at a level no regex can be fitted to. Decide between them with a reason, do not do both without one.
 - ⚠️ This is the same shape as `.11.31`: a rule the project has now learned twice and enforces nowhere.

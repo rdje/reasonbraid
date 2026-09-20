@@ -5,6 +5,13 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **10.4 GB OF REPRODUCIBLE PAYLOAD RETIRED, AND A THIRD UNRETIRED POPULATION MEASURED (`.7.3.4.1`, DOC-0080).**
+
+- ✅ `census_retained_fixtures.py --retire --confirm`: **195 fixtures reduced, 10,364,871,724 bytes dropped, 0 deleted** — every log, receipt and config kept, two fixtures refused by its own rules (one cited by tracked files, one `shutdown-unverified`).
+- 🔴 **A third population it does not enumerate**: `.project-data/browser/run-*` — **48 workspaces, 880,130,713 bytes, 99.99 % reproducible payload, 95,280 B of evidence**. The R3 worker retains its workspace on any unsuccessful render, and a tripped time budget is a legitimate outcome.
+- ⭐ That is the retention rule's founding shape (37 fixtures / 99.93 %) in a third place. Clause **attached** to `.7.3.4`, whose goal line names the extraction worker only; bounded work is `.7.3.4.1`.
+- ⛔ No quota set: `.11.6` forbids a number chosen before its population is measured.
+
 ⏳ **THE PRE-PUSH FLAKE IS CAUGHT, LOCALIZED TO CHILD-PROCESS START, AND IT HAS A TWIN (`.11.26` + `.11.2.7`, DOC-0079).**
 
 - ✅ **Caught with the output retained** — the standing instruction `.11.26` wrote for itself, paying for itself. `Ran 73 tests in 375.967s` / **`FAILED (errors=9)`** against a normal ~21 s.

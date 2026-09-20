@@ -86,7 +86,20 @@ transport is a dependency this workspace has not taken. So there is no
 SDK-level or conformance-tested claim for this surface
 (`SIGNOFF-REPAIR.6.6` owns that decision).
 
-⛔ **There is no operator-facing gateway yet.** Nothing configures an upstream
-MCP server, so the ritual ships as a library surface with no route, no CLI verb
-and no enrolled-upstream registry behind it. Treat this chapter as the contract
-that half is built against, not as a feature an operator can switch on.
+⛔ **There is no operator-facing gateway, and the reason is one layer below the
+missing route.** `ListenUpstream` — the trait a connection to an upstream MCP
+server implements — has exactly **one** implementor in the whole workspace, and
+it is in the test suite. No production type dials anything. So the reconnect
+ritual and its durable state are both correct and both unreached: a route that
+let an operator name an upstream would configure a server nothing can connect
+to.
+
+What that half owes before it gets a surface is recorded in
+`docs/decisions/2026-09-20_the-listen-gateway-owes-a-dialler-before-an-operator-surface.md`:
+a production dialler first, whose destination goes through the same SSRF
+classification every other outbound dial in this server passes, whose enrolment
+rides a named site authority rather than enrolment alone, and whose credential
+holder is decided rather than invented.
+
+Treat this chapter as the contract that half is built against, not as a feature
+an operator can switch on.

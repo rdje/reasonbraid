@@ -5,6 +5,14 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE LISTEN GATEWAY OWES A DIALLER BEFORE AN OPERATOR SURFACE (`.6.7`, DOC-0084).**
+
+- 🔴 The leaf opened on exposure; **the binding constraint is that there is nothing to operate.** `pub trait ListenUpstream` has exactly **one** implementor in the workspace and it is in the test suite — no production type dials anything.
+- ⛔ An operator surface would configure an upstream no code can reach — the placeholder-infrastructure lie ADR-018 rejects.
+- ✅ **DEFERRED, and the ORDERING is the decision**: the dialler first, owing `crate::ssrf::evaluate` on a destination that comes from an OPERATOR-supplied row, a NAMED site authority (`.7.1.1` measured 33 routes admitting on enrolment alone — not the 34th), and a decided credential holder.
+- ⚠️ The dialler's own transport is constrained by `.6.6`'s base64 split.
+- ⭐ The book paragraph is KEPT and SHARPENED: *not yet* is a schedule nobody can check; *the trait has no production implementor* is a fact anybody can.
+
 ✅ **THE MCP HTTP TRANSPORTS ARE BLOCKED BY ONE UPSTREAM SPLIT, AND IT IS NOT OURS TO RESOLVE (`.6.6`, DOC-0083).**
 
 - 🔴 Two leaves that asked separate dependency questions have **one blocker**: every Streamable-HTTP profile (client, client-reqwest, server) brings `base64 0.23.1`, which `deny.toml`'s `multiple-versions = "deny"` forbids. `transport-io` and `client` each add **0** packages.

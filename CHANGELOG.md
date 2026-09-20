@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-20 — The listen gateway owes a dialler before an operator surface (`SIGNOFF-REPAIR.6.7`)
+
+`REASONBRAID-DOC-0084`. The leaf opened on exposure; the binding constraint is one layer below it.
+
+- 🔴 **There is nothing to operate.** `pub trait ListenUpstream` has exactly **one** implementor in the workspace — `git grep -c "impl.*ListenUpstream" -- crates` returns one file, and it is `crates/reasonbraid-server/tests/mcp_listen.rs`. **No production type dials anything**, so the reconnect ritual and its durable state are both correct and both unreached.
+- ⛔ **An operator surface would therefore configure an upstream no code can connect to** — a route writing a registry row nothing consumes, which is the placeholder-infrastructure lie ADR-018's own options section rejects. The Internet-exposure reasoning the leaf opened with is sound and simply is not what binds.
+- ✅ **DEFERRED, and the ORDERING is the substance of the decision**: the production dialler first, the operator surface second. Three requirements are recorded now so whoever builds it inherits them: the destination goes through `crate::ssrf::evaluate` — the classifier the R0 fetch and R1 git packs put in front of every dial, and here the destination comes from an **operator-supplied** registry row, which is precisely the caller-controlled-destination shape it exists for; the enrolment rides a **named site authority**, because `SIGNOFF-REPAIR.7.1.1` measured 33 routes writing site-global state on enrolment alone and this must not be the 34th; and the credential holder is decided rather than invented.
+- ⚠️ **The dialler's own transport is constrained**, so it is not simply next either: an SDK-backed one is blocked by the `base64` split, and a hand-written one has conformance consequences of its own.
+- ⭐ **The book paragraph is KEPT and SHARPENED rather than replaced** — the acceptance's replace-it clause was conditional on the surface being taken. *There is no operator-facing gateway yet* is a schedule nobody can check; *the trait has no production implementor* is a fact anybody can.
+- ✅ **VERIFIED:** no code changed; fmt rc=0, `make book` rc=0, book links rc=0, doctrine gate all green, `handoff: OK`. ⛔ Nothing to falsify, said rather than skipped — and the measurement was re-derived by a second route: a per-file `grep -c` over `src/` and `tests/` separately, where `src/` returns nothing at all.
+- ⚠️ **The ledger rotated for the thirty-fourth time immediately before this entry** (`SIGNOFF-REPAIR.11.4.1.5`, DOC-0085), in its own commit and with this record pulled aside first, so the predecessor snapshot it names holds only pre-existing entries.
+
 ## 2026-09-20 — The MCP HTTP transports are blocked by one upstream split, and it is not ours to resolve (`SIGNOFF-REPAIR.6.6`)
 
 `REASONBRAID-DOC-0083`. Two leaves that asked separate dependency questions have one blocker.

@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE RESUME POINTER'S DERIVABLE FIELDS, MEASURED OVER 645 VERSIONS — AND THE GENERATOR DECLINED ON THE NUMBER (`.11.4.2.4`, REPAIR-0348).**
+
+- ⛔ **THE DENOMINATOR IS THE FINDING.** A field reading *derive on read* carries no value and cannot be wrong, so a rate over all 645 versions is not a rate. Over what CARRIED a value: `latest_commit` **7 wrong of 162** (4.3%), the frontier leaf **10 of 385** (2.6%), the ahead-of-origin count **152 of 173** transitions (88%).
+- 🔴 **A hand-written hash that names nothing**: at `69b6374` the pointer's `latest_commit` was `` `ba6e77e` ``; `git cat-file -t ba6e77e` → `fatal: Not a valid object name`, while the subject it quoted sits at `c8020be` — that commit's own parent.
+- ⛔ **DECLINED, on the numbers**: the 88% field is the one the pointer already stopped carrying (it states the derivation command instead), `latest_commit` was derive-on-read for 482 of 645 versions with every defect in the rest, and the residual risk lands on `next_action` and on **222** curated-prose bullets.
+- ⚠️ **The disagreement is SYMMETRIC — in 5 of the 10 frontier mismatches the TREE's row 1 was the stale copy.** A generator sourcing the pointer from row 1 would have written the wrong value half the time. What is owed instead is a CHECK; `.11.4.2.4.1` holds it with the calibration (17 hand-classified instances) finished.
+- 🔴 **The instrument was wrong three times first and every wrong number is kept**: 227 bad SHAs where the history has 2; 34 manufactured frontier hits from `PHASE-1` absorbing the leaf path's first segment; a SHA quoted in prose outranking the id beside it, scoring one claim 601 commits stale. ⚠️ A fourth correction moved no number and is recorded anyway.
+- ⭐ Falsified by a second route (run-length, a different blind spot): **`310` stood unchanged across 83 pointer versions spanning 95 real commits**. The leaf's own predicted instance was *"133 for ten commits"* — measured, **8 versions / 7 commits**.
+
 ✅ **THE PROMOTION CALL, DELEGATED AND TAKEN — AND MY OWN GENERALISATION CORRECTED (`.13.4.6.3`, DOC-0089).**
 
 - 🔴 I reported *six of these are one shape* and then held the lesson for a second instance. **Those two claims cannot both be right, and neither was.** Re-classified by MECHANISM: **four** are a stale SCOPE (already in the layer — no promotion owed, and claiming one would have duplicated a note) and **three** — five once this pass's own probes are counted — are an instrument's REACH.

@@ -1,5 +1,61 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — A rate needs a denominator, and a field that says "derive it" is not in the denominator
+
+`MEMORY_ARCHITECTURE.md` §6 prefers a derived resume pointer to a hand-written
+one. `SIGNOFF-REPAIR.11.4.2.4` owed the measurement, and the measurement's whole
+difficulty turned out to be the denominator rather than the count.
+
+**The question as posed.** *How often has each derivable field in `MEMORY.md`'s
+current-state block been wrong?* Over the 645 commits that have touched the file,
+the naive answer is a ratio of defects to versions. That ratio is meaningless:
+for most of its life `latest_commit` did not carry a value at all — it read
+`derive on read with git log -1 --oneline`, which cannot be stale. Counting those
+645 versions as 482 correct ones would have published a 1.1% drift rate for a
+field whose real rate, where it makes a claim, is **4.3%**.
+
+**The answer, per field, over what carried a value.**
+
+| field | carried | derive-on-read / no claim | wrong | rate |
+| --- | --- | --- | --- | --- |
+| `latest_commit` | 162 | 482 + 1 unreadable | 7 | 4.3% |
+| frontier leaf | 385 | 222 prose | 10 | 2.6% |
+| ahead-of-origin | 174 (173 transitions) | 140 + 331 absent | 152 | 88% |
+
+**What decided the generator question was not the rate.** Three things did.
+First, the 88% field is the one the pointer *already stopped carrying* — it now
+states the derivation command — so the working repair cost no instrument at all.
+Second, `latest_commit` was derive-on-read for 75% of its history and every
+defect is in the remaining quarter; the corpus had run the experiment. Third and
+decisively, the disagreement between the pointer and the tree is **symmetric**:
+in 5 of the 10 frontier mismatches the tree's own row 1 was the copy that had not
+moved, because a parent leaf had just been decomposed and the pointer named the
+first child. A generator that treats row 1 as ground truth would have written the
+wrong value in half of them. So: generator declined, check owed, calibration done.
+
+**The instrument was wrong three times, and each error had the same shape.**
+227 bad SHAs where the history has 2 — a `review baseline` cited beside a
+derivation instruction, read as a latest-commit claim. 34 frontier disagreements
+manufactured by concatenating `PHASE-1` with `.1.1.1`. A SHA quoted inside a
+bullet's prose outranking the work-unit id that opened it, scoring one claim 601
+commits stale. Every one of the three is a statement about the instrument's reach
+that I first read as a statement about the history — the lesson promoted one
+commit earlier, met three more times inside the tool written to avoid it.
+
+**And the correction worth keeping is the one that changed nothing.** The truth
+table was keyed off the pointer-touching commits alone, so a parent that never
+touched `MEMORY.md` looked as though it had no work-unit id — a census drawing
+its ground truth from the same population as its subject. Fixed to walk the whole
+`git log`; the verdicts were identical before and after. A fix with no effect is
+still a finding, and recording it is what stops the next reader assuming it was
+load-bearing.
+
+Promotion: **declined** — recorded in the leaf. These are further instances of
+`an-instruments-zero-describes-its-reach` and of
+`calibrate-over-the-history-that-contains-the-instance`, both already in the
+retrievable layer. `SIGNOFF-REPAIR.11.6`'s threshold wants a statement the layer
+lacks, and this leaf produced instances rather than a new rule.
+
 ## 2026-09-20 — A snapshot of a transient defect measures how often it is repaired
 
 `SIGNOFF-REPAIR.11.22.1` opened on a frontier table naming one unfinished leaf

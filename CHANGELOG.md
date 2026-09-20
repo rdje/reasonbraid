@@ -1,5 +1,20 @@
 # CHANGELOG.md
 
+## 2026-09-20 — The pointer's derivable fields, measured over 645 versions — and the generator declined on the number (`SIGNOFF-REPAIR.11.4.2.4`)
+
+`REASONBRAID-REPAIR-0348`. `MEMORY_ARCHITECTURE.md` §6 prefers a *derived* resume pointer over a hand-written one. Nothing had ever measured whether the hand-written one actually drifts.
+
+- ⛔ **THE DENOMINATOR IS THE FINDING.** A field reading `derive on read with git log -1 --oneline` carries no value and cannot be wrong, so a rate over all 645 versions is not a rate. Taken over the versions that CARRIED a value: `latest_commit` **7 wrong of 162** (4.3%), the frontier leaf **10 of 385** (2.6%), the ahead-of-origin count **152 of 173** transitions (88%).
+- 🔴 **`latest_commit` spent 482 of its 645 versions already derived-on-read — and all seven defects sit in the 162-version carried minority.** The corpus had run §6's experiment before the leaf asked the question.
+- 🔴 **The sharpest single instance: a hand-written hash that names nothing.** At `69b6374` the pointer read ``latest_commit: `ba6e77e` — "REASONBRAID-DOC-0037 …"``. `git cat-file -t ba6e77e` → `fatal: Not a valid object name`. The quoted subject was right; `git log --grep` puts DOC-0037 at `c8020be`, that very commit's parent.
+- ⛔ **The generator is DECLINED, on the numbers.** The 88% field is the one the pointer has *already stopped carrying* — today it states the derivation command instead — so the repair that worked cost no instrument. The residual risk lands on `next_action`, a judgement line a regenerator destroys, and on **222 of 645** curated-prose bullets: `SIGNOFF-REPAIR.11.4.5.3`'s shape, and the ratio does not invert once the denominator is right.
+- ⚠️ **The disagreement is SYMMETRIC, which is what settled it.** In **5 of the 10** frontier mismatches the tree's own row 1 was the stale copy — a parent leaf had just been decomposed and the pointer named the first child. A generator sourcing the pointer from row 1 would have written the wrong value in half the instances rather than preventing one.
+- ⭐ What is owed instead is a **check**, not a writer, and its calibration is finished: 17 hand-classified instances over the whole history. Owned by `SIGNOFF-REPAIR.11.4.2.4.1`, opened with the calibration attached rather than routed and parked.
+- 🔴 **The instrument was wrong three times first, and every wrong number is kept.** **227** bad SHAs where the history has **2** (a `review baseline` read as a latest-commit claim; repaired by ORDER after measuring 217-of-217 derive-hint-first, 0 counter-examples); **34** manufactured frontier disagreements from literal shorthand concatenation under a tree whose name ends in a number (`PHASE-1` absorbing the leaf path's first segment); and a SHA quoted inside a bullet's prose outranking the id that opens it, scoring one claim **601 commits** stale. A fourth correction moved no number and is recorded anyway.
+- ⚠️ **Falsified by a second route.** Re-asked as a run-length question — a different blind spot — the ahead-count verdict holds and enlarges: **`310` held unchanged across 83 pointer versions spanning 95 real commits**. The leaf predicted its own instance as *"stale 133 for ten commits"*; measured, **8 versions / 7 commits** — right in kind, wrong in size, recorded rather than quietly matched.
+- ⛔ **The published rates carry their reach.** 2.6% is over the **385** versions naming a frontier leaf in a readable shape; the other **222** are era-1 progress prose and this census makes no claim about them. `status disagrees: 0` is over **158**, not 423.
+- New tracked instrument `scripts/census_memory_pointer_drift.py` (23-control `--self-test` whose count is derived, not typed; row in `TOOLBOX.md`; inside the SELF-TEST gate's discovered population). No product code, schema or test touched; `make gate` green (22 checks).
+
 ## 2026-09-20 — Promote the instrument-reach lesson, and correct the six-instances-one-shape claim that deferred it (`SIGNOFF-REPAIR.13.4.6.3`)
 
 `REASONBRAID-DOC-0089`. The director delegated the promotion call; taking it required correcting the sentence that had deferred it.
@@ -406,36 +421,26 @@
 - ✅ **This ledger took its thirty-third rotation in the same commit** (`SIGNOFF-REPAIR.11.4.1`), because appending the entry above crossed the 96,000-byte threshold: **8 records rotated into Git history, 16 kept, lossless** — 24 predecessor records = 16 kept + 8 rotated, checked by comparing headings rather than asserted. ⭐ Every figure in the footer below was **re-derived from the named object** (94,291 bytes, 347 lines, 24 entries, blob and SHA-256), and the published retrieval command was RUN: a rotation notice whose command fails is the retrieval failure the footer itself warns about.
 - ⛔ **No storage quota is set.** A deployment-level ceiling is the parent leaf's, and `SIGNOFF-REPAIR.11.6` forbids a number chosen before its population is measured across real deployments rather than one developer's probe session.
 
-## 2026-09-20 — The pre-push flake is caught, localized to child-process start, and it has a twin (`SIGNOFF-REPAIR.11.26`, `.11.2.7`)
-
-`REASONBRAID-DOC-0079`. A capture, a refuted lever and a consolidation; no code changed.
-
-- ✅ **Caught, during the previous commit's own verification, with the output retained** — which is the standing instruction `SIGNOFF-REPAIR.11.26` wrote for itself two commits ago, paying for itself a second time. `Ran 73 tests in 375.967s` / **`FAILED (errors=9)`**, against a normal ~21 s and 73 OK.
-- ⭐ **The per-phase instrument localized it in one pass, which is what it was built for.** All nine errors are `subprocess.TimeoutExpired`, and every failing child carries `started_at` with no completion in the **same** phase: `download`, 8 of 8, at **15,239–15,251 ms** where the passing runs record **144–209 ms**. `version` and `command` are absent — never reached.
-- ⭐ **And that phase executes no network.** The tests put a stub `curl` on `PATH`: a freshly written 0o700 Python script that copies a local archive. So the fifteen seconds is spent **starting a small, local, brand-new child**, which is why the bound's own value was never the defect — it sits 8.4× above the worst of 240 normal observations, and these exceed it by 75× the phase's median.
-- ⭐ **The failures are consecutive**, at 15.3-second intervals across the whole `BrowserSetupTests` class: the machine enters a state in which exec'ing a fresh child costs ~15 s and stays in it, rather than a per-child random tail.
-- ⛔ **The candidate was produced deliberately, as the leaf's acceptance demands, and it did not reproduce.** A fresh **191 MB signed browser bundle** — roughly two thousand new Mach-O files for the Gatekeeper policy daemon to evaluate — was downloaded and extracted immediately before the suite: **21.314 s, 73 OK**, every `download` phase at 144–211 ms, with `syspolicyd` between **66 % and 81 %** throughout. So *the policy daemon is busy* joins *the machine was busy* as an explanation this leaf has **withdrawn under measurement**, and it is the second lever to fail after repeated `cargo build`s.
-- 🔴 **And the flake has a twin that nobody had noticed: `SIGNOFF-REPAIR.11.2.7`**, opened five days earlier by a different caller. Same command — one of `COMMIT.md`'s four pre-push gates — same three modules, same byte-identical code, same `TimeoutExpired` on a deadline'd subprocess, and the same `syspolicyd`-and-swap hypothesis recorded and refused by both. Two leaves were open on one phenomenon, each measuring it alone. Ownership consolidates onto `.11.26`, which carries the instrument; neither closes without the other.
-- ⭐ **Their evidence converges from opposite directions.** `.11.2.7` observed `rustc` children at **0.0 % CPU blocked on paging**; `.11.26` concluded from its loaded-collision arm that *a stall insensitive to CPU load is a blocking wait, not starvation*. Neither knew of the other.
-- ⛔ **Swap does not discriminate either, measured on its own terms:** `vm.swapusage` read **5,719 of 7,168 MB** during the captured failure and the **identical 5,719 MB** while the suite then passed in 21.3 s. It is a high-water mark, so the quantity that could discriminate is the paging **rate** — which neither leaf has measured, and which the narrowed acceptance now names.
-- ⚠ **What is still not known:** what a stalled `download` child is blocked ON. The next step is sampling that child while it is stuck rather than trying another lever against the suite as a whole, and no bound is to be moved until it is.
-
-## Historical entries and exact retrieval
-
 The entries before those above were rotated into reachable Git history at the
-**thirty-fourth rotation** (`SIGNOFF-REPAIR.11.4.1`, which owns this ledger’s rotation). The exact predecessor — every
+**thirty-fifth rotation** (`SIGNOFF-REPAIR.11.4.2.4`, which owns this ledger’s rotation). The exact predecessor — every
 byte this file held immediately before the rotation — is:
 
 ```bash
-git show 57c06c2eaa1b1bce2e74585a6dac18f314f7179c:CHANGELOG.md
+git show f8f837efb1049f608d14e2332d89d8866175bbe2:CHANGELOG.md
 ```
 
-That snapshot is 94717 bytes and 378 lines, and contains 27 dated
-entries; its Git blob is `b9c9abae1364abc3a297035571a44ee445c8ec33` and its SHA-256 is
-`a19524d9bddf5505fc971ce33bf004daa24ee424b2795b453efd6209212ae390`. It carries the thirty-third rotation's
+That snapshot is 94872 bytes and 447 lines, and contains 32 dated
+entries; its Git blob is `98baa18ac9c05d756578666c77273aaf8e08b471` and its SHA-256 is
+`4e9c79ca56766556a65ce3c4db94d61262372f2c34bf06530f6feae5957a67a1`. It carries the thirty-fourth rotation's
 notice in turn, and each earlier notice names the one before it, so the chain
 walks all the way back. `docs/decisions/2026-09-09_changelog-rotation.md` holds
 the first transition's evidence.
+
+⛔ **One record rotated out, 32 kept, lossless** — 32 predecessor records = 31 kept + 1 rotated, checked by comparing
+headings rather than asserted. Every figure above was re-derived from the named object with `git rev-parse`,
+`git cat-file -s` and `shasum -a 256`, and the retrieval command was RUN: the rotated entry (*the pre-push flake is
+caught, localized to child-process start, and it has a twin*) is present in its output. A rotation notice whose command
+fails is the retrieval failure this footer itself warns about.
 
 Use `git log --follow -- CHANGELOG.md` for earlier versions. Keep the reachable
 Git history when cloning or handing off; a shallow checkout may need the named

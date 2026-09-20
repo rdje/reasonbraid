@@ -1375,3 +1375,123 @@ async fn node_inbox_offered_upgrade_adds_the_rung_and_invents_no_offer() {
         "the new rung is reachable on an upgraded row"
     );
 }
+
+/// `SIGNOFF-REPAIR.11.24.1.2` — `migrations/0079` appends `in_flight` to
+/// `node_presence`, and the append is what makes `CREATE OR REPLACE VIEW`
+/// legal at all.
+///
+/// ⛔ `migrations/0078` had to DROP and recreate `node_inbox_state`, because
+/// that view selects `i.*` and a new table column lands ahead of its derived
+/// one — PostgreSQL refuses with `42P16`. `node_presence` names its columns,
+/// so the new one appends and a replacement is permitted. That is an assertion
+/// about this specific view, and an assertion about a migration is worth what
+/// drives it: this applies the migration over a POPULATED pre-`0079` database,
+/// which is the only place the replacement path runs.
+#[tokio::test]
+async fn node_presence_in_flight_upgrade_appends_without_dropping_the_view() {
+    let _g = guard().await;
+    let Some(pool) = pg_test_support::pool().await else {
+        return;
+    };
+    let migrator =
+        Migrator::new(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../migrations"))
+            .await
+            .unwrap();
+    recreate_public_schema(&pool).await;
+    let through = |version| Migrator {
+        migrations: std::borrow::Cow::Owned(
+            migrator
+                .migrations
+                .iter()
+                .filter(|m| m.version <= version)
+                .cloned()
+                .collect(),
+        ),
+        ignore_missing: false,
+        no_tx: false,
+        locking: true,
+    };
+    assert!(migrator.migrations.iter().any(|m| m.version == 79));
+    through(78).run(&pool).await.unwrap();
+
+    let column: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM information_schema.columns \
+         WHERE table_schema = 'public' AND table_name = 'node_presence' \
+           AND column_name = 'in_flight'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(column, 0, "node_presence.in_flight must arrive with 0079");
+
+    let tenant = "ten_00000000-0000-7000-8000-000000000179";
+    let node = "nod_00000000-0000-7000-8000-000000000179";
+    sqlx::query("INSERT INTO tenants (tenant_id) VALUES ($1)")
+        .bind(tenant)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO hosts (host_id, tenant_id, name) VALUES ('hst_179', $1, 'h')")
+        .bind(tenant)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO nodes (node_id, host_id, tenant_id) VALUES ($1, 'hst_179', $2)")
+        .bind(node)
+        .bind(tenant)
+        .execute(&pool)
+        .await
+        .unwrap();
+    // One held command and one that is merely queued, so the upgraded column
+    // has to DISCRIMINATE rather than count rows.
+    for (cursor, command, held) in [(1_i64, "cmd_179_held", true), (2, "cmd_179_queued", false)] {
+        sqlx::query(
+            "INSERT INTO node_inbox \
+             (node_id, cursor, command_id, tenant_id, thread_id, payload, offered_at, acknowledged_at) \
+             VALUES ($1, $2, $3, $4, 'thr_179', '{\"kind\":\"contribute\"}'::jsonb, \
+                     CASE WHEN $5 THEN now() ELSE NULL END, \
+                     CASE WHEN $5 THEN now() ELSE NULL END)",
+        )
+        .bind(node)
+        .bind(cursor)
+        .bind(command)
+        .bind(tenant)
+        .bind(held)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    let before: Vec<Value> =
+        sqlx::query_scalar("SELECT to_jsonb(p) FROM node_presence p ORDER BY node_id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+
+    through(79).run(&pool).await.unwrap();
+
+    let (in_flight, online): (i64, bool) =
+        sqlx::query_as("SELECT in_flight, online FROM node_presence WHERE node_id = $1")
+            .bind(node)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        in_flight, 1,
+        "only the HELD command counts; the queued one is not in flight"
+    );
+    assert!(!online, "the pre-existing columns still derive as they did");
+
+    // ⭐ The append is an append: every column the view had is unchanged, and
+    // the new one is the only addition.
+    let after: Vec<Value> =
+        sqlx::query_scalar("SELECT to_jsonb(p) FROM node_presence p ORDER BY node_id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(after.len(), before.len(), "the view still has one row");
+    for (old, mut upgraded) in before.into_iter().zip(after) {
+        let added = upgraded.as_object_mut().unwrap().remove("in_flight");
+        assert!(added.is_some(), "in_flight is the column that was added");
+        assert_eq!(upgraded, old, "every pre-existing column is unchanged");
+    }
+}

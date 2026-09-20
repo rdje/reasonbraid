@@ -4438,3 +4438,202 @@ async fn a_fenced_acknowledgement_cannot_mark_another_sessions_delivery() {
 
     server.crash();
 }
+
+/// `SIGNOFF-REPAIR.11.24.1.2` — §10.2's sixth state, driven through a REAL
+/// held command rather than through the derivation's arguments.
+///
+/// 🔴 **THE DEFECT.** `PresenceState::Busy` was declared, rendered as the wire
+/// string `"busy"`, and constructed nowhere, so a client branching on §10.2's
+/// published vocabulary had one value that could never arrive. ⛔ Deleting the
+/// variant was not available: §10.2 says *a role can be `available`, `busy`,
+/// `draining`, `offline`, `suspended`, or `unknown`*, so removing it would
+/// leave §10.2 conformance in order to make a vocabulary honest.
+///
+/// ⭐ **The in-flight input is the ladder's own rung**, not a new count:
+/// `node_inbox_state.delivery_state = 'transport_received'` — the node holds
+/// this command and has not finished it. `migrations/0079` puts that on
+/// `node_presence` so one definition serves all five readers.
+///
+/// The arms, and what each would miss alone:
+///
+///   * **available with capacity declared** — the negative arm the acceptance
+///     demands. Without it, a derivation that reported `busy` the moment a
+///     concurrency existed would pass everything below;
+///   * **busy on a real held command** — the state is reachable at all, which
+///     is the whole finding;
+///   * **available again once the work is consumed** — `busy` is a state the
+///     node LEAVES, not a latch. A count that included finished rows would
+///     hold the node at capacity forever and still pass the arm above.
+#[tokio::test]
+async fn a_node_holding_its_declared_capacity_reads_busy_and_leaves_it() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
+    let tenant = "ten_00000000-0000-7000-8000-0000000000c2";
+    let role_id = "rol_00000000-0000-7000-8000-0000000000c2".to_string();
+
+    sqlx::query("INSERT INTO tenants (tenant_id, name) VALUES ($1, 'busy')")
+        .bind(tenant)
+        .execute(&pool)
+        .await
+        .expect("seed tenant");
+    sqlx::query(
+        "INSERT INTO hosts (host_id, tenant_id, name) VALUES ('hst_busy_c2', $1, 'busy-host')",
+    )
+    .bind(tenant)
+    .execute(&pool)
+    .await
+    .expect("seed host");
+    sqlx::query("INSERT INTO nodes (node_id, host_id, tenant_id) VALUES ($1, 'hst_busy_c2', $2)")
+        .bind(&role_id)
+        .bind(tenant)
+        .execute(&pool)
+        .await
+        .expect("seed node");
+    sqlx::query("INSERT INTO agent_roles (role_id, tenant_id, name) VALUES ($1, $2, 'busy-role')")
+        .bind(&role_id)
+        .bind(tenant)
+        .execute(&pool)
+        .await
+        .expect("seed role");
+    sqlx::query("INSERT INTO agent_profiles (role_id, current_version) VALUES ($1, 1)")
+        .bind(&role_id)
+        .execute(&pool)
+        .await
+        .expect("seed profile pointer");
+    // ONE declared slot, so a single held command is exactly at capacity.
+    sqlx::query(
+        "INSERT INTO profile_versions (version_id, role_id, version, content_hash, profile, written_by) \
+         VALUES ('pver_busy_1', $1, 1, 'h', $2, 'agt_busy')",
+    )
+    .bind(&role_id)
+    .bind(serde_json::json!({
+        "display_label": "busy",
+        "purpose": "probe",
+        "conversation_modes": [],
+        "capabilities": [],
+        "interests": [],
+        "languages": [],
+        "structured_output_formats": [],
+        "scopes": [],
+        "confidentiality_classes": [],
+        "availability": { "concurrency": 1, "operating_hours": null, "wake_policy": null },
+        "resolver_tool_capabilities": [],
+        "cost_latency_class": null,
+        "resource_ceilings": null,
+        "visibility": {},
+        "grants_by_reference": [],
+        "incarnation_id": null,
+    }))
+    .execute(&pool)
+    .await
+    .expect("seed the one-slot profile");
+    // A live lease, so the states above `busy` do not claim the answer.
+    sqlx::query(
+        "INSERT INTO node_leases \
+         (node_id, fencing_token, last_seen_at, lease_expires_at, issued_at, lease_epoch) \
+         VALUES ($1, 'fnc_busy_c2', now(), now() + interval '10 minutes', now(), 1)",
+    )
+    .bind(&role_id)
+    .execute(&pool)
+    .await
+    .expect("seed a live lease");
+
+    let presence = |node: String| {
+        let pool = pool.clone();
+        async move {
+            let row: (String, i64) = sqlx::query_as(
+                "SELECT np.in_flight::text, np.in_flight FROM node_presence np WHERE np.node_id = $1",
+            )
+            .bind(&node)
+            .fetch_one(&pool)
+            .await
+            .expect("the node has a presence row");
+            row.1
+        }
+    };
+
+    // ── ARM 1: capacity declared, nothing held. NOT busy.
+    assert_eq!(presence(role_id.clone()).await, 0, "nothing is held yet");
+    let state_now = |node: String| {
+        let pool = pool.clone();
+        async move {
+            let (suspended, online, concurrency, in_flight): (bool, bool, Option<i64>, i64) =
+                sqlx::query_as(
+                    "SELECT np.suspended, np.online, \
+                            (SELECT (v.profile->'availability'->>'concurrency')::bigint \
+                             FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
+                             WHERE v.role_id = np.node_id AND v.version = p.current_version), \
+                            np.in_flight \
+                     FROM node_presence np WHERE np.node_id = $1",
+                )
+                .bind(&node)
+                .fetch_one(&pool)
+                .await
+                .expect("presence inputs");
+            reasonbraid_server::presence_internal::presence_state(
+                true,
+                suspended,
+                online,
+                concurrency,
+                in_flight,
+            )
+            .as_str()
+            .to_string()
+        }
+    };
+    assert_eq!(
+        state_now(role_id.clone()).await,
+        "available",
+        "a declared capacity alone must not report `busy`"
+    );
+
+    // ── ARM 2: one real command, held by the node. AT capacity.
+    let command_id = "cmd_busy_1".to_string();
+    state
+        .enqueue(
+            &role_id,
+            &command_id,
+            tenant,
+            "thr_00000000-0000-7000-8000-000000000000",
+            &json!({ "operation": "contribute", "command_id": command_id }),
+        )
+        .await
+        .expect("enqueue the command");
+    // The node holds it: `transport_received` is the rung the count reads.
+    sqlx::query(
+        "UPDATE node_inbox SET offered_at = now(), acknowledged_at = now() WHERE command_id = $1",
+    )
+    .bind(&command_id)
+    .execute(&pool)
+    .await
+    .expect("the node durably holds the command");
+    assert_eq!(presence(role_id.clone()).await, 1, "one command is held");
+    assert_eq!(
+        state_now(role_id.clone()).await,
+        "busy",
+        "a node holding its declared capacity reads §10.2's `busy`"
+    );
+
+    // ── ARM 3: the work finishes. `busy` is a state the node LEAVES.
+    sqlx::query(
+        "INSERT INTO node_events (event_id, node_id, operation_id, payload) \
+         VALUES ('evt_busy_1', $1, $2, '{\"kind\":\"work_result\"}'::jsonb)",
+    )
+    .bind(&role_id)
+    .bind(&command_id)
+    .execute(&pool)
+    .await
+    .expect("the work result lands");
+    assert_eq!(
+        presence(role_id.clone()).await,
+        0,
+        "a consumed row is not in flight — `consumed` outranks `transport_received`"
+    );
+    assert_eq!(
+        state_now(role_id.clone()).await,
+        "available",
+        "`busy` is a state the node leaves, not a latch"
+    );
+}

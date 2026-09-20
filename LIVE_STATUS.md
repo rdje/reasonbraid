@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **§10.2'S SIXTH PRESENCE STATE IS REACHABLE, AND A DECLARATION OUTRANKS A MEASUREMENT (`.11.24.1.2`, REPAIR-0315).**
+
+- 🔴 `PresenceState::Busy` was declared, rendered as `"busy"`, and **constructed nowhere** — a published vocabulary with an unreachable branch. ⛔ **Deleting it is refused by the ORACLE**: §10.2 names all six states, so removing it would leave conformance to make a vocabulary honest.
+- ✅ **In flight = `delivery_state = 'transport_received'`**, and ⭐ **the exclusions are the ladder's PRECEDENCE, not a list**: `consumed`, `dead_lettered` (a quarantined row would hold the node at capacity forever), `revoked`/`expired`, `queued`. ⛔ **`offered` is argued out, not assumed** — counting it would leave a lossy connection permanently busy over rows never received.
+- ✅ **`draining` OUTRANKS `busy`**, by the chain's own principle: it sorts by how DURABLE the fact is — no enrolment, a revoked certificate, a lapsed lease, a **declaration**, a **measurement of this moment**. ⚠️ An UNDECLARED concurrency never reads `busy`.
+- ⭐ `migrations/0079` appends `in_flight` to `node_presence`: **one definition, five readers**. ⚠️ `CREATE OR REPLACE VIEW` is legal because this view NAMES its columns (unlike `node_inbox_state`'s `i.*`), checked rather than assumed, and driven over a POPULATED database.
+- ✅ **VERIFIED:** `node_channel` **41/0** (40 at `c3ad415`), `node_work` 12, `node_inbox` 11, `migration_upgrade` **8/0** (7 before), `profiles` 63, `regions` 3 — **138/0**; nine library units. fmt rc=0; book rc=0; gate green.
+- 🔎 **Falsified 4 ways; F3 SPLITS** — inverting the precedence is RED against the LIBRARY units and GREEN against the database suites, because no live fixture constructs `concurrency = 0`. That decision is guarded by the pure units alone.
+- ⚠️ **A book sentence was falsified by this change** (*nothing compares the declared number against an active count*) and corrected precisely: the comparison reports PRESENCE; **delivery is still gated only at zero**.
+
 🔴 **A PRE-PUSH GATE FAILED ONCE IN FIFTEEN, AND THE WAY IT WAS RUN THREW THE EVIDENCE AWAY (`.11.26`, DOC-0076).**
 
 - 🔴 The script unit suite — one of `COMMIT.md`'s four cheap pre-push gates — reported `Ran 73 tests in 62.216s` / **`FAILED (errors=2)`**, then passed **14 consecutive times** including a dedicated ten-run loop.

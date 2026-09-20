@@ -352,11 +352,48 @@ it and holds work when it is **exactly zero** — the state presence reports as
   no `concurrency` key, a profile with no `availability` block, or no profile at
   all (the common case for a plain node).
 
-⚠️ **It is not a concurrency limiter.** Declaring `concurrency: 2` does not cap
-the node at two in-flight commands; nothing compares the declared number against
-an active count, and a node that declares two will receive a third row. The
-number is a switch with one meaningful value, and an operator who wants a limit
-must enforce it at the node.
+⚠️ **It is still not a concurrency limiter, and that is worth stating twice
+now that the number is read.** Declaring `concurrency: 2` does not cap the node
+at two in-flight commands: the delivery path compares only against **zero**, and
+a node that declares two will receive a third row. An operator who wants a
+delivery limit must enforce it at the node.
+
+What the declared number *does* do, since `SIGNOFF-REPAIR.11.24.1.2`, is decide
+presence. A node holding as many commands as it declared reads `busy` — see
+below — which tells a caller what the node's own situation is without changing
+what the server will hand it.
+
+## Presence has six states, and `busy` is one of them
+
+`ROADMAP.md` §10.2 says a role can be `available`, `busy`, `draining`,
+`offline`, `suspended` or `unknown`. Until `SIGNOFF-REPAIR.11.24.1.2` the
+deployment could report five: `busy` was published in the vocabulary and no
+input could ever produce it, so a client branching on §10.2's states had one
+branch that was unreachable.
+
+`busy` means **at the capacity the profile declared**: the node holds as many
+commands as it said it can take. *Holds* is the inbox ladder's own rung —
+`transport_received`, the node durably has the command and has not finished it
+— so every exclusion comes from that ladder rather than from a list:
+
+| a row that is… | counts as in flight? | because |
+| --- | --- | --- |
+| `consumed` | no | a work result came back; the work is done |
+| `dead_lettered` | no | quarantined, so it will never be worked — counting it would hold the node at capacity forever |
+| `revoked` · `expired` | no | withheld from delivery; the node will not be given it |
+| `offered` | no | put on the wire and **not** confirmed held; counting it would leave a node with a lossy connection permanently busy |
+| `queued` | no | never handed to a transport |
+| `transport_received` | **yes** | the node holds it and has not finished |
+
+⛔ **`draining` outranks `busy`.** A node declaring `concurrency: 0` satisfies
+both readings of *cannot take work*, and the precedence chain sorts by how
+durable the fact is: no enrolment row, then a revoked certificate, then a lapsed
+lease, then a **declaration**, then a **measurement of this moment**. A node
+declaring no capacity is deliberately winding down, and reporting `busy` would
+tell a caller to wait for capacity that is not coming back on its own.
+
+⚠️ A node that declares **no** concurrency at all never reads `busy`, however
+much it holds. It never said what it can take, so there is no limit to be at.
 
 ## Schedulability gate
 

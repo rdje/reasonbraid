@@ -2035,33 +2035,45 @@ async fn list_node_presence(
                 Option<chrono::DateTime<chrono::Utc>>,
                 Option<chrono::DateTime<chrono::Utc>>,
                 Option<i64>,
+                i64,
             );
             let rows: Vec<Row> = sqlx::query_as(
         "SELECT np.node_id, np.online, np.suspended, np.last_seen_at, np.lease_expires_at, \
                 (SELECT (v.profile->'availability'->>'concurrency')::bigint \
                  FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
-                 WHERE v.role_id = np.node_id AND v.version = p.current_version) \
+                 WHERE v.role_id = np.node_id AND v.version = p.current_version), \
+                np.in_flight \
          FROM node_presence np WHERE np.tenant_id = $1 ORDER BY np.node_id",
     )
     .bind(q.tenant_id.to_string())
     .fetch_all(&pool)
     .await?;
             let nodes: Vec<Value> = rows
-        .into_iter()
-        .map(
-            |(node_id, online, suspended, last_seen_at, lease_expires_at, concurrency)| {
-                json!({
-                    "node_id": node_id,
-                    "state": crate::presence::presence_state(true, suspended, online, concurrency)
-                        .as_str(),
-                    "online": online,
-                    "suspended": suspended,
-                    "last_seen_at": last_seen_at.map(|t| t.to_rfc3339()),
-                    "lease_expires_at": lease_expires_at.map(|t| t.to_rfc3339()),
-                })
-            },
-        )
-        .collect();
+                .into_iter()
+                .map(
+                    |(
+                        node_id,
+                        online,
+                        suspended,
+                        last_seen_at,
+                        lease_expires_at,
+                        concurrency,
+                        in_flight,
+                    )| {
+                        json!({
+                            "node_id": node_id,
+                            "state": crate::presence::presence_state(
+                                true, suspended, online, concurrency, in_flight,
+                            )
+                            .as_str(),
+                            "online": online,
+                            "suspended": suspended,
+                            "last_seen_at": last_seen_at.map(|t| t.to_rfc3339()),
+                            "lease_expires_at": lease_expires_at.map(|t| t.to_rfc3339()),
+                        })
+                    },
+                )
+                .collect();
             Ok(Json(json!({
                 "tenant_id": q.tenant_id.to_string(),
                 "nodes": nodes,
@@ -5052,22 +5064,25 @@ async fn respondent_candidate(
     crate::matching::EligibilityCandidate,
     crate::presence::PresenceState,
 )> {
-    let row: Option<(bool, bool, Option<i64>, Option<Value>)> = sqlx::query_as(
+    // online, suspended, declared concurrency, profile, in flight.
+    type CandidateRow = (bool, bool, Option<i64>, Option<Value>, i64);
+    let row: Option<CandidateRow> = sqlx::query_as(
         "SELECT np.online, np.suspended, \
                 (SELECT (v.profile->'availability'->>'concurrency')::bigint \
                  FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
                  WHERE v.role_id = np.node_id AND v.version = p.current_version) AS concurrency, \
                 (SELECT v.profile \
                  FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
-                 WHERE v.role_id = np.node_id AND v.version = p.current_version) AS profile \
+                 WHERE v.role_id = np.node_id AND v.version = p.current_version) AS profile, \
+                np.in_flight \
          FROM node_presence np WHERE np.node_id = $1",
     )
     .bind(role_id)
     .fetch_optional(pool)
     .await
     .ok()?;
-    let (online, suspended, concurrency, profile) = row?;
-    let state = crate::presence::presence_state(true, suspended, online, concurrency);
+    let (online, suspended, concurrency, profile, in_flight) = row?;
+    let state = crate::presence::presence_state(true, suspended, online, concurrency, in_flight);
     let parsed =
         profile.and_then(|p| serde_json::from_value::<crate::profiles::AgentProfile>(p).ok());
     Some((
@@ -5419,6 +5434,7 @@ async fn directory_match(
         Option<chrono::DateTime<chrono::Utc>>,
         Option<i64>,
         Option<Value>,
+        i64,
     );
     let rows: Vec<Row> = sqlx::query_as(
         "SELECT np.node_id, np.online, np.suspended, np.last_seen_at, np.lease_expires_at, \
@@ -5427,7 +5443,8 @@ async fn directory_match(
                  WHERE v.role_id = np.node_id AND v.version = p.current_version) AS concurrency, \
                 (SELECT v.profile \
                  FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
-                 WHERE v.role_id = np.node_id AND v.version = p.current_version) AS profile \
+                 WHERE v.role_id = np.node_id AND v.version = p.current_version) AS profile, \
+                np.in_flight \
          FROM node_presence np ORDER BY np.node_id",
     )
     .fetch_all(&state.pool)
@@ -5437,14 +5454,17 @@ async fn directory_match(
         crate::matching::EligibilityCandidate,
         crate::matching::EligibilityVerdict,
     )> = Vec::new();
-    for (node_id, online, suspended, _last_seen, _lease_expiry, concurrency, profile) in rows {
+    for (node_id, online, suspended, _last_seen, _lease_expiry, concurrency, profile, in_flight) in
+        rows
+    {
         let Some(stored) = profile else {
             continue; // a role node without a profile declares nothing
         };
         let Ok(parsed) = serde_json::from_value::<crate::profiles::AgentProfile>(stored) else {
             continue;
         };
-        let state = crate::presence::presence_state(true, suspended, online, concurrency);
+        let state =
+            crate::presence::presence_state(true, suspended, online, concurrency, in_flight);
         let candidate = crate::matching::EligibilityCandidate {
             role_id: node_id.clone(),
             profile: Some(parsed),
@@ -5522,6 +5542,7 @@ async fn directory_presence(
         Option<chrono::DateTime<chrono::Utc>>,
         Option<i64>,
         Option<Value>,
+        i64,
     );
     // Every enrolled node with its derived presence + its CURRENT profile
     // (when the node id is the role wire id it serves — the dev wiring).
@@ -5532,7 +5553,8 @@ async fn directory_presence(
                  WHERE v.role_id = np.node_id AND v.version = p.current_version) AS concurrency, \
                 (SELECT v.profile \
                  FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
-                 WHERE v.role_id = np.node_id AND v.version = p.current_version) AS profile \
+                 WHERE v.role_id = np.node_id AND v.version = p.current_version) AS profile, \
+                np.in_flight \
          FROM node_presence np ORDER BY np.tenant_id, np.node_id",
     )
     .fetch_all(&state.pool)
@@ -5549,11 +5571,13 @@ async fn directory_presence(
         lease_expires_at,
         concurrency,
         profile,
+        in_flight,
     ) in rows
     {
-        let state = crate::presence::presence_state(true, suspended, online, concurrency)
-            .as_str()
-            .to_string();
+        let state =
+            crate::presence::presence_state(true, suspended, online, concurrency, in_flight)
+                .as_str()
+                .to_string();
         let (target, fields) = if tenant == reader_tenant {
             (true, profile)
         } else {

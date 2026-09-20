@@ -83,6 +83,12 @@ mod node_channel;
 mod outbox;
 pub mod policy;
 mod presence;
+/// The seam for the §10.2 presence derivation (the `.11.24.1.2` control drives
+/// it with the same inputs the five production readers select — the same
+/// pattern as `regions_internal`).
+pub mod presence_internal {
+    pub use crate::presence::{presence_state, PresenceState};
+}
 mod profiles;
 pub mod project_storage;
 pub mod projections;

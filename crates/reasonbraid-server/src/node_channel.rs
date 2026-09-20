@@ -1397,12 +1397,14 @@ impl NodeChannelState {
             last_seen_at: Option<DateTime<Utc>>,
             lease_expires_at: Option<DateTime<Utc>>,
             concurrency: Option<i64>,
+            in_flight: i64,
         }
         let row: Option<PresenceRow> = sqlx::query_as(
             "SELECT online, suspended, last_seen_at, lease_expires_at, \
                     (SELECT (v.profile->'availability'->>'concurrency')::bigint \
                      FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
-                     WHERE v.role_id = $1 AND v.version = p.current_version) AS concurrency \
+                     WHERE v.role_id = $1 AND v.version = p.current_version) AS concurrency, \
+                    in_flight \
              FROM node_presence WHERE node_id = $1 AND tenant_id = $2",
         )
         .bind(node_id)
@@ -1415,9 +1417,15 @@ impl NodeChannelState {
             suspended: r.suspended,
             last_seen_at: r.last_seen_at,
             lease_expires_at: r.lease_expires_at,
-            state: crate::presence::presence_state(true, r.suspended, r.online, r.concurrency)
-                .as_str()
-                .to_string(),
+            state: crate::presence::presence_state(
+                true,
+                r.suspended,
+                r.online,
+                r.concurrency,
+                r.in_flight,
+            )
+            .as_str()
+            .to_string(),
         }))
     }
 }

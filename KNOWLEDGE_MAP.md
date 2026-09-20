@@ -204,6 +204,7 @@
 - [`2026-09-19_the-policy-registry-is-a-shared-control-surface.md`](docs/decisions/2026-09-19_the-policy-registry-is-a-shared-control-surface.md)
 - [`2026-09-19_the-write-quota-counts-calls-not-effects.md`](docs/decisions/2026-09-19_the-write-quota-counts-calls-not-effects.md)
 - [`2026-09-20_a-command-cannot-outlive-its-authority.md`](docs/decisions/2026-09-20_a-command-cannot-outlive-its-authority.md)
+- [`2026-09-20_a-declaration-outranks-a-measurement.md`](docs/decisions/2026-09-20_a-declaration-outranks-a-measurement.md)
 - [`2026-09-20_a-proof-of-allowance-must-carry-its-own-window.md`](docs/decisions/2026-09-20_a-proof-of-allowance-must-carry-its-own-window.md)
 - [`2026-09-20_a-receipt-is-earned-by-an-offer.md`](docs/decisions/2026-09-20_a-receipt-is-earned-by-an-offer.md)
 - [`2026-09-20_a-render-is-evidence-and-its-worker-must-describe-it.md`](docs/decisions/2026-09-20_a-render-is-evidence-and-its-worker-must-describe-it.md)

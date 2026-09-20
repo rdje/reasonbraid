@@ -1,5 +1,60 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — The exclusions were already written down
+
+This leaf asked two questions and I expected the first to be the hard one:
+what counts as *in flight* for a node that is at capacity. A node holds a
+command; when does it stop counting? Finished, obviously. Quarantined? Probably
+not. Authority withdrawn? Probably not. Offered but unconfirmed? Genuinely
+unclear.
+
+That list is a maintenance liability the moment it is a list. Every new inbox
+state would need someone to remember this predicate exists and decide whether
+it belongs.
+
+It is not a list. The delivery ladder already orders every one of those cases,
+and `transport_received` sits at exactly the right height: `consumed`,
+`dead_lettered`, `revoked` and `expired` all **outrank** it, so a row in any of
+them is not `transport_received` and is excluded by the view, not by me.
+`queued` and `offered` rank below and never reach it. The predicate is one
+equality and the exclusions are the ladder's own precedence — which means a
+future state slots into the order once and this predicate inherits the answer.
+
+`offered` was the only one I had to argue, and the argument is what the rung
+means: the server put the row on the wire and the node has not confirmed
+holding it. Counting it would make a node with a lossy connection permanently
+busy over work it never received.
+
+**The second question turned out to have its answer in the code already.** A
+node declaring `concurrency: 0` is both *draining* (declared no capacity) and
+*busy* (at declared capacity), and one has to win. I went looking for a
+principle and found it in the chain I was editing: unknown, then suspended,
+then offline, then draining, then available. That is not an arbitrary order —
+it runs from the most durable fact to the least. No enrolment row. A revoked
+certificate. A lapsed lease. A declaration. And now a measurement of this
+moment, which is the least durable thing on the list and therefore goes last.
+A declaration outranks a measurement.
+
+⭐ **And the falsification matrix taught me something about my own controls.**
+Inverting that precedence — putting `busy` above `draining` — is **green**
+against every database suite. Not one live fixture constructs a node with
+`concurrency = 0` *and* work in flight, because the whole point of zero is that
+no work arrives. The conflict only exists in a state the system does not
+naturally reach, so only the pure units can see it.
+
+I found that because my first matrix ran the pg suites alone and reported F3
+green, and I did not believe it. That is the positive-control habit from two
+leaves ago arriving inside my own falsification, which is the first time this
+session an instrument error was caught by a rule I had just written rather than
+by luck.
+
+⚠️ One correction the change forced elsewhere: the book said *nothing compares
+the declared number against an active count*. True when written, false now. The
+fix had to be careful rather than sweeping — the comparison exists and reports
+**presence**; delivery is still gated only at zero, and a node declaring two
+still receives a third row. Widening the correction to "the number is now
+enforced" would have been a second false sentence replacing the first.
+
 ## 2026-09-20 — Two numbers I should not have believed, one of which I published
 
 This leaf produced no repair. It produced a correction to something I shipped

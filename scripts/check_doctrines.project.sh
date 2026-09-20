@@ -310,4 +310,33 @@ if ! python3 -B scripts/census_relative_leaf_refs.py --check >/dev/null 2>&1; th
     exit 1
 fi
 
+# RELEASE-BINARY (`SIGNOFF-REPAIR.6.8.1`) — every binary the workspace builds is
+# adjudicated into or out of the release manifest, with a reason.
+#
+# 🔴 THE DEFECT IT CLOSES: `make release` named FOUR binaries with `--bin` while
+# the line immediately above it, `cargo build --release --bins`, built TEN.
+# ADR-027 makes the manifest "the single verification unit" — "binaries verify
+# THROUGH it, never individually" — so the six it omitted could not be verified
+# at all. ⛔ Two of them are the acquisition workers `rb-server` SPAWNS, and
+# `extraction::worker_path` resolves those from `current_exe().parent()`: the
+# release directory itself. An executable sitting beside the server that no
+# manifest names is a code-execution path the ladder cannot reach.
+#
+# ⭐ The flags are now DERIVED — `make release` asks this same script for them —
+# so the Makefile and the ledger cannot disagree about which binaries are signed.
+# What the gate checks is the wiring and the coverage: a workspace binary the
+# ledger does not cover, a ledger row naming no binary, a disposition outside the
+# vocabulary, a row with no reason, and a release target that has gone back to a
+# hardcoded list.
+#
+# ⚠️ It costs well under a second: the binary targets are read from the crate
+# manifests and the filesystem, never from `cargo metadata`, which would resolve
+# the whole dependency graph for a question that does not need it. Both routes
+# were run against each other and returned the same ten names before this was
+# registered.
+if ! python3 -B scripts/census_release_binaries.py --check >/dev/null 2>&1; then
+    python3 -B scripts/census_release_binaries.py --check >&2
+    exit 1
+fi
+
 exit 0

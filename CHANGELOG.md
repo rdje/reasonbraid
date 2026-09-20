@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-20 — Eight of ten binaries are signed, and the list is derived so it cannot drift again (`SIGNOFF-REPAIR.6.8.1`)
+
+`REASONBRAID-REPAIR-0333`. `make release` named four binaries with `--bin` while the line immediately above it built ten.
+
+- 🔴 **ADR-027 makes the manifest *the single verification unit*** — *binaries verify THROUGH it, never individually* — so the six it omitted could not be verified at all, by anyone.
+- 🔴 **Two of the six are a code-execution path, which is what makes this a repair rather than bookkeeping.** `extraction::worker_path` resolves the R2 worker from `std::env::current_exe().parent()`, and `browse.rs` does the same for R3: **`rb-server` spawns them from its own directory**, which in a release is the directory the manifest describes.
+- ✅ **8 `release` + 2 `tool`, each row carrying its reason** in `.doctrine/release_binaries.tsv`. The exclusions are decisions: ⛔ **`rb-release-manifest` is out for CIRCULARITY** — a manifest cannot meaningfully verify the tool that produced it — and `rb-bench` is a benchmark runner nothing in a deployment executes.
+- ⭐ **The repair is the DERIVATION, not the eight.** `make release` obtains its flags from `census_release_binaries.py --release-flags`, so the Makefile and the ledger cannot disagree about which binaries are signed. A list that has to be kept in step is the defect; one that is computed is the fix.
+- 🔎 **Two instrument defects found and fixed while building it.** `make` strips `#` as a comment **inside `$(shell …)`**, so a first version that had make run its own `awk` over the ledger was truncated by the awk program's own skip-comments rule. And the first wiring reader matched the **explanatory comment above the recipe**, which still quotes the superseded four, and reported the defect it had just repaired.
+- ⛔ **The gate does not read a generated manifest**, deliberately: one exists only after a release build, so a check that consulted it would silently pass whenever it was absent. ⛔ And it reads the workspace without cargo's resolver — the targets are a property of the manifests and the filesystem — with both routes run against each other before the number was published.
+- ✅ **VERIFIED end to end:** the eight are generated, signed and verified against the debug build — *the manifest verifies (8 binaries, the signature + the digests)* rc=0 — and `make -n release` resolves to those same eight flags. **Falsified three ways through the enforcer**: an unadjudicated new binary, a hardcoded flag list, and a reason-less row each turn it red by name, and marking the new binary `tool` clears it — so what the gate demands is a decision, not a release.
+- ⚠️ **Not done:** it does not verify that a released binary was built from this source (ADR-027's reproducible-builders deferral), and `rb-release-manifest` remains unverifiable by construction.
+
 ## 2026-09-20 — Ten commits re-derived: the four surfaced findings hold, and the one that moved is a set rather than a number (`SIGNOFF-REPAIR.13.4.5`)
 
 `REASONBRAID-REPAIR-0332`. The director's *ensure the findings hold*, a fifth time, over `REPAIR-0325`…`DOC-0085`.

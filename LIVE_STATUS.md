@@ -5,6 +5,14 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **EIGHT OF TEN BINARIES ARE SIGNED, AND THE LIST IS DERIVED SO IT CANNOT DRIFT AGAIN (`.6.8.1`, REPAIR-0333).**
+
+- 🔴 `make release` named **four** binaries with `--bin` while the line above it built **ten**. ADR-027 makes the manifest *the single verification unit*, so six could not be verified at all.
+- 🔴 **Two of the six are a code-execution path**: `extraction::worker_path` resolves the R2/R3 workers from `current_exe().parent()`, so `rb-server` spawns them from the release directory itself.
+- ✅ **8 `release` + 2 `tool`**, each with its reason. `rb-release-manifest` is excluded for **circularity** — a manifest cannot verify the tool that produced it.
+- ⭐ **The repair is the derivation**: `make release` asks `census_release_binaries.py --release-flags`, so there is no second list to drift. `RELEASE-BINARY` is registered and refuses an unadjudicated binary by name.
+- ✅ Eight generated, signed and **verified** end to end; falsified three ways through the enforcer. ⚠️ Still deferred: reproducible builders, and `rb-release-manifest` is unverifiable by construction.
+
 🔴 **TEN COMMITS RE-DERIVED: THE FOUR SURFACED FINDINGS HOLD, AND THE ONE THAT MOVED IS A SET RATHER THAN A NUMBER (`.13.4.5`, REPAIR-0332).**
 
 ⭐ The director's *ensure the findings hold*, a fifth time — every claim re-derived by a route that did NOT produce it.

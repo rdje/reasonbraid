@@ -72,12 +72,31 @@ dev:
 # The `.2.3` signing step (ADR-027): the per-binary digest manifest + the
 # Ed25519 signature — the release identity key generates on first use (the
 # dev placement: the releaser's local file, gitignored).
+#
+# ⛔ THE SIGNED SET IS DERIVED, NOT LISTED (`SIGNOFF-REPAIR.6.8.1`). This target
+# used to carry `--bin rb --bin rb-server --bin rb-node --bin rb-journal` — FOUR
+# — while the line above it built TEN, and nothing could notice: the six it
+# omitted landed in the same directory and were named by no manifest. Two of
+# them are the acquisition workers `rb-server` SPAWNS, and
+# `extraction::worker_path` resolves those from `current_exe().parent()` — this
+# very directory. The flags now come from `.doctrine/release_binaries.tsv`,
+# which carries every binary with a disposition and a reason, and
+# `scripts/census_release_binaries.py --check` is the registered gate that
+# refuses a workspace binary the ledger does not adjudicate.
+#
+# The census EMITS the flags rather than make parsing the ledger itself: one
+# parser, asked by name. The first attempt had make run its own awk over the
+# TSV and failed immediately for a reason worth keeping — make strips `\043` as
+# a comment inside `$(shell ...)`, so the awk program's own skip-comments rule
+# truncated the call.
+RELEASE_BIN_FLAGS := $(shell python3 -B scripts/census_release_binaries.py --release-flags)
+
 release:
 	$(PROJECT_RUN) cargo build --release --bins
 	@ls -l target/release/rb target/release/rb-server target/release/rb-node target/release/rb-journal
 	@$(PROJECT_RUN) bash -c 'test -f release-key.pk8 || ./target/release/rb-release-manifest keygen'
 	$(PROJECT_RUN) ./target/release/rb-release-manifest generate --bin-dir target/release \
-		--bin rb --bin rb-server --bin rb-node --bin rb-journal \
+		$(RELEASE_BIN_FLAGS) \
 		--out target/release/release-manifest.json
 	$(PROJECT_RUN) ./target/release/rb-release-manifest verify --bin-dir target/release \
 		--manifest target/release/release-manifest.json \

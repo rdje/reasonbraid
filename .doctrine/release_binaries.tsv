@@ -1,0 +1,34 @@
+# RELEASE-BINARY dispositions — scripts/census_release_binaries.py
+#
+# One row per binary target the workspace builds:
+#
+#     <name><TAB><disposition><TAB><reason>
+#
+# `release` = the manifest names it, so `rb-release-manifest verify` covers it.
+# `tool`    = built by `cargo build --bins`, deliberately NOT distributed.
+#
+# ⛔ THE LEDGER IS THE ONLY LIST. `make release` derives its `--bin` flags from
+# the `release` rows here, and the census refuses any binary target this file
+# does not cover. Before `SIGNOFF-REPAIR.6.8.1` the Makefile carried a hardcoded
+# four while the workspace built ten, and nothing could notice: the six it
+# omitted were built into the same directory and named by no manifest.
+#
+# ⛔ A DISPOSITION IS A DECISION, SO EVERY ROW CARRIES ITS REASON. ADR-027 makes
+# the manifest "the single verification unit" — "binaries verify THROUGH it,
+# never individually" — so `tool` is a claim that something is not part of the
+# release, not a note that nobody got round to it.
+#
+# ⚠️ Adding a binary to the workspace fails the gate until it is adjudicated
+# here, in either direction. That is the point: the next one is a decision
+# rather than an omission.
+
+rb	release	the operator CLI — the command a person runs against a deployment
+rb-server	release	the control plane — the deployment's own process
+rb-node	release	the node worker — the process that supervises adapters on a host
+rb-journal	release	ships beside rb-node: the journal inspector IS the recovery path when a node is lost, so a deployment that has rb-node and not this one cannot execute its own runbook
+rb-site	release	the site-operator tool — it performs site-wide acts against a live deployment and verifies storage locality from within the checkout
+rb-mcp	release	the MCP server an MCP client spawns; it is the surface SIGNOFF-REPAIR.6.8 made reachable, and a client executes it directly
+reasonbraid-browse	release	the R3 acquisition worker, and the sharpest case in this file: extraction::worker_path resolves it from current_exe().parent(), so rb-server SPAWNS IT FROM THE RELEASE DIRECTORY ITSELF. An executable sitting there that the manifest does not name is a code-execution path the ADR-027 ladder cannot verify
+reasonbraid-extract	release	the R2 acquisition worker — the same resolution, the same argument
+rb-bench	tool	the WP7 deliberation benchmark runner. It produces measurements for a report; nothing in a deployment executes it, and it is not part of what an operator installs
+rb-release-manifest	tool	the signer itself, and the reason is circularity rather than convenience: a manifest cannot meaningfully verify the tool that produced it, because checking that entry would require trusting the binary under examination. It is a build-host tool and is verified by being built from this source

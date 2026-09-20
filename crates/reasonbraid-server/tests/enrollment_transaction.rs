@@ -584,13 +584,69 @@ async fn enrollment_policy_errors_roll_back_new_anchors_and_preserve_validation_
         actions,
         json!(["thread_contribute", "thread_invitation_respond"])
     );
+    // ⛔ `SIGNOFF-REPAIR.9.3.4.1`: a ROLE's default carries NONE of the five
+    // administrative verbs, and asserting that is half the point of the
+    // default set — it is a decision, not a default. The equality above
+    // already says so; this names why, so a later widening has to argue with
+    // a sentence rather than slip past a list.
+    for administrative in [
+        "policy_version_register",
+        "policy_proposal_approve",
+        "policy_publication_write",
+        "policy_correction_record",
+        "deployment_target_register",
+        "tenant_admin",
+    ] {
+        assert!(
+            !actions
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|v| v == administrative),
+            "a role's default carries no administrative authority: {administrative}"
+        );
+    }
     let human_actions: Value =
         sqlx::query_scalar("SELECT actions FROM authority_grants WHERE grant_id = $1")
             .bind(a["grant_id"].as_str().unwrap())
             .fetch_one(&f.pool)
             .await
             .unwrap();
-    assert_eq!(human_actions.as_array().unwrap().len(), 9);
+    // ⭐ `SIGNOFF-REPAIR.9.3.4.1` — THE EXACT SET, not a length. This assertion
+    // was `len() == 9`, which any five additions would have satisfied in any
+    // order and with any names; the set is what `dev_boundary` also stores as
+    // the tenant's CEILING, so getting it wrong is an authority defect rather
+    // than a cosmetic one.
+    assert_eq!(
+        human_actions,
+        json!([
+            "thread_create",
+            "thread_invite",
+            "thread_contribute",
+            "thread_inspect",
+            "thread_close",
+            "thread_cancel",
+            "thread_invitation_respond",
+            "thread_advance_round",
+            "tenant_admin",
+            "policy_version_register",
+            "policy_proposal_approve",
+            "policy_publication_write",
+            "policy_correction_record",
+            "deployment_target_register",
+        ]),
+        "the bootstrap human's set: 14 of the 15 registered actions"
+    );
+    // ⛔ `thread_create_auto` is EXCLUDED, and its absence is the reason this
+    // is a decision: node-initiated thread creation is never implied (§11.5).
+    assert!(
+        !human_actions
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v == "thread_create_auto"),
+        "the one registered action the admin set deliberately omits"
+    );
     let mut outcomes = Vec::new();
     for condition in [
         "invalid_action",

@@ -29,9 +29,53 @@ authority at 12:00:00. An active status alone cannot extend that window.
 | Action | Supported target | Required selector coverage |
 | --- | --- | --- |
 | `thread_create`, `thread_create_auto`, `tenant_admin` | Tenant | `tenant_wide` |
+| `policy_version_register`, `policy_proposal_approve`, `policy_publication_write`, `policy_correction_record`, `deployment_target_register` | Tenant | `tenant_wide` |
 | `thread_inspect` for listing all tenant threads | Tenant | `tenant_wide` |
 | `thread_inspect` for one thread | Thread | `tenant_wide` or a set containing that thread |
 | Invite, contribute, close, cancel, respond to an invitation, advance a round | Thread | `tenant_wide` or a set containing that thread |
+
+### The administrative verbs
+
+`tenant_admin` used to be the **only** administrative action, so a grant issued
+to let someone record a policy correction equally let them register a deployment
+target and publish. The five verbs above are narrower, one per governance
+surface:
+
+| Action | The surface it authorizes |
+| --- | --- |
+| `policy_version_register` | registering a policy version |
+| `policy_proposal_approve` | approving a policy proposal |
+| `policy_publication_write` | staging a publication and moving it through its states |
+| `policy_correction_record` | recording a suspension, waiver, retraction or supersession |
+| `deployment_target_register` | registering a deployment target |
+
+**`tenant_admin` subsumes all five, and is retained rather than replaced.** A
+boundary or grant that permits `tenant_admin` permits each of them — it was the
+authority they were carved out of, so reading it that way grants nothing new. It
+is also what makes the change safe for authority that already exists: a boundary
+is stored as an array of action **names**, so no row written before these names
+existed can contain them, and without the subsumption every already-enrolled
+tenant would have lost these verbs the day they were added.
+
+The subsumption runs **one way only**. A grant carrying `policy_correction_record`
+does not cover `deployment_target_register`, or being narrow would buy nothing,
+and `tenant_admin` does **not** reach the thread actions — an administrator is
+not a contributor by construction.
+
+⚠️ **A grant is narrowed by verb, not by object.** No selector can name a
+publication, a correction or a deployment target: `tenant_wide` and a thread set
+are the only two, and a thread set enumerates its objects when the grant is
+issued — which cannot work for a publication that does not exist yet. So these
+grants stay tenant-wide *over their objects* while being specific about *which
+verb*. That residual is accepted rather than closed, and is recorded in
+`docs/decisions/2026-09-15_the-action-set-extends-the-target-selector-does-not.md`.
+
+⚠️ **The verbs do not yet check coverage at their own surfaces.** Each
+administrative surface requires a grant the caller *holds*; requiring that grant
+to *cover the verb being attempted* is a separate step, tracked as
+`SIGNOFF-REPAIR.9.3.4.2`. Until it lands, holding any administrative grant is
+what these surfaces ask for, and the narrower actions are expressible without
+yet being enforced.
 
 For example, an inspection grant selecting only thread A can inspect A but cannot
 list every thread in the tenant. Adding `tenant_admin` to that thread-scoped grant

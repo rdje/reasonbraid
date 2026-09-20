@@ -1,5 +1,70 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — A control over a closed wire vocabulary is written in the wire spelling
+
+`SIGNOFF-REPAIR.9.3.4.1` added five members to `GrantAction`. The obvious way to
+write the controls is the one the type system invites:
+
+```rust
+let g = grant(vec![GrantAction::PolicyCorrectionRecord], …);
+```
+
+That control cannot be observed red. Before the variant exists the test does not
+compile, and "it does not compile" is not an observation about behaviour — it is
+an observation about the test. Worse, the leg that actually mattered would have
+been impossible to write at all: the stored-boundary disposition is a claim
+about a row written *before* the vocabulary grew, and expressing "before" needs
+a spelling that predates the type.
+
+The wire name does predate it. `migrations/0004_authority.sql` stores
+`permitted_actions` as a JSONB array of action **names**, and
+`boundary_from_row` parses them with `serde_json::from_value::<Vec<GrantAction>>`.
+So the controls are written like this:
+
+```rust
+fn action(name: &str) -> GrantAction {
+    name.parse::<GrantAction>()
+        .unwrap_or_else(|_| panic!("`{name}` is not in the authority registry"))
+}
+```
+
+They compile against the unrepaired code, and their red is:
+
+```text
+`policy_version_register` is not in the authority registry
+```
+
+— which is the defect, stated.
+
+⭐ And it unlocked the leg that carries the disposition. The stored-boundary
+control deserializes the **exact nine-name array** a pre-change tenant holds,
+through the same call the production row-loader makes, and asserts *first* that
+the array does not contain the new name:
+
+```rust
+assert!(!permitted.contains(&action("policy_correction_record")),
+        "the stored row does NOT contain the new name — that is the whole difficulty");
+```
+
+Without that assertion the leg could be measuring a boundary somebody had
+already migrated, and would pass for the wrong reason.
+
+⚠️ One of the four controls is a **guard**, not a red-first leg, and saying so
+matters. `tenant_admin_does_not_subsume_the_thread_actions` passes before the
+change — before it there is no subsumption at all — and exists to catch the
+repair widening something it should not. Its value is that it must stay green.
+Filing it under "controls observed red first" would have been false.
+
+**The rule:** when the thing under repair is a closed wire vocabulary — an enum
+whose members are persisted as strings — write the control in the persisted
+spelling. The type is the repair; the string is the contract, and the contract
+is what a control should be written against.
+
+⚠️ Held rather than promoted (`.11.20`): this is a sharpening of
+`a-control-that-passes-for-an-unrelated-reason` and it is written into the
+control's own doc comment, where the next author of one will meet it. A second
+wire vocabulary extending would earn it a note.
+
 ## 2026-09-20 — I generalised from the exception and shipped it
 
 Two surfaces in `api.rs` refuse a malformed body differently. `site_request`

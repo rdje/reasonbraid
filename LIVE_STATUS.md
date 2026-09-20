@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE ADMINISTRATIVE ACTION SET EXTENDS, AND `tenant_admin` SUBSUMING IT IS WHAT KEEPS EVERY STORED BOUNDARY WORKING (`.9.3.4.1`, REPAIR-0342).**
+
+- 🔴 `tenant_admin` was ONE action covering every administrative surface — a grant issued to record a correction equally permitted registering a deployment target and publishing. ✅ Five members, one per surface, enumerated from the six sites rather than invented.
+- ⭐ **The disposition is a CHECKER RULE, not a migration.** `permitted_actions` is a JSONB array of WIRE NAMES, so no stored row can contain a name that postdates it; `tenant_admin` was by construction the superset, so reading it as covering them rewrites nothing. ⛔ Both alternatives refused with reasons.
+- ⛔ ONE WAY ONLY: no narrow verb covers another or `tenant_admin`, and `tenant_admin` does NOT reach the thread actions. ⭐ **One `action_covered` for BOTH ladders** (the boundary checker and the evaluator), falsified separately, each restored byte-identical.
+- ⭐ **Every control is written in the WIRE spelling**, so it compiled against the unrepaired code and its red was a behaviour rather than a compile error. The stored-boundary leg uses the exact nine-name array a pre-change tenant holds.
+- ⚠️ The default-set assertion was `len() == 9`; it is the exact 14 names now. ⚠️ **EXPRESSIBLE, NOT YET ENFORCED** — no surface asks whether a held grant COVERS the verb; that is `.9.3.4.2`, and the book says so.
+- ✅ 7 suites, **191 tests, 0 failed**; whole-workspace clippy `-D warnings` rc=0.
+
 🔴 **A CONVENTION I CALLED A DEVIATION WAS THE CONVENTION, AND THE DIVERGENCE WAS MINE (`.9.2.1.2.3`, REPAIR-0341).**
 
 - 🔴 `.9.2.1.2.2` graded a missing `owning_authority` by hand so all four publication verbs answered `400` alike. **The census says the other three were the anomaly**: `422 at the strict wire boundary` is this project's convention — **46** typed extractors against **9** site routes, asserted BY NAME in four suites, and `SIGNOFF-REPAIR.4.2.2` depends on it.

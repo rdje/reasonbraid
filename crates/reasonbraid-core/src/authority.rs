@@ -67,8 +67,54 @@ pub enum GrantAction {
     /// never inherited by replies (a child thread needs its own grant).
     ThreadCreateAuto,
     /// Administrative authority — NEVER implied by membership or other actions.
+    ///
+    /// ⚠️ Since `SIGNOFF-REPAIR.9.3.4.1` this is also the SUPERSET of the five
+    /// administrative verbs below (see [`GrantAction::subsumes`]). It is
+    /// retained rather than superseded because every boundary and grant stored
+    /// before those names existed carries it, and it was by construction the
+    /// authority those verbs carve out of.
     TenantAdmin,
+
+    // ── The administrative verbs (`SIGNOFF-REPAIR.9.3.4.1`) ──────────────────
+    //
+    // ⛔ ONE PER GOVERNANCE SURFACE, enumerated from the six sites that check
+    // an authority rather than invented (`.11.6`). Before these existed
+    // `TenantAdmin` was the only administrative action, so a grant issued to
+    // record a policy correction equally permitted registering a deployment
+    // target and publishing — the gap `.9.3.4` measured.
+    //
+    // ⚠️ `TargetSelector` deliberately does NOT extend to match
+    // (`docs/decisions/2026-09-15_the-action-set-extends-the-target-selector-does-not.md`):
+    // it ENUMERATES its objects at grant time, and the ordinary flow publishes
+    // an object whose id does not exist when the grant is issued. These grants
+    // are narrowed by VERB and remain tenant-wide by OBJECT.
+    /// Register a policy version (`crates/reasonbraid-server/src/policy.rs`).
+    PolicyVersionRegister,
+    /// Approve a policy proposal (`crates/reasonbraid-server/src/lifecycle.rs`).
+    PolicyProposalApprove,
+    /// Write the publication aggregate — stage it and move it through its
+    /// states. ⛔ ONE action for all four verbs, not two: `.9.2.1.2.2` did
+    /// measure that staging decides content while the transitions consume an
+    /// already-staged record, but that justified BINDING the verb, and no
+    /// operator need for delegating one without the other has been measured.
+    /// A later leaf can split a name; it cannot unpublish one.
+    PolicyPublicationWrite,
+    /// Record a correction — a suspension, waiver, retraction or supersession
+    /// (`crates/reasonbraid-server/src/corrections.rs`).
+    PolicyCorrectionRecord,
+    /// Register a deployment target (`crates/reasonbraid-server/src/deployments.rs`).
+    DeploymentTargetRegister,
 }
+
+/// The administrative verbs `TenantAdmin` subsumes, as one list so the
+/// subsumption rule and any reader of it cannot disagree.
+const ADMINISTRATIVE_ACTIONS: [GrantAction; 5] = [
+    GrantAction::PolicyVersionRegister,
+    GrantAction::PolicyProposalApprove,
+    GrantAction::PolicyPublicationWrite,
+    GrantAction::PolicyCorrectionRecord,
+    GrantAction::DeploymentTargetRegister,
+];
 
 impl GrantAction {
     pub fn as_str(self) -> &'static str {
@@ -83,7 +129,34 @@ impl GrantAction {
             GrantAction::ThreadInvitationRespond => "thread_invitation_respond",
             GrantAction::ThreadAdvanceRound => "thread_advance_round",
             GrantAction::TenantAdmin => "tenant_admin",
+            GrantAction::PolicyVersionRegister => "policy_version_register",
+            GrantAction::PolicyProposalApprove => "policy_proposal_approve",
+            GrantAction::PolicyPublicationWrite => "policy_publication_write",
+            GrantAction::PolicyCorrectionRecord => "policy_correction_record",
+            GrantAction::DeploymentTargetRegister => "deployment_target_register",
         }
+    }
+
+    /// Does holding `self` cover a request for `wanted`?
+    ///
+    /// ⭐ THE STORED-BOUNDARY DISPOSITION (`SIGNOFF-REPAIR.9.3.4.1`), and it is
+    /// a decision rather than a migration. `migrations/0004_authority.sql`
+    /// stores `permitted_actions` as a JSONB array of WIRE NAMES, so no row
+    /// written before a name existed can contain it — and adding an action
+    /// would otherwise stop the verb working for every already-enrolled
+    /// tenant. `TenantAdmin` was by construction the superset of exactly these
+    /// verbs, so reading it as covering them grants nothing it did not already
+    /// grant, and no stored boundary or grant is rewritten.
+    ///
+    /// ⛔ ONE WAY ONLY. `TenantAdmin` covers the five; none of them covers
+    /// `TenantAdmin` or each other, or "narrower" would buy nothing. And it
+    /// does NOT reach the thread actions: this module's own header says
+    /// administrative authority is never implied by other actions, and the
+    /// converse widening would make an administrator a contributor by
+    /// construction.
+    pub fn subsumes(self, wanted: GrantAction) -> bool {
+        self == wanted
+            || (self == GrantAction::TenantAdmin && ADMINISTRATIVE_ACTIONS.contains(&wanted))
     }
 
     /// Parse a stored/wire name (the server persists actions as strings).
@@ -99,6 +172,11 @@ impl GrantAction {
             "thread_invitation_respond" => Some(GrantAction::ThreadInvitationRespond),
             "thread_advance_round" => Some(GrantAction::ThreadAdvanceRound),
             "tenant_admin" => Some(GrantAction::TenantAdmin),
+            "policy_version_register" => Some(GrantAction::PolicyVersionRegister),
+            "policy_proposal_approve" => Some(GrantAction::PolicyProposalApprove),
+            "policy_publication_write" => Some(GrantAction::PolicyPublicationWrite),
+            "policy_correction_record" => Some(GrantAction::PolicyCorrectionRecord),
+            "deployment_target_register" => Some(GrantAction::DeploymentTargetRegister),
             _ => None,
         }
     }
@@ -108,6 +186,19 @@ impl std::fmt::Display for GrantAction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
     }
+}
+
+/// Do the actions a party HOLDS cover the action being asked for?
+///
+/// ⛔ ONE definition, used by BOTH authorization ladders
+/// (`SIGNOFF-REPAIR.9.3.4.1`): [`grant_exceeds_boundary`] asks it of a
+/// boundary's `permitted_actions` against a grant's, and the server's
+/// evaluator asks it of a grant's `actions` against the requested one.
+/// Leaving one of them an exact-match `contains` would make a single stored
+/// `tenant_admin` mean two different things in two ladders — the class of
+/// defect this tree keeps finding, and never a second spelling (`.9.3.1`).
+pub fn action_covered(held: &[GrantAction], wanted: GrantAction) -> bool {
+    held.iter().any(|action| action.subsumes(wanted))
 }
 
 /// A stored/wire name this build's authority registry does not know (preserved for
@@ -458,7 +549,11 @@ pub fn grant_exceeds_boundary(
     }
 
     for action in &grant.actions {
-        if !boundary.permitted_actions.contains(action) {
+        // `SIGNOFF-REPAIR.9.3.4.1`: `action_covered`, not `contains` — a
+        // boundary permitting `tenant_admin` permits the administrative verbs
+        // it was always the superset of, so a narrower grant is issuable under
+        // a row written before those names existed.
+        if !action_covered(&boundary.permitted_actions, *action) {
             violations.push(BoundaryViolation {
                 field: "grant.actions",
                 detail: format!(
@@ -754,6 +849,139 @@ mod tests {
         }
     }
 
+    /// `SIGNOFF-REPAIR.9.3.4.1` — the administrative action set, and the
+    /// disposition for boundaries ALREADY STORED.
+    ///
+    /// ⛔ Every action here is named by its WIRE STRING rather than by its
+    /// Rust variant, deliberately. The wire name is what
+    /// `migrations/0004_authority.sql` stores and what
+    /// `EnrollmentAuthorityBoundary::permitted_actions` round-trips, so a
+    /// control written this way compiles against the code BEFORE the variants
+    /// exist and fails on the thing that is actually missing. Writing it
+    /// against the variants would have made the red a compile error, which is
+    /// not an observation about behaviour.
+    fn action(name: &str) -> GrantAction {
+        name.parse::<GrantAction>()
+            .unwrap_or_else(|_| panic!("`{name}` is not in the authority registry"))
+    }
+
+    /// The five administrative verbs are EXPRESSIBLE, which is the whole gap
+    /// `.9.3.4` measured: `tenant_admin` was ONE action covering every
+    /// administrative surface, so a grant issued to record a correction
+    /// equally permitted registering a deployment target and publishing.
+    #[test]
+    fn the_administrative_verbs_are_separately_expressible() {
+        for name in [
+            "policy_version_register",
+            "policy_proposal_approve",
+            "policy_publication_write",
+            "policy_correction_record",
+            "deployment_target_register",
+        ] {
+            let parsed = action(name);
+            assert_eq!(parsed.as_str(), name, "the wire name round-trips: {name}");
+        }
+        // ⭐ And they are DISTINCT from one another and from `tenant_admin`,
+        // so "narrower" means something. A repair that mapped all five onto
+        // one variant would satisfy the loop above.
+        let all: Vec<GrantAction> = [
+            "policy_version_register",
+            "policy_proposal_approve",
+            "policy_publication_write",
+            "policy_correction_record",
+            "deployment_target_register",
+            "tenant_admin",
+        ]
+        .iter()
+        .map(|n| action(n))
+        .collect();
+        let unique: std::collections::HashSet<_> = all.iter().collect();
+        assert_eq!(
+            unique.len(),
+            6,
+            "six distinct actions, not one wearing six names"
+        );
+    }
+
+    /// ⭐ THE STORED-BOUNDARY DISPOSITION, over a boundary written BEFORE the
+    /// change. The `permitted_actions` array is deserialized from the EXACT
+    /// JSON `migrations/0004` stored for a pre-change tenant — the nine names
+    /// `ADMIN_ACTIONS` carried then — so this is the stored shape and not a
+    /// hand-built approximation of it.
+    ///
+    /// `tenant_admin` was by construction the superset of the administrative
+    /// verbs, so reading it as covering them grants nothing it did not already
+    /// grant, and a narrower grant becomes issuable under an untouched row.
+    #[test]
+    fn a_boundary_stored_before_the_change_still_permits_a_narrower_grant() {
+        const STORED_2026_09_15: &str = r#"[
+            "thread_create", "thread_invite", "thread_contribute", "thread_inspect",
+            "thread_close", "thread_cancel", "thread_invitation_respond",
+            "thread_advance_round", "tenant_admin"
+        ]"#;
+        let permitted: Vec<GrantAction> =
+            serde_json::from_str(STORED_2026_09_15).expect("the stored array parses");
+        assert_eq!(permitted.len(), 9, "the pre-change boundary, as stored");
+        assert!(
+            !permitted.contains(&action("policy_correction_record")),
+            "⛔ the stored row does NOT contain the new name — that is the \
+             whole difficulty, and a control that did not assert it would be \
+             measuring a boundary someone had already migrated"
+        );
+
+        let b = boundary(permitted, RiskClass::Low, false, None);
+        let narrower = grant(
+            vec![action("policy_correction_record")],
+            RiskClass::Low,
+            false,
+        );
+        assert_eq!(
+            grant_exceeds_boundary(&b, &narrower),
+            vec![],
+            "a grant narrower than `tenant_admin` is issuable under a boundary \
+             written before the vocabulary grew"
+        );
+    }
+
+    /// ⛔ SUBSUMPTION IS ONE-WAY, and this is the leg that stops it from being
+    /// a hole. A boundary permitting only a narrow administrative verb must
+    /// NOT admit `tenant_admin`, and must not admit a DIFFERENT narrow verb
+    /// either — otherwise "narrower" would buy nothing.
+    #[test]
+    fn subsumption_does_not_run_the_other_way() {
+        let b = boundary(
+            vec![action("policy_correction_record")],
+            RiskClass::Low,
+            false,
+            None,
+        );
+        for over_broad in ["tenant_admin", "deployment_target_register"] {
+            let g = grant(vec![action(over_broad)], RiskClass::Low, false);
+            let violations = grant_exceeds_boundary(&b, &g);
+            assert!(
+                violations.iter().any(|v| v.field == "grant.actions"),
+                "`{over_broad}` is not permitted by a correction-only boundary: {violations:?}"
+            );
+        }
+    }
+
+    /// ⛔ AND `tenant_admin` DOES NOT SUBSUME THE THREAD ACTIONS. The module
+    /// doc says administrative authority is never implied by other actions;
+    /// the converse widening would make an administrator a contributor by
+    /// construction, which no stored row ever meant.
+    #[test]
+    fn tenant_admin_does_not_subsume_the_thread_actions() {
+        let b = boundary(vec![action("tenant_admin")], RiskClass::Low, false, None);
+        for thread_action in ["thread_contribute", "thread_create", "thread_close"] {
+            let g = grant(vec![action(thread_action)], RiskClass::Low, false);
+            let violations = grant_exceeds_boundary(&b, &g);
+            assert!(
+                violations.iter().any(|v| v.field == "grant.actions"),
+                "`{thread_action}` is NOT implied by `tenant_admin`: {violations:?}"
+            );
+        }
+    }
+
     /// A valid grant produces no violations.
     #[test]
     fn a_grant_inside_its_boundary_has_no_violations() {
@@ -1003,6 +1231,27 @@ mod tests {
             ),
             ("thread_advance_round", GrantAction::ThreadAdvanceRound),
             ("tenant_admin", GrantAction::TenantAdmin),
+            // `SIGNOFF-REPAIR.9.3.4.1` — the five administrative verbs.
+            (
+                "policy_version_register",
+                GrantAction::PolicyVersionRegister,
+            ),
+            (
+                "policy_proposal_approve",
+                GrantAction::PolicyProposalApprove,
+            ),
+            (
+                "policy_publication_write",
+                GrantAction::PolicyPublicationWrite,
+            ),
+            (
+                "policy_correction_record",
+                GrantAction::PolicyCorrectionRecord,
+            ),
+            (
+                "deployment_target_register",
+                GrantAction::DeploymentTargetRegister,
+            ),
         ] {
             assert_eq!(s.parse::<GrantAction>(), Ok(expected));
             assert_eq!(s.parse::<GrantAction>().unwrap().as_str(), s);

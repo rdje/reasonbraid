@@ -61,6 +61,65 @@ fn denied(b: &EnrollmentAuthorityBoundary, g: &AuthorityGrant, a: &CommandAuthz)
     ));
 }
 
+/// `SIGNOFF-REPAIR.9.3.4.1` — THE TWO LADDERS AGREE ABOUT ONE STORED
+/// `tenant_admin`.
+///
+/// `grant_exceeds_boundary` and this evaluator each answer *do the actions
+/// this party holds cover the one being asked for*, and they used to answer it
+/// with two different expressions. Both now call
+/// `reasonbraid_core::action_covered`, so a boundary and a grant carrying only
+/// `tenant_admin` admit an administrative verb here exactly as the subset
+/// checker admits a grant that names one.
+///
+/// ⛔ HONEST LIMIT, stated rather than implied: no `CommandAuthz` in the
+/// shipped server carries an administrative action yet — `.9.3.4.2` is the
+/// leaf that makes the six sites ask. This control therefore drives the
+/// evaluator DIRECTLY, and what it establishes is that the two ladders cannot
+/// drift apart before that leaf lands, not that a route exercises it today.
+#[test]
+fn tenant_admin_covers_an_administrative_verb_in_the_evaluator_too() {
+    // A boundary and a grant that carry ONLY `tenant_admin` — the shape every
+    // row stored before `.9.3.4.1` has.
+    let (mut b, mut g, mut a) = fixture(GrantAction::TenantAdmin);
+    for wanted in [
+        GrantAction::PolicyVersionRegister,
+        GrantAction::PolicyProposalApprove,
+        GrantAction::PolicyPublicationWrite,
+        GrantAction::PolicyCorrectionRecord,
+        GrantAction::DeploymentTargetRegister,
+    ] {
+        a.action = wanted;
+        assert_eq!(
+            evaluate(Some(&b), Some(&g), &a, at()),
+            Decision::Allowed,
+            "a stored `tenant_admin` covers `{}` here as it does at the boundary",
+            wanted.as_str()
+        );
+    }
+
+    // ⛔ AND IT DOES NOT RUN THE OTHER WAY. A boundary and grant carrying only
+    // one narrow verb do not admit another, or "narrower" would buy nothing.
+    b.permitted_actions = vec![GrantAction::PolicyCorrectionRecord];
+    g.actions = vec![GrantAction::PolicyCorrectionRecord];
+    a.action = GrantAction::PolicyPublicationWrite;
+    denied(&b, &g, &a);
+    a.action = GrantAction::TenantAdmin;
+    denied(&b, &g, &a);
+
+    // ⛔ AND IT DOES NOT REACH THE THREAD ACTIONS. An administrator is not a
+    // contributor by construction.
+    b.permitted_actions = vec![GrantAction::TenantAdmin];
+    g.actions = vec![GrantAction::TenantAdmin];
+    a.action = GrantAction::ThreadContribute;
+    denied(&b, &g, &a);
+
+    // The positive arm the three refusals need: the same shape asking for the
+    // action it actually holds is still allowed, so the denials above are
+    // about coverage and not about the fixture.
+    a.action = GrantAction::TenantAdmin;
+    assert_eq!(evaluate(Some(&b), Some(&g), &a, at()), Decision::Allowed);
+}
+
 #[test]
 fn unrelated_boundary_tenant_or_subject_cannot_supply_authority() {
     let (b, g, mut a) = fixture(GrantAction::TenantAdmin);

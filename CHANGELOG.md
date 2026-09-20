@@ -1,5 +1,21 @@
 # CHANGELOG.md
 
+## 2026-09-20 — The administrative action set extends, and `tenant_admin` subsuming it is what keeps every stored boundary working (`SIGNOFF-REPAIR.9.3.4.1`)
+
+`REASONBRAID-REPAIR-0342`. `.9.3.4`'s decision (DOC-0020) executed, with the disposition it left open.
+
+- 🔴 **`tenant_admin` was ONE action covering every administrative surface**, so a grant issued to record a policy correction equally permitted registering a deployment target and publishing. Five members now name one surface each — `policy_version_register`, `policy_proposal_approve`, `policy_publication_write`, `policy_correction_record`, `deployment_target_register` — enumerated from the six sites rather than invented (`.11.6`).
+- ⛔ **Not six.** Splitting `stage` from the three publication transitions was considered and refused: `.9.2.1.2.2` measured that staging decides content, which justified BINDING the verb, and no operator need for delegating one without the other has been measured. A later leaf can split a name; it cannot unpublish one.
+- ⭐ **THE STORED-BOUNDARY DISPOSITION IS A CHECKER RULE, NOT A MIGRATION.** `permitted_actions` is a JSONB array of wire names, so no row written before a name existed can contain it, and adding an action would otherwise stop the verb working for every enrolled tenant. `tenant_admin` was by construction the superset of exactly these verbs, so reading it as covering them grants nothing it did not already grant — and **no stored boundary or grant is rewritten.**
+- ⛔ Both alternatives refused with reasons: *migrating the rows* would rewrite a boundary the enrolled target was shown, and mandates too; *admitting the new actions only for later boundaries* is the breakage restated as policy and splits tenants into two classes for ever.
+- ⛔ **The subsumption runs ONE WAY.** No narrow verb covers another or `tenant_admin`, and `tenant_admin` does not reach the thread actions — an administrator is not a contributor by construction.
+- ⭐ **ONE `action_covered` for BOTH ladders** — the boundary checker and the server's evaluator. Leaving one an exact-match `contains` would make a single stored `tenant_admin` mean two different things in two authorization ladders.
+- ⭐ **Every control is written in the WIRE spelling**, not the Rust variant. The wire name is what the migration stores, so the controls compiled against the unrepaired code and their red was `policy_version_register is not in the authority registry` — a behaviour, not a compile error. The stored-boundary leg deserializes the exact nine-name array a pre-change tenant holds, and asserts first that it does *not* contain the new name.
+- ⚠️ One control is a GUARD, not a red-first leg, and is named as such: `tenant_admin_does_not_subsume_the_thread_actions` passes before the change, because before it there was no subsumption at all.
+- ⚠️ **The default set assertion was `len() == 9`** — a length any five additions satisfy. It is the exact 14-name array now, plus `thread_create_auto` asserted absent and a role's default asserted to carry none of the five.
+- ⚠️ **Expressible, not yet enforced**, and the book says so: no surface asks whether a held grant COVERS the verb. That is `.9.3.4.2`.
+- **No regression:** 7 suites, **191 tests, 0 failed**; `--lib` 56 core + 134 server; **whole-workspace** `clippy --all-targets --all-features -D warnings` rc=0 (the compiler is the blast-radius oracle for 207 `GrantAction::` references across 19 files, and forced open exactly one match); gate green; book rc=0.
+
 ## 2026-09-20 — The three publication transitions are typed, and the convention I called a deviation was the convention (`SIGNOFF-REPAIR.9.2.1.2.3`)
 
 `REASONBRAID-REPAIR-0341`. The leaf's own premise refuted by its own census, and the divergence it found was one I had shipped.

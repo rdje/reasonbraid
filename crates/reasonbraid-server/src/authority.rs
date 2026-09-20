@@ -706,7 +706,9 @@ fn evaluate(
             reason: "the target tenant is outside the grant's scope".to_string(),
         };
     }
-    if !grant.actions.contains(&authz.action) {
+    // `SIGNOFF-REPAIR.9.3.4.1`: the SHARED predicate, so a stored `tenant_admin`
+    // means the same thing here as it does in the boundary checker below.
+    if !reasonbraid_core::action_covered(&grant.actions, authz.action) {
         return Decision::Denied {
             reason: format!(
                 "action `{}` is not granted to this principal",
@@ -715,7 +717,19 @@ fn evaluate(
         };
     }
     let target_kind_allowed = match authz.action {
-        GrantAction::ThreadCreate | GrantAction::ThreadCreateAuto | GrantAction::TenantAdmin => {
+        // ⚠️ `SIGNOFF-REPAIR.9.3.4.1`: the five administrative verbs join the
+        // TENANT arm, because that is the target their surfaces act on — a
+        // policy version, a proposal's approval, a publication, a correction
+        // and a deployment target are all tenant-level records, and none of
+        // them is reachable through a thread target.
+        GrantAction::ThreadCreate
+        | GrantAction::ThreadCreateAuto
+        | GrantAction::TenantAdmin
+        | GrantAction::PolicyVersionRegister
+        | GrantAction::PolicyProposalApprove
+        | GrantAction::PolicyPublicationWrite
+        | GrantAction::PolicyCorrectionRecord
+        | GrantAction::DeploymentTargetRegister => {
             matches!(authz.target, ResourceTarget::Tenant { .. })
         }
         GrantAction::ThreadInspect => true,

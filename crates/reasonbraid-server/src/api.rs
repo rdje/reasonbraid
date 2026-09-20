@@ -904,7 +904,19 @@ pub struct EnrollResponse {
 /// The dev admin action set a bootstrap human receives. It includes `tenant_admin`
 /// EXPLICITLY — never implied (`.5.1`); `thread_cancel` joins in `.1.1.3`,
 /// `thread_invitation_respond` in `.1.3.1`, `thread_advance_round` in `.1.5.2`.
-const ADMIN_ACTIONS: [GrantAction; 9] = [
+///
+/// ⭐ The five administrative verbs join in `SIGNOFF-REPAIR.9.3.4.1`, and they
+/// are listed EXPLICITLY although `tenant_admin` already subsumes them. The
+/// boundary is *visible to the enrolled target* (this module's authority
+/// header), and a ceiling that relies on an implicit rule to explain what it
+/// permits is less honest than one that lists it. Subsumption then does
+/// exactly one job — the rows written before these names existed — which is
+/// what it is for.
+///
+/// ⛔ `ThreadCreateAuto` is still excluded, and its absence is the reason this
+/// is a DECISION and not a default: node-initiated thread creation is never
+/// implied (§11.5), so the set is 14 of the 15 registered actions.
+const ADMIN_ACTIONS: [GrantAction; 14] = [
     GrantAction::ThreadCreate,
     GrantAction::ThreadInvite,
     GrantAction::ThreadContribute,
@@ -914,6 +926,11 @@ const ADMIN_ACTIONS: [GrantAction; 9] = [
     GrantAction::ThreadInvitationRespond,
     GrantAction::ThreadAdvanceRound,
     GrantAction::TenantAdmin,
+    GrantAction::PolicyVersionRegister,
+    GrantAction::PolicyProposalApprove,
+    GrantAction::PolicyPublicationWrite,
+    GrantAction::PolicyCorrectionRecord,
+    GrantAction::DeploymentTargetRegister,
 ];
 
 /// The dev enrollment boundary for a fresh tenant (one ACTIVE per tenant).

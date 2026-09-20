@@ -41,7 +41,7 @@ entries:
     source_url: "https://github.com/modelcontextprotocol/rust-sdk"
     checked_at: "2026-09-20"   # SIGNOFF-REPAIR.6.8.2 — from primary sources, not memory
     tested_versions:
-      - "rmcp 3.2.0"           # the exact pin; Cargo.lock resolves rmcp and rmcp-macros to 3.2.0
+      - "rmcp 3.2.0 (Cargo.lock)"   # the exact pin; the lock resolves rmcp and rmcp-macros to 3.2.0
     protocol_versions:
       - "2025-11-25"           # SERVED. rmcp 3.2.0 defines ProtocolVersion::LATEST = V_2025_11_25
       - "2026-07-28"           # KNOWN to the SDK (a later member of KNOWN_VERSIONS), not offered
@@ -88,11 +88,12 @@ entries:
     kind: "protocol + sdk"
     owner: "A2A Project (a2aproject)"
     source_url: "https://github.com/a2aproject/a2a-rs"
-    checked_at: "2026-09-04"
-    tested_versions: []        # pin exact compatible versions at the spike; commit Cargo.lock
+    checked_at: "2026-09-04"   # NOT bumped: the row as a whole is un-revalidated (SIGNOFF-REPAIR.6.8.2.1)
+    tested_versions:
+      - "a2a-lf 0.3.0"         # SIGNOFF-REPAIR.6.8.2.1 — from Cargo.lock
     protocol_versions:
       - "v1"
-    license: "unverified"
+    license: "Apache-2.0"      # SIGNOFF-REPAIR.6.8.2.1 — read from the vendored a2a-lf-0.3.0 manifest
     supported_features: []     # agent cards / tasks / messages / artifacts — fill at spike
     transports:                # transports the SDK describes (ROADMAP.md §28.1)
       - "json-rpc"
@@ -211,10 +212,10 @@ entries:
     kind: "sdk"
     owner: "rcgen (RustCrypto-adjacent ecosystem) + Rustls project"
     source_url: "https://github.com/rustls/rcgen ; https://github.com/rustls/rustls"
-    checked_at: "2026-09-07"
+    checked_at: "2026-09-07"   # NOT bumped: only the pinned versions were re-read (SIGNOFF-REPAIR.6.8.2.1)
     tested_versions:
       - "rcgen 0.14.10 (Cargo.lock)"
-      - "rustls 0.23.43 (Cargo.lock)"
+      - "rustls 0.23.45 (Cargo.lock)"   # SIGNOFF-REPAIR.6.8.2.1 — was 0.23.43; the lock this row cites had moved. A PATCH bump, so `upgrade_policy` below does not require the spike to re-run; both versions are vendored and carry the same licence
       - "rustls-pki-types 1.15.1 (Cargo.lock)"
       - "sha2 0.10.9, time 0.3.55 (spike auxiliaries)"
     protocol_versions:

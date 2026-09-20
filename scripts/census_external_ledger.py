@@ -102,6 +102,50 @@ def entries(text: str) -> list[dict[str, object]]:
     return out
 
 
+LOCK_CITED = re.compile(r"^([A-Za-z0-9_-]+)\s+([0-9][0-9A-Za-z.+-]*)\s*\(Cargo\.lock\)")
+
+
+def lock_versions(text: str) -> dict[str, list[str]]:
+    """Every package version `Cargo.lock` resolves."""
+    out: dict[str, list[str]] = {}
+    for m in re.finditer(r'^\[\[package\]\]\nname = "([^"]+)"\nversion = "([^"]+)"', text, re.M):
+        out.setdefault(m.group(1), []).append(m.group(2))
+    return out
+
+
+def lock_drift(rows: list[dict[str, object]], lock: dict[str, list[str]]) -> list[str]:
+    """A `tested_versions` entry that CITES `Cargo.lock` must agree with it.
+
+    🔴 **FOUND BY HAND FIRST, WHICH IS WHY IT IS MECHANISED.** The
+    workload-identity row recorded `rustls 0.23.43 (Cargo.lock)` while the lock
+    had moved to `0.23.45`. A version claim whose own stated source is a file in
+    this repository, disagreeing with that file, is unambiguously wrong — and it
+    is the shape `docs/knowledge/a-metric-scoped-to-one-record-ages-silently.md`
+    names: a number with a producer nobody re-runs.
+
+    ⚠️ Only entries carrying the `(Cargo.lock)` marker are checked, and that is
+    deliberate: the marker is what makes the claim checkable against a named
+    source. An entry without it claims something looser and is not graded here.
+    """
+    out: list[str] = []
+    for row in rows:
+        name = str(row.get("name", "?"))
+        for entry in row.get("tested_versions", []) or []:
+            m = LOCK_CITED.match(str(entry))
+            if not m:
+                continue
+            crate, claimed = m.group(1), m.group(2)
+            resolved = lock.get(crate)
+            if resolved is None:
+                out.append(f"`{name}`: cites `{crate} {claimed} (Cargo.lock)` and the lock has no such package")
+            elif claimed not in resolved:
+                out.append(
+                    f"`{name}`: cites `{crate} {claimed} (Cargo.lock)` and the lock resolves "
+                    f"{resolved} — the row's own source has moved"
+                )
+    return out
+
+
 def shape_breaches(rows: list[dict[str, object]]) -> list[str]:
     """§7.4's SHAPE, and nothing about time."""
     out: list[str] = []
@@ -194,8 +238,9 @@ def report(rows, today) -> int:
         print(f"      {name[:44]:<46} {field}")
     print(f"  licenses still `unverified`: {unver or 'none'}")
     print()
-    bad = shape_breaches(rows)
-    print("  shape:", "complete" if not bad else f"{len(bad)} breach(es)")
+    lock = lock_versions((ROOT / "Cargo.lock").read_text(encoding="utf-8"))
+    bad = shape_breaches(rows) + lock_drift(rows, lock)
+    print("  shape + lock agreement:", "complete" if not bad else f"{len(bad)} breach(es)")
     for b in bad:
         print(f"      {b}")
     print()
@@ -298,7 +343,31 @@ def self_test() -> int:
     #    has genuinely lifted, and that is the trigger doing its job rather than
     #    the instrument going blind.
     arms.append(("the live base64 requirement is still split", len(base64_split(ROOT)) > 1))
-    # 12 the real ledger parses, and every entry it holds is complete
+    # 12 ⛔ THE LOCK-DRIFT ARM, from a defect found by hand: a row cited
+    #    `rustls 0.23.43 (Cargo.lock)` while the lock resolved 0.23.45.
+    lock = {"rustls": ["0.23.45"]}
+    drifted = [{"name": "W", "tested_versions": ["rustls 0.23.43 (Cargo.lock)"]}]
+    arms.append(("a version that has drifted from the lock is refused",
+                 any("has moved" in b for b in lock_drift(drifted, lock))))
+    # 13 ... and the agreeing case is SILENT, so arm 12 is not passing against a
+    #    predicate that refuses everything.
+    agreed = [{"name": "W", "tested_versions": ["rustls 0.23.45 (Cargo.lock)"]}]
+    arms.append(("an agreeing version is silent", lock_drift(agreed, lock) == []))
+    # 14 an entry WITHOUT the marker is not graded — the marker is what names the
+    #    source the claim is checkable against.
+    unmarked = [{"name": "W", "tested_versions": ["rustls 0.23.43"]}]
+    arms.append(("an unmarked version is not graded", lock_drift(unmarked, lock) == []))
+    # 15 a cited crate the lock does not carry at all is refused
+    ghost = [{"name": "W", "tested_versions": ["nosuch 1.0 (Cargo.lock)"]}]
+    arms.append(("a cited crate absent from the lock is refused",
+                 any("no such package" in b for b in lock_drift(ghost, lock))))
+    # 16 the lock parser finds a real package rather than returning empty
+    real_lock = lock_versions((ROOT / "Cargo.lock").read_text(encoding="utf-8"))
+    arms.append(("the real Cargo.lock parses", "rmcp" in real_lock and "rustls" in real_lock))
+    # 17 and the LIVE ledger agrees with the LIVE lock
+    arms.append(("the live ledger agrees with the live lock",
+                 lock_drift(entries((ROOT / LEDGER).read_text(encoding="utf-8")), real_lock) == []))
+    # 18 the real ledger parses, and every entry it holds is complete
     real = entries((ROOT / LEDGER).read_text(encoding="utf-8"))
     arms.append(("the real ledger parses to >=1 entry", len(real) >= 1))
     arms.append(("the real ledger is shape-complete", shape_breaches(real) == []))
@@ -328,7 +397,8 @@ def main(argv: list[str]) -> int:
         print("   No threshold is applied here; one would be a number nobody derived.")
         return 0
     if mode == "--check":
-        found = shape_breaches(rows)
+        lock = lock_versions((ROOT / "Cargo.lock").read_text(encoding="utf-8"))
+        found = shape_breaches(rows) + lock_drift(rows, lock)
         for line in found:
             print(f"EXTERNAL-LEDGER: {line}", file=sys.stderr)
         if found:

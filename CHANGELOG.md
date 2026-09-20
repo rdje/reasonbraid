@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-20 — A ledger row cited a version its own stated source no longer held (`SIGNOFF-REPAIR.6.8.2.1`)
+
+`REASONBRAID-REPAIR-0335`. Four ledger rows were un-revalidated; the sharpest finding was not staleness.
+
+- 🔴 **The workload-identity row recorded `rustls 0.23.43 (Cargo.lock)` while `Cargo.lock` resolves `0.23.45`.** A version claim whose own named source is a file in this repository, disagreeing with that file — `a-metric-scoped-to-one-record-ages-silently`, exactly. ⚠️ Both versions are vendored with the same licence and the bump is a PATCH, so the row's own `upgrade_policy` did not require the spike to re-run: **the record was wrong, the posture was not.**
+- ✅ **Filled only what a primary source produced:** A2A's `license: "Apache-2.0"` from the vendored `a2a-lf-0.3.0` manifest and `tested_versions` from `Cargo.lock`. ⛔ **The two CLI harness rows are untouched** — a CLI's version needs the binary, and `conformance_results` needs the spike each row already names; filling them would be the *asserted from memory* failure the ledger's header forbids.
+- ⛔ **`checked_at` was not bumped on any of the four.** Moving it because two of fourteen fields were confirmed would make the freshness warning lie in the safe-looking direction. `--stale` still reports 16/14/14/13 days, which is true.
+- ✅ **No partial-revalidation field**, though the acceptance permitted one: the provenance is already visible where it is used, as an inline comment naming the leaf and the source. A new field would add a second place for the same fact to live.
+- ⭐ **The hand-found drift is MECHANISED**: `--check` gains a `lock_drift` join — any `tested_versions` entry of the form `<crate> <version> (Cargo.lock)` must agree with the lock. Only marked entries are graded, because the marker is what names the source the claim is checkable against.
+- ✅ **Falsified against the real historical defect**, the strongest available form: restoring `0.23.43` in the live file turns the gate red by name, restoring `0.23.45` clears it. Self-test **22/22**, carrying both directions plus the not-graded and absent-crate cases. Empty fields **9 → 8**, `unverified` licences **2 → 1**.
+
 ## 2026-09-20 — The dependency ledger advertised two mechanisms and nothing read the file (`SIGNOFF-REPAIR.6.8.2`)
 
 `REASONBRAID-REPAIR-0334`. Found while `.6.6`'s upstream blocker needed a durable home for its trigger.

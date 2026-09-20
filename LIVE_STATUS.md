@@ -5,6 +5,13 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **A LEDGER ROW CITED A VERSION ITS OWN STATED SOURCE NO LONGER HELD (`.6.8.2.1`, REPAIR-0335).**
+
+- 🔴 The workload-identity entry recorded `rustls 0.23.43 (Cargo.lock)` while the lock resolves **0.23.45**. ⚠️ A PATCH bump, so the row's own `upgrade_policy` did not require the spike to re-run — **the record was wrong, the posture was not.**
+- ✅ Filled only what a primary source produced (A2A's licence and version); ⛔ the two CLI rows untouched — they need their binaries.
+- ⛔ **`checked_at` not bumped for a partial revalidation** — that would make the freshness warning lie in the safe-looking direction.
+- ⭐ **The drift is MECHANISED** and falsified against the real historical defect. Self-test 22/22; empty fields 9 → 8, `unverified` licences 2 → 1.
+
 🔴 **§7.4'S DEPENDENCY LEDGER ADVERTISED TWO MECHANISMS AND NOTHING READ THE FILE (`.6.8.2`, REPAIR-0334).**
 
 - 🔴 `grep -rln "external-ledger"` over scripts, workflows, the Makefile and deploy returns **nothing**, while §7.4 says CI warns on expired checks and release gates require fresh records — and the file's own header repeats both.

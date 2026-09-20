@@ -2074,7 +2074,11 @@ async fn the_publication_stages_and_marks_its_typed_state() {
         &base,
         "/v1/policy-publications/pb-pub-2/failed",
         &human_id,
-        &json!({ "reason": "the fetch-back verification failed" }),
+        // `.9.2.1.2.1`: `failed` now takes a held authority like its two
+        // siblings, so the walk carries one rather than being refused before
+        // it reaches the transition it means to measure.
+        &json!({ "reason": "the fetch-back verification failed",
+                 "owning_authority": grant_id }),
     )
     .await;
     assert_eq!(status, 200, "the publication marks failed: {failed}");
@@ -2710,6 +2714,151 @@ async fn the_publication_verbs_require_an_authority_the_caller_holds() {
     assert_eq!(marked["state"], json!("effective"), "{marked}");
 
     let _ = std::fs::remove_dir_all(&repo_root);
+}
+
+/// `SIGNOFF-REPAIR.9.2.1.2.1` — the THIRD publication transition took no
+/// authority at all.
+///
+/// `.9.2.1.2` bound `publish` and `effective` to a grant the caller HOLDS and
+/// left `failed` behind on enrolment plus tenant ownership — the very
+/// predicate it had just removed from the other two. Its title says "both
+/// publish verbs" and its reproduce line names those two by name, so `failed`
+/// was never in that leaf's population.
+///
+/// ⛔ `staged → failed` is TERMINAL: `mark_effective` and `publish` each refuse
+/// a publication whose state is not `staged`, so marking one failed is how a
+/// governance publication is permanently taken off the table. The cheapest
+/// destructive act on this surface was the unbound one.
+///
+/// ⭐ The three legs mirror `the_publication_verbs_require_an_authority_the_caller_holds`
+/// on purpose — same questions, same seeded shape — so the two controls read
+/// against each other and no later change can move one verb's binding without
+/// the difference being visible.
+#[tokio::test]
+async fn the_failed_transition_requires_an_authority_the_caller_holds() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, alice) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "pf-alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "alice enrolls: {alice}");
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    let alice_grant = format!("grt_{alice_id}");
+
+    let (status, bob) = enroll(&client, &base, json!({ "kind": "human", "name": "pf-bob" })).await;
+    assert_eq!(status, 200, "bob enrolls: {bob}");
+    let bob_id = bob["principal_id"].as_str().unwrap().to_string();
+    let bob_grant = format!("grt_{bob_id}");
+    assert_ne!(
+        alice["tenant_id"], bob["tenant_id"],
+        "the two enrolments mint distinct tenants"
+    );
+
+    // ⛔ `tenant_id` is seeded, for the reason the sibling control records: a
+    // publication with no owner is advanced by NOBODY, so a fixture that
+    // omitted it would refuse alice as loudly as it refuses bob and this
+    // control would pass for the wrong reason.
+    sqlx::query(
+        "INSERT INTO policy_publications \
+         (publication_id, proposal_id, decision_id, approval_id, projection_id, state, \
+          manifest_digest, tenant_id) \
+         VALUES ('pf-pub', 'pf-prp', 'pf-dec', 'pf-app', 'pf-proj', 'staged', $1, $2)",
+    )
+    .bind(DIGEST)
+    .bind(alice["tenant_id"].as_str().unwrap())
+    .execute(&pool)
+    .await
+    .expect("the staged publication seeds");
+
+    let staged = |label: &'static str| {
+        let pool = pool.clone();
+        async move {
+            let state: String = sqlx::query_scalar(
+                "SELECT state FROM policy_publications WHERE publication_id = 'pf-pub'",
+            )
+            .fetch_one(&pool)
+            .await
+            .expect("the publication reads back");
+            assert_eq!(
+                state, "staged",
+                "{label}: a refused transition must leave the row untouched"
+            );
+        }
+    };
+
+    // Leg A — an enrolled principal naming NO authority is refused. Enrolment
+    // plus tenant ownership used to be the whole predicate.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-publications/pf-pub/failed",
+        &alice_id,
+        &json!({ "reason": "unauthorized failure" }),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "failed without an authority refuses: {refused}"
+    );
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("owning_authority"),
+        "{refused}"
+    );
+    staged("leg A").await;
+
+    // Leg B — naming an authority that is real, active and held by SOMEONE
+    // ELSE is refused. ⭐ The leg that distinguishes holding from naming:
+    // `bob_grant` is derivable from bob's principal id, which alice reads off
+    // any response.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-publications/pf-pub/failed",
+        &alice_id,
+        &json!({ "reason": "borrowed failure", "owning_authority": bob_grant }),
+    )
+    .await;
+    assert_eq!(
+        status, 403,
+        "failed under another principal's grant refuses: {refused}"
+    );
+    assert_eq!(refused["code"], json!("unauthorized"), "{refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("HOLDS"),
+        "{refused}"
+    );
+    staged("leg B").await;
+
+    // Leg C — THE MATCHED PAIR for leg B: the same request, the same verb, the
+    // same everything except WHOSE grant is named, and the transition
+    // completes. If either refusal above came from anything but the holding
+    // check, this would be refused too.
+    let (status, failed) = post(
+        &client,
+        &base,
+        "/v1/policy-publications/pf-pub/failed",
+        &alice_id,
+        &json!({ "reason": "the holder's failure", "owning_authority": alice_grant }),
+    )
+    .await;
+    assert_eq!(status, 200, "the holder marks failed: {failed}");
+    assert_eq!(failed["state"], json!("failed"), "{failed}");
+    assert_eq!(
+        failed["failed_reason"],
+        json!("the holder's failure"),
+        "{failed}"
+    );
 }
 
 #[tokio::test]
@@ -5365,19 +5514,31 @@ async fn the_lifecycle_verbs_refuse_another_tenants_publication() {
         &base,
         &format!("/v1/policy-publications/{pub2}/failed"),
         &mallory_id,
-        &json!({ "reason": "the foreign failure" }),
+        // `.9.2.1.2.1`: mallory names HER OWN grant, so she is past the
+        // authority gate and the refusal this arm measures is still the TENANT
+        // one — the shape ARM 2 above already uses for `/effective`. Without
+        // it this arm would keep asserting 400 and would have stopped
+        // measuring containment.
+        &json!({ "reason": "the foreign failure", "owning_authority": mallory_grant }),
     )
     .await;
     assert_eq!(
         status, 400,
         "a foreign tenant marks nothing failed: {refused}"
     );
+    assert!(
+        !refused["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("HOLDS"),
+        "mallory is PAST the authority gate — the refusal must be the tenant one: {refused}"
+    );
     let (status, failed) = post(
         &client,
         &base,
         &format!("/v1/policy-publications/{pub2}/failed"),
         &alice_id,
-        &json!({ "reason": "the owner's failure" }),
+        &json!({ "reason": "the owner's failure", "owning_authority": alice_grant }),
     )
     .await;
     assert_eq!(status, 200, "the owner still marks failed: {failed}");

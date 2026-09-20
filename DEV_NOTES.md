@@ -1,5 +1,52 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — A shared checker is only as complete as its call list
+
+`.9.2.1.2` bound both publication verbs to a grant the caller holds, and did it
+well: ONE function, `held_publication_authority`, because the two verbs share no
+core to put the check in. Its leaf records the property that buys — *"a later
+change cannot move one verb without the other"*.
+
+That property is real. It is also narrower than the sentence reads, and the
+distance between the two is a live authorization hole that survived eight months
+of repairs to this exact surface.
+
+A shared helper binds **the callers that call it**. It says nothing about a
+sibling that never did. `mark_publication_failed` never called it, so the
+guarantee the leaf recorded was true of two verbs and silent about the third —
+and the third is the one that writes the TERMINAL state.
+
+What makes it worth a note rather than a shrug is the second half. The module
+doc beside it said:
+
+> effective, failed or published — the three `held_publication_authority` sites
+
+Three. There were two. The comment was written in the same session as the
+repair, by someone who had the whole surface in view, and it describes the
+system the author intended rather than the one they built. An auditor reading
+the code — the right thing to do — would have concluded the verb was bound.
+
+**Two censuses, and only one of them could have found this.**
+
+    git grep -n "grant_held_by(\|grant_is_live("        # 6 sites — blind
+    for h in <every handler>; do awk … | grep -c …; done # 1, 0, 1 — sees it
+
+The first enumerates *the callers of the predicate*. A missing caller leaves no
+trace in it, so it can only ever confirm what is already there. The second
+enumerates *the surfaces that need the predicate* and asks each one. The
+population has to come from somewhere the defect cannot delete itself from.
+
+The same command, re-run over all four handlers that write `policy_publications`
+rather than the three I had come for, returned `0, 1, 1, 1` — and the `0` is
+`stage_publication`, now owned at `.9.2.1.2.2`. Widening the population by one
+element found a second instance immediately.
+
+⚠️ Not promoted to `docs/knowledge/` yet. It is a SHARPENING of
+`a-claim-of-sameness-is-worth-its-call-graph`, which already says put the check
+where both callers share it; this is its other half, that the call graph must be
+derived from the surfaces rather than from the checker. Held for a second
+instance, per `.11.20`'s rule that this layer names a lesson and stops.
+
 ## 2026-09-20 — Three times in two commits, the majority class was my own parser
 
 I wrote `scripts/census_relative_leaf_refs.py` to answer one question: how many

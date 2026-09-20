@@ -152,9 +152,17 @@ type PublicationRow = (
 ///
 /// ⛔ `.6.1.5.2` gave every publication a tenant and deliberately gated nothing,
 /// so until now any enrolled principal could mark another tenant's publication
-/// effective, failed or published — the three `held_publication_authority` sites
+/// effective, failed or published — the `held_publication_authority` sites
 /// being the sharpest, because a grant the CALLER holds answers *may this
 /// principal act on publications at all*, never *is this publication theirs*.
+///
+/// 🔴 **This sentence said "the three `held_publication_authority` sites" while
+/// there were two** (`.9.2.1.2.1`): `mark_publication_failed` never called it,
+/// so the comment described a repair the code did not have and a reader
+/// auditing the surface from here would have concluded `failed` was bound.
+/// There are three now, and the count is asserted by
+/// `crates/reasonbraid-server/tests/policy.rs::the_failed_transition_requires_an_authority_the_caller_holds`
+/// rather than by this sentence.
 ///
 /// ⚠️ A foreign publication answers exactly as an ABSENT one
 /// (`docs/decisions/2026-09-18_node-presence-is-read-by-its-own-tenant.md`), or

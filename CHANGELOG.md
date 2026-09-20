@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-20 — The third publication transition took no authority (`SIGNOFF-REPAIR.9.2.1.2.1`)
+
+`REASONBRAID-REPAIR-0337`. Found by the verb enumeration `.9.3.4.1` owes before it can name any action.
+
+- 🔴 **`POST /v1/policy-publications/{id}/failed` admitted on enrolment plus tenant ownership alone.** A predicate per handler rather than a file-wide grep — `for h in mark_publication_effective mark_publication_failed publish_publication; do awk "/^async fn $h\(/,/^}/" crates/reasonbraid-server/src/api.rs | grep -c held_publication_authority; done` -> **1, 0, 1**. `.9.2.1.2` bound the other two; its own title is *"Both publish verbs"*, so `failed` was never in that leaf's population.
+- ⛔ **`staged → failed` is TERMINAL.** `mark_effective` and `publish` each refuse a publication whose state is not `staged`, so marking one failed is how a governance publication is permanently taken off the table — the cheapest destructive act on the surface was the unbound one.
+- 🔴 **And the repair's own prose asserted the fix that was missing.** `publications.rs:155` read *"effective, failed or published — the three `held_publication_authority` sites"* while `git grep -c "held_publication_authority(&state"` returned **2**. A reader auditing the surface from the code would have concluded the verb was bound.
+- 🔴 **The RED was not a wrong error code — it was the transition completing.** The unauthorized call returned **200** with `"state":"failed"` in the body. Both refusal legs therefore re-read the row afterwards and assert `staged`: a refusal that still wrote would satisfy a status assertion and leave the defect in place.
+- ✅ **The fix is a call, not an invention** — `held_publication_authority`, placed before the reason is parsed so the order matches its two siblings. Three legs, two tenants: no authority -> **400**; bob's real, active, derivable grant -> **403 `unauthorized`**; alice's own -> **200**, `state: failed`.
+- ⭐ **A shared helper binds the callers that call it, never the sibling that never did.** `.9.2.1.2` wrote *"a later change cannot move one verb without the other"*; that property is real and narrower than it reads, and the function's own doc now says so.
+- ⛔ **The three existing fixtures are re-seeded, not relaxed.** ARM 3 of the containment control measures TENANT scope, so mallory now names HER OWN grant and is past the authority gate — otherwise the arm would have kept asserting `400` while silently measuring the new refusal instead of the one it exists for.
+- 🔎 **The re-derivation found a fourth handler.** `0, 1, 1, 1` over every handler that writes `policy_publications`: `stage_publication` takes no held authority either. A different question — a CREATE gated transitively by an approval that did require a held grant — and it is owned at `.9.2.1.2.2` rather than folded in here.
+- **No regression:** `policy command_api profiles authority` -> 4 suites, **146 tests, 0 failed**; `--lib` 133 passed; clippy `-D warnings` rc=0; `make gate` 22/22 green; `make book` rc=0.
+
 ## 2026-09-20 — The derived release flags were evaluated on every make invocation (`SIGNOFF-REPAIR.6.8.1.1`)
 
 `REASONBRAID-REPAIR-0336`. A defect the previous commit introduced, found by asking what happens when the script it added is absent.

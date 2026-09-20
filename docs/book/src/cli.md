@@ -74,10 +74,17 @@ forged publication.
 
 ### Who may publish
 
-Both verbs used to admit **any enrolled principal**: enrolment in any tenant was
-the whole predicate for writing a publication into a Git repository and for
-declaring one effective. They now require an `owning_authority` — a grant the
-caller **holds**:
+A staged publication has exactly **three** exits, and all three now require an
+`owning_authority` — a grant the caller **holds**:
+
+| Verb | What it does to the record |
+| --- | --- |
+| `POST /v1/policy-publications/{id}/publish` | writes the publication into the repository and marks it `effective` |
+| `POST /v1/policy-publications/{id}/effective` | marks it `effective` for a Git half performed out of band |
+| `POST /v1/policy-publications/{id}/failed` | marks it `failed`, with a reason |
+
+All three used to admit **any enrolled principal**: enrolment in any tenant was
+the whole predicate. The refusal is now:
 
 ```text
 403 unauthorized — the publication verbs require an authority the caller HOLDS
@@ -86,6 +93,15 @@ caller **holds**:
 Naming a grant is not holding one. Grant ids are derivable from a principal id,
 so a check that asked only whether an active grant *exists* would be no check at
 all; the server compares the grant's subject to the authenticated caller.
+
+⚠️ **`failed` was bound last, and it was the one that mattered most.** The first
+repair covered `publish` and `effective`; `failed` kept admitting on enrolment
+for a further stretch. Each of the three states is **terminal** — the other two
+verbs refuse a publication that is no longer `staged` — so failing a publication
+is how one is permanently taken off the table, and it was the cheapest
+destructive act on the surface to reach. If you operate a deployment that
+predates this, assume any enrolled principal in the owning tenant could have
+failed a staged publication, and read `failed_reason` accordingly.
 
 ⚠️ **How far that scopes, stated plainly rather than implied.** A grant cannot
 currently *name* a publication: no grant action and no target selector in the

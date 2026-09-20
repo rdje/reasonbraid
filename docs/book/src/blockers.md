@@ -175,8 +175,16 @@ tenant-isolation tests*. Since that record was written, the corrective review ha
 reproduced — live, against supported surfaces — a caller in one tenant receiving
 another tenant's entire thread projection, an administrator reading another
 tenant's node inbox in full, a prune destroying another tenant's rows, a
-participant answering another tenant's recruitment call, and both publish verbs
-admitting any enrolled principal. All are repaired.
+participant answering another tenant's recruitment call, and all three
+publication transitions admitting any enrolled principal. All are repaired.
+
+⚠️ That list said *both publish verbs* until 2026-09-20. There are **three**
+publication transitions — `effective`, `publish` and `failed` — and the third
+kept admitting on enrolment for a further stretch after the first two were
+bound, while a comment in the server asserted all three were covered
+(`SIGNOFF-REPAIR.9.2.1.2.1`). The count is corrected here rather than quietly
+grown, because the gap between the two numbers is how long the third verb was
+open.
 
 ⛔ So Internet exposure has **three external blockers and one internal one**.
 The internal one now has a measured answer, recorded in

@@ -3764,6 +3764,12 @@ async fn mark_publication_effective(
 
 /// `POST /v1/policy-publications/{id}/failed` — the typed failure (never a
 /// skip) with the reason.
+///
+/// `.9.2.1.2.1`: the caller also names an `owning_authority` it HOLDS. ⛔ This
+/// verb was left behind by `.9.2.1.2`, whose title and reproduce line named
+/// the other two, so the one transition that is TERMINAL — `mark_effective`
+/// and `publish` both refuse a publication that is no longer `staged` — was
+/// the one reachable on enrolment alone.
 async fn mark_publication_failed(
     State(state): State<Arc<ApiState>>,
     Path(publication_id): Path<String>,
@@ -3780,6 +3786,10 @@ async fn mark_publication_failed(
             "an unenrolled principal marks nothing failed",
         ));
     };
+    // `.9.2.1.2.1`: authorized BEFORE the reason is parsed, in the order the
+    // two siblings already use — an unauthorized caller learns nothing about
+    // the request they were not entitled to make.
+    held_publication_authority(&state, &principal, &body).await?;
     let reason = body
         .get("reason")
         .and_then(|v| v.as_str())
@@ -3792,19 +3802,24 @@ async fn mark_publication_failed(
     }
 }
 
-/// Both publication verbs are bound to a grant the caller HOLDS
-/// (`SIGNOFF-REPAIR.9.2.1.2`), in the shape `deployments::register_target`
-/// already uses: the request names an `owning_authority` and
-/// [`authority::grant_held_by`] decides.
+/// All THREE publication transitions are bound to a grant the caller HOLDS
+/// (`SIGNOFF-REPAIR.9.2.1.2` for `effective` and `publish`, `.9.2.1.2.1` for
+/// `failed`), in the shape `deployments::register_target` already uses: the
+/// request names an `owning_authority` and [`authority::grant_held_by`]
+/// decides.
 ///
 /// ⛔ That is THE predicate (`.9.3.1`), never a sixth spelling of the question.
 /// Naming a grant and holding one are exactly what that repair found conflated
 /// on three surfaces, and grant ids here are derivable (`grt_<principal_id>`),
 /// so "names an active grant" is not a check at all.
 ///
-/// ⛔ ONE definition for the two verbs, rather than the same five lines twice:
-/// they do not share a core to put it in, so the shared thing is this function,
-/// and a later change cannot move one verb without the other.
+/// ⛔ ONE definition for the three verbs, rather than the same five lines
+/// three times: they do not share a core to put it in, so the shared thing is
+/// this function, and a later change cannot move one verb without the others.
+/// ⚠️ That property did NOT protect `failed`, and the reason is worth keeping:
+/// a shared helper binds the callers that call it, never the sibling that
+/// never did. `.9.2.1.2.1` found the third caller missing while its own
+/// module doc asserted three existed.
 ///
 /// ⚠️ **A limit this cannot fix and must not imply away** (`.9.3.4`): no
 /// `GrantAction` and no `TargetSelector` can NAME a publication, so a held grant

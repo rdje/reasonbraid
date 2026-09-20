@@ -36,6 +36,15 @@ The corpus said the opposite, and it was not subtle:
  1   repair (SIGNOFF-REPAIR.4.2.2) that DEPENDS on it
 ```
 
+⚠️ **Those counts are pinned to `8a3e120`, the commit they were taken at, and
+the repair that followed moved one of them: typing three verbs took the
+typed count to 49 and the untyped count from 7 to 4** (`SIGNOFF-REPAIR.13.4.6`
+re-derived both). The note keeps the original figures because they are what the
+decision was taken on — and it says so, because *the majority is not the
+anomaly* is an argument about a ratio, and a ratio quoted without its commit is
+the very thing `a-metric-scoped-to-one-record-ages-silently` is about. Re-derive
+before quoting; never quote this block.
+
 The assertions are not incidental. `command_api` asserts the rejection body
 `contains("unknown field")`, because naming the forged field is the point.
 `profiles` writes *"An unknown field is the typed 422"* two lines above *"A

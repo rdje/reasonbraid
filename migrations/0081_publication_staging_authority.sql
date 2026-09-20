@@ -2,15 +2,34 @@
 -- the staging verb decides what an approval publishes, so it names an
 -- authority and the row records it.
 --
--- ⛔ THE MEASUREMENT THAT DECIDES IT, because the schema already encoded a
--- coherent answer the other way. Four of the eight policy-lifecycle tables
--- carry an authority reference and four do not, and the correspondence is
--- EXACT: `policy_versions.owning_authority` (0038), `policy_approvals`'
--- `approver` + `grant_id` (0040), `deployment_targets.owning_authority`
--- (0043) and `policy_drift_corrections.authority_grant` (0044) are precisely
--- the four surfaces that check a grant. Under that reading the chain's
+-- ⛔ THE MEASUREMENT THAT DECIDES IT, because the schema looked as though it
+-- already encoded a coherent answer the other way: four tables carry an
+-- authority reference — `policy_versions.owning_authority` (0038),
+-- `policy_approvals`' `approver` + `grant_id` (0040),
+-- `deployment_targets.owning_authority` (0043) and
+-- `policy_corrections.authority_grant` (0044) — and they are the tables the
+-- four grant-checking surfaces write. Under that reading the chain's
 -- authority-bearing acts are the APPROVAL and the publication TRANSITIONS,
 -- and staging is bookkeeping between them.
+--
+-- 🔴 CORRECTED BY `SIGNOFF-REPAIR.13.4.6`, WHICH RE-DERIVED IT. As first
+-- written this comment said *four of the EIGHT policy-lifecycle tables* and
+-- named `policy_drift_corrections`. Both are wrong, and re-derived by parsing
+-- every `CREATE TABLE`/`ADD COLUMN` in `migrations/` rather than reading four
+-- files by hand: the family is **12** tables, not eight — the eight were
+-- chosen, not counted — and `policy_drift_corrections` is the migration
+-- FILE's name; the file creates `policy_drift`, `policy_corrections` and
+-- `policy_outcomes`, and the column lives on `policy_corrections`.
+--
+-- 🔴 AND THE CORRESPONDENCE WAS NOT EXACT, which is the part that mattered:
+-- at this migration's own parent commit `policy_publications` carried NO
+-- authority column while THREE of its verbs already checked a held grant
+-- (`SIGNOFF-REPAIR.9.2.1.2` and `.9.2.1.2.1`, the latter two commits earlier).
+-- ⇒ The *staging is bookkeeping* reading was already broken by a table this
+-- session had itself bound. It is recorded because the DECISION below does
+-- not rest on it — the decision rests on the measurement in the next
+-- paragraph, which was re-derived and holds — but the argument as first
+-- published was false.
 --
 -- 🔴 That reading rests on staging being unable to choose what gets published,
 -- and it can. `stage` never reads the proposal's `policy_id` or

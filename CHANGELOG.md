@@ -1,5 +1,20 @@
 # CHANGELOG.md
 
+## 2026-09-20 — Eighteen claims re-derived: fourteen hold, four were true when taken, and the pass found two defects of its own (`SIGNOFF-REPAIR.13.4.6`)
+
+`REASONBRAID-DOC-0088`. The director's *ensure the findings hold*, a sixth time, over this session's eleven commits. Every claim re-derived by a route that did **not** produce it.
+
+- ✅ **HOLDS.** All four publication verbs bound and typed — re-derived from the ROUTER table, then by the **compiler**: renaming `held_publication_grant`'s definition produced `E0425` at exactly **4** call sites. The approval-laundering mechanism, read structurally at `8a3e120^` and at HEAD. `not_found` 23 / `scope_hidden` 3, re-counted by occurrence rather than by line. Registry 20 and 11-never-emitted, parsed straight from the enum. `GrantAction` 10 → 15, `ADMIN_ACTIONS` 9 → 14. policy 26 / authority 22, agreeing with 26 static `#[tokio::test]` attributes.
+- 🔴 **MOVED 1 — three errors in one sentence, published as a census.** `REPAIR-0339` said *four of the EIGHT policy-lifecycle tables … and the correspondence is EXACT*. The family is **12** tables — the eight were chosen, not counted; **`policy_drift_corrections` is not a table**, it is migration `0044`'s FILE name and the column is on `policy_corrections`; and the correspondence was **not** exact, because `policy_publications` already checked a grant with no column — bound two commits earlier by my own `.9.2.1.2.1`.
+- ⭐ **Why it survived is the lesson**: that bullet is the case *against* the decision, which the next bullet refutes on a measurement that does hold. **An argument I had already decided to reject got less scrutiny than the one I was resting on.**
+- 🔴 **MOVED 2 — the publishing commit is what staled it.** *46 typed extractors* is exact at `8a3e120`; at `7a4cbf4`, the commit that published it, typing three verbs made it **49**.
+- 🔴 **MOVED 3 — a figure inherited and never re-derived**, in a commit whose subject was rigour: *207 `GrantAction::` references across 19 files* is correct at `6332cde` as a LINE count, 208 where I re-quoted it, and **261 across 23 files** at HEAD.
+- 🔴 **MOVED 4 — a line count published as an occurrence count**: 733 lines, **948** occurrences.
+- 🔴 **DEFECT FOUND — a shipping wire code the census cannot see.** `_CODE_LITERAL` matches `code: "…"`, a Rust field; `undeclared_region` is emitted via `json!({"code": "…"})` from the site-registry pairing route, is asserted by two tests, and appears **nowhere** in `errors.md` — while the census prints *"not documented in the book: 0"*. `DOC-0086`'s population is **10**, not 9. → `.13.4.6.1`.
+- 🔴 **DEFECT FOUND — a blank line silently disables every `FRONTIER-STATUS` rule.** Driven: one blank line after the delimiter row and the gate exits **0** over an unparsed table. The enforcer catches it only through a neighbouring instrument's self-test. It also explains a number in `REPAIR-0344`'s own calibration — 24 through the gate, **34** through a direct grep. → `.13.4.6.2`.
+- ⚠️ **One of this pass's own probes was wrong and is recorded**: counting site routes I subtracted a definition the pattern never matched and reported 8; the correct count is **9**, unchanged at all three commits. Caught because it disagreed with the first route.
+- **Corrected at every live site**: `migrations/0081`'s comment (shipped code), the tree, `docs/TASK_TREE.md`, `LIVE_STATUS.md` (three sites) and the knowledge note. The dated ledgers stay as written.
+
 ## 2026-09-20 — One unfinished leaf may not hold two frontier rows, and I produced two of the four instances myself (`SIGNOFF-REPAIR.11.22.1`)
 
 `REASONBRAID-REPAIR-0344`. Ships as **rule 3 of `FRONTIER-STATUS`**, calibrated over the whole history before it was proposed.

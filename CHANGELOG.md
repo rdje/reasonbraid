@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-21 — What a record IS on the second ledger, quoted from the gate that already governs it (`SIGNOFF-REPAIR.11.4.2.6.1`)
+
+`REASONBRAID-DOC-0092`. `.11.4.2.5` left `DEV_NOTES.md` measured and unbounded — 427 of 427 versions grew it, zero bytes ever removed. A working rotation for an ordered ledger already runs next door. Before pointing it at a second file: what is one record, and who says?
+
+- 🔴 **The rotation's record parser is NARROWER than the gate that already governs the file, by a third of its contents.** `rotate_changelog.py` splits on `^## \d{4}-\d{2}-\d{2}`; `check_lesson_promotion.sh` splits on `^## .*[0-9]{4}-[0-9]{2}-[0-9]{2}` and pins both spellings in its own self-test. On `DEV_NOTES.md`: **narrow 291 records / 717,211 B against wide 439 / 895,767 B — 148 records and 178,556 bytes invisible to the narrow parser.**
+- ⛔ **That is a losslessness defect, not a cosmetic one.** A rotation splits at record boundaries and states in its chain notice how many records it retired; on the narrow parser it would retire content it never counted and publish a false figure — the failure the rotation decision record requires losslessness to prevent.
+- ⭐ **The boundary is QUOTED, not chosen**, from the gate that has governed the file all along. A definition invented for the rotation would be a second copy of one fact — the class `SCAFFOLD-COVERAGE` and `INDEX-FRONTIER` both exist to refuse.
+- ✅ **Adopting it changes nothing on the ledger already in production, proved over its whole history: across all 664 versions of `CHANGELOG.md` the two parsers agree in every one — 0 disagreements.** ⭐ And on `DEV_NOTES.md` the wide parser is EXACT, not merely wider: 439 of 441 headings match, and both exclusions are genuinely not records.
+- ✅ Lifecycle `rolling_ledger`, archive terminal git history. **Consumer census taken before any history moves: not one consumer cites an individual record**, and `LESSON-PROMOTION` already forces every durable lesson into `docs/knowledge/` or an `answers:` record, so retiring old records removes no reader's access path.
+- 🔴 **My own first split used the narrow parser and missed 148 of 439 records** — a p90 of 3,467 against the true 3,199, wrong in the direction nothing downstream surfaces. Caught before publication and recorded, because that is the only difference between it and the defect this leaf is about.
+- ⛔ **No code written, and no threshold, ceiling or retirement amount set** — a build's target is quoted from its source in a commit of its own before the code, and a ceiling chosen in the slice that migrates under it is fitted to current bloat. `.11.4.2.6.2` derives it.
+
 ## 2026-09-21 — The two largest live documents are ungoverned, because the closure is anchored at the landing page (`SIGNOFF-REPAIR.11.4.2.5`)
 
 `REASONBRAID-DOC-0091`. The live-document and route census `.11.4.2` has owed since 2026-09-13 — Phase 2 step 1 of the adoption guide: *a bounded source pointing to an uncontrolled destination is not contained.*

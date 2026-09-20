@@ -1,5 +1,67 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — Two gates over one file, disagreeing about what a record is
+
+Before pointing the changelog rotation at a second ledger I asked what I thought
+was a formality: what is one record in `DEV_NOTES.md`?
+
+The rotation splits on `^## \d{4}-\d{2}-\d{2}`. The gate that has governed this
+file since it was ported — `check_lesson_promotion.sh` — splits on
+`^## .*[0-9]{4}-[0-9]{2}-[0-9]{2}`, and its self-test explicitly pins both
+spellings the file uses, the bare `## 2026-09-04 — …` and the italicised
+`## _(2026-09-04)_ — …`.
+
+On this file those two regexes are not a stylistic difference. Narrow sees 291
+records and 717,211 bytes. Wide sees 439 and 895,767. **148 records and 178,556
+bytes — a third of the file — are invisible to the parser the rotation would
+have used.**
+
+A rotation is not a formatter. It splits a ledger at record boundaries, retires
+the tail, and writes a chain notice saying how many records it retired and where
+they can be retrieved. Run on a parser blind to a third of the records, it
+retires content it never counted and publishes a number that is false in its own
+notice. This project has already been bitten once by a rotation instrument whose
+parser could not see the thing under investigation: a count-based detector
+reported 43 rotations where the history has 45, and the two it missed were the
+two being investigated.
+
+The fix is not to pick the better regex. It is to notice that the question was
+already answered. `check_lesson_promotion.sh` is not a bystander here — it is the
+gate that governs this file, its definition of a record is enforced on every
+commit, and it has been right about both dialects the whole time. So the rotation
+adopts that definition rather than carrying its own. A second definition of one
+fact is the failure `SCAFFOLD-COVERAGE` and `INDEX-FRONTIER` were both written to
+refuse, and I was two minutes from writing a third.
+
+Two things made this safe to conclude rather than merely plausible.
+
+First, widening the parser must not change the ledger already in production. I
+did not argue that; I walked all 664 versions of `CHANGELOG.md` and compared both
+counts on each. They agree in every one. Zero disagreements.
+
+Second, a wider parser can be wrong in the other direction. On `DEV_NOTES.md`,
+441 headings exist and the wide parser matches 439. The two it skips are
+`## clause-1 [org-baseline 1.0.0]` and the template placeholder
+`## _(YYYY-MM-DD)_ — bootstrap`, which carries no real date. Both are correctly
+not records. The parser is exact here, not merely generous, and I checked that
+because an over-matching boundary would corrupt a rotation just as thoroughly.
+
+And the part worth keeping: **my own first split of this file used the narrow
+parser.** I reported 291 records and a p90 of 3,467 bytes, and only noticed
+because 291 dated headings against 441 total looked like too large a remainder to
+ignore. The true p90 is 3,199. Had I derived a rotation threshold from the first
+number, it would have been 268 bytes per record too high — wrong in the
+conservative direction, which is exactly the kind of error that never announces
+itself downstream. The instrument's first population described its parser, not
+the file. That is a promoted lesson here, and I still walked into it inside the
+leaf whose entire subject is two parsers disagreeing.
+
+Promotion: declined and recorded in `SIGNOFF-REPAIR.11.4.2.6.1` —
+`docs/knowledge/an-instruments-first-population-describes-its-parser.md` already
+carries the statement, and the quoted-not-chosen rule is a disposition about this
+repository's files rather than a transferable method, so it is a decision record
+instead.
+
 ## 2026-09-21 — A closure is only as wide as the document it is anchored to
 
 This repository has one routing-closure check, and it is a good one. It refuses

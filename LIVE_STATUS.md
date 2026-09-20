@@ -5,6 +5,14 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **WHAT A RECORD IS ON THE SECOND LEDGER, QUOTED FROM THE GATE THAT ALREADY GOVERNS IT (`.11.4.2.6.1`, DOC-0092).**
+
+- 🔴 **The rotation's record parser is narrower than the gate governing `DEV_NOTES.md`, by a third of the file** — narrow **291** records / 717,211 B against wide **439** / 895,767 B; **148 records and 178,556 bytes invisible**. A rotation states in its chain notice how many records it retired, so the narrow parser would retire content it never counted and publish a false figure.
+- ⭐ **The boundary is QUOTED, not chosen** — from `check_lesson_promotion.sh`, whose self-test already pins both heading dialects. A definition invented for the rotation is a second copy of one fact.
+- ✅ **Adopting it changes nothing in production, proved over all 664 `CHANGELOG.md` versions — 0 disagreements.** ⭐ And it is EXACT on `DEV_NOTES.md`: 439 of 441 headings, both exclusions genuinely not records.
+- ✅ Lifecycle `rolling_ledger`, terminal git. **No consumer cites an individual record**; `LESSON-PROMOTION` already forces durable lessons into `docs/knowledge/`, so retirement removes no access path.
+- 🔴 **My own first split used the narrow parser** (p90 3,467 against the true 3,199) — caught before publication. ⛔ **No code written, no threshold set**; `.11.4.2.6.2` derives it.
+
 ✅ **THE TWO LARGEST LIVE DOCUMENTS ARE UNGOVERNED, BECAUSE THE CLOSURE IS ANCHORED AT THE LANDING PAGE (`.11.4.2.5`, DOC-0091).**
 
 - 🔴 **Three of the five core live documents are bounded; the two that are not hold 1,502,160 of 1,559,250 bytes — 96.3% of the corpus.** `README.md` 2,188 B, `MEMORY.md` 6,006 B and `CHANGELOG.md` 48,896 B are capped; `LIVE_STATUS.md` 607,437 B and `DEV_NOTES.md` 894,723 B are not.

@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-20 — The resume pointer aged four commits, and the gate I was going to propose was already measured and rejected (`SIGNOFF-REPAIR.11.2.9`)
+
+`REASONBRAID-DOC-0081`. A finding from resuming this session, corrected twice before it shipped.
+
+- 🔴 **`MEMORY.md`'s `latest_commit` read `REASONBRAID-REPAIR-0318` while `HEAD` was `REPAIR-0322`** — four commits stale, found by a fresh session trying to resume from it. The five commits before this one all skipped the file consecutively; over the last 40 it was staged in **31**.
+- ⛔ **The first version of this leaf claimed *nothing enforces that*, and `GAP-CLAIM-CENSUS` blocked the commit** until the claim carried its census. The census — `grep -ln "MEMORY\.md"` over the tracked checks, censuses and hooks — returns **six** readers, and they do not say what the claim said: `check_memory_architecture.sh` asserts existence and both caps, and **`check_lockstep_claim.sh` already has `MEMORY.md` in its `LIVE_DOCS`**, so a leaf that ticks a box naming it must stage it.
+- ⛔ **And the sharper correction is that this project has already adjudicated the rule I was calibrating, and ruled against it.** `check_lockstep_claim.sh`'s own header carries the census: over the 25 commits before it was written, 10 closed a leaf and **`MEMORY.md` was staged in 6 of those 10** — the same rate as today — with the reason recorded: *"A blanket 'closing a leaf must stage MEMORY' would have asserted a rule the project does not follow, flagged four pre-existing commits, and still missed `6bf0c40`."*
+- ⭐ **So the `commit-msg` predicate I had already calibrated — parseable in 60 of 60 revisions, agreeing with its own subject in 28 of 30 — is a re-proposal of a rejected option, and `docs/CLAIM_VERIFICATION.md` leg 2 decides it**: a finding whose shape has already been adjudicated must name the difference, and if it cannot, the earlier ruling wins. I looked for one and could not name it. **The rule is withdrawn rather than argued.**
+- ⚠ **What survives is smaller and honest.** Under the adjudicated practice — the pointer is updated periodically, not every commit — `latest_commit` naming an older commit is normal. What this session actually paid was a **findability** cost: layer A could not say what the last four commits did, so it was reconstructed from `git log`. That is the class `scripts/census_memory_warnings.py` already names.
+- ⭐ **The one option the prior ruling does not touch is `MEMORY_ARCHITECTURE.md` §6's**: *prefer derived over hand-written — a small script can regenerate the current-state block from `git log` plus each tree's frontier row, so it cannot drift.* It adds no rule the project must follow and flags no commit; it removes the predicate's subject instead of checking it. That is what the leaf now owns, and its acceptance forbids adding the refused `commit-msg` predicate.
+
 ## 2026-09-20 — 10.4 GB of reproducible payload retired, and a third unretired population measured (`SIGNOFF-REPAIR.7.3.4.1`)
 
 `REASONBRAID-DOC-0080`. The scheduled artifact cleanup, and what it could not reach.

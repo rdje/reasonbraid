@@ -5,6 +5,13 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **THE RESUME POINTER AGED FOUR COMMITS, AND THE GATE I WAS GOING TO PROPOSE WAS ALREADY REJECTED (`.11.2.9`, DOC-0081).**
+
+- 🔴 `MEMORY.md`'s `latest_commit` read `REPAIR-0318` while `HEAD` was `REPAIR-0322` — **four commits stale**, found by a fresh session resuming from it. Staged in **31 of the last 40** commits.
+- ⛔ **My first claim, *nothing enforces that*, was BLOCKED by `GAP-CLAIM-CENSUS` and is false.** The census returns **six** readers: `check_memory_architecture.sh` holds existence + both caps, and `check_lockstep_claim.sh` already lists it in `LIVE_DOCS`.
+- ⛔ **And the project ALREADY adjudicated the rule I had calibrated, against it**: that gate's own census measured `MEMORY.md` staged **6 of 10** leaf-closing commits and rejected the blanket requirement by name. `CLAIM_VERIFICATION` leg 2 — name the difference or the earlier ruling wins. I could not. **Withdrawn.**
+- ⭐ What survives: a **findability** cost, and `MEMORY_ARCHITECTURE.md` §6's derived block — the one option the ruling does not touch, because it removes the subject instead of adding a rule.
+
 ✅ **10.4 GB OF REPRODUCIBLE PAYLOAD RETIRED, AND A THIRD UNRETIRED POPULATION MEASURED (`.7.3.4.1`, DOC-0080).**
 
 - ✅ `census_retained_fixtures.py --retire --confirm`: **195 fixtures reduced, 10,364,871,724 bytes dropped, 0 deleted** — every log, receipt and config kept, two fixtures refused by its own rules (one cited by tracked files, one `shutdown-unverified`).

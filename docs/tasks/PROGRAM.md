@@ -134,6 +134,12 @@ No ADR is approved merely because the roadmap names a candidate technology.
 | --- | --- | --- |
 | A — trustworthy LAN conversation | §26.1 | `PHASE-1` (prep in `PHASE-0.6`) |
 | B — governed doctrine change | §26.2 | `PHASE-6` (needs Phases 4–6) |
+| C (candidate) — two peer agents resolve a bug report end to end | **none — not in §26** | `PEER-COLLAB` |
+
+`PEER-COLLAB` is a director-requested acceptance track and is deliberately NOT a
+§26 demonstration: `ROADMAP.md` is frozen at v0.4.1 and §68 sends new features to
+`docs/parking-lot.md`. The tree measures the scenario against the shipped system;
+§26 gains a Demonstration C at v0.5.0 only if that measurement justifies one.
 
 ## Task Tree
 

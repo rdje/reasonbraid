@@ -15,6 +15,7 @@
 ## Active task-trees
 
 - [`BOOTSTRAP.md`](docs/tasks/BOOTSTRAP.md)
+- [`PEER-COLLAB.md`](docs/tasks/PEER-COLLAB.md)
 - [`PHASE-0.md`](docs/tasks/PHASE-0.md)
 - [`PHASE-1.md`](docs/tasks/PHASE-1.md)
 - [`PHASE-2.md`](docs/tasks/PHASE-2.md)

@@ -5,6 +5,17 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE CLEANUP BUDGET NOW SAYS WHERE IT WENT, AND THE WAIT I WANTED TO SHORTEN IS THE DETECTOR (`.11.25`, REPAIR-0313).**
+
+- ⭐ **The instrument came first**: `cleanup_confirmed: false` named the stderr drain and gave no clock, while every cleanup step shares one budget — so the step that reports the failure is just the one that ran last. The receipt now carries `cleanup_budget_ms` and a per-step `cleanup_elapsed_ms`, and that is the whole shipped change.
+- **MEASURED on a real Chrome, render duration the only variable:** 5 s render → group reaped **314 ms**, drain **0 ms**, confirmed. 30 s render → reaped **273 ms**, drain **9,728 ms**, hits the 10,000 ms budget. Budget widened to 120 s → reaped **181 ms**, drain **16,427 ms** (**1.64× the whole budget**), then EOF arrives on its own.
+- ⛔ **My first hypothesis was refuted by the instrument I had just built** — the kill sequence is not eating the budget (1,296 ms in-harness, 181 ms standalone) — and the failure **reproduces outside the test harness**, ruling the fixture out.
+- 🔴 **THE REPAIR I REACHED IS WITHDRAWN BY THIS LEAF'S OWN ACCEPTANCE CLAUSE.** Confirming the task's CANCELLATION rather than its EOF took the suite to **18/18** — and broke `a_render_refusal_survives_an_unconfirmed_cleanup`, which builds a `setsid` escapee ON PURPOSE and asserts the unconfirmed cleanup. **The drain is the detector**, and the weaker assertion did not fail on a browser that never cleans up. Reverted.
+- ✅ **The two controls assert the SAME thing** — one constructs an escape, the other produces one — so the detector is reporting something true.
+- 🔎 **The holder is deliberately NOT named** → `.11.25.1`. A `chrome_crashpad_handler` was alive after exit but was not shown to be this render's nor to hold the pipe, and a sample during cleanup matched no Chrome process at all.
+- ✅ **VERIFIED:** browse units **14/0**; the real-browser roundtrip **17/1**, exactly its state at `c5d8831` — the pre-existing failure unchanged and now carrying its own clock. Clippy (all targets) rc=0; fmt rc=0; book rc=0; gate green. No behaviour changed.
+- ⭐ What caught this was not judgement but **an acceptance clause written when the leaf was OPENED**, before any of it was known.
+
 ✅ **A RENDER IS EVIDENCE, AND ITS WORKER MUST DESCRIBE THE DOCUMENT IT SENT (`.11.24.1.3.1`, REPAIR-0312).**
 
 - 🔴 **The R3 branch built a receipt and persisted NOTHING** — no snapshot, no edge — although §12.6 opens on exactly this artefact. The blocker was structural: `raw_digest` is a foreign key into `snapshot_objects (bytes BYTEA NOT NULL)` and the worker sent no bytes.

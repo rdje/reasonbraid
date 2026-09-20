@@ -159,27 +159,52 @@ impl Lifetime {
     /// All branches, including cancelled launch/connect, arrive here. Cleanup has
     /// one additional budget; no response may bypass this result.
     pub async fn finish(&mut self, success: bool) -> Result<(), String> {
-        let deadline = Instant::now() + CLEANUP_BUDGET;
+        // ⭐ THE STEPS SHARE ONE BUDGET, SO THE RECEIPT SAYS HOW IT WAS SPENT
+        // (`SIGNOFF-REPAIR.11.25`). `cleanup_confirmed: false` with a step's
+        // name and no clock cannot be acted on: every step below can exhaust
+        // the deadline, and the one that reports the failure is simply the one
+        // that ran last. An operator — and a control — needs to know whether
+        // the stderr drain was slow or merely last in the queue.
+        let started = Instant::now();
+        let mut spent: Vec<(&'static str, u128)> = Vec::new();
+        let mark = |step: &'static str, spent: &mut Vec<(&'static str, u128)>| {
+            spent.push((step, started.elapsed().as_millis()));
+        };
+        let deadline = started + CLEANUP_BUDGET;
         if let Some(browser) = self.browser.as_mut() {
             // CDP acknowledgement alone is never process-exit evidence.
             let _ = timeout_at((Instant::now() + GRACE).min(deadline), browser.close()).await;
         }
         self.browser.take();
+        mark("close", &mut spent);
         let process_result = self.stop_process(deadline).await;
+        mark("stop_process", &mut spent);
         let browser_pid = self.pid;
         if process_result.is_ok() {
             // Never signal a retired numeric group during a later storage/task error.
             self.pid = None;
         }
         let handler_result = join_aborted(&mut self.handler, deadline).await;
+        mark("handler", &mut spent);
         let network_result = join_aborted(&mut self.network, deadline).await;
+        mark("network", &mut spent);
         let intercept_result = join_aborted(&mut self.intercept, deadline).await;
+        mark("intercept", &mut spent);
         let mut stderr_result = Ok(Vec::new());
         if let Some(mut task) = self.stderr.take() {
             stderr_result = match timeout_at(deadline, &mut task).await {
                 Ok(result) => result
                     .map_err(|e| e.to_string())
                     .and_then(|v| v.map_err(|e| e.to_string())),
+                // ⛔ THIS WAIT IS THE DETECTOR, NOT AN INCIDENTAL DELAY, and
+                // `SIGNOFF-REPAIR.11.25` tried to weaken it and was refused by
+                // the control below it. EOF needs every write end of the
+                // browser's stderr closed, so a process that leaves the owned
+                // group and keeps the inherited handle is exactly what stops it
+                // arriving — which is what `a_render_refusal_survives_an_
+                // unconfirmed_cleanup` builds on purpose, with a `setsid`
+                // child. Confirming the ABORT instead would report a confirmed
+                // cleanup while a browser-spawned process is still running.
                 Err(_) => {
                     task.abort();
                     // Consume the cancellation within the same shutdown deadline.
@@ -188,6 +213,7 @@ impl Lifetime {
                 }
             };
         }
+        mark("stderr", &mut spent);
         let cleanup = process_result
             .and(handler_result)
             .and(network_result)
@@ -198,6 +224,15 @@ impl Lifetime {
             "browser_group": browser_pid.map(|pid| pid.as_raw_nonzero().get()),
             "cleanup_confirmed": cleanup.is_ok(), "render_succeeded": success,
             "cleanup_error": cleanup.as_ref().err(),
+            // Cumulative milliseconds from the start of cleanup, per step, and
+            // the budget they were spending. A step whose entry equals the
+            // budget is the one that ran out; a step whose entry equals the
+            // previous one cost nothing and was not the problem.
+            "cleanup_budget_ms": CLEANUP_BUDGET.as_millis(),
+            "cleanup_elapsed_ms": spent
+                .iter()
+                .map(|(step, at)| ((*step).to_owned(), serde_json::json!(at)))
+                .collect::<serde_json::Map<String, serde_json::Value>>(),
         });
         eprintln!("browser completion: {receipt}");
         if success && cleanup.is_ok() {

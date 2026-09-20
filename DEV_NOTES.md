@@ -1,5 +1,67 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — The wait I wanted to shorten was the detector
+
+A browser control had been failing at HEAD on this host, on its cleanup
+assertion rather than on the render. I had already established it was not mine.
+This leaf was to find out why.
+
+**The first move was not a fix, it was a clock.** The receipt said
+`cleanup_confirmed: false` and named the stderr drain, and that is
+unactionable: every step in `finish()` spends the same ten-second budget, so
+the step that reports the failure is whichever one happened to run last. I made
+the receipt say how the budget was spent. That is the only thing this commit
+ships.
+
+With a clock, the picture came fast and killed my own hypothesis. I had assumed
+the kill sequence ahead of the drain was eating the budget. It costs 181 ms.
+The drain had 9.8 seconds free and used all of them.
+
+Then one variable: render duration. A five-second render drains in **0 ms**
+after the group is reaped. A thirty-second render's drain costs **9,728 ms**
+and times out. Widen the budget to two minutes and the same render drains in
+**16,427 ms** — one and a half times the entire allowance — and then finishes
+on its own. It reproduces standalone, so the test harness is not involved.
+
+So: the owned process group dies in under 200 ms, and something keeps the
+browser's stderr open for another sixteen seconds.
+
+**And here is where I went wrong, usefully.** `cleanup_confirmed` is defined in
+this very crate as *no owned browser process or task is known to outlive this
+worker*. I reasoned: for a *task*, what decides that is whether its cancellation
+landed — and the superseded code aborts the drain and then "consumes the
+cancellation" against a deadline that has already expired, so it never observes
+it. Fix that, report the lost diagnostics as their own field, done. The
+real-browser suite went to 18 out of 18. It felt like the right answer and it
+had green to back it.
+
+Then `a_render_refusal_survives_an_unconfirmed_cleanup` failed, and reading it
+ended the leaf. It builds an escaped writer **deliberately**: a forked child
+that leaves the process group with `setsid` and holds the inherited stderr. It
+asserts precisely the thing I had just taught the worker not to say. The drain
+is not a delay someone forgot to bound — **it is how the worker detects a
+process that escaped its group**, and my change silenced the detector on the
+exact case it exists for.
+
+The acceptance I wrote when opening this leaf said: *if the answer is that the
+control over-asserts, the weaker assertion must still fail on a browser that
+never cleans up.* Mine did not. That clause was written before I knew any of
+this, and it is the only reason a green 18/18 did not ship.
+
+⭐ The generalisable bit, which I am not promoting on one instance: **a timeout
+that looks like impatience may be an observation.** The tell is that removing
+it makes something pass, and passing was the goal. That is exactly when to go
+looking for the control that exists to fail.
+
+⚠️ What I did not do is name the holder. A `chrome_crashpad_handler` is alive
+after the worker exits, which is the obvious suspect and a well-known
+long-lived Chrome subprocess. But I did not observe it holding the file
+descriptor, and a process-table sample taken during cleanup matched no Chrome
+process at all — which either means my sampling is wrong or the obvious suspect
+is not there. Two of my hypotheses died in this leaf already; writing down a
+third as a finding would be pushing my luck. It is `.11.25.1`, and its
+acceptance requires naming the holder from the FD, not from a process list.
+
 ## 2026-09-20 — My instrument had the defect I was using it to look for
 
 The code in this leaf was the easy part: the R3 render now writes a snapshot of

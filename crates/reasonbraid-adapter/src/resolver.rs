@@ -4,10 +4,42 @@
 //! (`reasonbraid-server/src/resolvers.rs`) is the consumer; this crate is
 //! the SDK home third parties depend on.
 //!
-//! The acquisition-execution trait (the `.4.4` load side) is the named
-//! follow-on: today the built-in packs execute through the server's own
-//! receipt path, and a third-party resolver contributes its ADVERTISE
-//! only — the execution surface opens with the signed-load machinery.
+//! # There is no in-process acquisition trait, and there will not be one
+//!
+//! ⛔ **A third-party resolver contributes an ADVERTISE and an out-of-process
+//! WORKER. It does not implement a Rust trait that this process calls.**
+//! Decided at `SIGNOFF-REPAIR.11.24.1.5`
+//! (`docs/decisions/2026-09-20_resolution-is-not-third-party-implementable-in-process.md`),
+//! replacing a deferral this header used to carry: it promised the execution
+//! surface as *the named `.4.4` follow-on*, and `PHASE-8.4.4` closed having
+//! delivered the ADR-027 allowlist ladder instead. A promise pointing at a
+//! finished leaf is a promise nobody owns.
+//!
+//! ⭐ **The reason is ADR-018's own vocabulary, not a scheduling preference.**
+//! [`ResolverAdvertise::sandbox_level`] states what the resolver's CODE
+//! provides (`SIGNOFF-REPAIR.7.3.6.1`), and the server's resolution filters on
+//! it: a caller may require a floor, and a pack offering less isolation is
+//! ineligible. Code that runs inside the server process provides `none` — there
+//! is no arrangement under which it provides more. So an in-process trait would
+//! let a third-party pack advertise `constrained_process` or `vm_container`
+//! while structurally being `none`, and the filter would admit it on the claim.
+//! That is worse than an absent surface: it turns the one field the registry
+//! actually consults into a field it cannot back.
+//!
+//! ⭐ **The execution surface already exists and it is a child process.** The
+//! two built-in packs that need isolation — R2 extract and R3 browser — run as
+//! separate binaries over a JSON wire protocol and advertise `process`; the
+//! four that run in the server process advertise `none`. ADR-027's five-rung
+//! load ladder (allowlist → digest → signature → API compatibility → capability
+//! manifest) verifies exactly that artefact, a signed binary, and none of its
+//! rungs has a meaning for a trait implementation compiled into the server.
+//!
+//! ⚠️ **What a third party may implement today, stated so the boundary is not
+//! inferred from an absence:** [`ResolverAdvertise`] — the declarative row —
+//! plus a worker binary. ⛔ What is NOT yet published as a stable SDK surface is
+//! the worker wire protocol itself; `reasonbraid-server`'s `extraction` and
+//! `browse` modules own those shapes, and promoting one is a separate decision
+//! with its own compatibility obligations.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

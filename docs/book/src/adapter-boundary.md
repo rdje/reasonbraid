@@ -177,6 +177,61 @@ conformance half is mechanical, this half is the human gate over the live runs:
 - [ ] The dependency ledger records the CLI version qualified (its
   revalidation trigger rides provider releases).
 
+## The other boundary in the same SDK: resolvers
+
+`reasonbraid-adapter` publishes two third-party surfaces, and they are **not the
+same shape**. A HARNESS is implemented in process, by writing a Rust type that
+implements the `Adapter` trait above. A RESOLVER is not.
+
+| | Harness | Resolver |
+| --- | --- | --- |
+| What a third party writes | a Rust type implementing `Adapter` | a `ResolverAdvertise` row **and a worker binary** |
+| Where the code runs | inside the node process | in its own process |
+| In-process trait | `Adapter` | **none, by decision** |
+| How it is verified | the conformance harness + qualification evidence | ADR-027's five-rung load ladder over the signed binary |
+
+### Why there is no acquisition trait
+
+A resolver advertises an ADR-018 `sandbox_level`, and that field states **what
+the resolver's code provides** — not what the operator is expected to arrange
+around it. The server's resolution filters on it: a reference may require a
+floor, and a pack offering less isolation is ineligible for it.
+
+Code that runs inside the server process provides `none`. There is no
+arrangement under which it provides more. So an in-process acquisition trait
+would let a third-party pack advertise `constrained_process` or `vm_container`
+while structurally being `none`, and the filter would admit it on the strength of
+the claim. That is worse than an absent surface: it turns the one advertised
+field the registry actually consults into a field it cannot back.
+
+The isolation that the ladder describes is a **process** boundary, so the
+execution surface is a process. Two of the six built-in packs already work this
+way, and their advertised levels track it exactly:
+
+| Pack | Runs as | `sandbox_level` |
+| --- | --- | --- |
+| `r0-https-fetcher` | the server process | `none` |
+| `r1-git-fetcher` | the server process | `none` |
+| `r2-extract-worker` | a child process per extraction | `process` |
+| `r3-browser-worker` | a child process per render | `process` |
+| `r5-credential-broker` | the server process | `none` |
+| `rx-agent-mediated` | the server process (the acquisition is the node's) | `none` |
+
+ADR-027's load ladder — allowlist, digest, signature, API compatibility,
+capability manifest — verifies exactly that artefact: a signed binary. None of
+its five rungs has a meaning for a trait implementation compiled into the server.
+
+### What a third party can build today, and what is still missing
+
+**Today:** the `ResolverAdvertise` row, which the capability registry consumes,
+filters and ranks. That surface is stable and lives in the SDK crate.
+
+⚠️ **Not yet:** the worker wire protocol is **not** published as a stable SDK
+surface. The `extraction` and `browse` modules inside `reasonbraid-server` own
+those request/response shapes, and promoting one of them into the SDK is a
+separate decision with its own compatibility obligations. Said plainly so the
+gap is a stated limit rather than something inferred from an absence.
+
 ## Honest limits
 
 - The fake is the deterministic oracle; the Codex and Claude adapters are the

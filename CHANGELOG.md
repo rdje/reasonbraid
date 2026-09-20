@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-20 — Resolution is not third-party-implementable in process, and the SDK's front door never mentioned resolvers at all (`SIGNOFF-REPAIR.11.24.1.5`)
+
+`REASONBRAID-DOC-0082`. A decision leaf: the resolver SDK's missing acquisition trait, adjudicated and recorded.
+
+- 🔴 **The deferral pointed at a leaf that closed without owning it.** `PHASE-8.4.1`'s goal reads *the acquisition trait rides the `.4.4` load side*; `PHASE-8.4.4` is `done` and delivered ADR-027's allowlist ladder, closing with a deferral of its own. ⛔ **And it was not only in the task tree — the promise sat in `crates/reasonbraid-adapter/src/resolver.rs`'s module header, readable by any third party, the whole time.**
+- ✅ **DECIDED: there is no in-process acquisition trait and there will not be one.** A third-party resolver contributes a `ResolverAdvertise` row and an out-of-process worker binary.
+- ⭐ **The reason is ADR-018's own vocabulary, not scheduling.** `sandbox_level` states what the resolver's CODE provides — the reading `.7.3.6.1` established by repairing R3's false `vm_container` — and `resolvers::resolve` filters on it as a floor. In-process code provides `none`, so an in-process trait would let a third-party pack advertise `constrained_process` or `vm_container` while structurally being `none`, and the registry would admit it on the claim. ⛔ **Worse than an absent surface**: the other four policy fields are already consumed by nothing, so spending one of the two that are consulted would leave the advertise contract decorative.
+- ⭐ **The execution surface already exists and it is a child process, measured rather than asserted.** The only production spawns on any resolver execution path are `browse.rs:161` and `extraction.rs:242` — exactly the two packs declaring `process`. The other four run in the server process and declare `none`. ⚠️ `git.rs`'s two hits are test-only, checked against the `#[cfg(test)]` boundary by line rather than assumed. ADR-027's five rungs each describe a signed BINARY; none has a meaning for a trait compiled into the server.
+- 🔎 **The leaf's premise was the smaller half of the finding.** It opened as *the SDK advertises half a surface and nothing says so*. Something did say so — a stale something. What nothing said anywhere is that the resolver surface EXISTS: `lib.rs` declares `pub mod resolver;` while its crate-root documentation lists `contract`, `fake`, `fixtures`, `bench` and stops, and `docs/book/src/adapter-boundary.md` contained the word *resolver* **zero** times.
+- ✅ Corrected in all three places a reader reaches: the crate root, the module header, and a new *The other boundary in the same SDK* book section with the harness/resolver comparison and the six-pack execution table.
+- ⚪ **Five broken intra-doc links repaired, two of them on the SDK's own front page** — the crate root linked `contract` and `fake`, which are private modules, so rustdoc dropped both. `cargo doc -p reasonbraid-adapter --no-deps`: **6 warnings → 0**.
+- ⚠️ **NOT decided, and said in the book as a limit:** the worker wire protocol is still not a published SDK surface, so a third party can publish an advertise the registry will rank and cannot yet write a worker against a pinned contract.
+- ✅ **VERIFIED:** `reasonbraid-adapter --lib` **14 passed**; strict clippy over the adapter and server crates rc=0; `cargo doc` warning-free; fmt rc=0; `make book` rc=0; the public-API census self-test green (4 predicate cases, 102 items); doctrine gate all green; `handoff: OK`. ⛔ Nothing to falsify — no behaviour changed — stated rather than left as a skipped box.
+
 ## 2026-09-20 — A git snapshot is a reference, because the object database it acquires is not an identity (`SIGNOFF-REPAIR.11.24.1.3.2`)
 
 `REASONBRAID-REPAIR-0325`. R1 now writes the `EvidenceSnapshot` it was owed, in §12.9's second storage class — and the branch was chosen by measurement rather than by taste.

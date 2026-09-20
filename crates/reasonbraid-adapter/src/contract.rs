@@ -103,7 +103,7 @@ pub struct DispatchAck {
 
 /// Events an accepted attempt produces. Chunks are opaque untrusted content (a chunk may
 /// be malformed for the CONSUMER's schema — the adapter must not parse domain meaning);
-/// the terminal events carry the definitive result. [`ProviderRequestId`] surfaces the
+/// the terminal events carry the definitive result. [`AttemptEvent::ProviderRequestId`] surfaces the
 /// provider's request handle when it only becomes known AFTER dispatch (e.g. Codex's
 /// `thread.started` event) — the supervisor attaches it to the attempt as the proof
 /// handle, exactly like an ack-carried id.

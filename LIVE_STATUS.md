@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **RESOLUTION IS NOT THIRD-PARTY-IMPLEMENTABLE IN PROCESS, AND THE SDK'S FRONT DOOR NEVER MENTIONED RESOLVERS AT ALL (`.11.24.1.5`, DOC-0082).**
+
+- 🔴 **`PHASE-8.4.1` deferred the acquisition trait to `.4.4`, and `.4.4` closed having delivered the ADR-027 allowlist ladder instead** — and the promise sat in `resolver.rs`'s module header, readable by any third party, the whole time.
+- ✅ **DECIDED: no in-process acquisition trait, ever.** A third party contributes a `ResolverAdvertise` row and an out-of-process worker binary.
+- ⭐ **ADR-018's own vocabulary decides it**: `sandbox_level` states what the CODE provides (`.7.3.6.1`), the server filters on it as a floor, and in-process code provides `none` — so a trait would let a pack advertise `vm_container` while structurally being `none`. ⛔ Worse than an absent surface: it spends one of only two advertised fields anything consults.
+- ⭐ **The execution surface already IS a child process, measured**: the only production spawns on a resolver path are `browse.rs:161` and `extraction.rs:242`, exactly the two packs declaring `process`; `git.rs`'s two are test-only, checked against the `#[cfg(test)]` boundary.
+- 🔎 **The leaf's premise was the smaller half**: `lib.rs`'s crate doc listed `contract`/`fake`/`fixtures`/`bench` and stopped, and the book's adapter page had **zero** occurrences of *resolver*. Corrected in all three places.
+- ⚪ Five broken intra-doc links repaired, two on the front page; `cargo doc` **6 warnings → 0**.
+- ⚠️ **NOT decided:** the worker wire protocol is still not a published SDK surface — said in the book as a limit.
+
 ✅ **A GIT SNAPSHOT IS A REFERENCE, BECAUSE THE OBJECT DATABASE IT ACQUIRES IS NOT AN IDENTITY (`.11.24.1.3.2`, REPAIR-0325).**
 
 ⭐ R1 now writes the `EvidenceSnapshot` it was owed, and §12.9's two alternatives were branched by MEASUREMENT rather than by taste.

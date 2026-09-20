@@ -1,8 +1,8 @@
 //! The sanitized deterministic outcome corpus (`PHASE-0.4.1`): one fixture per adapter
 //! outcome, consumable by the fake adapter (via [`crate::fake::FixtureSpec`]) and by
 //! the node's supervisor tests. Every fixture is JSON, carries NO credential (enforced
-//! by [`tests::corpus_is_credential_free`] mechanically), and every script step and
-//! outcome class is covered ([`tests::corpus_covers_every_step_and_outcome_class`]).
+//! by `tests::corpus_is_credential_free` mechanically), and every script step and
+//! outcome class is covered (`tests::corpus_covers_every_step_and_outcome_class`).
 //!
 //! A real adapter (`.4.2`) must reproduce these semantics behind the same
 //! [`crate::contract::Adapter`] contract — the corpus is the conformance oracle.

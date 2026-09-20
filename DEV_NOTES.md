@@ -1,5 +1,52 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — A procedure can be fully specified except for the one number that decides everything
+
+The changelog rotation here has a decision record, a chain of notices each
+naming its predecessor, byte-exact retrieval and a losslessness argument. It is
+one of the most carefully specified procedures in the repository. It says
+nothing about how much to retire, and that is the only parameter that decides
+whether the procedure runs again tomorrow.
+
+I performed two rotations and chose, both times, the minimum that cleared the
+threshold: 344 and 296 bytes of headroom. Every rotation before mine left a
+median of 18,741. The first of mine forced the second one commit later. Nothing
+in the record told me I was doing it wrong, because the record had never
+considered the question.
+
+**The measurement had to be taken twice.** The first instrument called a
+rotation a fall in the dated-entry count and reported 43. A minimal rotation
+retires exactly as many records as its own commit adds, so the count does not
+move — meaning the detector was blind to precisely the class under
+investigation, and the two rotations I was trying to measure were the two it
+could not see. Detecting a heading *disappearing* gives 45.
+
+**The target is now derived rather than chosen**: ten commits of runway at the
+p90 entry size over the last sixty non-rotation commits. The point is not the
+number, it is that nobody has to pick one. A typed constant would have been
+right today and wrong in a month, which is the failure this whole file is about.
+
+**And the choice between p90 and median was made on a table, not on taste.**
+Asked of the whole ledger history, the p90 bar fires 64 times and fails to
+predict 1 of 45 rotations; the median bar fires 37 times and misses 13. For a
+rule whose false positive costs one early rotation and whose false negative is
+the defect itself, recall wins. Writing that down is what makes it reviewable.
+
+**One thing is recorded unresolved.** After registering the check, the gate
+stalled about four minutes with the trace inside the new script and essentially
+no CPU consumed. The obvious explanation — concurrent gate runs deadlocking on a
+git index lock — was tested and refuted: no gate check takes one. What remains
+consistent is this machine's recorded behaviour when a freshly written
+executable is first run by path, since the same file ran in a second through an
+explicit interpreter and has been fast since. That is an observation with a
+refuted alternative, not a root cause, and it is written down that way. The
+practical consequence is real: the enforcer invokes checks by path, so the first
+gate run after adding a check script can stall here.
+
+Promotion: **declined** — recorded in the leaf. The blind detector is another
+instance of `an-instruments-zero-describes-its-reach`; the derived target is
+`TOOLBOX.md`'s *derive, never carry*. Both are already in the retrievable layer.
+
 ## 2026-09-20 — Two instruments that disagree are worth more than two that agree
 
 `SIGNOFF-REPAIR.11.4.2.4.1` shipped `POINTER-CURRENCY`, the gate its parent leaf

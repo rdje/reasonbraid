@@ -66,6 +66,7 @@ NEUTRAL=(
   scripts/check_tree_index_frontier.sh
   scripts/check_frontier_status.py
   scripts/check_pointer_currency.py
+  scripts/rotate_changelog.py
   scripts/census_memory_pointer_drift.py
   scripts/check_leaf_id_unique.sh
   scripts/census_goal_receipt_gap.py

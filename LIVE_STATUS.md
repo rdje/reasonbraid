@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE ROTATION AMOUNT WAS NEVER SPECIFIED, SO I GOT IT WRONG TWICE (`.11.4.1.6`, REPAIR-0350).**
+
+- 🔴 **The two rotations earlier today left 344 and 296 bytes of headroom**, against a historical minimum of 705 and a median of 18,741 — and the first forced another rotation on the very next commit. The rotation record specifies identity, retrieval and losslessness, and never said how MUCH to retire.
+- 🔴 **The first instrument could not see either of them**: it detected a rotation as a falling entry count, and a minimal rotation drops as many records as its commit adds. 43 reported, 45 actual, and the two missed were the two under investigation.
+- ⭐ **The target is now DERIVED** — 10 commits of runway × the measured p90 entry — and `scripts/rotate_changelog.py` performs the rotation, refusing to name a predecessor that does not contain every record it retires. Thirty-seventh rotation: 17 retired, 15 kept, **50,499 bytes headroom**, losslessness re-proved independently of the tool.
+- ✅ **`LEDGER-RUNWAY` registered, calibrated over all 661 ledger versions**: fires on 64, misses 1 of 45 rotations; the median bar misses 13. Chosen on that table. **24 checks** now.
+- 🔴 **Its first form cost 8.5 s** — a third of the enforcer — and is now 0.9 s, with both samples diffed rather than assumed equivalent.
+- ⚠️ **An unexplained ~4-minute gate stall is recorded, not smoothed over.** Blocked with ~0 CPU inside the new script; the git-lock explanation was tested and REFUTED; what remains is this host's recorded first-execution behaviour, stated as an observation rather than a cause.
+
 ✅ **THE POINTER-CURRENCY GATE THE DECLINED GENERATOR LEFT OWED (`.11.4.2.4.1`, REPAIR-0349).**
 
 - ⭐ **`POINTER-CURRENCY` ships and WRITES NOTHING**, so the generator's entire risk surface — `next_action` and 222 curated-prose bullets — is untouched by construction rather than by care. `make gate` is now **23 checks**.

@@ -8,7 +8,7 @@
 - Transferable methods: `TOOLBOX.md` and `docs/knowledge/` — consult, do not re-derive.
 
 ## Current state (OVERWRITE this block each update — do not append)
-- latest_commit: `REASONBRAID-REPAIR-0349` (leaf `.11.4.2.4.1`): **`POINTER-CURRENCY` ships** — the resume pointer's `latest_commit` and frontier leaf must name the present. 16 breaches over 646 versions, **0 today**. ⛔ Its message names WHICH copy moved: in 5 of 10 the TREE's row 1 was the stale one.
+- latest_commit: `REASONBRAID-REPAIR-0350` (leaf `.11.4.1.6`): **the changelog rotation AMOUNT was never specified**, so two rotations left 344 and 296 bytes where the historical median is 18,741. Now DERIVED (10 commits × measured p90) and enforced as `LEDGER-RUNWAY`. **24 checks.**
 - active_work_unit: `SIGNOFF-REPAIR` → frontier leaf: `.11.4.2` (`pending`). ⚠️ **DERIVE the push distance, never read it here: `git rev-list --count origin/main..HEAD`.**
 - next_action: `.11.4.2`'s remaining scope — the donor-package review and the document/route utility census (its `MEMORY.md` census is DONE at `.11.4.2.1`, its derivation question SETTLED at `.11.4.2.4`). Then `.11.33`, `.11.31`, `.11.8`, `.11.2.1`.
 - ⚠️ **TWO INSTRUMENT METHODS IN `TOOLBOX.md`, both from this session's six instrument failures**: *a falsification verdict needs a NAME, and a build needs an EXIT STATUS* (`.11.24.1.3.1`); *a probe whose conclusion is an ABSENCE owes a positive control in the same run* (`.11.25.1.1`). This line names them and stops.

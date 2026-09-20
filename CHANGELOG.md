@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-20 — The demonstration read presence without saying who was calling (`SIGNOFF-REPAIR.11.29`)
+
+`REASONBRAID-REPAIR-0318`. The last of the first push's red CI, found by running the broad collection locally rather than one CI iteration at a time.
+
+- 🔴 **Three presence checks failed, and the cause is a binding the demo never followed.** `e8db1a1` (`REPAIR-0261`, `.3.5.5`) bound `GET /v1/nodes/presence` to the caller's tenant. `scripts/demo_two_host.sh` reads it three times with a **bare `curl` and no principal header**, so each returned a refusal instead of the facts and `online`/`suspended` were simply absent. The node-channel suite kept passing because its own reads pass a principal — the demo is the only caller that did not.
+- 🔴 **`rb: command not found`, and it has been damaging the evidence bundle all along.** The summary table writes a cell containing `` `rb node revoke` `` inside a **double-quoted** `echo`, where backticks are command substitution. Bash ran the words as a command, wrote the error to stderr, and substituted **empty output** into `summary.md`. It never failed a check, so nothing caught it; it surfaced only because its stderr landed beside a real failure.
+- ✅ **Fixed:** the three reads carry `x-reasonbraid-principal`, matching the demo's own authenticated fetches; the backticks are escaped so the code span reaches the file instead of the shell.
+- ✅ **VERIFIED on the exact command the `pg-tests` job runs** — `bash scripts/run_pg_tests.sh --demo`: **44 suites passed, 0 failed**, the demonstration reporting **ALL acceptance checks passed**, zero `FAIL:` lines, zero `rb: command not found`, cluster stopped and removed. Falsified by the before/after on that same command: `3 acceptance check(s) FAILED` beforehand, zero after.
+- ⭐ **The pattern across this commit and the two before it is one sentence.** Every defect the first push surfaced was a **consumer a producer's change had left behind** — a locale, two quota rows, a principal binding — and none was visible to a gate that runs in under two hours. Not an argument for per-commit CI; an argument for what `COMMIT.md` already says, that the remote is the authoritative gate.
+
 ## 2026-09-20 — Two enrollment expectations counted quota rows, and the row that moved them was three days old (`SIGNOFF-REPAIR.11.28`)
 
 `REASONBRAID-REPAIR-0317`. The second half of the first push's red CI; a test-only change under `COMMIT.md`'s CI-repair exception.

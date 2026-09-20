@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **THE DEMONSTRATION READ PRESENCE WITHOUT SAYING WHO WAS CALLING (`.11.29`, REPAIR-0318).**
+
+⭐ The last of the first push's red CI — found by running the broad collection LOCALLY rather than one CI iteration at a time.
+
+- 🔴 **Three presence checks failed**: `e8db1a1` (`.3.5.5`) bound `GET /v1/nodes/presence` to the caller's tenant, and the demo reads it three times with a **bare `curl`, no principal header**. The node-channel suite passed because ITS reads send one — the demo is the only caller that did not.
+- 🔴 **`rb: command not found`** — backticks inside a double-quoted `echo` are command substitution, so bash RAN `rb node revoke` and wrote **empty output** into `summary.md`. ⛔ It never failed a check, so nothing caught it; it has been emptying that cell in every evidence bundle for as long as it has existed.
+- ✅ **VERIFIED on the exact command the `pg-tests` job runs** (`run_pg_tests.sh --demo`): **44 suites / 0 failed**, demo **ALL acceptance checks passed**, 0 `FAIL:` lines, 0 `rb: command not found`, cluster stopped and removed. Falsified by the before/after: `3 acceptance check(s) FAILED` beforehand, zero after.
+- ⭐ **The pattern across `.11.27`, `.11.28`, `.11.29`**: every defect the first push surfaced was a CONSUMER a producer's change had left behind — a locale, two quota rows, a principal binding — and none was visible to a gate that runs in under two hours.
+
 🔴 **TWO ENROLLMENT EXPECTATIONS COUNTED QUOTA ROWS, AND THE ROW THAT MOVED THEM WAS THREE DAYS OLD (`.11.28`, REPAIR-0317).**
 
 - 🔴 The first push's `rust` workflow went red on `enrollment_transaction`, two tests down — and it **reproduces locally**, so it is a suite the four cheap pre-push gates do not run. Both failures are `count(*) FROM usage_quotas`: a bootstrap asserted 2 and observed **4**; a two-principal fixture asserted 3 and observed **5**.

@@ -175,10 +175,41 @@ fn assert_one_bootstrap(before: &[Value], after: &[Value]) {
         .zip(after)
         .map(|(before, after)| after.as_array().unwrap().len() - before.as_array().unwrap().len())
         .collect();
+    // ⛔ The `usage_quotas` entry is FOUR and it is derived below rather than
+    // written here (`SIGNOFF-REPAIR.11.28`). It was 2 until
+    // `SIGNOFF-REPAIR.11.14.3.14` gave every tenant two acquisition defaults,
+    // and this array said 2 for three days because a growth COUNT has no
+    // producer — nothing in it names which rows it expects.
     assert_eq!(
         growth,
-        [1, 1, 1, 1, 0, 2, 1, 1, 1],
+        [1, 1, 1, 1, 0, 4, 1, 1, 1],
         "no losing provisional row or guard may survive"
+    );
+    // The four quota rows a bootstrap creates, NAMED: the tenant's invite
+    // ceiling, the two acquisition defaults, and the principal's write
+    // ceiling. A fifth row, or the wrong four, fails here rather than passing
+    // an arithmetic that happens to total four.
+    let quota_scopes = |snapshot: &Value| -> Vec<String> {
+        let mut kinds: Vec<String> = snapshot
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| row["scope_kind"].as_str().unwrap_or_default().to_owned())
+            .collect();
+        kinds.sort();
+        kinds
+    };
+    let mut added = quota_scopes(&after[5]);
+    for kind in quota_scopes(&before[5]) {
+        if let Some(at) = added.iter().position(|existing| *existing == kind) {
+            added.remove(at);
+        }
+    }
+    assert_eq!(
+        added,
+        vec!["destination", "principal", "resolver", "tenant"],
+        "the bootstrap's quota rows are one tenant ceiling, two acquisition defaults \
+         and one principal ceiling"
     );
 }
 

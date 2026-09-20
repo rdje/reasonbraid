@@ -22,6 +22,20 @@ use serde::{Deserialize, Serialize};
 /// The worker's wire response (the success shape).
 #[derive(Debug, Deserialize)]
 pub struct BrowseWorkerResponse {
+    /// The page's OWN bytes — the serialized document the chunks derive from,
+    /// and the artefact the `EvidenceSnapshot` stores
+    /// (`SIGNOFF-REPAIR.11.24.1.3.1`).
+    ///
+    /// ⛔ REQUIRED, with no `#[serde(default)]`, and that is the opposite
+    /// choice from `refused_requests` below — deliberately. An older worker
+    /// that performed no refusals genuinely has none to report, so a default
+    /// is the truth. An older worker that sends no document has not rendered
+    /// nothing; it has rendered something this server cannot record, and
+    /// defaulting to an empty string would store an empty snapshot and call it
+    /// the page. The decode failure is the honest outcome, and the two
+    /// binaries ship together.
+    pub document: String,
+    /// The digest of `document` — the PARENT of every chunk below.
     pub parent_digest: String,
     pub chunks: Vec<BrowseChunk>,
     pub network_log: Vec<NetworkEntry>,

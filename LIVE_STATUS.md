@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **A RENDER IS EVIDENCE, AND ITS WORKER MUST DESCRIBE THE DOCUMENT IT SENT (`.11.24.1.3.1`, REPAIR-0312).**
+
+- 🔴 **The R3 branch built a receipt and persisted NOTHING** — no snapshot, no edge — although §12.6 opens on exactly this artefact. The blocker was structural: `raw_digest` is a foreign key into `snapshot_objects (bytes BYTEA NOT NULL)` and the worker sent no bytes.
+- ✅ **The snapshot is the serialized PAGE**, one edge per chunk parented on it, and `.7.4.2`'s rule taken from the start rather than migrated on later: **a failed snapshot is NOT a successful acquisition.**
+- ⛔ **A worker whose declared `parent_digest` is not its document's is REFUSED** (`render_source_mismatch`) before any snapshot, derivation or receipt — R2's `.7.3.3.3` rule applied to a process describing its OWN output. ⚠️ **Silently re-deriving was refused**: it stores the right bytes and ships a receipt and a snapshot that disagree about one render.
+- ⚠️ **`document` is REQUIRED, not `#[serde(default)]`** — the opposite choice from the field beside it, and deliberately: an older worker with no refusals genuinely has none, while one with no document has not rendered nothing.
+- ⭐ **FALSIFIED FOUR WAYS, every verdict naming the assertion that caught it** (full suite output retained per mutation; `api.rs` restored byte-identical each time). 🔎 **One lands on a guard this leaf did not write**: `snapshots::submit` independently refuses a `raw_digest` that is not the digest of the bytes handed to it — **the snapshot store verifies its own addressing** — which is why a FOURTH mutation exists to isolate the artefact arm.
+- ⚪ The `assert_ne!` arm is **measured redundant** (the equality fires first) and kept with the reason, the `.11.24.1.1.2.1.1.1` precedent.
+- ✅ **VERIFIED:** `profiles` **63/0** (62 at `aa3de88`, both sides). Clippy rc=0; fmt rc=0; book rc=0; gate green. ⚠️ `POSITIONAL-REF` refused the first draft for citing `crates/reasonbraid-server/tests/profiles.rs:12412` without its directory — that filename exists in `src` AND `tests` — and all four citations were rewritten repo-root-relative.
+
 🔴 **THE RENDER'S PARENT WAS ITS OWN DERIVATION, AND AN EMPTY PAGE'S PARENT WAS NOTHING (`.11.24.1.3.1.1`, REPAIR-0311).**
 
 ⭐ Found while scoping the snapshot leaf: there were no rendered bytes to snapshot, because the worker never captured any.

@@ -2508,25 +2508,114 @@ async fn resolve_resource(
                     std::time::Duration::from_secs(120),
                 ) {
                     Ok(response) => {
-                        // ⛔ THIS RENDER WRITES NO `EvidenceSnapshot` AND NO
-                        // DERIVATION EDGE, and it SHOULD write both
-                        // (`SIGNOFF-REPAIR.11.24.1.3`). §12.6 opens on exactly
-                        // this case — *a live Web page or branch can change, so
-                        // deliberation evidence points to an immutable
-                        // `EvidenceSnapshot`* — and the chunks below are its
-                        // *derived text/chunk digests and parent links*
-                        // verbatim. R2 two branches down does precisely that
-                        // with the same shape.
-                        //
-                        // ⛔ It is BLOCKED on one nameable thing rather than
-                        // omitted: `evidence_snapshots.raw_digest` is a foreign
-                        // key into `snapshot_objects`, whose `bytes` column is
-                        // `BYTEA NOT NULL`, and the browser worker returns
-                        // `parent_digest` WITHOUT the rendered bytes. A snapshot
-                        // is unrepresentable until the worker's wire response
-                        // carries them. `.11.24.1.3.1` owns that change; until
-                        // it lands, a rendered page's provenance is held by this
-                        // process and recorded nowhere.
+                        // §12.6's evidence, for the artefact that section opens
+                        // on (`SIGNOFF-REPAIR.11.24.1.3.1`): *a live Web page
+                        // can change, so deliberation evidence points to an
+                        // immutable `EvidenceSnapshot`*. The parent is the
+                        // page's OWN bytes — `.11.24.1.3.1.1` made them exist;
+                        // before it, `parent_digest` digested the chunk derived
+                        // from them and there was nothing here to store.
+                        let document = response.document.as_bytes();
+                        // ⛔ THE WORKER'S CLAIM ABOUT ITS OWN BYTES MUST HOLD.
+                        // R2 refuses a receipt whose `parent_digest` is not the
+                        // digest of the bytes the REQUEST supplied (`.7.3.3.3`);
+                        // here the worker supplies the bytes itself, so the
+                        // comparison is against what it sent. A worker whose
+                        // digest disagrees with its own document is
+                        // malfunctioning, and §12.6's evidence must not be built
+                        // on it — nor may the receipt and the snapshot disagree
+                        // about which bytes were rendered, which is what
+                        // silently re-deriving would have shipped.
+                        let rendered_digest = crate::fetcher::digest_sha256_hex(document);
+                        if rendered_digest != response.parent_digest {
+                            outcome.acquisition_error = Some(crate::resolvers::AcquisitionError {
+                                kind: "render_source_mismatch".to_owned(),
+                                message: format!(
+                                    "the worker declared `{}` for a document whose \
+                                         digest is `{rendered_digest}`",
+                                    response.parent_digest
+                                ),
+                            });
+                            return Ok(Json(outcome));
+                        }
+                        let snapshot = crate::snapshots::submit(
+                            &state.pool,
+                            &crate::snapshots::SnapshotSubmission {
+                                reference_id: resource_id.clone(),
+                                original_locator: reference.original_locator.clone(),
+                                final_locator: reference.original_locator.clone(),
+                                resolver_id: crate::resolvers::R3_RESOLVER_ID.to_owned(),
+                                resolver_version: "0.1.0".to_owned(),
+                                network_class: "public".to_owned(),
+                                auth_class: "none".to_owned(),
+                                // The render's disclosure (§12.6): every request
+                                // the page made, and every one the pack's
+                                // advertised deny-policies refused.
+                                provider_receipt: serde_json::json!({
+                                    "network_log": response.network_log,
+                                    "refused_requests": response.refused_requests,
+                                    "page_title": response.page_title,
+                                    "browser_version": response.browser_version,
+                                }),
+                                immutable_source_version: None,
+                                // Re-derived above from the bytes this process
+                                // holds, and equal to the worker's claim by the
+                                // refusal that precedes this block — so the
+                                // snapshot is addressed by a measurement rather
+                                // than by a claim, and the receipt cannot
+                                // disagree with it.
+                                raw_digest: rendered_digest,
+                                byte_length: document.len() as i64,
+                                media_type: "text/html".to_owned(),
+                                storage_class: "standard".to_owned(),
+                                retention_class: "standard".to_owned(),
+                                extraction_version: None,
+                                quarantine_status: "none".to_owned(),
+                                redactions: serde_json::json!([]),
+                                disclosure_policy: serde_json::json!({}),
+                                license: None,
+                                fresh_until: None,
+                            },
+                            document,
+                            chrono::Utc::now(),
+                            &citer,
+                        )
+                        .await;
+                        // A failed snapshot is NOT a successful acquisition —
+                        // `.7.4.2`'s rule, which the R0 arm had to be migrated
+                        // onto later (`.11.14.3.12`) and which this arm takes
+                        // from the start. The refusal IS the outcome.
+                        let Ok(snapshot) = snapshot.inspect_err(|error| {
+                            crate::log_event!(
+                                "acquisition_evidence_unstored",
+                                "resource_id" => resource_id.clone(),
+                                "reason" => error.to_string(),
+                            );
+                            outcome.acquisition_error = Some(crate::resolvers::AcquisitionError {
+                                kind: "evidence_unstored".to_owned(),
+                                message: error.to_string(),
+                            });
+                        }) else {
+                            return Ok(Json(outcome));
+                        };
+                        // One edge per chunk. The parent is the snapshot this
+                        // render just wrote and cited, so the resolving tenant
+                        // is a citer by construction (`.11.14.3.15`).
+                        for chunk in &response.chunks {
+                            let _ = crate::derivations::submit(
+                                &state.pool,
+                                &crate::derivations::DerivationSubmission {
+                                    parent_snapshot_id: snapshot.snapshot_id.clone(),
+                                    derived_kind: "chunk".to_owned(),
+                                    derived_digest: chunk.digest.clone(),
+                                    content: chunk.text.clone(),
+                                    extraction_version: None,
+                                    source_selector: None,
+                                },
+                                &citer.tenant_id,
+                            )
+                            .await;
+                        }
                         outcome.acquisition = Some(crate::resolvers::Acquisition::Browse(
                             crate::browse::BrowserReceipt {
                                 parent_digest: response.parent_digest,

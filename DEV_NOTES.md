@@ -1,5 +1,62 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — My instrument had the defect I was using it to look for
+
+The code in this leaf was the easy part: the R3 render now writes a snapshot of
+the page's own bytes and one derivation edge per chunk, and a worker whose
+declared digest is not its document's is refused. The interesting part took
+three tries and none of them were in the product.
+
+**The first falsification script decided whether a mutation compiled by looking
+for the string `error` in the output.** A failing test prints that string. So
+all three mutations came back labelled `NOBUILD` when two of them had plainly
+compiled and gone red, and the third had genuinely failed to build because my
+cut removed a variable the code below still used. A signal that cannot
+distinguish the cases it is asked to distinguish — which is, word for word, the
+defect class this tree spends most of its time finding in reviewed code. I
+wrote it into the instrument I was reviewing with.
+
+**The second attempt fixed the build check and still could not name the failing
+test.** It matched lines starting with `test ` that contained `FAILED`, which
+under `--nocapture` is the summary line `test result: FAILED.` and not the test.
+With `--test-threads=1 --nocapture` the per-test line is a bare `FAILED` after
+the test's output; the name appears in the `failures:` block and in the
+`panicked at` line. So I had three RED verdicts and a count of `1 failed`, and
+no evidence that the one was mine. A count is not a name, and I nearly wrote
+"falsified" on it.
+
+**The third run saves every mutation's full suite output to a file.** All three
+name `the_r3_render_persists_the_document_and_one_edge_per_chunk`, at three
+different assertions — which is the result I wanted, and one I could not have
+claimed from the counts.
+
+⭐ **And then the matrix told me something I did not know.** I expected the
+mutation that addresses the snapshot by the chunk's digest to trip the arm
+asserting the snapshot is the document. It never reaches it. `snapshots::submit`
+independently refuses a `raw_digest` that is not the digest of the bytes handed
+to it, so the acquisition fails earlier with `evidence_unstored`. The store
+verifies its own addressing — nothing I wrote, and nothing I knew.
+
+That leaves the artefact arm unproven, because a mutation caught by a different
+guard proves that guard, not this arm. So there is a fourth mutation: store the
+chunk as the artefact, bytes *and* digest together, so the snapshot is
+internally consistent and simply describes the wrong thing. That one lands on
+the artefact arm, and only that one could.
+
+⚪ One more thing the matrix settled rather than my judgement: the control's
+`assert_ne!` saying the parent is not the derivation is measured redundant, because
+the equality above it fires first on every mutation that reaches either. I kept
+it anyway, on the precedent of the clause `.11.24.1.1.2.1.1.1` kept for the same
+reason — a reader of the control should see the distinction stated, not have to
+notice that two digest constants differ.
+
+⚠️ Finally, the doctrine gate refused this leaf twice for citing
+`crates/reasonbraid-server/tests/profiles.rs:12412` without its directory: that
+filename exists under `src` and under `tests`. The second refusal was for
+repeating the bare citation **inside the sentence describing the first
+refusal** — which is exactly what happened at `.13.4.3`, and is now the second
+instance of a gate catching a correction that restates the thing it corrects.
+
 ## 2026-09-20 — I went looking for the bytes and there were none
 
 The plan was small. The previous leaf had established that the browser pack

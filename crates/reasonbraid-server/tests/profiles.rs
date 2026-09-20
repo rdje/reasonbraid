@@ -12173,3 +12173,269 @@ async fn the_workflow_register_capability_still_registers_and_resolves() {
         .await
         .expect("drop the fixture profile");
 }
+
+/// One stub browser worker: a shell script that ignores its request and prints
+/// the response this control needs. Returns its path.
+#[cfg(unix)]
+fn write_browse_stub(
+    name: &str,
+    document: &str,
+    declared_digest: &str,
+    chunk: &str,
+) -> std::path::PathBuf {
+    let response = json!({
+        "document": document,
+        "parent_digest": declared_digest,
+        "chunks": [{
+            "digest": reasonbraid_server::fetcher::digest_sha256_hex(chunk.as_bytes()),
+            "text": chunk,
+        }],
+        "network_log": [{ "url": "http://127.0.0.1/asset.css", "method": "GET" }],
+        "refused_requests": [],
+        "page_title": "Rendered",
+        "browser_version": "stub/1",
+        "worker_version": "stub",
+    })
+    .to_string();
+    let stub = control_scratch(name);
+    std::fs::write(
+        &stub,
+        format!("#!/bin/sh\ncat > /dev/null\ncat <<'RESPONSE'\n{response}\nRESPONSE\n"),
+    )
+    .expect("the stub is written");
+    let mut permissions = std::fs::metadata(&stub)
+        .expect("stub metadata")
+        .permissions();
+    std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o700);
+    std::fs::set_permissions(&stub, permissions).expect("the stub is executable");
+    stub
+}
+
+/// `SIGNOFF-REPAIR.11.24.1.3.1` — the R3 render persists its evidence: the
+/// page's OWN bytes as an `EvidenceSnapshot`, and one `Derivation` edge per
+/// chunk.
+///
+/// 🔴 **THE GAP.** `.11.24.1.3`'s call-site census found that the R3 branch
+/// wrote a receipt and **persisted nothing** — no snapshot, no edge — although
+/// §12.6 opens on exactly this artefact (*a live Web page can change, so
+/// deliberation evidence points to an immutable `EvidenceSnapshot`*) and the
+/// render's chunks are that section's *derived text/chunk digests and parent
+/// links* verbatim. R0, R5 and R2 all persisted; R1 and R3 did not.
+///
+/// The two arms, and why neither alone is the control:
+///
+///   * the **success** arm proves the snapshot carries the DOCUMENT — not the
+///     chunk derived from it — and that each chunk becomes an edge whose
+///     parent is that snapshot;
+///   * the **mismatch** arm proves a worker whose declared `parent_digest`
+///     disagrees with the document it sent persists **nothing**, asserted by
+///     whole-table counts. Without it, a handler that trusted the worker's
+///     claim and stored it as the snapshot's address would pass the first arm.
+#[cfg(unix)]
+#[tokio::test]
+async fn the_r3_render_persists_the_document_and_one_edge_per_chunk() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+
+    const DOCUMENT: &str =
+        "<html><head><title>Rendered</title></head><body><p>the page</p></body></html>";
+    const CHUNK: &str = "the page";
+    let document_digest = reasonbraid_server::fetcher::digest_sha256_hex(DOCUMENT.as_bytes());
+
+    // The R3 pack ships gated; open it and build a state with the gate on.
+    reasonbraid_server::sync_gated_entries(&pool, true)
+        .await
+        .expect("open the R3 gate");
+    let (origin, _origin_handle) = start_feed_origin().await;
+    let port = origin.port();
+    let server = TestServer::start_with_router(
+        &pool,
+        reasonbraid_server::api_router_with_acquisition(
+            pool.clone(),
+            true,
+            std::sync::Arc::new(reasonbraid_server::broker::Broker::default()),
+            admitting_fetcher(port),
+        ),
+    )
+    .await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "r3-evidence-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+
+    // `web+render` is what ranks the R3 pack; the locator points at the local
+    // origin so the pre-flight classifies a destination that actually exists.
+    let submit = |locator: String| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        async move {
+            let body: Value = client
+                .post(format!("{base}/v1/resources"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&json!({ "original_locator": locator, "scheme": "web+render" }))
+                .send()
+                .await
+                .expect("submit request")
+                .json()
+                .await
+                .expect("submit json");
+            body["resource_id"]
+                .as_str()
+                .expect("a resource id")
+                .to_owned()
+        }
+    };
+    let resolve = |resource_id: String| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        async move {
+            let body: Value = client
+                .post(format!("{base}/v1/resources/{resource_id}/resolve"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&json!({ "required_sandbox": "process", "required_egress": "listed" }))
+                .send()
+                .await
+                .expect("resolve request")
+                .json()
+                .await
+                .expect("resolve json");
+            body
+        }
+    };
+
+    // ── ARM 1: an honest worker. The page's bytes become the snapshot.
+    let honest = write_browse_stub("r3-honest-worker.sh", DOCUMENT, &document_digest, CHUNK);
+    std::env::set_var("R3_WORKER_BIN", &honest);
+    let reference = submit(format!("http://127.0.0.1:{port}/rendered")).await;
+    let acquired = resolve(reference.clone()).await;
+    std::env::remove_var("R3_WORKER_BIN");
+    assert_eq!(
+        acquired["resolvers"],
+        json!(["r3-browser-worker"]),
+        "the R3 pack is the one that ran: {acquired}"
+    );
+    assert!(
+        acquired["acquisition_error"].is_null(),
+        "the render succeeds: {acquired}"
+    );
+
+    let snapshots: Vec<Value> =
+        sqlx::query_scalar("SELECT to_jsonb(s) FROM evidence_snapshots s WHERE reference_id = $1")
+            .bind(&reference)
+            .fetch_all(&pool)
+            .await
+            .expect("read the snapshots back");
+    assert_eq!(snapshots.len(), 1, "one snapshot: {snapshots:?}");
+    let snapshot = &snapshots[0];
+    assert_eq!(
+        snapshot["raw_digest"],
+        json!(document_digest),
+        "the snapshot is the PAGE's bytes, not the chunk derived from them: {snapshot}"
+    );
+    assert_eq!(
+        snapshot["byte_length"],
+        json!(DOCUMENT.len()),
+        "…and its length is the document's: {snapshot}"
+    );
+    assert_eq!(
+        snapshot["resolver_id"],
+        json!("r3-browser-worker"),
+        "the R3 pack is recorded as the resolver: {snapshot}"
+    );
+    // ⭐ The arm that makes the first one mean something: the snapshot's digest
+    // is NOT the chunk's. A handler that snapshotted the derived text would
+    // satisfy "a snapshot exists" and fail here.
+    assert_ne!(
+        snapshot["raw_digest"],
+        json!(reasonbraid_server::fetcher::digest_sha256_hex(
+            CHUNK.as_bytes()
+        )),
+        "the parent is not the derivation: {snapshot}"
+    );
+    // The stored bytes are the document, byte for byte.
+    let stored: Vec<u8> =
+        sqlx::query_scalar("SELECT bytes FROM snapshot_objects WHERE digest = $1")
+            .bind(&document_digest)
+            .fetch_one(&pool)
+            .await
+            .expect("the document's bytes are stored");
+    assert_eq!(stored, DOCUMENT.as_bytes(), "the page's own bytes are kept");
+
+    let snapshot_id = snapshot["snapshot_id"].as_str().unwrap();
+    let derived: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT derived_kind, derived_digest, content FROM derivations \
+         WHERE parent_snapshot_id = $1",
+    )
+    .bind(snapshot_id)
+    .fetch_all(&pool)
+    .await
+    .expect("read the derivations back");
+    assert_eq!(
+        derived,
+        vec![(
+            "chunk".to_owned(),
+            reasonbraid_server::fetcher::digest_sha256_hex(CHUNK.as_bytes()),
+            CHUNK.to_owned(),
+        )],
+        "one edge per chunk, parented on the render's snapshot"
+    );
+
+    // ── ARM 2: a worker whose declared digest is not its document's.
+    let before: (i64, i64) = (
+        sqlx::query_scalar("SELECT count(*) FROM evidence_snapshots")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        sqlx::query_scalar("SELECT count(*) FROM derivations")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+    );
+    let dishonest = write_browse_stub(
+        "r3-dishonest-worker.sh",
+        DOCUMENT,
+        "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        CHUNK,
+    );
+    std::env::set_var("R3_WORKER_BIN", &dishonest);
+    let mismatched = submit(format!("http://127.0.0.1:{port}/rendered-again")).await;
+    let refused = resolve(mismatched.clone()).await;
+    std::env::remove_var("R3_WORKER_BIN");
+    assert_eq!(
+        refused["acquisition_error"]["kind"],
+        json!("render_source_mismatch"),
+        "a worker that mis-describes its own document is refused: {refused}"
+    );
+    assert!(
+        refused["acquisition"].is_null(),
+        "…and no receipt is produced: {refused}"
+    );
+    // Whole-table counts: a row written under ANY reference is caught, and a
+    // non-null error is not by itself evidence that nothing was persisted.
+    let after: (i64, i64) = (
+        sqlx::query_scalar("SELECT count(*) FROM evidence_snapshots")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        sqlx::query_scalar("SELECT count(*) FROM derivations")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+    );
+    assert_eq!(
+        after, before,
+        "the refusal persists neither snapshot nor derivation"
+    );
+
+    reasonbraid_server::sync_gated_entries(&pool, false)
+        .await
+        .expect("close the R3 gate");
+}

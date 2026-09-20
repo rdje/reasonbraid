@@ -125,6 +125,7 @@ the table above is held.
 | `ref_selector_invalid` | R1 git | the requested ref selector does not parse |
 | `refused` | R1 git | a named acquisition refusal — a submodule or an LFS pointer; the message names it |
 | `render_failed` | browser | the browser request failed |
+| `render_source_mismatch` | browser | the render worker declared a digest that is not the digest of the document it sent — no snapshot, derivation or receipt is written |
 | `render_timed_out` | browser | the render exceeded its time budget |
 | `resolved_commit_missing` | R1 git | the resolved commit is not present after the fetch |
 | `scheme_not_allowed` | R0 fetch · R1 git | the URL scheme is not allowed by the policy |

@@ -526,6 +526,31 @@ The trigger is what makes the refusal safe to act on later: *a reader that must 
 order something by when this changed*. Write it in the decision, so the next person does
 not re-derive the census from scratch.
 
+### A falsification verdict needs a NAME, and a build needs an EXIT STATUS
+
+A mutation run reports two things, and both are easy to get wrong in the same way.
+
+**Did it compile?** Ask the build's exit status. `SIGNOFF-REPAIR.11.24.1.3.1`'s first
+script decided by searching the combined output for `error` — and a failing test prints
+that string, so three mutations were labelled `NOBUILD` when two had compiled and gone
+red and one genuinely had not built. A signal that cannot separate the cases it is asked
+to separate is the defect class this project spends most of its time finding in reviewed
+code; it is just as easy to write into the instrument doing the finding.
+
+**Which test failed?** Read the `failures:` block or the `panicked at` line, and save
+each mutation's whole output to a file. Under `--nocapture --test-threads=1` the
+per-test line is a bare `FAILED` after that test's own output — the name is not on it —
+so a matcher looking for `test … FAILED` finds only the summary `test result: FAILED.`
+and reports a count. **A count is not a name.** `1 failed` out of a suite says a control
+went red; it does not say it was yours, and a falsification claim rests on exactly that.
+
+⭐ And read WHERE it failed, not only that it did. In the same leaf, a mutation expected
+to trip the arm that names it was caught three assertions earlier by a guard the leaf had
+not written — `snapshots::submit` refusing a digest that disagrees with its own bytes. A
+mutation caught by a different guard proves that guard, not the arm; the arm needed a
+fourth mutation that nothing upstream would object to. Without the line number, the
+matrix would have read as complete.
+
 ## This project's toolbox
 
 <!-- Fill this in as your project grows. List each diagnostic tool, what question it

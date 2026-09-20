@@ -2835,9 +2835,9 @@ async fn resolve_resource(
             }
         }
         Some(crate::resolvers::R1_RESOLVER_ID) => {
-            // ⛔ THIS ACQUISITION WRITES NO `EvidenceSnapshot`, and the
-            // disposition is recorded here rather than only in the task tree
-            // (`SIGNOFF-REPAIR.11.24.1.3`).
+            // ⭐ THIS ACQUISITION WRITES AN `EvidenceSnapshot` IN §12.9's SECOND
+            // STORAGE CLASS, and the reason is recorded here rather than only in
+            // the task tree (`SIGNOFF-REPAIR.11.24.1.3` + `.11.24.1.3.2`).
             //
             // ⭐ THE SNAPSHOT IS OWED AND THE AUTOMATIC EDGE IS NOT, and §12.6
             // says which is which rather than leaving it to taste: *a live Web
@@ -2849,30 +2849,55 @@ async fn resolve_resource(
             // derivation invented to fill a graph would be an edge with no
             // transformation behind it.
             //
-            // ⛔ The snapshot is blocked on a STORAGE question, not on effort:
-            // `evidence_snapshots.raw_digest` is a foreign key into
-            // `snapshot_objects`, whose `bytes` column is `BYTEA NOT NULL`, and
-            // R1's product is an on-disk object database addressed by
-            // `odb_path` — not a byte string this process holds. §12.6 lists a
-            // *storage/retention class* among a snapshot's fields for exactly
-            // this reason; the schema carries `storage_class`, every caller
-            // binds the literal `"standard"`, and no predicate reads it, so
-            // there is currently one store and it is inline bytes.
-            // `.11.24.1.3.2` owns that question.
+            // ⛔ AND THE BYTES ARE NOT INLINED, BECAUSE THE MEASUREMENT SAYS
+            // THEY ARE NOT AN IDENTITY. §12.9 permits a snapshot to *remain
+            // addressable … or retain a verifiable external archival
+            // reference*; `git::tests::the_acquired_object_database_is_not_a_
+            // stable_identity` acquires one immutable commit twice across a
+            // server-side repack and gets two different object databases, so the
+            // first alternative would file a second evidence row every time an
+            // upstream forge repacks. The commit id is the stable identity, git
+            // makes it a commitment to the whole tree, and re-acquiring it is
+            // the verification — which is the second alternative exactly.
             match state.git_fetcher.acquire(&reference.original_locator).await {
                 Ok(acquisition) => {
                     let requested_ref = url::Url::parse(&reference.original_locator)
                         .ok()
                         .and_then(|u| u.fragment().map(str::to_owned))
                         .unwrap_or_else(|| "HEAD".to_owned());
-                    outcome.acquisition = Some(crate::resolvers::Acquisition::Git(
-                        crate::git::GitReceipt::from_acquisition(
+                    let receipt = crate::git::GitReceipt::from_acquisition(
+                        &reference.original_locator,
+                        &requested_ref,
+                        &acquisition,
+                        chrono::Utc::now(),
+                    );
+                    // A failed snapshot is NOT a successful acquisition — the
+                    // `.7.4.2` rule the R0 arm had to be migrated onto later
+                    // (`.11.14.3.12`) and which this arm takes from the start.
+                    if let Err(error) = crate::snapshots::submit_external(
+                        &state.pool,
+                        &crate::git::external_snapshot_submission(
+                            &resource_id,
                             &reference.original_locator,
-                            &requested_ref,
-                            &acquisition,
-                            chrono::Utc::now(),
+                            &receipt,
                         ),
-                    ));
+                        chrono::Utc::now(),
+                        &citer,
+                    )
+                    .await
+                    {
+                        crate::log_event!(
+                            "acquisition_evidence_unstored",
+                            "resource_id" => resource_id.clone(),
+                            "reason" => error.to_string(),
+                        );
+                        outcome.acquisition_error = Some(crate::resolvers::AcquisitionError {
+                            kind: "evidence_unstored".to_owned(),
+                            message: error.to_string(),
+                        });
+                        return Ok(Json(outcome));
+                    }
+                    outcome.acquisition = Some(crate::resolvers::Acquisition::Git(receipt));
                 }
                 Err(error) => {
                     outcome.acquisition_error = Some(crate::resolvers::AcquisitionError {

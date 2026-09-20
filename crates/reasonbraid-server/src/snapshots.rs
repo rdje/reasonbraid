@@ -79,6 +79,54 @@ fn default_storage() -> String {
     "standard".to_owned()
 }
 
+/// The storage class whose snapshot holds NO bytes here and carries a
+/// verifiable external archival reference instead (§12.9's second
+/// alternative; `SIGNOFF-REPAIR.11.24.1.3.2`).
+///
+/// ⛔ Spelled once. `migrations/0080`'s CHECK and its partial unique index
+/// both key on this literal, and a second spelling in the writer would pass
+/// the compiler and fail the constraint at runtime.
+pub const EXTERNAL_REFERENCE: &str = "external-reference";
+
+/// The submission for evidence this store does not hold the bytes of
+/// (`SIGNOFF-REPAIR.11.24.1.3.2`).
+///
+/// ⭐ **The class is NOT a field.** `SnapshotSubmission` lets a caller choose
+/// `storage_class`, and letting this one do the same would make it possible to
+/// declare a shape the row's CHECK then refuses — a 500 for what is really a
+/// caller error. Here the surface IS the class, so the two cannot disagree.
+///
+/// ⛔ **`immutable_source_version` is REQUIRED and is not an `Option`.** It is
+/// this class's identity — `(reference_id, immutable_source_version)` is what
+/// `migrations/0080`'s partial unique index replays on, because `raw_digest`,
+/// the inline class's replay key, is `NULL` here and `= NULL` never matches. A
+/// submission that could omit it would be a submission with no identity.
+///
+/// ⚠️ **There is deliberately no `byte_length`.** The row's is `0` for this
+/// class, pinned by the CHECK, and it says *this store holds no bytes* rather
+/// than *the artefact is empty*. The artefact's own measured size belongs in
+/// `provider_receipt`, where §12.6 puts the provider receipts.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ExternalSnapshotSubmission {
+    pub reference_id: String,
+    pub original_locator: String,
+    pub final_locator: String,
+    pub resolver_id: String,
+    pub resolver_version: String,
+    pub network_class: String,
+    pub auth_class: String,
+    /// §12.6's *HTTP/Git/provider receipts* — the record of THIS acquisition,
+    /// including whatever it measured that the identity deliberately excludes.
+    pub provider_receipt: serde_json::Value,
+    /// §12.6's *immutable source version*, and this class's identity.
+    pub immutable_source_version: String,
+    /// §12.9's *verifiable external archival reference*: enough to re-acquire
+    /// the artefact and check that what comes back is the same thing.
+    pub external_reference: serde_json::Value,
+    pub media_type: String,
+    pub retention_class: String,
+}
+
 /// Who cited a snapshot: the tenant whose evidence reads will show the row,
 /// and the actor handle that asked for the acquisition.
 ///
@@ -138,7 +186,15 @@ pub struct StoredSnapshot {
     pub auth_class: String,
     pub provider_receipt: serde_json::Value,
     pub immutable_source_version: Option<String>,
-    pub raw_digest: String,
+    /// `None` for an `external-reference` snapshot, which holds no bytes here
+    /// (`migrations/0080`). A reader that wants the artefact's bytes must
+    /// branch on this rather than assume them — that is the whole point of
+    /// making the column nullable instead of storing a stand-in under it.
+    pub raw_digest: Option<String>,
+    /// The verifiable external archival reference (§12.9's second
+    /// alternative), and `None` for an inline snapshot. The CHECK in
+    /// `migrations/0080` keeps the two mutually exclusive.
+    pub external_reference: Option<serde_json::Value>,
     pub byte_length: i64,
     pub media_type: String,
     pub storage_class: String,
@@ -187,6 +243,21 @@ pub enum SnapshotError {
     /// the refusal an oracle over a `res_…` id. The message says what to do
     /// instead, which is the part a legitimate caller does not already have.
     PinMismatch,
+    /// The reference is PINNED to a byte digest and this acquisition holds no
+    /// bytes (`SIGNOFF-REPAIR.11.24.1.3.2`).
+    ///
+    /// A pin says *these exact bytes, this row*. An `external-reference`
+    /// snapshot can never satisfy it — not because the check is hard, but
+    /// because there is nothing here to compare. Refusing by name beats
+    /// filing a snapshot that quietly escapes the constraint its own
+    /// reference declares.
+    PinnedReferenceHoldsNoBytes,
+    /// The INLINE surface was handed the external class
+    /// (`SIGNOFF-REPAIR.11.24.1.3.2`). `submit` writes bytes under a digest,
+    /// which is exactly the shape `migrations/0080`'s CHECK forbids for that
+    /// class; refusing here turns a constraint violation reported as a store
+    /// fault into the caller error it actually is.
+    StorageClassNotInline,
     /// The store itself failed. A database fault does not prove anything
     /// about the caller's input, and must never be reported as though it did.
     Storage(sqlx::Error),
@@ -197,6 +268,16 @@ impl std::fmt::Display for SnapshotError {
         match self {
             Self::Storage(_) => write!(f, "the evidence store is unavailable"),
             Self::InvalidDigest(reason) => write!(f, "the raw digest is invalid: {reason}"),
+            Self::PinnedReferenceHoldsNoBytes => write!(
+                f,
+                "the reference pins an expected digest and this acquisition is stored by \
+                 external reference — register an unpinned reference for it"
+            ),
+            Self::StorageClassNotInline => write!(
+                f,
+                "`{EXTERNAL_REFERENCE}` is not an inline storage class — a snapshot in it \
+                 holds no bytes and is written through the external surface"
+            ),
             // ⛔ One sentence for two cases — absent, and registered by someone
             // else — because separating them is the oracle
             // (`SIGNOFF-REPAIR.11.14.3.11`).
@@ -251,6 +332,14 @@ pub async fn submit(
     retrieved_at: chrono::DateTime<chrono::Utc>,
     citer: &Citer,
 ) -> Result<SnapshotOutcome, SnapshotError> {
+    // ⛔ The inline surface refuses the external class BY NAME rather than
+    // letting `migrations/0080`'s CHECK reject the row: this function's whole
+    // contract is "bytes, under their digest", which that class forbids, and a
+    // constraint violation would surface as `Storage` — a store fault reported
+    // for what is a caller error (`SIGNOFF-REPAIR.11.24.1.3.2`).
+    if submission.storage_class == EXTERNAL_REFERENCE {
+        return Err(SnapshotError::StorageClassNotInline);
+    }
     if let Some(reason) = submission.digest_error() {
         return Err(SnapshotError::InvalidDigest(reason));
     }
@@ -340,20 +429,9 @@ pub async fn submit(
     if let Some(existing) = existing {
         // The re-fetch policy: the replay refreshes the freshness record
         // (the re-acquisition happened — the bytes are unchanged, the
-        // horizon resets).
-        let _ = sqlx::query(
-            "UPDATE evidence_snapshots SET refreshed_at = now() WHERE snapshot_id = $1",
-        )
-        .bind(&existing)
-        .execute(pool)
-        .await;
-        record_citation(pool, &existing, citer)
-            .await
-            .map_err(SnapshotError::Storage)?;
-        return Ok(SnapshotOutcome {
-            snapshot_id: existing,
-            replay: true,
-        });
+        // horizon resets). Shared with `submit_external` so the two classes
+        // cannot drift into different replay behaviour.
+        return replay(pool, &existing, citer).await;
     }
     sqlx::query(
         "INSERT INTO evidence_snapshots \
@@ -398,6 +476,157 @@ pub async fn submit(
     })
 }
 
+/// Submit a snapshot for evidence this store does NOT hold the bytes of:
+/// §12.9's *verifiable external archival reference* (`SIGNOFF-REPAIR.11.24.1.3.2`).
+///
+/// ⛔ **Why this exists at all, measured rather than assumed.** R1's product is
+/// a git object database on disk, and the obvious repair — inline it, the way
+/// R0, R2, R3 and R5 inline their bytes — is UNSOUND for this artefact class.
+/// `git::tests::the_acquired_object_database_is_not_a_stable_identity` acquires
+/// the SAME immutable commit twice from the same source across a server-side
+/// `git repack` and measures two different object databases: the pack is built
+/// by the REMOTE's packing configuration, which nobody here controls. Keyed on
+/// those bytes, an upstream forge's housekeeping would file a second evidence
+/// snapshot for evidence that did not change.
+///
+/// ⭐ **The identity is `(reference_id, immutable_source_version)`**, enforced
+/// by the partial unique index in `migrations/0080` and not merely by the
+/// SELECT below — two concurrent acquisitions of one commit must not both
+/// insert. For R1 that version is the resolved commit id, which git's own
+/// content addressing makes a commitment to the entire tree; re-acquiring and
+/// comparing it is what makes the reference *verifiable*.
+///
+/// ⛔ **A PINNED reference is refused by name.** §12.1's `expected_digest` says
+/// *these exact bytes*, and this class holds none to compare, so there is no
+/// honest way to satisfy the pin.
+///
+/// The citation is recorded on BOTH outcomes, for the reason `submit` gives.
+pub async fn submit_external(
+    pool: &PgPool,
+    submission: &ExternalSnapshotSubmission,
+    retrieved_at: chrono::DateTime<chrono::Utc>,
+    citer: &Citer,
+) -> Result<SnapshotOutcome, SnapshotError> {
+    // The same three questions `submit` asks, in the same one statement and for
+    // the same reasons: the reference exists, THIS TENANT registered it, and
+    // its pin (if any) is carried back for the check below.
+    let pin: Option<(Option<String>, String)> = sqlx::query_as(
+        "SELECT r.expected_digest, r.original_locator FROM resource_references r \
+         JOIN reference_registrations g \
+           ON g.resource_id = r.resource_id AND g.tenant_id = $2 \
+         WHERE r.resource_id = $1",
+    )
+    .bind(&submission.reference_id)
+    .bind(&citer.tenant_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(SnapshotError::Storage)?;
+    let Some((pin, reference_locator)) = pin else {
+        return Err(SnapshotError::ReferenceMissing);
+    };
+    if submission.original_locator != reference_locator {
+        return Err(SnapshotError::LocatorMismatch {
+            submitted: submission.original_locator.clone(),
+            reference: reference_locator,
+        });
+    }
+    if pin.is_some() {
+        return Err(SnapshotError::PinnedReferenceHoldsNoBytes);
+    }
+    if let Some(existing) = external_identity(pool, submission).await? {
+        return replay(pool, &existing, citer).await;
+    }
+    let snapshot_id = evidence_id("snp");
+    let inserted = sqlx::query(
+        "INSERT INTO evidence_snapshots \
+         (snapshot_id, reference_id, original_locator, final_locator, retrieved_at, \
+          resolver_id, resolver_version, network_class, auth_class, provider_receipt, \
+          immutable_source_version, raw_digest, external_reference, byte_length, media_type, \
+          storage_class, retention_class, extraction_version, quarantine_status, redactions, \
+          disclosure_policy, license, fresh_until) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NULL, $12, 0, $13, \
+                 $14, $15, NULL, 'none', '[]'::jsonb, '{}'::jsonb, NULL, NULL) \
+         ON CONFLICT (reference_id, immutable_source_version) \
+           WHERE storage_class = 'external-reference' DO NOTHING",
+    )
+    .bind(&snapshot_id)
+    .bind(&submission.reference_id)
+    .bind(&submission.original_locator)
+    .bind(&submission.final_locator)
+    .bind(retrieved_at)
+    .bind(&submission.resolver_id)
+    .bind(&submission.resolver_version)
+    .bind(&submission.network_class)
+    .bind(&submission.auth_class)
+    .bind(&submission.provider_receipt)
+    .bind(&submission.immutable_source_version)
+    .bind(&submission.external_reference)
+    .bind(&submission.media_type)
+    .bind(EXTERNAL_REFERENCE)
+    .bind(&submission.retention_class)
+    .execute(pool)
+    .await
+    .map_err(SnapshotError::Storage)?;
+    // ⭐ The race the index closes, handled rather than reported. A concurrent
+    // acquisition of the same commit inserted first; `DO NOTHING` left this one
+    // with no row, and the right answer is the REPLAY it would have taken had
+    // it lost the race a microsecond earlier — not a failure.
+    if inserted.rows_affected() == 0 {
+        let existing = external_identity(pool, submission)
+            .await?
+            .ok_or(SnapshotError::ReferenceMissing)?;
+        return replay(pool, &existing, citer).await;
+    }
+    record_citation(pool, &snapshot_id, citer)
+        .await
+        .map_err(SnapshotError::Storage)?;
+    Ok(SnapshotOutcome {
+        snapshot_id,
+        replay: false,
+    })
+}
+
+/// This class's replay key, in ONE place so the SELECT and the index's
+/// inference clause cannot drift apart.
+async fn external_identity(
+    pool: &PgPool,
+    submission: &ExternalSnapshotSubmission,
+) -> Result<Option<String>, SnapshotError> {
+    sqlx::query_scalar(
+        "SELECT snapshot_id FROM evidence_snapshots \
+         WHERE reference_id = $1 AND storage_class = $2 AND immutable_source_version = $3 \
+         LIMIT 1",
+    )
+    .bind(&submission.reference_id)
+    .bind(EXTERNAL_REFERENCE)
+    .bind(&submission.immutable_source_version)
+    .fetch_optional(pool)
+    .await
+    .map_err(SnapshotError::Storage)
+}
+
+/// The replay both submission surfaces take: the re-acquisition happened, so
+/// the freshness horizon resets and the citation is recorded (the reason
+/// `submit` gives for recording it on a replay applies identically here).
+async fn replay(
+    pool: &PgPool,
+    snapshot_id: &str,
+    citer: &Citer,
+) -> Result<SnapshotOutcome, SnapshotError> {
+    let _ =
+        sqlx::query("UPDATE evidence_snapshots SET refreshed_at = now() WHERE snapshot_id = $1")
+            .bind(snapshot_id)
+            .execute(pool)
+            .await;
+    record_citation(pool, snapshot_id, citer)
+        .await
+        .map_err(SnapshotError::Storage)?;
+    Ok(SnapshotOutcome {
+        snapshot_id: snapshot_id.to_owned(),
+        replay: true,
+    })
+}
+
 /// Record one citation — idempotent, so a re-acquisition by the same tenant
 /// keeps the original time and actor.
 ///
@@ -438,7 +667,8 @@ struct SnapshotRow {
     auth_class: String,
     provider_receipt: serde_json::Value,
     immutable_source_version: Option<String>,
-    raw_digest: String,
+    raw_digest: Option<String>,
+    external_reference: Option<serde_json::Value>,
     byte_length: i64,
     media_type: String,
     storage_class: String,
@@ -469,6 +699,7 @@ impl From<SnapshotRow> for StoredSnapshot {
             provider_receipt: row.provider_receipt,
             immutable_source_version: row.immutable_source_version,
             raw_digest: row.raw_digest,
+            external_reference: row.external_reference,
             byte_length: row.byte_length,
             media_type: row.media_type,
             storage_class: row.storage_class,
@@ -491,8 +722,8 @@ impl From<SnapshotRow> for StoredSnapshot {
 const SNAPSHOT_COLUMNS: &str =
     "snapshot_id, reference_id, original_locator, final_locator, retrieved_at, \
      resolver_id, resolver_version, network_class, auth_class, provider_receipt, \
-     immutable_source_version, raw_digest, byte_length, media_type, storage_class, \
-     retention_class, extraction_version, quarantine_status, redactions, \
+     immutable_source_version, raw_digest, external_reference, byte_length, media_type, \
+     storage_class, retention_class, extraction_version, quarantine_status, redactions, \
      disclosure_policy, deleted_at, deletion_reason, license, fresh_until, refreshed_at";
 
 /// The disclosure predicate (§16.8): a snapshot is readable by a tenant that

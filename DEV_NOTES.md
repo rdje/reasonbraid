@@ -1,5 +1,46 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — The first version of this measurement said the opposite, and the fixture was why
+
+`SIGNOFF-REPAIR.11.24.1.3.2` had one question to settle: when a git acquisition
+becomes an evidence snapshot, does the object database it produces go into the
+store, or does the snapshot record a reference to the repository instead? §12.9
+permits both and says nothing about which.
+
+The hypothesis I formed was that the object database could not be an identity,
+because the pack is built by the remote. So I wrote a probe: acquire the same
+commit twice and compare the digest. It reported **stable**. I made the source
+repository gain an unrelated commit and acquired again — **stable**. I made the
+source `git repack` and acquired again — **stable**.
+
+Three legs, all agreeing, and the hypothesis looked refuted.
+
+**It was the fixture.** The test repository holds four objects: a blob, a nested
+tree, a root tree and a commit. A pack of four objects has no deltas to choose
+between, so `git-upload-pack` has no decision to make and produces the same bytes
+whatever it is configured to do. The probe was measuring a case in which the
+property it was testing for *cannot appear*, and reporting that as evidence.
+
+Rebuilt with 64 similar blobs — enough that delta compression has something to
+find — and with the source's own `pack.window` set to `0` between the two
+acquisitions, it took one run: 6857 bytes against 10071, two different digests,
+one commit that never changed.
+
+⭐ **The three stable legs were kept, and they are not filler.** Without them the
+finding reads as *a repack changes the acquired bytes*, which is false — leg C is
+a repack that changes nothing. With them it reads as what it is: *the bytes follow
+the remote's packing decisions, and a remote with a decision to make will
+sometimes decide differently*. A control that only proves the positive case
+proves something wider than it measured.
+
+⚠️ **The generalisable part is the failure, not the result.** `a-control-that-
+passes-for-an-unrelated-reason` is already in the knowledge layer, and this is
+that note met in a new costume: a probe whose fixture is too small to exhibit the
+behaviour under test returns a negative that looks like a refutation. The trigger
+for promoting it to a note of its own is a third measurement whose first fixture
+could not have falsified anything; recorded here and in the leaf rather than
+promoted on one instance.
+
 ## 2026-09-20 — I found the holder, and then found that the thing it was blamed for does not happen
 
 `SIGNOFF-REPAIR.11.25.1` asked one question: which process holds the R3 browser

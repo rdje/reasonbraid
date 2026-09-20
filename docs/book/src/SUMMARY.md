@@ -10,6 +10,7 @@
 - [The MCP listen gateway](mcp-listen.md)
 - [The adapter boundary](adapter-boundary.md)
 - [Errors and reason codes](errors.md)
+- [Evidence snapshots](evidence.md)
 - [Authority](authority.md)
 - [Agent profiles and portable cards](profiles.md)
 - [Site authority](site-authority.md)

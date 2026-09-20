@@ -5,6 +5,19 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **A GIT SNAPSHOT IS A REFERENCE, BECAUSE THE OBJECT DATABASE IT ACQUIRES IS NOT AN IDENTITY (`.11.24.1.3.2`, REPAIR-0325).**
+
+⭐ R1 now writes the `EvidenceSnapshot` it was owed, and §12.9's two alternatives were branched by MEASUREMENT rather than by taste.
+
+- 🔴 **One immutable commit, two acquisitions across a source-side `pack.window 0` repack: object databases of 6857 and 10071 bytes, two different digests.** `pack.window` is read by `git-upload-pack` on the SOURCE side, so the pack is chosen by a remote nobody here controls — and keyed on those bytes, an upstream forge's housekeeping would file a SECOND evidence snapshot for evidence that did not change.
+- ⭐ **Re-derived with plain `git clone`, no product code in the path**: commit `dcb8b30f…` both times, digests `1deb086c…` and `159101ec…`.
+- ⭐ **Three NEGATIVE legs run first, and leg C is why they are load-bearing** — a repack of a FOUR-object tree is stable, so the first attempt at this measurement reported STABLE and the fixture had to be rebuilt delta-capable. Without A–C the finding reads as *any repack changes the bytes*, which is false.
+- ✅ **`resolved_commit` is the identity and §12.6 already had the column** (*immutable source version where available*); git's object model makes it a commitment to the whole tree, so re-acquiring and comparing it IS §12.9's verification.
+- ⛔ **`storage_class` gained FOUR readers**, two in the database and binding on every future writer: `migrations/0080`'s CHECK, its partial unique index carrying this class's replay key, a named refusal on the inline surface, and the assessment path. `.11.24.1.3` had measured it as read by **no** predicate — shipping a second value nothing consults would have made it a defect.
+- ⛔ **`raw_digest` made NULLABLE rather than filled with a stand-in**, so the branch is structural and the compiler asks. 🔎 **And a consumer defect the change would have created was found and closed in it**: the excerpt check's INNER JOIN would have told a tenant its own cited evidence does not exist.
+- ⚠️ **No general external blob store**, and `PEER-COLLAB.2` did not widen this — its requirements are ungraded, and a store designed for an ungraded caller is a store designed by guess.
+- ✅ **VERIFIED:** `evidence_git_snapshot` **4 passed** (a new suite, registered with the runner and so with CI), `profiles` **63**, `migration_upgrade` **8**, plus `quarantine`/`classification`/`cards`/`site_authority`; `--lib` **133**; clippy, fmt, book, gate all green. Falsified twice. New book page `docs/book/src/evidence.md`.
+
 ✅ **TWENTY-TWO CLAIMS RE-DERIVED: TWENTY-ONE HOLD, ONE MISCOUNTED ITS POPULATION, TWO HAD NO TRACKED PRODUCER (`.13.4.4`, REPAIR-0324).**
 
 ⭐ The director's *ensure your findings hold*, a fourth time — every claim re-derived by a route that did NOT produce it.
@@ -150,7 +163,7 @@ task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 - ✅ **R3 is owed a snapshot AND edges** — the archetype §12.6 opens with, its chunks that section's *derived text/chunk digests and parent links* verbatim, the shape R2 already implements one branch away. Blocked on the worker's wire response → `.11.24.1.3.1`.
 - ✅ **R1 is owed a snapshot and NOT an automatic edge**, and §12.6 answers the leaf's real question by naming the case: *a branch can change* puts the tree in scope as evidence, and *repository analysis is not the original source* makes the repository the PARENT. Nothing analyses the tree, so ⛔ **an edge invented to fill a graph is an edge with nothing behind it.** Blocked on a storage question → `.11.24.1.3.2`.
 - ⚪ **`storage_class` measured**: 10 occurrences over 2 files — a field, the `INSERT` bind, the read-back, and **three call sites all binding the literal `"standard"`** — and **no predicate branches on it**. Recorded as the evidence this rests on and ⛔ deliberately NOT graded a defect (the `accepted_at` arrangement). It establishes one thing: **one storage class behind the label, and it is inline bytes.**
-- ⚠️ **NOT decided here:** any storage design — §12.6 permits *a verifiable external archival reference* as an alternative to remaining addressable — and nothing about whether R0, R5 or R2 are complete.
+- ⚠️ **NOT decided here:** any storage design — §12.6 permits *a verifiable external archival reference* as an alternative to remaining addressable — and nothing about whether R0, R5 or R2 are complete. ✅ **The storage design is now DECIDED by `.11.24.1.3.2` (REPAIR-0325): the external reference, because the odb is not an identity**; `storage_class` is no longer read by no predicate.
 - ✅ **VERIFIED:** both dispositions recorded at their packs' own sites in `api.rs`, as the acceptance required. Clippy rc=0; fmt rc=0; book rc=0; gate green. ⛔ **Nothing to falsify, and that is the honest statement rather than a skipped box** — no behaviour changed; the census was capable of the other answer.
 
 🔴 **A RECEIPT IS EARNED BY AN OFFER, AND THE PROXY IT REPLACES WAS WRONG IN BOTH DIRECTIONS (`.11.24.1.1.1.1`, REPAIR-0309).**

@@ -115,6 +115,18 @@ pub enum AssessmentError {
     /// (`SIGNOFF-REPAIR.11.14.3.8`).
     SnapshotNotCited,
     SnapshotMissing,
+    /// The snapshot exists and this tenant cited it, but this store holds none
+    /// of its bytes — it is an `external-reference` snapshot
+    /// (`SIGNOFF-REPAIR.11.24.1.3.2`, `migrations/0080`).
+    ///
+    /// ⭐ Separate from `SnapshotMissing` on purpose, and it discloses nothing
+    /// extra: the citation gate above has already admitted this caller for this
+    /// snapshot, so the storage class is a fact it is entitled to. What the
+    /// distinction buys is a tenant being told why its excerpt cannot be
+    /// checked instead of being told its own evidence does not exist.
+    SnapshotHoldsNoBytes {
+        storage_class: String,
+    },
     ExcerptAbsent,
     /// The store itself failed. A database fault does not prove anything
     /// about the caller's input, and must never be reported as though it did.
@@ -137,6 +149,11 @@ impl std::fmt::Display for AssessmentError {
                 "the snapshot is not cited by this tenant — assess evidence this tenant acquired"
             ),
             Self::SnapshotMissing => write!(f, "the cited snapshot does not exist"),
+            Self::SnapshotHoldsNoBytes { storage_class } => write!(
+                f,
+                "the cited snapshot is stored as `{storage_class}` and this store holds none \
+                 of its bytes — an excerpt cannot be checked against it"
+            ),
             Self::ExcerptAbsent => write!(
                 f,
                 "the excerpt does not appear in the snapshot's bytes — the citation is refused"
@@ -214,16 +231,26 @@ where
     {
         return Err(AssessmentError::SnapshotNotCited);
     }
-    let bytes: Option<Vec<u8>> = sqlx::query_scalar(
-        "SELECT o.bytes FROM snapshot_objects o \
-         JOIN evidence_snapshots s ON s.raw_digest = o.digest \
+    // ⛔ A LEFT JOIN, AND THE STORAGE CLASS COMES BACK WITH IT
+    // (`SIGNOFF-REPAIR.11.24.1.3.2`). The inner join this replaced could not
+    // tell "no such snapshot" from "a snapshot that holds no bytes here", and
+    // since `migrations/0080` the second case is real: an `external-reference`
+    // snapshot records a verifiable pointer to evidence this store does not
+    // hold. Reporting that as `SnapshotMissing` would tell a tenant its own
+    // cited evidence does not exist.
+    let held: Option<(String, Option<Vec<u8>>)> = sqlx::query_as(
+        "SELECT s.storage_class, o.bytes FROM evidence_snapshots s \
+         LEFT JOIN snapshot_objects o ON o.digest = s.raw_digest \
          WHERE s.snapshot_id = $1",
     )
     .bind(&submission.snapshot_id)
     .fetch_optional(&mut *executor)
     .await
     .map_err(AssessmentError::Storage)?;
-    let bytes = bytes.ok_or(AssessmentError::SnapshotMissing)?;
+    let (storage_class, bytes) = held.ok_or(AssessmentError::SnapshotMissing)?;
+    let Some(bytes) = bytes else {
+        return Err(AssessmentError::SnapshotHoldsNoBytes { storage_class });
+    };
     let excerpt = submission.excerpt.as_bytes();
     if excerpt.is_empty() || !bytes.windows(excerpt.len()).any(|window| window == excerpt) {
         return Err(AssessmentError::ExcerptAbsent);

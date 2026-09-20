@@ -253,9 +253,82 @@ impl GitReceipt {
     }
 }
 
+/// The media type an R1 snapshot records. There are no bytes under it — the
+/// artefact is a repository, and this names what the external reference points
+/// at rather than what this store holds.
+pub const GIT_REPOSITORY_MEDIA_TYPE: &str = "application/x-git-repository";
+
+/// The §12.9 external archival reference for a git acquisition, and the
+/// §12.6 snapshot that carries it (`SIGNOFF-REPAIR.11.24.1.3.2`).
+///
+/// ⛔ **The acquired object database is NOT in the reference, and that is the
+/// whole decision.** `the_acquired_object_database_is_not_a_stable_identity`
+/// measures the same immutable commit producing two different object databases
+/// across a server-side repack, so `GitReceipt::digest` is a receipt of ONE
+/// acquisition's transport encoding and not a property of the evidence. It
+/// rides `provider_receipt` — where §12.6 puts the provider receipts, beside
+/// every other number that acquisition measured — and a verifier that reached
+/// for it as a re-clone check would get a false mismatch.
+///
+/// ⭐ **What IS in the reference is exactly what a verifier needs**: the remote
+/// to re-acquire from, the selector that was asked for, and the commit the
+/// acquisition resolved to. Git's object model makes that commit id a
+/// commitment to the whole tree, so re-acquiring and comparing the id is a
+/// complete check — which is what makes the reference *verifiable* in §12.9's
+/// sense rather than merely a pointer.
+///
+/// This is the seam the two controls share: the identity assertion runs here
+/// against REAL acquisitions (`git.rs`), and the store assertions run against
+/// real PostgreSQL (`tests/evidence_git_snapshot.rs`). Production R1 is
+/// https-only by `harden_git_url`, so no integration test can drive a real
+/// acquisition end to end without weakening an SSRF-relevant allowlist, and
+/// this function is the only thing between the two halves.
+pub fn external_snapshot_submission(
+    reference_id: &str,
+    original_locator: &str,
+    receipt: &GitReceipt,
+) -> crate::snapshots::ExternalSnapshotSubmission {
+    crate::snapshots::ExternalSnapshotSubmission {
+        reference_id: reference_id.to_owned(),
+        original_locator: original_locator.to_owned(),
+        // A git acquisition follows no redirect this pack exposes: the receipt's
+        // chain is the requested URL alone, so the two locators agree.
+        final_locator: original_locator.to_owned(),
+        resolver_id: crate::resolvers::R1_RESOLVER_ID.to_owned(),
+        resolver_version: "0.1.0".to_owned(),
+        network_class: "public".to_owned(),
+        auth_class: "none".to_owned(),
+        provider_receipt: serde_json::json!({
+            "git": receipt,
+            // Said in the record itself, not only in this doc comment: a reader
+            // of the stored row must not mistake the receipt's digest for an
+            // identity the way an inline snapshot's `raw_digest` is one.
+            "digest_note": "`git.digest` is the digest of THIS acquisition's object                             database, which the remote's packing configuration chooses;                             it is not stable across re-acquisition of the same commit                             and is not this snapshot's identity",
+        }),
+        immutable_source_version: receipt.resolved_commit.clone(),
+        external_reference: serde_json::json!({
+            "kind": "git-commit",
+            "remote": receipt.requested_url,
+            "requested_ref": receipt.requested_ref,
+            "resolved_commit": receipt.resolved_commit,
+        }),
+        media_type: GIT_REPOSITORY_MEDIA_TYPE.to_owned(),
+        retention_class: "standard".to_owned(),
+    }
+}
+
 /// The ADR-011 digest over the ACQUIRED odb bytes: every object file
 /// (loose + packed), sorted by path, hashed in order — deterministic for
 /// the same acquisition.
+///
+/// ⛔ **DETERMINISTIC FOR THE SAME ACQUISITION, AND NOT ACROSS TWO OF THEM.**
+/// The object database this hashes is a pack the REMOTE built, so its bytes
+/// follow the remote's packing configuration rather than the commit's content;
+/// `the_acquired_object_database_is_not_a_stable_identity` measures two
+/// different digests for one immutable commit across a server-side repack. The
+/// receipt publishes this value as the record of one acquisition. It is NOT a
+/// re-clone check, and `SIGNOFF-REPAIR.11.24.1.3.2` is where the evidence
+/// snapshot stopped resting on it.
 pub fn git_digest(odb_path: &std::path::Path) -> String {
     use sha2::{Digest, Sha256};
     let mut files: Vec<std::path::PathBuf> = Vec::new();
@@ -2381,5 +2454,219 @@ mod tests {
             1,
             "and it reached the destination exactly once"
         );
+    }
+
+    /// 🔴 **THE ACQUIRED OBJECT DATABASE IS NOT AN IDENTITY FOR THE ACQUIRED
+    /// EVIDENCE** (`SIGNOFF-REPAIR.11.24.1.3.2`). This is the measurement the
+    /// storage decision rests on, kept as a control so the decision cannot
+    /// quietly stop being true.
+    ///
+    /// The claim is narrow and the run proves exactly it: the SAME immutable
+    /// commit, acquired twice from the same source, yields two different
+    /// `git_digest` values once the source repacks — because the pack is built
+    /// by `git-upload-pack` on the REMOTE, from the remote's own packing
+    /// configuration. So an evidence snapshot keyed on those bytes would file a
+    /// second row every time an upstream forge runs housekeeping.
+    ///
+    /// ⭐ **THREE NEGATIVE LEGS RUN FIRST, and they are not filler.** Two
+    /// back-to-back acquisitions, an acquisition after the source gains an
+    /// unrelated commit, and an acquisition after a repack of a FOUR-OBJECT
+    /// tree all produce the same digest. A control that only ran the last leg
+    /// would look like proof and would be proving nothing, because a four-object
+    /// pack has no deltas to vary — the difference appears only when the tree is
+    /// delta-capable AND the remote's packing changes, which is leg D. Keeping
+    /// the negative legs is what stops the positive one being read as "any
+    /// repack changes the bytes".
+    ///
+    /// ⛔ **AND `resolved_commit` IS EQUAL ON EVERY LEG**, which is the other
+    /// half: the instability is in the transport encoding and not in the
+    /// evidence, so the commit id is available as the identity the row uses.
+    #[test]
+    fn the_acquired_object_database_is_not_a_stable_identity() {
+        let tmp = OwnedDirectory::create("git", "odb-identity").expect("the workspace creates");
+        let tmp = tmp.path();
+        let source_dir = tmp.join("source");
+        std::fs::create_dir_all(&source_dir).expect("the source dir creates");
+        let commit = source_repo(&source_dir);
+
+        // POSITIVE CONTROL, in the same run: the digest function itself is
+        // deterministic over one directory, so a difference reported below is a
+        // property of the ACQUISITION and not of the hashing.
+        let first = acquire_local(&source_dir, &GitLimits::default()).expect("the first acquires");
+        let baseline = git_digest(&first.odb_path);
+        assert_eq!(
+            git_digest(&first.odb_path),
+            baseline,
+            "the digest function is deterministic over one directory"
+        );
+
+        // LEG A — the same source, twice, unchanged.
+        let second =
+            acquire_local(&source_dir, &GitLimits::default()).expect("the second acquires");
+        assert_eq!(second.resolved_commit, commit.to_string());
+        assert_eq!(git_digest(&second.odb_path), baseline, "leg A: unchanged");
+
+        // LEG B — the source repository MOVES ON: the acquired commit is the
+        // same object, with a second commit on another ref beside it.
+        let repo = gix::open(source_dir.join(".git")).expect("the source opens");
+        let other_blob = repo
+            .write_blob(b"an unrelated blob")
+            .expect("the blob writes");
+        let other_tree = repo
+            .write_object(&gix::objs::Tree {
+                entries: vec![gix::objs::tree::Entry {
+                    mode: gix::objs::tree::EntryKind::Blob.into(),
+                    oid: other_blob.detach(),
+                    filename: "other.txt".into(),
+                }],
+            })
+            .expect("the other tree writes")
+            .detach();
+        repo.commit_as(
+            fixture_identity(),
+            fixture_identity(),
+            "refs/heads/other",
+            "an unrelated commit",
+            other_tree,
+            gix::commit::NO_PARENT_IDS,
+        )
+        .expect("the other commit writes");
+        let third = acquire_local(&source_dir, &GitLimits::default()).expect("the third acquires");
+        assert_eq!(third.resolved_commit, commit.to_string());
+        assert_eq!(
+            git_digest(&third.odb_path),
+            baseline,
+            "leg B: a sibling ref"
+        );
+
+        // LEG C — the source REPACKS, with four objects and therefore no deltas
+        // to choose between. Unchanged, and that is the point.
+        assert!(
+            git_in(&source_dir, &["repack", "-a", "-d", "-q"]),
+            "the repack runs"
+        );
+        let fourth =
+            acquire_local(&source_dir, &GitLimits::default()).expect("the fourth acquires");
+        assert_eq!(fourth.resolved_commit, commit.to_string());
+        assert_eq!(
+            git_digest(&fourth.odb_path),
+            baseline,
+            "leg C: a tiny repack"
+        );
+
+        // LEG D — a DELTA-CAPABLE tree, and the remote turns delta compression
+        // off between two acquisitions of the SAME commit. `pack.window` is read
+        // by `git-upload-pack` on the source side: this is the remote we do not
+        // control deciding to pack differently.
+        let wide_dir = tmp.join("wide");
+        std::fs::create_dir_all(&wide_dir).expect("the wide dir creates");
+        let wide = init_fixture_repo(&wide_dir);
+        let mut entries = Vec::new();
+        for i in 0..64u32 {
+            let body = format!(
+                "{}line {i}\n{}",
+                "a common prefix repeated many times\n".repeat(40),
+                "a common suffix repeated many times\n".repeat(40),
+            );
+            let oid = wide
+                .write_blob(body.as_bytes())
+                .expect("the wide blob writes");
+            entries.push(gix::objs::tree::Entry {
+                mode: gix::objs::tree::EntryKind::Blob.into(),
+                oid: oid.detach(),
+                filename: format!("f{i:03}.txt").into(),
+            });
+        }
+        entries.sort_by(|a, b| a.filename.cmp(&b.filename));
+        let wide_tree = wide
+            .write_object(&gix::objs::Tree { entries })
+            .expect("the wide tree writes")
+            .detach();
+        let wide_commit = wide
+            .commit_as(
+                fixture_identity(),
+                fixture_identity(),
+                "HEAD",
+                "the wide commit",
+                wide_tree,
+                gix::commit::NO_PARENT_IDS,
+            )
+            .expect("the wide commit writes")
+            .detach();
+        assert!(
+            git_in(&wide_dir, &["repack", "-a", "-d", "-q"]),
+            "the delta repack runs"
+        );
+        let deltas = acquire_local(&wide_dir, &GitLimits::default()).expect("deltas allowed");
+        assert!(
+            git_in(&wide_dir, &["config", "pack.window", "0"]),
+            "the window config writes"
+        );
+        assert!(
+            git_in(&wide_dir, &["config", "pack.depth", "0"]),
+            "the depth config writes"
+        );
+        assert!(
+            git_in(&wide_dir, &["repack", "-a", "-d", "-f", "-q"]),
+            "the flat repack runs"
+        );
+        let flat = acquire_local(&wide_dir, &GitLimits::default()).expect("deltas off");
+
+        assert_eq!(
+            deltas.resolved_commit,
+            wide_commit.to_string(),
+            "leg D: the first acquisition resolved the wide commit"
+        );
+        assert_eq!(
+            flat.resolved_commit, deltas.resolved_commit,
+            "leg D: the SAME immutable commit — the evidence did not change"
+        );
+        assert_ne!(
+            git_digest(&flat.odb_path),
+            git_digest(&deltas.odb_path),
+            "leg D: and the object database DID — so the odb is not an identity"
+        );
+
+        // The submission both acquisitions produce is therefore identical where
+        // it matters, which is what the store keys on.
+        let of = |acquisition: &GitAcquisition| {
+            let receipt = GitReceipt::from_acquisition(
+                "https://git.example.invalid/wide.git",
+                "HEAD",
+                acquisition,
+                chrono::Utc::now(),
+            );
+            external_snapshot_submission(
+                "res_wide",
+                "https://git.example.invalid/wide.git",
+                &receipt,
+            )
+        };
+        let (a, b) = (of(&deltas), of(&flat));
+        assert_eq!(
+            a.immutable_source_version, b.immutable_source_version,
+            "the identity survives the repack"
+        );
+        assert_eq!(
+            a.external_reference, b.external_reference,
+            "and so does the external archival reference"
+        );
+        assert_ne!(
+            a.provider_receipt, b.provider_receipt,
+            "while the provider receipt records the acquisition that differed"
+        );
+    }
+
+    /// Run `git` in a fixture repository; the boolean is the exit status, so a
+    /// caller that asserts on it cannot mistake a failed setup step for a
+    /// measurement (`TOOLBOX.md`: a build needs an exit status).
+    fn git_in(dir: &std::path::Path, args: &[&str]) -> bool {
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .output()
+            .map(|out| out.status.success())
+            .unwrap_or(false)
     }
 }

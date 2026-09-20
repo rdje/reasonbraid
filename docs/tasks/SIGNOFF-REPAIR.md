@@ -3876,7 +3876,7 @@ grep -oE '`[a-z_]+`' docs/decisions/2026-09-16_evidence-is-shared-the-read-is-te
 | browser lifetime controls + pg clusters (already ruled) | 37 | 1,896,248,619 | 99.93 % | 1.34 MB |
 | **`.project-data/browser/run-*` (this clause)** | **48** | **880,130,713** | **99.99 %** | **95,280 B** |
 
-- ⛔ **`scripts/census_retained_fixtures.py` enumerates two populations and this is not one of them**, so `--retire --confirm` reduced 195 fixtures and 10,364,871,724 bytes on 2026-09-20 and left all 880 MB of this one untouched. ⚠️ Every one of the 48 carries a `completion.json`, so they are receipt-bearing fixtures the existing rule — *keep the receipt, drop the reproducible payload* — already covers in principle.
+- ⛔ **`scripts/census_retained_fixtures.py` reduced 195 fixtures and 10,364,871,724 bytes on 2026-09-20 and left all 880 MB of this population untouched.** ⚠️ **THE MECHANISM WAS PUBLISHED WRONG AND IS CORRECTED BY `.13.4.4` (REPAIR-0324).** It is not that the instrument never reaches `.project-data/browser/run-*`: measured against the retirement receipts, **14 workspaces there WERE reduced**, transitively, because a `target/browser-lifetime-controls/case-*` fixture names them in its own receipt. ⭐ The real gap is narrower and sharper — **a workspace with NO owning control fixture is never reached**, which is exactly what a standalone worker run leaves, and therefore what a production R3 acquisition leaves. All 48 of the remaining ones are that kind, and every one still holds its `profile/`. ⚠️ Every one of the 48 carries a `completion.json`, so they are receipt-bearing fixtures the existing rule — *keep the receipt, drop the reproducible payload* — already covers in principle.
 - ⚠️ **NOT a claim that the retention is wrong to happen.** The workspace IS the diagnostic evidence for an unconfirmed cleanup, which `.11.25` and `.11.25.1` both depended on. What is missing is the retirement, and the third population's ratio (99.99 %) says what it would cost to keep the receipts.
 - Verification / commit: pending; the retention half is bounded as `.7.3.4.1` below.
 
@@ -4473,15 +4473,17 @@ EOF
 
 - Opened: `pending` by `REASONBRAID-REPAIR-0323`, which resumed a session and found the layer-A pointer naming a commit four behind `HEAD` (§15: found while using the thing, so it is owned rather than reported).
 - 🔴 **THE OBSERVATION.** `MEMORY.md`'s `latest_commit` read `REASONBRAID-REPAIR-0318` while `HEAD` was `REPAIR-0322`. The five commits before this session — `40ae376`, `24c50d7`, `962134a`, `b5f40b6`, `f41997c` — all skipped the file consecutively; over the last 40 commits it was staged in **31**.
-- ⛔ **AND THE FIRST VERSION OF THIS LEAF WAS WRONG, refused by its own gate.** It claimed *nothing enforces that*, and `GAP-CLAIM-CENSUS` blocked the commit until the claim carried its census. **THE CENSUS — `grep -ln "MEMORY\.md" scripts/check_*.sh scripts/check_*.py scripts/census_*.py .githooks/*` — returns six files**, and they do not say what the claim said:
+- ⛔ **AND THE FIRST VERSION OF THIS LEAF WAS WRONG, refused by its own gate.** It claimed *nothing enforces that*, and `GAP-CLAIM-CENSUS` blocked the commit until the claim carried its census. **THE CENSUS — `git grep -l 'MEMORY\.md' -- scripts/ .githooks/` — returns SEVEN tracked files**, and they do not say what the claim said:
 
 | reader | what it asserts about `MEMORY.md` |
 | --- | --- |
 | `check_memory_architecture.sh` | it EXISTS, and is within the line AND byte caps |
 | `check_lockstep_claim.sh` | it is in `LIVE_DOCS`: a leaf that TICKS a box naming it must stage it |
 | `check_readme_stability.sh` | nothing — it quotes the file as a cautionary example |
+| `bootstrap.sh` | it WRITES the file, seeding it in a fresh clone; it asserts nothing about its currency |
 | `census_memory_warnings.py` · `census_registry_read_reach.py` · `census_shared_registry_writes.py` | nothing — they read it as a corpus member |
 
+- ⚠️ **CORRECTED BY `.13.4.4` (REPAIR-0324): this census first published SIX, and it is SEVEN.** The original was a shell glob over `check_*` and `census_*`, which cannot see `scripts/bootstrap.sh`; `git grep -l` over the tracked tree finds it. ⭐ The conclusion is untouched — `bootstrap.sh` seeds the file and asserts nothing about its currency — but a census claim IS its population, so the number is corrected rather than left standing.
 - ⛔ **THE SHARPER CORRECTION IS THAT THE PROJECT HAS ALREADY ADJUDICATED THIS, AND RULED THE OTHER WAY.** `check_lockstep_claim.sh`'s own header carries the census: over the 25 commits before it was written, 10 closed a leaf, and **`MEMORY.md` was staged in 6 of those 10** — measured then, at the same rate as now. It states why the blanket rule was rejected: *"A blanket 'closing a leaf must stage MEMORY' would have asserted a rule the project does not follow, flagged four pre-existing commits, and still missed `6bf0c40`."*
 - ⭐ **So the predicate I had calibrated — the `commit-msg` hook comparing `latest_commit` to the subject's work-unit id, parseable 60/60, agreeing 28/30 — is a re-proposal of a rejected option, and `docs/CLAIM_VERIFICATION.md` leg 2 decides it: a finding whose shape has already been adjudicated must NAME the difference, and if it cannot, the earlier ruling wins.** I looked for one and could not name it. ⛔ **The rule is withdrawn rather than argued.**
 - ⚠️ **WHAT SURVIVES IS SMALLER AND HONEST.** Under the adjudicated practice — the pointer is updated periodically, not every commit — `latest_commit` naming an older commit is NORMAL. The cost this session actually paid was a **findability** one: layer A could not say what the last four commits did, so it was reconstructed from `git log`. That is the class `scripts/census_memory_warnings.py` already names — *usually a findability cost rather than a loss of fact*.
@@ -9156,6 +9158,43 @@ git grep -nI -E "never run|licen[cs]e decision|license decision" -- \
 - **FALSIFIED** — by the six RED mutations, which is the strongest available form: the control is red whenever the behavior it names is absent, and the two GREEN mutations are explained by a property of the schema rather than waved past.
 - promotion: **declined.** The transferable rule is already `docs/knowledge/a-control-that-passes-for-an-unrelated-reason.md`'s, and what this leaf adds — *a predicate no producible input can isolate is documented, not faked red* — is a sharpening of it rather than a second note. Recorded here and in the control's own header; it goes to the note if a second instance appears.
 - Commit: `REASONBRAID-REPAIR-0306 (leaf SIGNOFF-REPAIR.13.4.3.1): the revocation backfill is witnessed, and six of its nine predicates can be turned red`.
+
+##### SIGNOFF-REPAIR.13.4.4 — Twenty-two claims from this session re-derived: twenty-one hold, one miscounted its own population, and two had no tracked producer
+
+- Opened and closed by the director's *ensure your findings hold*, a fourth time, over `REPAIR-0323` and `DOC-0079`/`0080`/`0081`.
+- Status: `done`; REPAIR-0324.
+- **REPRODUCE (the method, not a re-run):** every claim was re-derived by a route that did **not** produce it — receipts summed instead of a summary line, per-test lines counted instead of a suite total, a control-flow token multiset instead of a diff, `git diff-tree` instead of `git show --stat`, mutants re-cut from the **committed blob** instead of the working copy.
+
+| # | the published claim | the different route | verdict |
+| --- | --- | --- | --- |
+| C1 | 12 pipe holders: 10 in the owned group, 2 outside | recounted from a dense-sample run I did not quote | **holds** |
+| C2 | the 2 are `chrome_crashpad_handler`, `ppid 1`, own group, fd 2 | 22 escapee records across 12 instrument runs | **holds** |
+| C3 | positive control 45 of 46 samples | recounted the raw samples against the stored sentence | **holds** |
+| C5 | 22 runs, drain 0–1 ms, 0 censored, 4 budgets | recounted from the three raw record files | **holds** |
+| C6 | fresh vs cached runtime identical | both arms' records, escapee counts included | **holds** |
+| C7 | real-browser suite 18/0 | counted per-test `ok` lines, not the summary | **holds** |
+| C8 | the diff since `c5d8831` changes no predicate | control-flow token multiset of both revisions | **holds** |
+| C9 | 7 launch flags, 2 handlers every time | ⚠️ **had no tracked producer**; one was built and it re-derives exactly | **holds, leg 3 now closed** |
+| C10 | 5 mutants red, control green | mutants re-cut from the committed blob | **holds** |
+| C11 | escapees outliving the worker 0 of 6 | recounted from the instrument's own records | **holds** |
+| C13–C16 | 9 errors · 8 of 8 stall in `download` · 15,239–15,251 ms · 144–209 ms passing · consecutive | recounted from the raw timing JSONL and the retained log | **holds** (gaps 15.4–16.8 s) |
+| C17 | arm A: 21.314 s, 73 OK, download 144–211 ms | recounted from arm A's own JSONL | **holds**; ⚠️ producer untracked |
+| C19 | `.11.2.7` names the same three modules | read from the tree; my capture hit a subset of them | **holds** |
+| C20 | the stalled `download` runs no network | read from the tracked test source | **holds** |
+| C21 | 195 fixtures, 10,364,871,724 bytes | **summed the 195 individual `retired.json` receipts** | **holds, exactly** |
+| C22 | 48 workspaces, 880,130,713 B, 99.99 %, 95,280 B | re-measured; and each workspace checked against every receipt | **holds** |
+| C23/C24 | rotation lossless; five footer figures | recomputed from the git object the footer names | **holds** |
+| C25 | `MEMORY.md` staged 31 of 40 | ⭐ second route said 29 of 41 and was **wrong**; `git diff-tree` gives 31 of 40 | **holds** |
+| C26 | **six** tracked files read `MEMORY.md` | `git grep -l` over tracked `scripts/` + `.githooks/` | 🔴 **FAILS — it is seven** |
+| C27 | the twin gate's own census: 6 of 10 | quoted verbatim from the tracked script | **holds** |
+
+- 🔴 **THE ONE THAT FAILED, and it is the ordinary shape rather than an exotic one.** `.11.2.9` published *six tracked files read `MEMORY.md`* from a **shell glob** — `scripts/check_*.sh scripts/check_*.py scripts/census_*.py .githooks/*` — which cannot see `scripts/bootstrap.sh`. `git grep -l` over the tracked tree returns **seven**. ⭐ The conclusion is untouched: `bootstrap.sh` *seeds* the file in a fresh clone and asserts nothing about its currency, so *nothing checks that the pointer describes the current commit* still stands. What was wrong is the **population**, and a population is exactly what a census claim is.
+- ⭐ **AND THE AUDIT'S OWN FIRST ANSWER WAS THE WRONG ONE, which is why §4's asymmetry is a rule rather than a courtesy.** My second route reported `MEMORY.md` staged in **29 of 41** against a published **31 of 40** — and the re-derivation was the defect: it split `git log --name-only` on blank lines and produced 41 blocks from 40 commits. A third route settled it at 31 of 40. ⛔ Had I treated the newer instrument as authoritative, I would have "corrected" a true number.
+- 🔴 **A SECOND CORRECTION, to a MECHANISM rather than to a number** (`.7.3.4.1`). I published that the retention instrument *does not enumerate* `.project-data/browser/run-*`. Measured against the receipts: **14 workspaces there WERE reduced**, transitively, because a `target/browser-lifetime-controls/case-*` fixture names them. The gap is narrower and sharper: a workspace with **no owning control fixture** — which is what a production R3 acquisition leaves, and what all **48** of the remaining ones are — is never reached. Every one still holds its `profile/`.
+- ⛔ **LEG 3 AUDIT, because a number whose producer is untracked is a "trust me" with extra steps.** Four producers were untracked: `batch.py`, `probe2.py`, `flagtest2.py`, `provoke.sh`. Two of them backed claims the tracked instrument can already reproduce. **`flagtest2.py` backed a published REFUTATION and nothing could re-run it** — the weakest possible standing for a claim of that kind.
+- **FIX / the decision, taken rather than asked:** the flag survey is now an arm of the tracked instrument (`--flag-survey`), binding *ours* by set difference against a pre-launch snapshot, and it re-derives the published answer exactly — **7 configurations, 2 handlers every time**. ⚠️ **`provoke.sh`'s arm A is NOT given one and the gap is NAMED instead**: it drives a 191 MB download and a full suite run, so its instrument belongs with `.11.26` rather than bolted onto this one at the end of a session. `docs/CLAIM_VERIFICATION.md` §4: a claim with a named gap is usable; a claim with a hidden gap is the defect.
+- **NO REGRESSION** — the instrument's `--self-test` is green with a new two-sided case for the survey's binding, and **six** mutants are red (the five from `REPAIR-0323`, re-cut from the committed blob, plus one that drops the set difference). No production source changed. Doctrine gate all green; `make book` rc=0; `handoff: OK`.
+- promotion: **declined.** *Re-derive by a different route and let the older number win a tie* is `docs/CLAIM_VERIFICATION.md` §3 and §4 verbatim; this session is an instance of the standard, not a new rule. ⚠️ Trigger: a second audit whose own instrument is the thing that fails.
 
 ##### SIGNOFF-REPAIR.13.4.1 — The corpus rule does not reach the retrievable layer, and a promoted note went stale inside one session
 

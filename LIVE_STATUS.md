@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **TWENTY-TWO CLAIMS RE-DERIVED: TWENTY-ONE HOLD, ONE MISCOUNTED ITS POPULATION, TWO HAD NO TRACKED PRODUCER (`.13.4.4`, REPAIR-0324).**
+
+⭐ The director's *ensure your findings hold*, a fourth time — every claim re-derived by a route that did NOT produce it.
+
+- 🔴 **The one failure**: `.11.2.9` published **six** tracked readers of `MEMORY.md` from a shell glob; `git grep -l` over the tracked tree returns **seven** (`bootstrap.sh`). Conclusion untouched — but a census claim IS its population.
+- ⭐ **The audit's own first answer was wrong**: my second route said `MEMORY.md` staged 29 of 41 against a published 31 of 40, and the RE-DERIVATION was the defect (41 blocks from 40 commits). A third route: **31 of 40**. The auditor's asymmetry, paying for itself.
+- 🔴 **A mechanism correction**: `.7.3.4.1` said the retention instrument does not enumerate `.project-data/browser/run-*`. Measured: **14 WERE reduced**, transitively via their control fixture. The real gap is a workspace with **no owning fixture** — which is what a production R3 acquisition leaves, and what all 48 remaining ones are.
+- ⛔ **Leg 3**: four untracked producers; one backed a published REFUTATION. The flag survey is now a tracked arm (`--flag-survey`) and re-derives **7 configurations, 2 handlers** exactly. The provocation arm's gap is NAMED, not papered over.
+- ✅ Self-test green with a new two-sided case; **6 mutants red**; no production source changed.
+
 🔴 **THE RESUME POINTER AGED FOUR COMMITS, AND THE GATE I WAS GOING TO PROPOSE WAS ALREADY REJECTED (`.11.2.9`, DOC-0081).**
 
 - 🔴 `MEMORY.md`'s `latest_commit` read `REPAIR-0318` while `HEAD` was `REPAIR-0322` — **four commits stale**, found by a fresh session resuming from it. Staged in **31 of the last 40** commits.

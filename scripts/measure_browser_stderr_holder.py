@@ -174,6 +174,22 @@ def classify(holders: list[dict], owned_group: str) -> dict:
     }
 
 
+def ours_only(before: dict[str, dict], after: dict[str, dict], needle: str) -> dict[str, dict]:
+    """The processes THIS launch added, by set difference against a pre-launch snapshot.
+
+    ⛔ A count taken after a launch is not a count of that launch's children: this
+    host runs other browsers, and an earlier run of this very instrument leaves
+    its own. Binding by set difference is the same correction the escapee survival
+    check needed — a count that is not bound to its subject answers a question
+    nobody asked (`SIGNOFF-REPAIR.11.25.1`).
+    """
+    return {
+        pid: row
+        for pid, row in after.items()
+        if pid not in before and needle in row.get("comm", "")
+    }
+
+
 # ── the live measurement ──────────────────────────────────────────────────────
 
 
@@ -353,6 +369,52 @@ def measure(root: str, render_secs: int, interval: float) -> dict:
     }
 
 
+def flag_survey(binary: str, seconds: float) -> list[dict]:
+    """Does any documented launch flag stop Chrome spawning the ESCAPING handler?
+
+    The published answer — seven configurations, two handlers every time — had no
+    tracked producer until this arm existed, which is exactly the leg-3 gap
+    `docs/CLAIM_VERIFICATION.md` names: a refutation nobody can re-run is a
+    "trust me" with extra steps.
+    """
+    import shutil, tempfile  # local: only this arm needs them
+
+    base = ["--headless", "--no-sandbox", "--disable-gpu", "--no-first-run",
+            "--remote-debugging-port=0", "--disable-breakpad"]
+    candidates = [
+        ("(baseline, as the worker launches)", []),
+        ("--disable-crash-reporter", ["--disable-crash-reporter"]),
+        ("--disable-crashpad", ["--disable-crashpad"]),
+        ("--no-crashpad", ["--no-crashpad"]),
+        ("--disable-features=Crashpad", ["--disable-features=Crashpad"]),
+        ("--crash-dumps-dir=/dev/null", ["--crash-dumps-dir=/dev/null"]),
+        ("--noerrdialogs --disable-logging", ["--noerrdialogs", "--disable-logging"]),
+    ]
+    root = repository_root()
+    results = []
+    for name, extra in candidates:
+        # Repository-derived, exclusively created, removed by this function (§13).
+        workspace = tempfile.mkdtemp(prefix="flag-", dir=os.path.join(root, "target"))
+        before = ps_table()
+        child = subprocess.Popen(
+            [binary] + base + extra
+            + [f"--user-data-dir={workspace}/profile", f"--disk-cache-dir={workspace}/cache",
+               "about:blank"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(seconds)
+        ours = ours_only(before, ps_table(), "chrome_crashpad_handler")
+        alive = child.poll() is None
+        child.kill(); child.wait()
+        time.sleep(1.0)
+        shutil.rmtree(workspace, ignore_errors=True)
+        results.append({"configuration": name, "browser_alive": alive,
+                        "our_crashpad_handlers": len(ours),
+                        "their_own_groups": sorted({r["pgid"] for r in ours.values()})})
+        print(f'{name:<36} browser_alive={str(alive):<5} '
+              f'our_crashpad_handlers={len(ours)}')
+    return results
+
+
 # ── the two-sided self-test ───────────────────────────────────────────────────
 
 # ⛔ The worker's FIRST pipe in this fixture is its own stderr back to the
@@ -430,6 +492,21 @@ def self_test() -> int:
             f"{renderer and renderer['binary']!r}"
         )
 
+    # ⛔ THE FLAG SURVEY'S OWN BINDING, driven here rather than against a browser:
+    # a process present BEFORE the launch is never ours, however it is named, and a
+    # process added by the launch is ours only if it is the handler we asked about.
+    before = {"10": {"pgid": "10", "comm": "chrome_crashpad_handler"},
+              "11": {"pgid": "11", "comm": "/usr/bin/other"}}
+    after = dict(before)
+    after["12"] = {"pgid": "12", "comm": "/r/Helpers/chrome_crashpad_handler"}
+    after["13"] = {"pgid": "13", "comm": "/r/Google Chrome for Testing"}
+    ours = ours_only(before, after, "chrome_crashpad_handler")
+    if sorted(ours) != ["12"]:
+        failures.append(
+            "the flag survey counted a process it did not start, or missed one it did: "
+            f"{sorted(ours)}"
+        )
+
     # ⛔ THE RED SIDE, which is the whole point of the family this instrument
     # belongs to: given a listing in which the subject is NOT resolvable, the
     # finder must return nothing rather than guess — so a caller reports
@@ -465,12 +542,25 @@ def main() -> int:
         help="repository-relative path for the evidence record",
     )
     parser.add_argument("--runs", type=int, default=1)
+    parser.add_argument("--flag-survey", action="store_true",
+                        help="ask whether any launch flag stops the escaping handler")
     arguments = parser.parse_args()
 
     if arguments.self_test:
         return self_test()
 
     root = repository_root()
+    binary = os.environ.get("R3_BROWSER_BIN", "")
+    if arguments.flag_survey:
+        if not binary:
+            raise SystemExit("set R3_BROWSER_BIN to the pinned browser")
+        survey = flag_survey(binary, 5.0)
+        out = os.path.join(root, arguments.out)
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        with open(out, "w", encoding="utf-8") as handle:
+            json.dump(survey, handle, indent=1)
+        print(f"wrote {arguments.out}")
+        return 0
     records = [
         measure(root, arguments.render_secs, arguments.interval) for _ in range(arguments.runs)
     ]

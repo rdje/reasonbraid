@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-20 — A release identity must be publishable, or the signature is ceremonial (`SIGNOFF-REPAIR.11.24.1.4.1`)
+
+`REASONBRAID-REPAIR-0329`. The re-key recovery from the previous commit had nowhere to end.
+
+- 🔴 **`verify` and `certify verify` both took `--key`, the PRIVATE PKCS8 file, and derived the public key from it; `keygen` exported nothing.** So every verification required the signing key, and **the only party who could verify a release was the party who signed it**. A signature whose verifier must hold the signing key proves nothing to anybody else — what the arrangement caught was accidental corruption, never forgery, because anyone able to run the check was equally able to re-sign.
+- ⚠️ **Stated at its real width:** ADR-027 places the key with the releaser as the explicit dev stance and defers the distribution channel, so no second party was being misled. The defect is that the re-key recovery — which exists for the moment an identity must change hands — had no publishable end state.
+- ✅ **`rb-release-manifest pubkey --key <private> --out <path>`** exports the raw 32-byte Ed25519 key as hex, and **`--public-key`** is the third-party verification path on both verbs. `make release` now exports the identity beside the manifest and the signature.
+- ⛔ **Both inputs together are REFUSED** — they can name different identities, and a pass whose meaning depends on argument order is not a verification. ⭐ `--key` lost its clap `default_value` to make that expressible: the fallback moved into the resolver, so *gave nothing* stays distinguishable from *gave `--key`*, and the releaser's own invocation is unchanged.
+- ⛔ A public key of the wrong length is a **named caller error**, not a signature failure; `pubkey` never overwrites, because a published identity replaced in place is this area's whole failure mode.
+- ⭐ **The control deletes the private key before verifying** — structural rather than inspectional. A `--public-key` path that silently still reached for `release-key.pk8` would be the same defect with a new flag, and no amount of reading the code proves it does not; only a world without that file does. Falsified exactly there: the mutation dies with `read the key release-key.pk8: No such file or directory`.
+- ✅ **VERIFIED:** `cargo test -p reasonbraid-release-tool` → **3 passed** (2 before, measured both sides); strict clippy rc=0; fmt rc=0; `make book` rc=0; doctrine gate all green; `handoff: OK`. Falsified three ways, each caught by its own leg.
+- ⚠️ **Still deferred — the CHANNEL, not the capability.** Publishing the `.pub` file is a manual act with no automated audience. What changed is that there is now something to publish.
+
 ## 2026-09-20 — A relative leaf reference resolves against its own tree, and two dialects disagree about what that means (`SIGNOFF-REPAIR.11.24.1.6`)
 
 `REASONBRAID-REPAIR-0328`. The reference census, the convention, and a ratchet priced before it was registered.

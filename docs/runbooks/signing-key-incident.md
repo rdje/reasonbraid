@@ -67,7 +67,29 @@ rb-release-manifest verify \
   --bin-dir target/release \
   --manifest target/release/release-manifest.json \
   --sig     target/release/release-manifest.json.sig.rekeyed
+
+# 4. PUBLISH the new identity, so somebody who does not hold the signing key
+#    can verify. A new file under a new name: `pubkey` refuses to overwrite,
+#    because a published identity replaced in place is this incident's shape.
+rb-release-manifest pubkey \
+  --key release-key-2.pk8 \
+  --out target/release/release-identity-2.pub
 ```
+
+⭐ **Step 4 is what makes the recovery mean anything to a third party**
+(`SIGNOFF-REPAIR.11.24.1.4.1`). A verifier runs:
+
+```bash
+rb-release-manifest verify \
+  --public-key target/release/release-identity-2.pub \
+  --bin-dir target/release \
+  --manifest target/release/release-manifest.json \
+  --sig     target/release/release-manifest.json.sig.rekeyed
+```
+
+⛔ `--key` and `--public-key` are alternatives; passing both is refused rather
+than silently preferring one, because they can name different identities and a
+pass whose meaning depends on argument order is not a verification.
 
 ⛔ **Do NOT re-run `generate` for this** (`SIGNOFF-REPAIR.11.24.1.4`). It
 rebuilds the manifest from `--bin-dir`, which needs the original binaries still
@@ -91,12 +113,15 @@ nothing. The tool compares against the signature beside the manifest and stops.
 - **The honest dev stance:** the key is a single local file — the protected
   release identity + the hardware-backed key are the ADR-027 named
   deferrals, not invented here.
-- ⚠️ **A stated limit:** `verify` takes `--key`, the PRIVATE key file, and
-  derives the public key from it. There is no public-key-only verification path,
-  so "publish the new identity so others can verify" is not an operation this
-  tool has. That is inside ADR-027's named distribution-channel deferral —
-  nothing is distributed in the dev profile — and it is owned at
-  `SIGNOFF-REPAIR.11.24.1.4.1` rather than left as a surprise here.
+- ✅ **The limit this record carried is discharged** (`SIGNOFF-REPAIR.11.24.1.4.1`):
+  `verify` used to take only `--key`, the PRIVATE key file, so the only party who
+  could check a release was the party who signed it. `pubkey` + `--public-key`
+  is the third-party path, and a control verifies a manifest in a directory
+  containing no private key at all.
+- ⚠️ **What is still deferred is the CHANNEL, not the capability.** ADR-027
+  names the distribution channel, the reproducible builders and the protected
+  identities as deferrals; nothing is distributed in the dev profile, so
+  publishing the `.pub` file is a manual act with no automated audience.
 
 ## Evidence preservation
 
@@ -116,6 +141,9 @@ nothing. The tool compares against the signature beside the manifest and stops.
   `the_manifest_re_signs_under_a_new_identity_and_the_old_one_stops_verifying`,
   which drives this runbook's recovery end to end: the re-key, the untouched
   manifest, the new identity verifying, the old one no longer verifying, and the
-  same-key refusal.
+  same-key refusal — and
+  `a_manifest_verifies_from_the_public_key_alone`, which verifies in a
+  directory holding no private key, so a `--public-key` path that silently
+  reached for one could not pass.
 - The `make release` verify leg (the end-to-end sign → verify) — re-run on
   every release.

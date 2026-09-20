@@ -404,3 +404,196 @@ fn the_manifest_re_signs_under_a_new_identity_and_the_old_one_stops_verifying() 
 
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// 🔴 **A SIGNATURE WHOSE VERIFIER MUST HOLD THE SIGNING KEY PROVES NOTHING TO
+/// ANYBODY ELSE** (`SIGNOFF-REPAIR.11.24.1.4.1`). Until `pubkey` existed,
+/// `verify` derived the public key from the PRIVATE one, so the only party who
+/// could check a release was the party who signed it — and what that actually
+/// caught was accidental corruption, not forgery.
+///
+/// ⭐ **The load-bearing leg is the one that proves the private key is NOT
+/// read**, and it proves it structurally rather than by inspection: the
+/// verification runs in a directory that contains the manifest, the signature,
+/// the binaries and the exported public key, and **no private key at all**. A
+/// `--public-key` path that silently still reached for `release-key.pk8` would
+/// be the same defect with a new flag, and that is exactly what this refuses to
+/// let happen.
+#[test]
+fn a_manifest_verifies_from_the_public_key_alone() {
+    let dir = temp_dir();
+    let signed = dir.join("signed");
+    let published = dir.join("published");
+    std::fs::create_dir_all(&signed).expect("the signing dir");
+    std::fs::create_dir_all(&published).expect("the publishing dir");
+    let bin_dir = published.join("bin");
+    std::fs::create_dir_all(&bin_dir).expect("the bin dir");
+    std::fs::write(bin_dir.join("rb"), b"binary-a-content").expect("write bin");
+
+    let key = signed.join("release-key.pk8");
+    let manifest = published.join("release-manifest.json");
+    let sig = published.join("release-manifest.json.sig");
+    let pubkey = published.join("release-identity.pub");
+
+    assert!(run(&["keygen", "--key", key.to_str().unwrap()])
+        .status
+        .success());
+    let out = run(&[
+        "generate",
+        "--key",
+        key.to_str().unwrap(),
+        "--bin-dir",
+        bin_dir.to_str().unwrap(),
+        "--bin",
+        "rb",
+        "--out",
+        manifest.to_str().unwrap(),
+    ]);
+    assert!(out.status.success(), "the generate: {out:?}");
+
+    // The export, and its shape.
+    let out = run(&[
+        "pubkey",
+        "--key",
+        key.to_str().unwrap(),
+        "--out",
+        pubkey.to_str().unwrap(),
+    ]);
+    assert!(out.status.success(), "the pubkey export: {out:?}");
+    let published_key = std::fs::read_to_string(&pubkey).expect("the public key reads");
+    assert_eq!(
+        published_key.len(),
+        64,
+        "an Ed25519 public key is 32 bytes = 64 hex digits"
+    );
+    assert!(
+        published_key.chars().all(|c| c.is_ascii_hexdigit()),
+        "and it is hex: {published_key}"
+    );
+    // Never overwritten — a published identity replaced in place is the failure.
+    assert!(
+        !run(&[
+            "pubkey",
+            "--key",
+            key.to_str().unwrap(),
+            "--out",
+            pubkey.to_str().unwrap()
+        ])
+        .status
+        .success(),
+        "the export refuses to overwrite"
+    );
+
+    let verify_public = |pub_path: &std::path::Path| {
+        run(&[
+            "verify",
+            "--public-key",
+            pub_path.to_str().unwrap(),
+            "--bin-dir",
+            bin_dir.to_str().unwrap(),
+            "--manifest",
+            manifest.to_str().unwrap(),
+            "--sig",
+            sig.to_str().unwrap(),
+        ])
+    };
+
+    // ⭐ THE LEG THIS TEST EXISTS FOR. Everything the verifier needs is in
+    // `published/`; the private key is in `signed/` and is about to stop
+    // existing entirely, so a verification that still reached for it cannot
+    // pass by accident.
+    std::fs::remove_file(&key).expect("the private key is removed");
+    assert!(!key.exists(), "the verifier's world holds no private key");
+    let out = verify_public(&pubkey);
+    assert!(
+        out.status.success(),
+        "the manifest verifies from the public key alone: {out:?}"
+    );
+
+    // ⛔ THE NEGATIVE SIDE: a DIFFERENT identity's public key refuses. Without
+    // it the leg above passes against a `verify` that checks nothing.
+    let other_key = dir.join("other.pk8");
+    let other_pub = dir.join("other.pub");
+    assert!(run(&["keygen", "--key", other_key.to_str().unwrap()])
+        .status
+        .success());
+    assert!(run(&[
+        "pubkey",
+        "--key",
+        other_key.to_str().unwrap(),
+        "--out",
+        other_pub.to_str().unwrap()
+    ])
+    .status
+    .success());
+    assert!(
+        !verify_public(&other_pub).status.success(),
+        "another identity's public key does not verify this manifest"
+    );
+
+    // ⛔ A public key of the wrong SHAPE is a caller error and is named as one,
+    // rather than travelling into ring and coming back as "does not verify" —
+    // which would blame the signature for a mistyped path.
+    let short = dir.join("short.pub");
+    std::fs::write(&short, b"deadbeef").expect("write the short key");
+    let out = verify_public(&short);
+    assert!(!out.status.success());
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("32"),
+        "the refusal names the expected length: {out:?}"
+    );
+
+    // ⛔ BOTH inputs together are refused rather than silently preferring one:
+    // they can disagree, and a pass whose meaning depends on argument order is
+    // not a verification.
+    let out = run(&[
+        "verify",
+        "--key",
+        other_key.to_str().unwrap(),
+        "--public-key",
+        pubkey.to_str().unwrap(),
+        "--bin-dir",
+        bin_dir.to_str().unwrap(),
+        "--manifest",
+        manifest.to_str().unwrap(),
+        "--sig",
+        sig.to_str().unwrap(),
+    ]);
+    assert!(!out.status.success(), "both inputs together are refused");
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("exactly one"),
+        "and the refusal says what to do: {out:?}"
+    );
+
+    // ⭐ POSITIVE CONTROL for the releaser's own path, which must not have moved:
+    // `--key` alone still verifies, from the OTHER key's directory where a
+    // private key does exist.
+    let resigned = published.join("release-manifest.json.sig.other");
+    assert!(run(&[
+        "re-sign",
+        "--key",
+        other_key.to_str().unwrap(),
+        "--manifest",
+        manifest.to_str().unwrap(),
+        "--sig",
+        resigned.to_str().unwrap(),
+    ])
+    .status
+    .success());
+    let out = run(&[
+        "verify",
+        "--key",
+        other_key.to_str().unwrap(),
+        "--bin-dir",
+        bin_dir.to_str().unwrap(),
+        "--manifest",
+        manifest.to_str().unwrap(),
+        "--sig",
+        resigned.to_str().unwrap(),
+    ]);
+    assert!(
+        out.status.success(),
+        "the private-key path still works: {out:?}"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}

@@ -63,6 +63,27 @@ enum Cmd {
         #[arg(long, default_value = "0.1.0")]
         release_name: String,
     },
+    /// Export the release identity's PUBLIC key, so somebody who does not hold
+    /// the signing key can verify (`SIGNOFF-REPAIR.11.24.1.4.1`).
+    ///
+    /// ⛔ **Until this existed, every verification required the PRIVATE key.**
+    /// `verify` read the PKCS8 file and derived the public key from it, so the
+    /// only party who could check a release was the party who signed it — and a
+    /// signature whose verifier must hold the signing key proves nothing to
+    /// anybody else, which is the property signatures exist for. What that
+    /// arrangement actually caught was accidental corruption, not forgery.
+    ///
+    /// The output is the raw 32-byte Ed25519 public key as hex. It is public by
+    /// definition, so unlike `keygen` it carries no permission tightening — but
+    /// it is still never overwritten, because a published identity being
+    /// silently replaced is the failure this whole area is about.
+    Pubkey {
+        #[arg(long, default_value = "release-key.pk8")]
+        key: PathBuf,
+        /// Where the hex public key is written.
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Re-sign an EXISTING manifest's exact bytes with another identity
     /// (`SIGNOFF-REPAIR.11.24.1.4`) — the signing-key incident's recovery.
     ///
@@ -106,8 +127,16 @@ enum Cmd {
     /// Verify the manifest: the stored digests re-derived against the
     /// binaries AND the signature over the manifest's exact bytes.
     Verify {
-        #[arg(long, default_value = "release-key.pk8")]
-        key: PathBuf,
+        /// The PRIVATE key, from which the public key is derived. Defaults to
+        /// `release-key.pk8` when neither this nor `--public-key` is given, so
+        /// the releaser's own `make release` check is unchanged.
+        #[arg(long)]
+        key: Option<PathBuf>,
+        /// The hex public key from `pubkey` — the third-party path. The private
+        /// key is never read when this is given, and a control proves it by
+        /// verifying in a directory that does not contain one.
+        #[arg(long)]
+        public_key: Option<PathBuf>,
         #[arg(long)]
         bin_dir: PathBuf,
         #[arg(long)]
@@ -138,8 +167,11 @@ enum CertifyCmd {
     /// Verify a certification record: the signature over the record's
     /// exact bytes + the self-digest re-derivation.
     Verify {
-        #[arg(long, default_value = "release-key.pk8")]
-        key: PathBuf,
+        #[arg(long)]
+        key: Option<PathBuf>,
+        /// The hex public key from `pubkey` — the third-party path.
+        #[arg(long)]
+        public_key: Option<PathBuf>,
         #[arg(long)]
         record: PathBuf,
         #[arg(long)]
@@ -172,6 +204,64 @@ fn load_key(path: &std::path::Path) -> Result<ring::signature::Ed25519KeyPair, S
     let der = std::fs::read(path).map_err(|e| format!("read the key {}: {e}", path.display()))?;
     ring::signature::Ed25519KeyPair::from_pkcs8_maybe_unchecked(&der)
         .map_err(|e| format!("the key {} does not parse: {e}", path.display()))
+}
+
+/// The verifying material, resolved from the two mutually exclusive inputs
+/// (`SIGNOFF-REPAIR.11.24.1.4.1`).
+///
+/// ⛔ **Passing both is REFUSED rather than silently preferring one.** They can
+/// disagree — a public key from one identity beside a private key from another
+/// — and a verification that quietly picked a winner would report a pass whose
+/// meaning depends on an argument order nobody wrote down.
+///
+/// ⚠️ **Neither is the releaser's own case and it keeps working**, because
+/// `make release` has always run `verify` with no `--key` at all. The default
+/// is applied HERE rather than on the flag, so "the caller gave nothing" stays
+/// distinguishable from "the caller gave `--key`" — which is what makes the
+/// both-were-given refusal possible at all.
+fn verifying_key(key: &Option<PathBuf>, public_key: &Option<PathBuf>) -> Result<Vec<u8>, String> {
+    match (key, public_key) {
+        (Some(_), Some(_)) => Err(
+            "--key and --public-key are alternatives and disagree when both are given; \
+             pass exactly one"
+                .to_string(),
+        ),
+        (_, Some(path)) => {
+            let text = std::fs::read_to_string(path)
+                .map_err(|e| format!("read the public key {}: {e}", path.display()))?;
+            let bytes = unhex(text.trim())
+                .map_err(|e| format!("the public key {} is not hex: {e}", path.display()))?;
+            // Ed25519 public keys are exactly 32 bytes. A file of the wrong
+            // length is a caller error and is named as one, rather than
+            // travelling into ring to come back as "does not verify" — which
+            // would blame the signature for a mistyped path.
+            if bytes.len() != 32 {
+                return Err(format!(
+                    "the public key {} is {} bytes; an Ed25519 public key is 32",
+                    path.display(),
+                    bytes.len()
+                ));
+            }
+            Ok(bytes)
+        }
+        (chosen, None) => {
+            let path = chosen
+                .clone()
+                .unwrap_or_else(|| PathBuf::from("release-key.pk8"));
+            use ring::signature::KeyPair;
+            Ok(load_key(&path)?.public_key().as_ref().to_vec())
+        }
+    }
+}
+
+fn unhex(text: &str) -> Result<Vec<u8>, String> {
+    if !text.len().is_multiple_of(2) {
+        return Err("an odd number of hex digits".to_string());
+    }
+    (0..text.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&text[i..i + 2], 16).map_err(|e| e.to_string()))
+        .collect()
 }
 
 fn canonical_bytes(manifest: &Manifest) -> Result<Vec<u8>, String> {
@@ -248,6 +338,30 @@ fn main() -> Result<(), String> {
             );
             Ok(())
         }
+        Cmd::Pubkey { key, out } => {
+            use ring::signature::KeyPair;
+            let public = hex(load_key(&key)?.public_key().as_ref());
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&out)
+                .map_err(|e| {
+                    format!(
+                        "the public key {} cannot be created (an existing one is never \
+                         overwritten — a published identity replaced in place is the failure \
+                         this area is about): {e}",
+                        out.display()
+                    )
+                })?;
+            use std::io::Write;
+            file.write_all(public.as_bytes())
+                .map_err(|e| format!("write the public key {}: {e}", out.display()))?;
+            eprintln!(
+                "the release identity's public key is at {} (safe to publish)",
+                out.display()
+            );
+            Ok(())
+        }
         Cmd::Resign { key, manifest, sig } => {
             // ⛔ VERBATIM. The bytes that are signed are the bytes on disk —
             // the whole point of the verb is that the manifest does not change.
@@ -303,6 +417,7 @@ fn main() -> Result<(), String> {
         }
         Cmd::Verify {
             key,
+            public_key,
             bin_dir,
             manifest,
             sig,
@@ -315,17 +430,10 @@ fn main() -> Result<(), String> {
             //    manifest fails here).
             let sig_hex = std::fs::read_to_string(&sig)
                 .map_err(|e| format!("read the signature {}: {e}", sig.display()))?;
-            let sig_bytes: Vec<u8> = (0..sig_hex.trim().len())
-                .step_by(2)
-                .map(|i| {
-                    u8::from_str_radix(&sig_hex.trim()[i..i + 2], 16)
-                        .map_err(|e| format!("the signature is not hex: {e}"))
-                })
-                .collect::<Result<_, _>>()?;
-            let key_pair = load_key(&key)?;
-            use ring::signature::KeyPair;
-            let public = key_pair.public_key();
-            ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, public.as_ref())
+            let sig_bytes =
+                unhex(sig_hex.trim()).map_err(|e| format!("the signature is not hex: {e}"))?;
+            let public = verifying_key(&key, &public_key)?;
+            ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, &public)
                 .verify(&bytes, &sig_bytes)
                 .map_err(|_| "the signature does not verify".to_string())?;
             // 2. The stored digests re-derived against the binaries (a
@@ -383,7 +491,12 @@ fn main() -> Result<(), String> {
                 );
                 Ok(())
             }
-            CertifyCmd::Verify { key, record, sig } => {
+            CertifyCmd::Verify {
+                key,
+                public_key,
+                record,
+                sig,
+            } => {
                 let bytes = std::fs::read(&record)
                     .map_err(|e| format!("read the record {}: {e}", record.display()))?;
                 let report: reasonbraid_adapter::CertificationReport =
@@ -391,17 +504,10 @@ fn main() -> Result<(), String> {
                         .map_err(|e| format!("the record parses: {e}"))?;
                 let sig_hex = std::fs::read_to_string(&sig)
                     .map_err(|e| format!("read the signature {}: {e}", sig.display()))?;
-                let sig_bytes: Vec<u8> = (0..sig_hex.trim().len())
-                    .step_by(2)
-                    .map(|i| {
-                        u8::from_str_radix(&sig_hex.trim()[i..i + 2], 16)
-                            .map_err(|e| format!("the signature is not hex: {e}"))
-                    })
-                    .collect::<Result<_, _>>()?;
-                let key_pair = load_key(&key)?;
-                use ring::signature::KeyPair;
-                let public = key_pair.public_key();
-                ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, public.as_ref())
+                let sig_bytes =
+                    unhex(sig_hex.trim()).map_err(|e| format!("the signature is not hex: {e}"))?;
+                let public = verifying_key(&key, &public_key)?;
+                ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, &public)
                     .verify(&bytes, &sig_bytes)
                     .map_err(|_| "the signature does not verify".to_string())?;
                 if !report.digest_verifies() {

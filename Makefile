@@ -82,6 +82,15 @@ release:
 	$(PROJECT_RUN) ./target/release/rb-release-manifest verify --bin-dir target/release \
 		--manifest target/release/release-manifest.json \
 		--sig target/release/release-manifest.json.sig
+# The identity a verifier needs (`SIGNOFF-REPAIR.11.24.1.4.1`). Until this step
+# existed, `verify` derived the public key from the PRIVATE one, so the only
+# party who could check a release was the party who signed it. The export is
+# skipped when the file is already there, because `pubkey` refuses to overwrite
+# a published identity; a RE-KEY therefore writes a new file under a new name,
+# which is what docs/runbooks/signing-key-incident.md says to do.
+	@$(PROJECT_RUN) bash -c 'test -f target/release/release-identity.pub || \
+		./target/release/rb-release-manifest pubkey \
+		--out target/release/release-identity.pub'
 
 hooks:
 	$(PROJECT_RUN) git config core.hooksPath .githooks

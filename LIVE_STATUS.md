@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **A RELEASE IDENTITY MUST BE PUBLISHABLE, OR THE SIGNATURE IS CEREMONIAL (`.11.24.1.4.1`, REPAIR-0329).**
+
+- 🔴 `verify` and `certify verify` both took the PRIVATE key and derived the public one; `keygen` exported nothing. **The only party who could verify a release was the party who signed it** — the check caught accidental corruption, never forgery.
+- ⚠️ Not a reckless posture: ADR-027 places the key with the releaser and defers the channel. The defect is that the re-key recovery had no publishable end state.
+- ✅ `pubkey` exports the raw 32-byte key as hex; `--public-key` is the third-party path on both verbs; `make release` ships the identity.
+- ⛔ Both inputs together are REFUSED — they can name different identities. `--key` lost its clap default so *gave nothing* stays distinguishable from *gave `--key`*.
+- ⭐ **The control DELETES the private key before verifying** — structural, not inspectional. The mutation that reaches for it anyway dies exactly there.
+- ⚠️ Still deferred: the CHANNEL, not the capability.
+
 ✅ **A RELATIVE LEAF REFERENCE RESOLVES AGAINST ITS OWN TREE, AND TWO DIALECTS DISAGREE (`.11.24.1.6`, REPAIR-0328).**
 
 - 🔴 The instance: `docs/tasks/PHASE-8.md` deferred to a bare `.2.3` meaning `PHASE-7.2.3`, while `PHASE-8.2.3` exists and is the A2A facade. **A resolver cannot notice it** — the wrong target exists.

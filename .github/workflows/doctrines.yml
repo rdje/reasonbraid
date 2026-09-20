@@ -17,3 +17,15 @@ jobs:
           persist-credentials: false
       - name: Run the doctrine enforcer with local stores
         run: python3 -B scripts/ci_env.py -- bash scripts/check_doctrines.sh
+      # ROADMAP §7.4: "CI warns on expired checks". Until SIGNOFF-REPAIR.6.8.2
+      # nothing read the ledger at all, so neither the warning nor the release
+      # gate's freshness requirement existed. This step WARNS and never blocks —
+      # §7.4 names no horizon, and a threshold nobody derived must not fail a
+      # build (SIGNOFF-REPAIR.11.6). The SHAPE of the ledger is gated, by
+      # EXTERNAL-LEDGER inside the enforcer above.
+      - name: Warn on stale external-dependency checks (ROADMAP 7.4)
+        if: always()
+        continue-on-error: true
+        run: |
+          python3 -B scripts/census_external_ledger.py --stale
+          python3 -B scripts/census_external_ledger.py --triggers

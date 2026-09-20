@@ -339,4 +339,26 @@ if ! python3 -B scripts/census_release_binaries.py --check >/dev/null 2>&1; then
     exit 1
 fi
 
+# EXTERNAL-LEDGER (`SIGNOFF-REPAIR.6.8.2`) — every entry in the ROADMAP §7.4
+# dependency ledger carries the fields §7.4 names.
+#
+# 🔴 THE DEFECT IT CLOSES: `grep -rln "external-ledger" scripts/ .github/ Makefile
+# deploy/` returned NOTHING. §7.4 says the ledger records fourteen named fields,
+# that "CI warns on expired checks", and that "release gates require fresh
+# records for exposed compatibility profiles" — and the file's own header
+# described both mechanisms as though they ran. Nothing read it.
+#
+# ⛔ THIS GATES SHAPE AND NEVER AGE. §7.4 says CI WARNS on an expired check and
+# names no horizon, so a staleness threshold here would be a number nobody
+# derived, enforced forever (`SIGNOFF-REPAIR.11.6`). The warning is a
+# non-blocking CI step; the shape is a property of the file and is gated.
+#
+# ⚠️ An EMPTY list is a legitimate "not yet pinned" — the ledger's own header
+# defines it that way — so the gate refuses an ABSENT field, never an empty one.
+# Demanding a value would demand invention, which is the opposite of the rule.
+if ! python3 -B scripts/census_external_ledger.py --check >/dev/null 2>&1; then
+    python3 -B scripts/census_external_ledger.py --check >&2
+    exit 1
+fi
+
 exit 0

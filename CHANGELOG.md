@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-20 — The dependency ledger advertised two mechanisms and nothing read the file (`SIGNOFF-REPAIR.6.8.2`)
+
+`REASONBRAID-REPAIR-0334`. Found while `.6.6`'s upstream blocker needed a durable home for its trigger.
+
+- 🔴 **`grep -rln "external-ledger" scripts/ .github/ Makefile deploy/` returns nothing.** ROADMAP §7.4 says the ledger records fourteen named fields per dependency, that *CI warns on expired checks*, and that *release gates require fresh records for exposed compatibility profiles* — and the file's own header repeats both. **Neither existed.**
+- 🔴 **And the row for the surface this session shipped was 16 days stale**: `checked_at: "2026-09-04"`, `tested_versions: []`, `transports: []`, `license: "unverified"` — on the day `.6.8` pinned `rmcp 3.2.0` and shipped a stdio transport. Measured across all five rows: **16, 14, 14, 13 and 0 days**.
+- ✅ **Revalidated from primary sources, never from memory** (the ledger's header forbids the latter in those words): licence from the vendored `rmcp-3.2.0` manifests, version from `Cargo.lock`, and `protocol_versions` now carrying **both** `2025-11-25` (SERVED) and `2026-07-28` (KNOWN to the SDK, not offered) — the distinction `.6.8` found the crate's own comment getting wrong.
+- ⭐ **`.6.6`'s upstream wait now has a mechanical home.** Its record could only say *check with `cargo metadata`*, which nobody would remember to run; the row's `revalidation_trigger` now names `census_external_ledger.py --triggers`, which evaluates the base64 split from the vendored manifests.
+- ✅ **`scripts/census_external_ledger.py`, wired the way §7.4 splits it:** ⛔ `--check` gates **shape and never age**, registered as `EXTERNAL-LEDGER` — §7.4 says CI *warns* and names no horizon, and a threshold nobody derived would be enforced forever. ⚪ `--stale` is the warning, a `continue-on-error` CI step that states in its own output that no threshold is applied. ⚠️ An empty list is a legitimate *not yet pinned*; the gate refuses an **absent** field.
+- 🔴 **The trigger's first version announced that the upstream block had LIFTED while finding nothing.** A regex matched two of cargo's three dependency spellings and missed `[dependencies.base64]` — exactly how `rmcp` declares it — so it found **zero** requirements, and `len(split) <= 1` read *nothing* as *one remains*. ⛔ Both halves repaired: `tomllib` handles every form, and an empty result is now an **instrument failure** with its own exit code rather than a verdict.
+- ✅ **VERIFIED:** `--triggers` reports `base64 ^0.22` 11 vendored crates against `^0.23` 1 (`rmcp-3.2.0`), *not fired* — matching `.13.4.5`'s independent re-derivation. Both gates registered, `make gate` green, self-tests green, `handoff: OK`. **Falsified**: removing a §7.4 field turns `--check` red by name; and the self-test asserts a row dated **2020** is *not* a shape breach, so a staleness threshold cannot be slipped into the blocking gate without turning that arm red.
+- ⚠️ **Owned, not left:** four rows remain un-revalidated and their `checked_at` was deliberately not touched — `SIGNOFF-REPAIR.6.8.2.1`.
+
 ## 2026-09-20 — Eight of ten binaries are signed, and the list is derived so it cannot drift again (`SIGNOFF-REPAIR.6.8.1`)
 
 `REASONBRAID-REPAIR-0333`. `make release` named four binaries with `--bin` while the line immediately above it built ten.

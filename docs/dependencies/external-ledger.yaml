@@ -39,21 +39,43 @@ entries:
     kind: "protocol + sdk"
     owner: "Model Context Protocol (modelcontextprotocol)"
     source_url: "https://github.com/modelcontextprotocol/rust-sdk"
-    checked_at: "2026-09-04"
-    tested_versions: []        # pin a tested release at the MCP interop spike
+    checked_at: "2026-09-20"   # SIGNOFF-REPAIR.6.8.2 — from primary sources, not memory
+    tested_versions:
+      - "rmcp 3.2.0"           # the exact pin; Cargo.lock resolves rmcp and rmcp-macros to 3.2.0
     protocol_versions:
-      - "2026-07-28"
-    license: "unverified"
-    supported_features: []     # tools / resources / prompts / subscriptions — fill at spike
-    transports: []             # Streamable HTTP etc. — fill at spike
-    auth_modes: []             # OAuth → tenant identity mapping — fill at spike
-    known_semantic_losses: []  # loss-of-semantics matrix — fill at spike
-    conformance_results: []    # conformance fixtures not yet run
-    security_notes: []         # none yet
+      - "2025-11-25"           # SERVED. rmcp 3.2.0 defines ProtocolVersion::LATEST = V_2025_11_25
+      - "2026-07-28"           # KNOWN to the SDK (a later member of KNOWN_VERSIONS), not offered
+    license: "Apache-2.0"      # read from the vendored rmcp-3.2.0 and rmcp-macros-3.2.0 manifests
+    supported_features:
+      - "tools — six served: get_thread, list_inbox, get_policy_bundle, respond, join_call, propose_policy_change"
+      - "resources — not implemented"
+      - "prompts — not implemented"
+      - "subscriptions/listen — consumed as a CLIENT, hand-written rather than SDK-backed"
+    transports:
+      - "stdio (server) — SHIPPED as `rb-mcp`; rmcp feature `transport-io`, +0 packages"
+      - "Streamable HTTP (server) — BLOCKED upstream, see revalidation_trigger"
+      - "Streamable HTTP (client) — BLOCKED upstream, same cause"
+    auth_modes:
+      - "per-tool `principal` argument — this transport carries no identity of its own"
+      - "OAuth → tenant identity mapping — not implemented"
+    known_semantic_losses:
+      - "an MCP listen stream does not auto-resume; ReasonBraid owns the durable cursor and dedup state and discloses any upstream replay gap (ROADMAP §9.6)"
+    conformance_results:
+      - "no SDK-level conformance fixture exists: the listen ritual is exercised over a real socket by a hand-written client (SIGNOFF-REPAIR.6.2.4), which is NOT an SDK conformance claim"
+      - "the served surface is driven end to end over the real stdio transport by crates/reasonbraid-mcp/tests/stdio_transport.rs"
+    security_notes:
+      - "the generated ServerHandler identifies the server as the SDK: Implementation::default() is env!(\"CARGO_CRATE_NAME\") evaluated inside rmcp, so any server that skips get_info presents itself to every client as `rmcp 3.2.0`. ReasonBraid overrides it (SIGNOFF-REPAIR.6.8)"
+      - "enabling any Streamable-HTTP feature pulls base64 0.23.1 alongside the tree's 0.22.1, which deny.toml's multiple-versions = \"deny\" forbids"
     upgrade_policy: "pin a tested release + protocol profile; revalidate against the SDK changelog"
     revalidation_trigger: >-
       MCP specification or Rust SDK major/minor release; before the interop spike and
-      again at each release gate that claims MCP compatibility.
+      again at each release gate that claims MCP compatibility. ALSO, and mechanically:
+      when the base64 requirement split closes. Every rmcp Streamable-HTTP feature —
+      client, client-reqwest and server — requires base64 ^0.23 while 11 vendored crates
+      and reasonbraid-server itself require ^0.22, so neither transport can be enabled
+      without weakening a supply-chain doctrine (SIGNOFF-REPAIR.6.6). Check with:
+      `python3 -B scripts/census_external_ledger.py --triggers`; one base64 version means
+      the block has lifted and both transports become an ordinary feature decision again.
     baseline: >-
       2026-09-04: the official Rust SDK documents a stable 3.x line supporting the MCP
       2026-07-28 specification (https://modelcontextprotocol.io/specification/2026-07-28).

@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **§7.4'S DEPENDENCY LEDGER ADVERTISED TWO MECHANISMS AND NOTHING READ THE FILE (`.6.8.2`, REPAIR-0334).**
+
+- 🔴 `grep -rln "external-ledger"` over scripts, workflows, the Makefile and deploy returns **nothing**, while §7.4 says CI warns on expired checks and release gates require fresh records — and the file's own header repeats both.
+- 🔴 **The MCP row was 16 days stale on the day `.6.8` shipped its surface** (`tested_versions: []`, `license: "unverified"`). All five rows: 16, 14, 14, 13, 0 days.
+- ✅ Revalidated from PRIMARY SOURCES; `protocol_versions` now carries both the SERVED `2025-11-25` and the merely KNOWN `2026-07-28`.
+- ✅ `census_external_ledger.py`: `--check` gates **shape and never age** (§7.4 names no horizon), `--stale` is the CI warning, `--triggers` gives `.6.6`'s upstream wait a mechanical home.
+- 🔴 **The trigger's first version announced the block had LIFTED while finding nothing** — a regex missed `[dependencies.base64]`, and an empty result reached the fired branch. Both halves repaired; an empty result is now an instrument failure, not a verdict.
+- ⚠️ Four rows remain un-revalidated, `checked_at` deliberately untouched → `.6.8.2.1`.
+
 ✅ **EIGHT OF TEN BINARIES ARE SIGNED, AND THE LIST IS DERIVED SO IT CANNOT DRIFT AGAIN (`.6.8.1`, REPAIR-0333).**
 
 - 🔴 `make release` named **four** binaries with `--bin` while the line above it built **ten**. ADR-027 makes the manifest *the single verification unit*, so six could not be verified at all.

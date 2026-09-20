@@ -5,6 +5,18 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **A SELF-TEST THAT PINS ONE HOST'S COLLATION IS NOT GROUND TRUTH (`.11.27`, REPAIR-0316).**
+
+⭐ The first push of this session turned the remote `doctrines` gate RED — the first time the runner judged any of this work.
+
+- 🔴 **Green locally, red on the runner.** `check_readme_stability.sh`'s extraction self-test compares output that ends in `sort -u`, and `sort` orders by the ambient collation: `en_US.UTF-8` puts `docs/book/` first, `LC_ALL=C` puts it third. The expectation encoded **this developer's locale** as ground truth.
+- ⭐ **Reproduced with the SHIPPED bytes**: `git show HEAD:…` under `LC_ALL=C` prints exactly what the runner logged, down to the `want:` continuation lines the enforcer's excerpt showed.
+- ✅ `LC_ALL=C` pins every stage of the extractor; the expectation is rewritten in that order. ⛔ **The INSTRUMENT is pinned rather than the comparison loosened** — loosening would have gone green while the extractor still varied by host.
+- ⚠️ **The gate's VERDICT was never wrong** (its consumers iterate tokens and count); the defect is in the proof that licenses it.
+- ✅ **VERIFIED as TWO measurements**: self-test rc=0 under `en_US.UTF-8` AND under `LC_ALL=C`; the gate's verdict unchanged in both. Gate 22/22; book rc=0.
+- ⚠️ **Latent hazard recorded**: no script in `scripts/` pins a collation. Only this instrument failed on the runner, so the rest are order-free or deterministic; the trigger is a census of self-tests comparing ORDERED output.
+- ⭐ **`TOOLBOX.md`**: a control that only ever runs in one environment pins that environment — and **the remote is the positive control a local gate cannot be**.
+
 ✅ **§10.2'S SIXTH PRESENCE STATE IS REACHABLE, AND A DECLARATION OUTRANKS A MEASUREMENT (`.11.24.1.2`, REPAIR-0315).**
 
 - 🔴 `PresenceState::Busy` was declared, rendered as `"busy"`, and **constructed nowhere** — a published vocabulary with an unreachable branch. ⛔ **Deleting it is refused by the ORACLE**: §10.2 names all six states, so removing it would leave conformance to make a vocabulary honest.

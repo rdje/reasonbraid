@@ -526,6 +526,27 @@ The trigger is what makes the refusal safe to act on later: *a reader that must 
 order something by when this changed*. Write it in the decision, so the next person does
 not re-derive the census from scratch.
 
+### A control that only ever runs in one environment pins that environment
+
+The twin of the rule below, and it arrives from the other side: not *this instrument
+cannot see*, but *this instrument has only ever been asked on one machine*.
+
+`SIGNOFF-REPAIR.11.27`: a doctrine instrument's `--self-test` compared its extractor's
+output as a string, and the extractor ended in `sort -u`. `sort` orders by the ambient
+collation — `en_US.UTF-8` returns `docs/book/` first, `LC_ALL=C` returns it third — so the
+expectation encoded **this developer's locale** as ground truth. It passed on every local
+run and failed the first time a Linux runner judged it.
+
+⛔ The fix pins the INSTRUMENT (`LC_ALL=C` on every stage) rather than loosening the
+comparison. An order-insensitive check would have gone green while the extractor still
+returned different orders on different hosts, leaving the trap for the next arm that
+compares its output.
+
+⭐ Two practices follow. **Run the environment-sensitive arm under both environments as
+two explicit measurements** — here `LC_ALL=C` and the host locale, not one run and an
+assumption. And treat **the remote as the positive control a local gate cannot be**: a
+green local gate is a measurement on one machine, which is exactly what shipped this.
+
 ### A probe whose conclusion is an ABSENCE owes a positive control in the same run
 
 Not the general rule about absence claims — this project already holds that one. The

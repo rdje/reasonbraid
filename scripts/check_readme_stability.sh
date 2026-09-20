@@ -47,11 +47,21 @@ note(){ printf 'README-STABILITY: %s\n' "$1" >&2; fail=1; }
 
 # ── pure verdicts (stdin-driven extraction; the --self-test arm proves them) ────────────
 extract_routes() { # raw markdown-ish text on stdin → candidate path tokens, filtered
-  tr -c 'A-Za-z0-9_./-' '\n' \
-    | sed 's#^\./##' \
-    | grep -E '(\.md|\.sh|\.txt)$|/' \
-    | grep -v -E '^https?://|^/' \
-    | sort -u
+  # ⛔ LC_ALL=C PINS THE COLLATION, and it is the instrument that is pinned
+  # rather than the comparison that is loosened (`SIGNOFF-REPAIR.11.27`).
+  # `sort` orders by the ambient locale: `en_US.UTF-8` returns `docs/book/`
+  # first and `LC_ALL=C` returns it third, so this function's output depended
+  # on the host. The gate's own verdict never did — its callers iterate the
+  # tokens and count unrouted ones — but the SELF-TEST compares the output as a
+  # string, so it passed here and failed on the runner, which is a control
+  # pinning behaviour-on-this-host as ground truth. Loosening the comparison
+  # would have hidden that and left the trap for the next arm that compares
+  # this output. `tr`'s ranges are pinned by the same export.
+  LC_ALL=C tr -c 'A-Za-z0-9_./-' '\n' \
+    | LC_ALL=C sed 's#^\./##' \
+    | LC_ALL=C grep -E '(\.md|\.sh|\.txt)$|/' \
+    | LC_ALL=C grep -v -E '^https?://|^/' \
+    | LC_ALL=C sort -u
 }
 closure_verdict() { # $1 inventory present (0/1); $2 unrouted count; $3 malformed count
   if [ "$1" -eq 0 ]; then printf 'needs-routing'; return 0; fi
@@ -66,7 +76,8 @@ if [ "${1:-}" = "--self-test" ]; then
   # extraction control: path-shaped tokens survive; commands, URLs, plain words, and
   # placeholder spans (`<reasonbraid-url>`) do not.
   got="$(printf 'see `docs/book/` and `ROADMAP.md` and `make check` and [p](README_POLICY.md) and `https://x/y` and `./scripts/update_scaffold.sh <reasonbraid-url>`\n' | extract_routes)"
-  want="$(printf 'docs/book/\nREADME_POLICY.md\nROADMAP.md\nscripts/update_scaffold.sh')"
+  # The C-collation order, which is now the only order this function produces.
+  want="$(printf 'README_POLICY.md\nROADMAP.md\ndocs/book/\nscripts/update_scaffold.sh')"
   if [ "$got" != "$want" ]; then
     printf 'self-test MISSED: extraction\n  got:  %s\n  want: %s\n' "$got" "$want" >&2
     exit 1

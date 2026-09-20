@@ -1,5 +1,55 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — The remote is the positive control a local gate cannot be
+
+Three hundred commits went out and the `doctrines` workflow came back red. The
+same gate had been green locally on every one of those commits, including
+twice within the hour, on a quiet machine, with output retained.
+
+The failing check was `SELF-TEST` — the gate that runs every instrument's own
+`--self-test` — and the instrument was `check_readme_stability.sh`. Its
+extraction arm ends in `sort -u` and the self-test compares the result as a
+string. `sort` orders by the ambient collation. Under `en_US.UTF-8` the first
+element is `docs/book/`; under `LC_ALL=C` it is third, after
+`README_POLICY.md` and `ROADMAP.md`. The expectation had my locale baked into
+it.
+
+**I reproduced it before changing anything**, and with the shipped bytes rather
+than a reconstruction: `git show HEAD:scripts/check_readme_stability.sh` piped
+to a file and run under `LC_ALL=C` prints character-for-character what the
+runner logged. The three lines the enforcer's excerpt showed —
+`README_POLICY.md`, `ROADMAP.md`, `scripts/update_scaffold.sh` — are the
+`want:` continuation, once `printf` consumes the first element onto the `want:`
+line itself. That match is what turned a plausible diagnosis into the
+diagnosis.
+
+**The fix pins the instrument, not the comparison.** The tempting repair is to
+sort both sides before comparing, or compare as sets. That goes green and
+leaves `extract_routes` returning different orders on different hosts, which is
+a trap for whoever next writes an arm that compares its output. `LC_ALL=C` on
+every stage makes the function deterministic and the expectation is then simply
+true, everywhere.
+
+⚠️ Worth being precise about what was broken: **the gate's verdict never was.**
+Its consumers iterate the extracted tokens and count unrouted destinations, so
+order cannot reach the answer. What was wrong is the proof — and the proof is
+the only reason anyone trusts the answer, which is the whole argument for
+`.11.4.3.1.7.1` adding these self-tests in the first place.
+
+⭐ The general shape is the twin of the rule I promoted two commits ago. That
+one said a probe concluding *absence* owes a positive control, because an
+instrument that cannot see reports nothing for free. This one says: **a control
+that has only ever run in one environment is pinning that environment.** Same
+defect, opposite face — an instrument that has never been contradicted is not
+the same as one that has been tested.
+
+And the practical corollary, which I should have taken seriously before the
+push rather than after: **the remote is the positive control a local gate
+cannot be.** `COMMIT.md` already says the authoritative pre-push gate is the
+remote run. I read that as a statement about environment-dependent *product*
+defects. It is equally a statement about environment-dependent *instruments* —
+and this session has now produced eight of those.
+
 ## 2026-09-20 — The exclusions were already written down
 
 This leaf asked two questions and I expected the first to be the hard one:

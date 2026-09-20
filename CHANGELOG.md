@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-20 — A self-test that pins one host's collation is not ground truth (`SIGNOFF-REPAIR.11.27`)
+
+`REASONBRAID-REPAIR-0316`. The first push of this session turned the remote `doctrines` gate red; this is the fix, and it is a CI-repair push under `COMMIT.md`'s standing exception.
+
+- 🔴 **`doctrines` failed on the runner and was green locally.** `scripts/check_readme_stability.sh`'s extraction self-test compares its output as a string, and that output ends in `sort -u`, which orders by the ambient collation: `en_US.UTF-8` returns `docs/book/` first, `LC_ALL=C` returns it third. The expectation encoded **this developer's locale** as ground truth.
+- ⭐ **Reproduced with the shipped bytes rather than inferred.** `git show HEAD:scripts/check_readme_stability.sh` run under `LC_ALL=C` prints exactly what the runner logged — and the three lines the enforcer's excerpt showed are the `want:` continuation, once `printf` consumes its first element onto the `want:` line. The remote's evidence and the local reproduction are the same bytes.
+- ✅ **`LC_ALL=C` pins every stage of the extractor** — `tr`'s ranges as well as `sort`'s order — and the expectation is rewritten in the one order the function now produces. ⛔ **The instrument is pinned rather than the comparison loosened**: an order-insensitive check would have gone green while the extractor still returned different orders on different hosts, leaving the trap for the next arm that compares its output.
+- ⚠️ **The gate's verdict was never wrong.** Its consumers iterate the extracted tokens and count unrouted destinations, so order never reached the verdict. The defect is in the instrument's own proof — which is what licenses the verdict, and why it matters.
+- ✅ **VERIFIED as two explicit measurements, not one run and an assumption:** the self-test passes under `en_US.UTF-8` (rc=0) **and** under `env -u LANG -u LC_COLLATE -u LC_CTYPE LC_ALL=C` (rc=0), and the gate's own verdict is unchanged in both. Doctrine gate 22/22; `make book` rc=0; `handoff: OK`.
+- ⚠️ **Latent hazard recorded rather than swept:** no script in `scripts/` pins a collation. The runner executed every instrument's `--self-test` in this run and only this one failed, so the others are order-free or already deterministic; the trigger for widening is a census of instruments whose self-test compares ordered output.
+- ⭐ **Promoted to `TOOLBOX.md`, as the twin of the previous commit's rule:** a control that only ever runs in one environment pins that environment, not the behaviour — and **the remote is the positive control a local gate cannot be**.
+
 ## 2026-09-20 — §10.2's sixth presence state is reachable, and a declaration outranks a measurement (`SIGNOFF-REPAIR.11.24.1.2`)
 
 `REASONBRAID-REPAIR-0315`. Two decisions argued before any code, then the derivation.

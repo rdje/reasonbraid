@@ -1,5 +1,62 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — A closure is only as wide as the document it is anchored to
+
+This repository has one routing-closure check, and it is a good one. It refuses
+any destination the README links, or the guard's own failure hint emits, or a
+registry row's control column names, unless a governed row covers it. It follows
+routes transitively through that third leg. It has been green for months.
+
+It cannot see `DEV_NOTES.md`.
+
+The reason is not a bug in the check. It is the check's key. The closure
+enumerates *paths named by the landing page* — that is its population, and the
+population is complete with respect to that key and no wider. `README.md` has
+never linked `DEV_NOTES.md`. What names `DEV_NOTES.md` is `COMMIT.md`, step 3,
+which requires an update to it on every single commit. So the repository has an
+author-overflow destination that the commit workflow makes mandatory and that
+the closure protecting against exactly that pressure has never enumerated.
+
+The measurement: 428 versions, 427 of them larger than their predecessor, and
+**zero bytes removed in the entire life of the file**. It is the purest
+append-only file here, at 894,723 bytes.
+
+The second finding is worse in kind, because this one had a row. The registry
+gave `LIVE_STATUS.md` the pressure control *"current status table, overwritten
+rather than appended"*. Over its 632 versions: 614 grew, 17 shrank, 646,037
+bytes added against 39,251 removed, and the current version is the file's
+all-time maximum. The declared control is false, and its own history is what
+refutes it. Nothing checks a declared control — the guard validates that a row
+has four non-empty fields, which is arity, not truth. A free-text field that
+nothing reads is a comment with a pipe character in it.
+
+What makes both of these a defect rather than a fact of life is sitting one row
+away in the same registry. `CHANGELOG.md` takes the same append pressure under
+the same per-commit mandate, and **1,099,952 bytes have been removed from it
+across 46 shrinks**, holding a 663-version file at 48,896 bytes, below its peak,
+with a rotation tool and two gates on it. Containment is not theoretical here.
+It is running, next door, on the neighbouring file.
+
+The part I want to remember is how the absence was established. "Nothing bounds
+this file" is an absence claim, and this project has been burned by absence
+claims taken from searches. So the instrument does not search: `--probe-bounds`
+appends 200,000 real bytes to the real file, runs the real enforcer, and
+restores the file byte-identically. `README.md`, `MEMORY.md` and `CHANGELOG.md`
+each refuse, and each refusal names a size cap — those three are the positive
+controls, in the same run, and without them rc=0 on the other two would be
+indistinguishable from a broken gate. The baseline mattered too: the enforcer
+was confirmed green before the probe started. And every file came back with a
+matching SHA-256, because a falsification that leaves the tree changed has
+measured the gate and damaged the repository in the same run.
+
+Promotion: declined, and recorded in `SIGNOFF-REPAIR.11.4.2.5`. Both statements
+are confirming instances rather than new ones —
+`docs/knowledge/a-census-is-as-wide-as-its-key.md` already answers *why did a
+route census miss an endpoint*, and
+`docs/knowledge/trust-comes-from-the-check-not-the-shape.md` already carries the
+declared-but-unchecked shape. Neither clears the threshold `SIGNOFF-REPAIR.11.6`
+holds for a statement the layer lacks.
+
 ## 2026-09-20 — A procedure can be fully specified except for the one number that decides everything
 
 The changelog rotation here has a decision record, a chain of notices each

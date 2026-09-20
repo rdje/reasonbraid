@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE TWO LARGEST LIVE DOCUMENTS ARE UNGOVERNED, BECAUSE THE CLOSURE IS ANCHORED AT THE LANDING PAGE (`.11.4.2.5`, DOC-0091).**
+
+- 🔴 **Three of the five core live documents are bounded; the two that are not hold 1,502,160 of 1,559,250 bytes — 96.3% of the corpus.** `README.md` 2,188 B, `MEMORY.md` 6,006 B and `CHANGELOG.md` 48,896 B are capped; `LIVE_STATUS.md` 607,437 B and `DEV_NOTES.md` 894,723 B are not.
+- 🔴 **A DECLARED PRESSURE CONTROL WAS FALSE.** The registry gave `LIVE_STATUS.md` *"overwritten rather than appended"*; its own 632 versions refute it — **614 grew against 17 shrank**, 646,037 bytes added against 39,251 removed, tip at its all-time high. The guard validates a row's ARITY, never the truth of its control.
+- 🔴 **`DEV_NOTES.md` had NO ROW AT ALL — 427 of 427 versions grew, 0 bytes ever removed.** The closure enumerates paths the LANDING PAGE names; `README.md` has never linked it, while `COMMIT.md` step 3 makes it mandatory every commit. A census is only as wide as its key.
+- ⛔ **DEMONSTRATED, NOT INFERRED, with three positive controls in the same run.** `--probe-bounds` appends 200,000 real bytes and runs the real enforcer: the three capped surfaces each REFUSE while naming a size cap; `LIVE_STATUS.md` and `DEV_NOTES.md` both return **rc=0**. All five restored byte-identically; the gate was confirmed green first, so rc=0 means silence, not breakage.
+- ⭐ **`CHANGELOG.md` is the working counterexample next door**: same pressure, same mandate, **1,099,952 bytes removed across 46 shrinks**. 🔎 One line of `LIVE_STATUS.md` is **7,305 bytes** — wider than the whole 7,168-byte pointer cap.
+- ✅ **`scripts/census_live_documents.py`** ships (17-control `--self-test`), its population DERIVED from `check_lockstep_claim.sh` and `check_doctrines.sh` rather than restated. Debt recorded at exact baselines (20 registry rows). ⛔ **No cap raised, no ceiling set** — `.11.4.2.6` owns the lifecycle, the derived ceilings and the lossless transition.
+
 ✅ **THE ROTATION AMOUNT WAS NEVER SPECIFIED, SO I GOT IT WRONG TWICE (`.11.4.1.6`, REPAIR-0350).**
 
 - 🔴 **The two rotations earlier today left 344 and 296 bytes of headroom**, against a historical minimum of 705 and a median of 18,741 — and the first forced another rotation on the very next commit. The rotation record specifies identity, retrieval and losslessness, and never said how MUCH to retire.

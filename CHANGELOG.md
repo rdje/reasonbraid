@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-21 — The two largest live documents are ungoverned, because the closure is anchored at the landing page (`SIGNOFF-REPAIR.11.4.2.5`)
+
+`REASONBRAID-DOC-0091`. The live-document and route census `.11.4.2` has owed since 2026-09-13 — Phase 2 step 1 of the adoption guide: *a bounded source pointing to an uncontrolled destination is not contained.*
+
+- 🔴 **Three of the five core live documents are bounded. The two that are not hold 1,502,160 of 1,559,250 bytes — 96.3% of the corpus.** `README.md` (2,188 B), `MEMORY.md` (6,006 B) and `CHANGELOG.md` (48,896 B) are capped; `LIVE_STATUS.md` (607,437 B) and `DEV_NOTES.md` (894,723 B) are not.
+- 🔴 **A declared pressure control was false, and its own file's history refutes it.** `.doctrine/readme_routes.txt` gave `LIVE_STATUS.md` the control *"overwritten rather than appended"*. Over all 632 versions: **614 grew against 17 shrank**, 646,037 bytes added against 39,251 removed, tip at its all-time high. The registry check validates that a row has four fields; nothing has ever asked whether a declared control is TRUE.
+- 🔴 **`DEV_NOTES.md` had no row at all — 427 of 427 versions grew and ZERO bytes have ever been removed.** The mechanism is the finding: the only routing closure here enumerates paths named by the LANDING PAGE, its own hint, and a row's control column. `README.md` has never linked `DEV_NOTES.md`; `COMMIT.md` step 3 makes it mandatory every commit. The check whose job is *"overflow pressure may not be moved, only governed"* cannot see it.
+- ⛔ **The absence is DEMONSTRATED, not inferred, with three positive controls in the same run.** `--probe-bounds` appends 200,000 real bytes to each real file and runs the real enforcer: `README.md`, `MEMORY.md` and `CHANGELOG.md` each REFUSE while naming a size cap; `LIVE_STATUS.md` and `DEV_NOTES.md` both return **rc=0**. All five restored byte-identically (SHA-256 before and after), `git status` identical across the probe.
+- ⭐ **`CHANGELOG.md` is the working counterexample next door** — same append pressure, same per-commit mandate, **1,099,952 bytes removed across 46 shrinks**, holding a 663-version file below its peak. Containment here is running, not theoretical.
+- 🔎 A single line of `LIVE_STATUS.md` is **7,305 bytes** — wider than the entire 7,168-byte layer-A pointer cap.
+- ✅ **`scripts/census_live_documents.py`** ships (17-control `--self-test`), deriving its live-document set from `check_lockstep_claim.sh` and its doctrine population from `check_doctrines.sh` rather than restating either. Debt recorded at exact baselines in `.doctrine/readme_routes.txt` (now 20 rows), both naming `.11.4.2.6` as owner.
+- ⛔ **No cap raised and no ceiling set.** Choosing a ceiling in the same slice as the measurement that motivated it fits it to current bloat; `.11.4.2.6` owns the lifecycle, the derived ceilings and the lossless transition. No product code, schema or test touched.
+
 ## 2026-09-20 — The rotation amount was never specified, so I got it wrong twice — now it is derived (`SIGNOFF-REPAIR.11.4.1.6`)
 
 `REASONBRAID-REPAIR-0350`. `docs/decisions/2026-09-09_changelog-rotation.md` prescribes this ledger's rotation in detail — predecessor identity, lossless reconstruction, exact retrieval, the chain notice — and says nothing about **how much to retire**.

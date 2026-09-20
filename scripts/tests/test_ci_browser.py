@@ -12,6 +12,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 import zipfile
 
@@ -100,12 +101,47 @@ class BrowserSetupTests(unittest.TestCase):
                 "'chrome_log':os.environ.get('CHROME_LOG_FILE'),'args':sys.argv[1:]}));"
                 + ("time.sleep(60);" if sleep else "") + f"sys.exit({exit_code})", "argument with spaces"]
 
+    def _record_child_timing(self, begin, outcome):
+        # SIGNOFF-REPAIR.11.26 — the three tests that exceed the 15 s bound do so
+        # about twice in seventeen SUITE runs, so the distribution can only be
+        # built by running the suite many times and keeping every child's own
+        # elapsed time. Writing only when RB_CHILD_TIMING_LOG is set keeps the
+        # ordinary run byte-for-byte unchanged; the probe sets it. On the timeout
+        # path the child's receipt is dumped too: `ci_browser.phase` stamps
+        # `started_at` before the child does anything and `elapsed_ms` only on
+        # return, so the phase carrying the first and not the second IS the stall.
+        path = os.environ.get("RB_CHILD_TIMING_LOG")
+        if not path:
+            return
+        elapsed_ms = round((time.monotonic() - begin) * 1000)
+        record = {"test": self.id().rsplit(".", 1)[-1], "outcome": outcome,
+                  "elapsed_ms": elapsed_ms}
+        try:
+            workspaces = sorted((self.root / "target/ci-browser").iterdir())
+            if workspaces:
+                receipt = json.loads((workspaces[-1] / "browser.json").read_text())
+                record["receipt_started_at"] = receipt.get("started_at")
+                record["children"] = [
+                    {k: c.get(k) for k in ("phase", "state", "started_at", "elapsed_ms")}
+                    for c in receipt.get("children", [])
+                ]
+        except (OSError, ValueError):
+            record["receipt"] = "unreadable"
+        with io.open(path, "a", encoding="utf-8") as log:
+            log.write(json.dumps(record) + "\n")
+
     def run_child(self, script, *args):
         # A hard kill of the launcher strands its independently owned downloader.
         # Use its signal handler to consume child shutdown before the outer wait
         # finishes, including when a fixture never reaches its first instruction.
-        completed = owner.run_command([sys.executable, "-B", str(script), *args],
-                                      self.env, capture=True, timeout=15)
+        begin = time.monotonic()
+        try:
+            completed = owner.run_command([sys.executable, "-B", str(script), *args],
+                                          self.env, capture=True, timeout=15)
+        except BaseException:
+            self._record_child_timing(begin, "raised")
+            raise
+        self._record_child_timing(begin, "ok")
         result = subprocess.CompletedProcess(completed.args, completed.returncode,
                                              completed.stdout, completed.stdout)
         workspaces = list((self.root / "target/ci-browser").iterdir())

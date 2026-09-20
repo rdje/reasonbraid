@@ -194,6 +194,24 @@ shipped UNCHANGED — the cost census for running every `--self-test` found 1.01
 3.15 s enforcer, so the rule proceeded as proposed. A measurement that confirms is not a
 wasted measurement; it is the outcome that lets you say the number rather than guess it.
 
+### The same rule applies to an OUTLIER, not just to a proposed rule
+
+A striking gap in a log is not a finding until its population is counted
+(`SIGNOFF-REPAIR.11.26`). Hunting a rare test failure, `log show` produced one
+`XprotectService` analysis holding a connection for **97.8 s**, overlapping 58 s of the
+failing run, beside neighbours finishing in **80 ms**. Read alone it is a smoking gun.
+
+Counting the population over the same two hours turned it into **one of eleven**, arriving
+about every ten minutes: the routine window for that period, not an event. The finding
+survived only as a base-rate statement — those windows cover **13.5%** of that period's
+wall clock against a **2-in-17** failure rate, and a later period with **zero** such
+windows across **1479** pairings also produced **zero** failures in 30 runs.
+
+⛔ That is a correlation worth recording and NOT a cause, and the difference is entirely
+the denominator. **An outlier needs its p50 and its count before it needs an explanation**
+— and the cheapest way to be wrong here is to query a window narrow enough to contain
+only the anomaly you went looking for.
+
 So the practice, and its honest strength:
 
 1. Before proposing a rule, **count the population it quantifies over** — and count the

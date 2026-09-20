@@ -84,7 +84,20 @@ binary, so all four cost seconds:
 make gate                      # the doctrine enforcer
 make book                      # the rendered book
 cargo fmt --all -- --check     # formatting (also a gate check since REPAIR-0256)
-python3 -B scripts/project_env.py python3 -B -m unittest discover -s scripts/tests -p 'test_*.py'
+
+# The script suite RETAINS its output (`SIGNOFF-REPAIR.11.26`). It failed once in
+# fifteen, and the run that caught it had been piped through `tail -4`, so the
+# summary survived and the three error texts did not. A gate's failure text is
+# the only thing that makes it actionable, and nothing here should let the way a
+# command is invoked throw it away. `RB_CHILD_TIMING_LOG` costs nothing on a
+# passing run and is what makes the NEXT rare failure localize itself: every
+# child records its elapsed time, and every phase stamps `started_at` before it
+# begins and `elapsed_ms` only on return, so the phase carrying the first and not
+# the second is the stall.
+RB_CHILD_TIMING_LOG=target/gate_child_timing.jsonl \
+  python3 -B scripts/project_env.py python3 -B -m unittest discover \
+  -s scripts/tests -p 'test_*.py' > target/gate_scripts.log 2>&1
+echo "scripts rc=$?"; tail -4 target/gate_scripts.log
 ```
 
 Then push and **consume the remote result** — an unconsumed CI run is not a

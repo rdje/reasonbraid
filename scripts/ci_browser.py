@@ -23,6 +23,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 import zipfile
 import zlib
 
@@ -212,11 +213,27 @@ def save_receipt(workspace: Path, receipt: dict) -> None:
 def execute(release: Release, workspace: Path, environment: dict[str, str],
             command: list[str], timeout: int, receipt: dict) -> int:
     def phase(name, argv, limit, *, output=None):
+        # SIGNOFF-REPAIR.11.26 — a phase records WHEN it began and HOW LONG it
+        # took. `started_at` is written by the `started` callback, before the
+        # child has done anything, and the receipt is saved there: that is the
+        # only field that survives this process being killed from OUTSIDE (the
+        # caller's own wall-clock bound), which is the case the leaf is about.
+        # A reader then localizes the stall to the phase carrying `started_at`
+        # and no `elapsed_ms`. The index is captured rather than using [-1]
+        # because a spawn that never starts appends nothing.
         def started(pid):
-            receipt["children"].append({"phase": name, "pid": pid, "state": "started"})
+            receipt["children"].append({"phase": name, "pid": pid, "state": "started",
+                                        "started_at": time.time()})
             save_receipt(workspace, receipt)
-        result = run_command(argv, environment, timeout=limit, output=output, started=started)
-        receipt["children"][-1].update(state="reaped", exit_code=result.returncode)
+        index = len(receipt["children"])
+        begin = time.monotonic()
+        try:
+            result = run_command(argv, environment, timeout=limit, output=output, started=started)
+        finally:
+            if len(receipt["children"]) > index:
+                receipt["children"][index]["elapsed_ms"] = round((time.monotonic() - begin) * 1000)
+                save_receipt(workspace, receipt)
+        receipt["children"][index].update(state="reaped", exit_code=result.returncode)
         save_receipt(workspace, receipt)
         return result
 
@@ -289,6 +306,7 @@ def main() -> int:
         signal.signal(sig, interrupted)
     workspace = None
     receipt = {"state": "preflight", "version": VERSION, "children": [],
+               "started_at": time.time(),
                "scope": "version-only" if args.verify_only else "trusted-test-command"}
     try:
         release = release_for(platform.system(), platform.machine())

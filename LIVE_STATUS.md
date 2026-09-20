@@ -5,6 +5,18 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE HOLDER IS TWO CRASHPAD HANDLERS OUTSIDE THE OWNED GROUP, AND THE HOLD DOES NOT REPRODUCE (`.11.25.1`, REPAIR-0323).**
+
+⭐ A diagnosis that closed four open unknowns and shipped no product change.
+
+- ✅ **Named by KERNEL PIPE IDENTITY, not by process name.** A render's stderr pipe has **12 holders at fd 2**: 10 in the browser's own process group — the one `stop_process` kills — and **2 `chrome_crashpad_handler`, `ppid 1`, a process group each**. `kill_process_group` cannot reach them by construction, so end-of-file waits on them.
+- ✅ **The positive control passes**: mid-render, `lsof` resolved the pipe to >1 holder in **45 of 46 samples** and `pgrep -f "Google Chrome"` returned 11–12. `.11.25.1.1`'s *"both are blind on this host"* is annotated; its **withdrawal stands**.
+- 🔴 **The hold does not reproduce — 22 runs, drain 0–1 ms, 0 censored**, across 5/10/20/30-second renders. `.11.25`'s table read *the duration is the variable* from ONE observation per row.
+- ⭐ **A competing hypothesis refuted, not parked**: fresh-versus-cached browser runtime, 3 runs each — identical.
+- ⛔ **The control that opened `.11.25` now passes: real-browser suite 18/0**, with **no predicate changed** in `lifetime.rs` since it failed. The failure was environmental; its trigger is unidentified and no leaf is opened for an unmeasured threshold.
+- ⛔ **Decision: no product change**, each alternative refused by a measurement — 7 launch flags suppress nothing, the handle is inherited before any code of ours runs, and 22 of 22 at 0–1 ms leaves nothing to bound.
+- ✅ **`scripts/measure_browser_stderr_holder.py` ships tracked** (leg 3), reporting `positive_control: blind` rather than an absence it cannot license. `--self-test` rc=0, **5 mutants red**; gate 22/22; book rc=0.
+
 🔴 **THE DEMONSTRATION READ PRESENCE WITHOUT SAYING WHO WAS CALLING (`.11.29`, REPAIR-0318).**
 
 ⭐ The last of the first push's red CI — found by running the broad collection LOCALLY rather than one CI iteration at a time.

@@ -1434,6 +1434,44 @@ helper outlived the cleanup budget answers:
   "cleanup_error":"browser stderr completion unconfirmed"}}
 ```
 
+### What an unconfirmed cleanup is usually waiting for
+
+`cleanup_error: "browser stderr completion unconfirmed"` means the worker did
+not see end-of-file on the browser's stderr inside its budget, and end-of-file
+needs **every** write end of that pipe closed. The worker kills the browser's
+process group; a process that has left that group and still holds the inherited
+handle is therefore what the wait is waiting for, and that is the fact the
+message is reporting.
+
+⭐ **There is always at least one such process, and it is not a fault.** Chrome
+double-forks two `chrome_crashpad_handler` processes — reparented to `init`,
+each in a process group of its own — and both inherit the browser's stderr.
+Measured by kernel pipe identity, a render's stderr pipe has twelve holders at
+file descriptor 2: ten inside the group the worker owns, and those two outside
+it. No launch flag suppresses them; seven were tried, including
+`--disable-crash-reporter` and `--disable-crashpad`.
+
+⚠️ **They are not normally what makes a cleanup unconfirmed.** They exit with
+the browser, well inside the budget: measured over 22 renders at four different
+time budgets, the drain completed in **0–1 ms** against a 10,000 ms allowance
+and every cleanup was confirmed. So an unconfirmed cleanup is a signal worth
+reading rather than background noise — something held the handle for more than
+ten seconds.
+
+⛔ **The wait is a detector and is deliberately not shortened.** A worker that
+confirmed the cleanup without observing end-of-file would report a clean
+shutdown while a browser-spawned process was still running, which is exactly
+what `a_render_refusal_survives_an_unconfirmed_cleanup` exists to refuse.
+
+To see which processes hold a given render's pipe, with a positive control in
+the same run so an empty answer is reported as blindness rather than as an
+absence:
+
+```bash
+R3_BROWSER_BIN=<the pinned browser> \
+  python3 -B scripts/measure_browser_stderr_holder.py --render-secs 30
+```
+
 A consumed successful invocation removes only its verified original
 directory. A failed or unconfirmed invocation retains private `owner.json`,
 `completion.json` and at most 64 KiB of `browser.stderr` when those files can be

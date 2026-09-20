@@ -1,5 +1,63 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — I found the holder, and then found that the thing it was blamed for does not happen
+
+`SIGNOFF-REPAIR.11.25.1` asked one question: which process holds the R3 browser
+worker's stderr after the owned process group is reaped? Two earlier attempts
+had declined to answer it — the first because naming `chrome_crashpad_handler`
+from a process list would have been a hypothesis wearing a measurement's
+clothes, the second because its instruments reported an absence they could not
+license.
+
+**The answer took one change of subject.** The earlier probes ran `lsof` on the
+*worker* and asked what it held. But the worker holds the READ end; the question
+is who holds the WRITE end. `lsof` prints each pipe endpoint's own kernel
+address and its peer's, so the peer resolves to its holders exactly — and a
+render's stderr pipe turns out to have twelve holders at fd 2. Ten are in the
+browser's own process group. Two are `chrome_crashpad_handler`, double-forked to
+`ppid 1`, each in a group of its own. `kill_process_group` cannot reach them by
+construction. That is the escape, and it is permanent: no launch flag suppresses
+it, and I tried seven.
+
+**Then the measurement turned around on me.** Having named the escape I expected
+to measure how long it costs, and it costs nothing: 22 runs across four render
+durations, drain 0–1 ms against a 10,000 ms budget, not one censored. The
+observation the whole leaf rests on — a 16.4-second hold — came from a table
+with *one observation per row*. And the control that opened its parent, which had
+failed identically twice, now passes: 18 of 18, with no predicate changed in the
+product in between.
+
+**So the useful output was not a repair.** It was: the escape is real and
+structural, its cost today is zero, the failure that motivated the work was
+environmental, and here is a tracked instrument that answers the question in one
+pass the next time it happens. That felt like a thin result until I wrote it
+down and noticed it closes four open unknowns.
+
+**Three of my own instrument's defects, each caught by something different, and
+the ordering is the lesson.**
+
+The first was caught by *mutation*: I cut five mutants of the parsing, and two
+survived. The fixture's leading pipe had no holder at all, so a finder that
+ignored *who* held the peer still returned the right answer by luck. A fixture
+whose first case cannot fail cannot discriminate — which is
+`a-control-that-passes-for-an-unrelated-reason` moved from the predicate to the
+fixture's ordering. The real listing puts a non-browser holder first, and so does
+the fixture now.
+
+The second was caught by *the real data*: I recovered the executable name by
+splitting the command line at the first space. On macOS that yields `…/Google`
+for every bundle process — precisely the processes this instrument exists to
+name. It reads `comm` as the whole remainder of the line now, and the self-test
+pins a holder whose executable name contains spaces.
+
+The third was caught by *binding a count to its subject*. An early batch reported
+handlers alive after the worker exited in 3 of 16 runs, which would have
+falsified the worker's own receipt. The filter matched any handler under the
+runtime directory, including the previous run's. Bound to the pids observed
+holding *this* render's pipe, it is 0 of 6. I nearly published the unbound
+number, and what stopped me was that it was interesting — which is exactly when
+this project's rules say to count the population first.
+
 ## 2026-09-20 — The first remote run found two things, and neither was in the code I wrote
 
 Three hundred commits went out. `supply-chain` passed, `doctrines` failed, and

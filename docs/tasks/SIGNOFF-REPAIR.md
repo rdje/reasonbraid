@@ -7128,6 +7128,18 @@ absent:  400 {"code":"invalid_command","message":"the reference does not exist"}
 - Status: `done`; DOC-0013.
 - Commit: `REASONBRAID-DOC-0013 (leaf SIGNOFF-REPAIR.11.4.1.2): rotate the changelog a fifteenth time`.
 
+##### SIGNOFF-REPAIR.11.4.1.5 — The thirty-fourth changelog rotation
+
+- Opened and closed: `done`; DOC-0085. The same contract as `SIGNOFF-REPAIR.11.4.1`, `.11.4.1.1` and `.11.4.1.2`, applied again from the same authority — no threshold change, no new archive, no record deleted.
+- Trigger, mechanical rather than noticed: `scripts/check_readme_stability.sh` refused the pending `.6.7` commit with `CHANGELOG.md is 97144 bytes (> rotation threshold 96000)`. The cap schedules the rotation; nobody has to remember it.
+- ⚠️ **Sequenced as its own commit, and the triggering leaf's record was PULLED ASIDE FIRST** (`.11.4.1.2`'s rule): `git checkout -- CHANGELOG.md` restored the committed file before the predecessor identity was taken, so the snapshot this rotation names holds only pre-existing entries. `.6.7`'s record is appended in the commit after this one.
+- **Predecessor identity, taken from the index rather than from the working tree.** Commit `57c06c2eaa1b1bce2e74585a6dac18f314f7179c`; blob `b9c9abae1364abc3a297035571a44ee445c8ec33`; **94,717 bytes, 378 lines, 27 dated records**; SHA-256 `a19524d9bddf5505fc971ce33bf004daa24ee424b2795b453efd6209212ae390`. ⭐ The working file and `git rev-parse HEAD:CHANGELOG.md` were compared and agree, so the identity describes what is retrievable rather than what happened to be on disk.
+- **The split: 12 retained, 15 retired**, at whole-record boundaries (`^## 2026-`). Retained file **40,044 bytes, 182 lines, 12 dated records** — under the unchanged 96,000-byte cap with headroom for the entries that follow.
+- **LOSSLESS, asserted in the instrument rather than inspected:** `header + retained + retired + footer` reconstructs the pre-rotation file **byte-for-byte**, and its SHA-256 equals the predecessor's. The split itself was asserted lossless before any file was written (`header + records + footer == original`), so a boundary error would have failed before the rotation, not after it.
+- **RETRIEVAL DRIVEN, not described:** `git show 57c06c2eaa1b1bce2e74585a6dac18f314f7179c:CHANGELOG.md | shasum -a 256` returns `a19524d9…212ae390`, the exact digest the footer publishes. The notice a reader follows is therefore one that has been followed.
+- **NO REGRESSION** — `scripts/check_readme_stability.sh` rc=0 after the rotation (it refused before it); the doctrine gate green; `handoff: OK`. No code, no threshold change, no record deleted — the retired entries are reachable at the named commit and the chain of notices walks back from it.
+- Commit: `REASONBRAID-DOC-0085 (leaf SIGNOFF-REPAIR.11.4.1.5): the thirty-fourth changelog rotation`.
+
 ##### SIGNOFF-REPAIR.11.4.1.3 — The sixteenth changelog rotation
 
 - Opened: `pending`. The same contract as `.11.4.1`, `.11.4.1.1` and `.11.4.1.2`, applied again from the same authority — no threshold change, no new archive, no record deleted.

@@ -8,9 +8,9 @@
 - Transferable methods: `TOOLBOX.md` and `docs/knowledge/` — consult, do not re-derive.
 
 ## Current state (OVERWRITE this block each update — do not append)
-- latest_commit: `REASONBRAID-REPAIR-0350` (leaf `.11.4.1.6`): **the changelog rotation AMOUNT was never specified**, so two rotations left 344 and 296 bytes where the historical median is 18,741. Now DERIVED (10 commits × measured p90) and enforced as `LEDGER-RUNWAY`. **24 checks.**
+- latest_commit: `REASONBRAID-DOC-0090`: **verification pass — every number from REPAIR-0348/0349/0350 re-derived by a DIFFERENT route.** All hold except one: the 37th rotation's *45,501 B / 50,499 B headroom* was the tool's MID-COMMIT figure; the shipped state is **48,641 B / 16 records / 47,359 B**. ⛔ Every defect count (7, 10, 152, 16, 1-of-45) unchanged.
 - active_work_unit: `SIGNOFF-REPAIR` → frontier leaf: `.11.4.2` (`pending`). ⚠️ **DERIVE the push distance, never read it here: `git rev-list --count origin/main..HEAD`.**
-- next_action: `.11.4.2`'s remaining scope — the donor-package review and the document/route utility census (its `MEMORY.md` census is DONE at `.11.4.2.1`, its derivation question SETTLED at `.11.4.2.4`). Then `.11.33`, `.11.31`, `.11.8`, `.11.2.1`.
+- next_action: `.11.4.2`'s remaining scope — the donor-package review and the document/route utility census. Then `.11.33`, `.11.31`, `.11.8`, `.11.2.1`. ⚠️ **A TOOL'S OUTPUT IS NOT THE COMMIT'S STATE until the commit closes** — re-read a published figure from the committed file, not from the run that produced it (`.11.4.1.6`).
 - ⚠️ **TWO INSTRUMENT METHODS IN `TOOLBOX.md`, both from this session's six instrument failures**: *a falsification verdict needs a NAME, and a build needs an EXIT STATUS* (`.11.24.1.3.1`); *a probe whose conclusion is an ABSENCE owes a positive control in the same run* (`.11.25.1.1`). This line names them and stops.
 - ⚠️ **`run_pg_tests.py` BREAKS AT THE FIRST FAILING SUITE**, so every suite after it is UNMEASURED and the output does not say so — a falsification run over several suites must put the suite under test first, or run them separately (`.11.24.1.1.1.1`).
 - ⭐ **A PREDICATE NO PRODUCIBLE INPUT CAN ISOLATE IS DOCUMENTED, NOT FAKED RED** (`.13.4.3.1`) — a sharpening of `a-control-that-passes-for-an-unrelated-reason`, held here until a second instance earns it a note.

@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-20 — A pre-push gate failed once in fifteen, and the way it was run threw the evidence away (`SIGNOFF-REPAIR.11.26`)
+
+`REASONBRAID-DOC-0076`. A finding opened and owned; no code changed, and the push it was blocking is held.
+
+- 🔴 **The observation.** Running all four of `COMMIT.md`'s cheap pre-push gates together for the first time this session, the script unit suite reported `Ran 73 tests in 62.216s` / **`FAILED (errors=2)`**. It has since passed **14 consecutive times**, including a dedicated ten-run reproduction loop. One failure in fifteen.
+- ⛔ **And the evidence is gone, which is the part that is mine.** That run was piped through `tail -4`, so the summary survived and the two error texts did not. A gate's failure text is the only thing that makes it actionable, and it was discarded by the way the gate was invoked rather than by the gate itself.
+- ⚠️ **What is not claimed.** Not that the suite is broken — fourteen of fifteen green, and every commit in this session passed the doctrine gate at commit time. Not that it is environmental either: the failing run followed a long series of probe subprocesses spawning browsers, binding loopback ports and writing under `target/`, which makes a collision a **candidate** and not a measurement. Naming a cause here would be the habit the previous commit promoted a rule against.
+- ⛔ **It is not dismissed as a flake, and the reason is what the gate is for.** `COMMIT.md` makes these four the condition for spending a CI run on a public remote. A gate that fails unreproducibly once in fifteen cannot be said to have passed, and *it went green on the retry* is the sentence that turns a real defect into a habit.
+- ⚠️ **The push is held at 298 commits ahead**, two short of the ~300 cadence, with three gates green (doctrine enforcer 22/22, the book renders, `cargo fmt --all --check`) and this one unresolved.
+- ⚠️ **Standing instruction until this closes, which costs nothing:** run that gate with its output redirected to a file. The failure hardest to diagnose is the one whose text was thrown away by the command that found it.
+
 ## 2026-09-20 — A censored observation is not a duration, and a blind instrument's silence is not an absence (`SIGNOFF-REPAIR.11.25.1.1`)
 
 `REASONBRAID-REPAIR-0314`. A correction to a figure this project published one commit earlier, and the refusal to publish a second.

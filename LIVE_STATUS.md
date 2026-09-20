@@ -5,6 +5,14 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **A PRE-PUSH GATE FAILED ONCE IN FIFTEEN, AND THE WAY IT WAS RUN THREW THE EVIDENCE AWAY (`.11.26`, DOC-0076).**
+
+- 🔴 The script unit suite — one of `COMMIT.md`'s four cheap pre-push gates — reported `Ran 73 tests in 62.216s` / **`FAILED (errors=2)`**, then passed **14 consecutive times** including a dedicated ten-run loop.
+- ⛔ **Its evidence is gone, and that part is mine**: the run was piped through `tail -4`, so the summary survived and the two error texts did not.
+- ⚠️ **NOT claimed broken** (14/15 green; every commit passed the doctrine gate at commit time) and ⚠️ **NOT claimed environmental** — concurrent probe subprocesses are a CANDIDATE, not a measurement.
+- ⛔ **Not dismissed as a flake**: these four gates are the condition for spending a CI run on a PUBLIC remote, and *it went green on the retry* is what turns a defect into a habit.
+- ⚠️ **THE PUSH IS HELD at 298 ahead** (∼300 cadence), with the other three gates green: doctrine enforcer **22/22**, `make book` rc=0, `cargo fmt --all --check` rc=0.
+
 🔴 **A CENSORED OBSERVATION IS NOT A DURATION, AND A BLIND INSTRUMENT'S SILENCE IS NOT AN ABSENCE (`.11.25.1.1`, REPAIR-0314).**
 
 ⭐ A correction to a figure this project published one commit earlier, and the refusal to publish a second.

@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-21 — The live window is a project constant, because the anchor it was read from drifted 14% in eight commits (`SIGNOFF-REPAIR.11.4.2.6.6.2`)
+
+`REASONBRAID-REPAIR-0354`. Deriving the third ledger's ceiling the same way the second's was derived gives a different answer, and the reason is the method rather than the file.
+
+- 🔴 **`DEV_NOTES.md`'s threshold was derived at `7fc8913` as `96,000 / p90 4,734 = 20.279` p90-entries of window. Eight commits later `CHANGELOG.md`'s p90 is 4,146 and the same formula reads 23.155** — a third ledger derived "the same way" today would receive a window **14% more generous than the second, for no reason but the date**. A rule whose anchor moves is not a derivation.
+- ✅ **`LIVE_WINDOW = 20.279` ships as a pinned named constant** carrying its inputs, and every ledger's threshold is that one window in its own measured entry size. `LIVE_STATUS.md` registers as a third ledger at **55,000** (`20.279 × 2,726`, rounded DOWN), `enforced=False` with its debt on the row. ✅ **`DEV_NOTES.md`'s 76,000 is unchanged — the check passing, not an omission.**
+- ⭐ Two controls hold the relation without re-measuring: a threshold may not exceed the pinned window times the p90 recorded at its derivation, and the window itself is pinned against `96000 / 4734`.
+- ⛔ `--check` stays rc=0 over the enforced ledgers; `--check-all` returns rc=1 naming `LIVE_STATUS.md has -564304 bytes of headroom`. The debt is on demand, off the commit path.
+- ⭐ **The no-behaviour-change claim is proved by a better method than last time.** Capturing `--plan` before and after conflates a code change with a tree that moved — and the tree DID move, from retiring 3 records to 6. Instead HEAD's own script was extracted with `git show` and run against the same tree: byte-identical for both enforced ledgers. `--self-test` **35 controls**. Nothing migrated; no threshold raised.
+
 ## 2026-09-21 — The record boundary cannot be derived from this log, so the migration seals it instead (`SIGNOFF-REPAIR.11.4.2.6.6.1`)
 
 `REASONBRAID-DOC-0095`. Before creating the boundary `LIVE_STATUS.md` lacks: can one be derived? The answer decides which migration is safe.

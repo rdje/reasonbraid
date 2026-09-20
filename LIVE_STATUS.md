@@ -5,6 +5,13 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE LIVE WINDOW IS A PROJECT CONSTANT, BECAUSE ITS ANCHOR DRIFTED 14% IN EIGHT COMMITS (`.11.4.2.6.6.2`, REPAIR-0354).**
+
+- 🔴 **`DEV_NOTES.md`'s ceiling came from `96,000 / p90 4,734 = 20.279` p90-entries; the same formula now reads 23.155** because `CHANGELOG.md`'s p90 fell to 4,146. A third ledger derived "the same way" would get a **14% more generous** window for no reason but the date.
+- ✅ **`LIVE_WINDOW = 20.279` pinned in the source.** This file registers as a third ledger at **55,000** (`20.279 × 2,726`, rounded DOWN), `enforced=False` with its debt on the row; `DEV_NOTES.md`'s 76,000 unchanged — the check passing, not an omission.
+- ⛔ `--check` stays rc=0; `--check-all` rc=1 naming **-564,304 bytes of headroom** here. ⭐ No-behaviour-change proved by running HEAD's own script against the SAME tree (byte-identical), not before/after — the tree itself moved from retiring 3 records to 6.
+- ⚠️ **One threshold per file; the snapshot gets no separate cap yet**, because a cap needs a reviewed survivor and the split has not happened. `--self-test` **35 controls**. Nothing migrated, no threshold raised.
+
 ✅ **THE RECORD BOUNDARY CANNOT BE DERIVED FROM THIS LOG, SO THE MIGRATION SEALS IT (`.11.4.2.6.6.1`, DOC-0095).**
 
 - **320 emoji-led candidate lines**: 265 carry a leaf or work-unit id, 55 do not. 🔴 **Preceding context does NOT discriminate** — 46 of the 55 follow another headline, exactly like 95 of the 265. ⭐ That contrast is the positive control.

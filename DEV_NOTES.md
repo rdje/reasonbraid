@@ -1,5 +1,70 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — The derivation whose anchor moved
+
+Two commits ago I gave `DEV_NOTES.md` a rotation threshold and was pleased with
+how it was obtained. Not chosen — derived, from an authority that already existed:
+`CHANGELOG.md` has a reviewed threshold of 96,000 bytes and a measured p90 entry
+of 4,734 bytes per non-rotation commit, so it runs a live window of 20.279
+entries. The second ledger gets the same window in its own units. No taste
+involved.
+
+Today I went to do the same for the third ledger and measured `CHANGELOG.md`'s
+p90 again. It is 4,146.
+
+The window is now 23.155 entries.
+
+Nothing changed about the method. `CHANGELOG.md`'s recent entries have simply been
+a bit smaller, so the same threshold buys more of them, so the window computed
+from it is wider. Apply the formula today and `LIVE_STATUS.md` gets a ceiling 14%
+more generous than the one `DEV_NOTES.md` received on Tuesday — not because
+anything about the two files justifies a difference, but because of which day the
+division was performed.
+
+That is the failure mode, and it is subtler than the one I was guarding against. I
+had already written, in the `DEV_NOTES.md` threshold comment, that the number must
+be pinned rather than re-derived on read, because a ceiling recomputed at run time
+lets a file widen its own bound by growing. That was right. What I did not notice
+is that the same argument applies one level up: **the WINDOW is derived too, and
+nothing pinned it.** I pinned the output and left the method's input floating.
+
+So the window is now a named constant in the source, `LIVE_WINDOW = 20.279`, with
+its inputs and the commit it was taken at written beside it, and every ledger's
+threshold is that one window in its own measured units. `DEV_NOTES.md`'s 76,000 is
+untouched, which is the check passing rather than an omission — re-deriving it
+today is exactly the mistake.
+
+Two controls hold it now. A threshold may not exceed the pinned window times the
+p90 recorded at its own derivation, so a ceiling cannot be quietly raised above
+what its derivation supports; and the window is pinned against `96000 / 4734`, so
+the constant cannot drift silently either.
+
+The second thing I want to keep is a method correction, and it is the more useful
+of the two.
+
+Two commits ago I proved a code change moved no behaviour by capturing `--plan`
+before the edit and diffing it after. That looked rigorous and it has a hole: it
+assumes the only thing that changed between the two runs is the code. Today, with
+a larger gap between runs, the tree moved underneath — `CHANGELOG.md`'s p90 fell
+and its plan went from retiring 3 records to 6. A before/after diff would have
+shown a difference and I would have gone looking for it in my own edit.
+
+The clean version is to hold the tree still and vary only the code: extract
+HEAD's own script with `git show HEAD:scripts/rotate_changelog.py`, run it and the
+modified one against the same working tree, and diff those. Byte-identical for
+both enforced ledgers. That separates the two variables instead of hoping only one
+of them moved.
+
+It costs one extra command and it is strictly better, and I only reached for it
+because the earlier method had visibly stopped working.
+
+Promotion: declined and recorded in `SIGNOFF-REPAIR.11.4.2.6.6.2`. The statement —
+*a derivation whose anchor moves is not a derivation* — is a disposition about
+this repository's ledger thresholds rather than a transferable method, and it is
+written beside the constant where the next person to touch it will meet it. If a
+second derived constant here turns out to have drifted since it was set, it earns
+a note; the count is one.
+
 ## 2026-09-21 — The question that decided the migration was whether a boundary exists
 
 I was about to create a record boundary for `LIVE_STATUS.md`'s correction log so

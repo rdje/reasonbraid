@@ -92,6 +92,20 @@ class Ledger:
     window: int = 60
 
 
+# ⛔ THE LIVE WINDOW IS A PROJECT CONSTANT, PINNED — NOT A QUANTITY EACH LEDGER
+# RE-DERIVES. It is how much runway the ledger already in production runs on,
+# expressed in p90-entries, and it is the single authority every other ledger's
+# threshold is measured against.
+#
+#   at 7fc8913:  CHANGELOG.md 96,000 / p90 4,734 = 20.279 p90-entries
+#
+# ⛔ IT MUST BE PINNED BECAUSE IT DRIFTS. Eight commits later the same formula
+# read 23.155, because `CHANGELOG.md`'s own p90 had fallen to 4,146 — so a third
+# ledger derived "the same way" on a different day would have received a window
+# 14% more generous than the second, for no reason but the date. A rule whose
+# anchor moves is not a derivation (`SIGNOFF-REPAIR.11.4.2.6.6.2`).
+LIVE_WINDOW = 20.279
+
 CHANGELOG = Ledger(path="CHANGELOG.md", threshold=96000, enforced=True)
 
 # ⭐ ENFORCED SINCE ITS FIRST ROTATION (`SIGNOFF-REPAIR.11.4.2.6.3`): 430 records
@@ -106,8 +120,7 @@ CHANGELOG = Ledger(path="CHANGELOG.md", threshold=96000, enforced=True)
 # the authority behind the number is an existing reviewed decision rather than a
 # fresh preference. Measured at `7fc8913` with this file's own `entry_size_p90`:
 #
-#   CHANGELOG.md  threshold 96,000 / p90 4,734 = 20.279 p90-entries of window
-#   DEV_NOTES.md  20.279 x p90 3,763           = 76,309 bytes
+#   LIVE_WINDOW 20.279 x p90 3,763 = 76,309 bytes
 #
 # Rounded DOWN to 76,000: rounding up would grant headroom the derivation does
 # not support, and a ceiling may only ever move the other way. The full
@@ -118,7 +131,19 @@ CHANGELOG = Ledger(path="CHANGELOG.md", threshold=96000, enforced=True)
 # ceiling would let the ledger widen its own bound by growing.
 DEV_NOTES = Ledger(path="DEV_NOTES.md", threshold=76000, enforced=True)
 
-LEDGERS = {"changelog": CHANGELOG, "dev-notes": DEV_NOTES}
+# ⛔ NOT YET ENFORCED — this ledger has not been split. `SIGNOFF-REPAIR.11.4.2.6.5`
+# measured it carrying TWO information roles in one file, with the 14-row status
+# table it is named for at 1.58% of its bytes and 92.6% of the file above it, and
+# `.11.4.2.6.6.1` measured that its 320 emoji-led candidate lines carry no
+# derivable record boundary — so its history is SEALED wholesale rather than
+# rotated, and the boundary is created only for what is written afterwards.
+# ⭐ Threshold from the pinned window: LIVE_WINDOW 20.279 x p90 2,726 = 55,280,
+# rounded DOWN to 55,000. `entry_size_p90` needs no record boundary — it measures
+# bytes added per non-rotation commit — which is why this file has a derivable
+# threshold despite having no identifiable records.
+LIVE_STATUS = Ledger(path="LIVE_STATUS.md", threshold=55000, enforced=False)
+
+LEDGERS = {"changelog": CHANGELOG, "dev-notes": DEV_NOTES, "live-status": LIVE_STATUS}
 NOTICE = re.compile(r"\*\*(?P<ordinal>[a-z-]+) rotation\*\*")
 FOOTER_START = "The entries before those above were rotated"
 
@@ -529,6 +554,18 @@ def self_test() -> int:
         CHANGELOG.threshold != DEV_NOTES.threshold)
     chk("a ledger stopped being enforced without its rotation being undone",
         [l.path for l in LEDGERS.values() if l.enforced] == [CHANGELOG.path, DEV_NOTES.path])
+    # ⛔ EVERY THRESHOLD IS THE ONE PINNED WINDOW IN ITS OWN UNITS, ROUNDED DOWN.
+    # The p90s are the values measured when each was derived, quoted so the
+    # relation is checkable without re-measuring — re-measuring is exactly what
+    # this constant exists to stop. A threshold ABOVE its derivation would be a
+    # ceiling granted headroom nothing supports.
+    for label, p90_at_derivation, threshold in (("dev-notes", 3763, DEV_NOTES.threshold),
+                                                ("live-status", 2726, LIVE_STATUS.threshold)):
+        derived = LIVE_WINDOW * p90_at_derivation
+        chk(f"{label}'s threshold is not the pinned window rounded down",
+            threshold <= derived and derived - threshold < 1000)
+    chk("the pinned window no longer matches the ledger it was taken from",
+        abs(LIVE_WINDOW - 96000 / 4734) < 0.001)
 
     # 17. The gate arm judges ONLY enforced ledgers. A ledger whose first
     #     rotation has not happened must not make the enforcer red every commit.

@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE SECOND LEDGER'S FIRST ROTATION, AND THE PROBE THAT READ ANOTHER FILE'S BREACH AS A BOUND (`.11.4.2.6.3`, REPAIR-0352).**
+
+- ✅ **`DEV_NOTES.md` IS BOUNDED**: 430 records retired into git history, 12 kept, **908,850 → 37,874 bytes**, ~10 commits of runway under its derived 76,000-byte threshold, `enforced=True`.
+- 🔴 **`ordinal_word(0)` returned `'twentieth'`** — a silent negative index — so the first notice would have claimed a twentieth rotation that does not exist. Unreachable for the tool's whole life; reachable the instant this leaf added the caller.
+- 🔴 **The rotation left no final newline, and the bound probe read `FILE-TERMINATION`'s refusal as `LIVE_STATUS.md` being BOUNDED**, reporting five of five. A probe appends to one file and runs the whole enforcer, so any breach anywhere reads as that file's bound. Caught because the result was implausible and the REASON was checked.
+- ✅ **Honest re-run: FOUR of five bounded.** `README.md`, `MEMORY.md`, `CHANGELOG.md`, `DEV_NOTES.md` each refuse naming their own cap; ⛔ **`LIVE_STATUS.md` still has none** — the one remaining ungoverned core live document, and it gets its own leaf.
+- ⛔ **Losslessness proved independently of the tool** from the notice's named commit: 905,695 B / 5,434 lines / 441 records / blob `83b5385e…` / SHA-256 `3ff21b64…` all re-derived exactly; **430 retired, 0 unretrievable**, two positive controls in the same run.
+- ⚠️ `--plan` said 36,525 B and the committed file is 37,874 — the notice's own bytes. Figures read back off the file. `--self-test` **32 controls**.
+- 🔴 **`LESSON-PROMOTION` refused this commit while the tree carried 53 matching decline lines** (`.11.4.2.6.3.1`, same commit — it blocked this one). `grep … | grep -vqF …`: `-q` closes the pipe, the producer takes SIGPIPE, `pipefail` promotes it, and a present decline reads as absent. **34 of 40 runs non-zero at 17,388 bytes of matches; 0 of 40 on a one-match file — a race the task tree outgrew.** ⭐ It fails CLOSED, so it blamed the author instead of being noticed; and its 9 green controls tested the pure verdict, never the shell computing its inputs. New arm: 400 lines × 12 scans, catches the old form at 9 of 12.
+
 ✅ **ONE ROTATION MECHANISM FOR TWO LEDGERS, AND A DERIVED THRESHOLD (`.11.4.2.6.2`, REPAIR-0351).**
 
 - ✅ **A frozen `Ledger` record threaded through every function**, with `--ledger` and `--check-all`; the record boundary stays SHARED, not per-ledger. An unknown `--ledger` exits 2 rather than falling back to the changelog.

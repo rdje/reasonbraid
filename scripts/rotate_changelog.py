@@ -94,11 +94,13 @@ class Ledger:
 
 CHANGELOG = Ledger(path="CHANGELOG.md", threshold=96000, enforced=True)
 
-# ⛔ NOT YET ENFORCED, and the reason is recorded rather than left to be guessed:
-# this ledger has never been rotated. `SIGNOFF-REPAIR.11.4.2.5` measured it at
-# 427 of 427 versions growing and ZERO bytes ever removed, and `.doctrine/
-# readme_routes.txt` carries its exact baseline as governed debt. Admitting it to
-# `--check` before its first rotation would make the enforcer red on every commit.
+# ⭐ ENFORCED SINCE ITS FIRST ROTATION (`SIGNOFF-REPAIR.11.4.2.6.3`): 430 records
+# retired into git history, 12 kept, and the ledger went from 908,850 bytes to
+# 37,873 with ~10 commits of runway. It was deliberately NOT enforced before that
+# — `SIGNOFF-REPAIR.11.4.2.5` measured it at 427 of 427 versions growing and ZERO
+# bytes ever removed, so admitting it to the gate first would have made the
+# enforcer red on every commit, and a gate that is always red is one people route
+# around (`SIGNOFF-REPAIR.11.5`).
 # ⭐ THE THRESHOLD IS DERIVED, NOT CHOSEN — the SAME LIVE WINDOW the ledger already
 # in production runs on, expressed in this ledger's own measured entry size, so
 # the authority behind the number is an existing reviewed decision rather than a
@@ -114,7 +116,7 @@ CHANGELOG = Ledger(path="CHANGELOG.md", threshold=96000, enforced=True)
 # ⚠️ Pinned to that commit deliberately. p90 moves, so this is a figure DERIVED
 # ONCE at a named moment, not one re-derived on read — re-deriving a declared
 # ceiling would let the ledger widen its own bound by growing.
-DEV_NOTES = Ledger(path="DEV_NOTES.md", threshold=76000, enforced=False)
+DEV_NOTES = Ledger(path="DEV_NOTES.md", threshold=76000, enforced=True)
 
 LEDGERS = {"changelog": CHANGELOG, "dev-notes": DEV_NOTES}
 NOTICE = re.compile(r"\*\*(?P<ordinal>[a-z-]+) rotation\*\*")
@@ -133,6 +135,14 @@ TENS_CARDINAL = {20: "twenty", 30: "thirty", 40: "forty", 50: "fifty", 60: "sixt
 
 
 def ordinal_word(n: int) -> str:
+    # ⛔ REFUSE BELOW 1 RATHER THAN WRAP. `ORDINALS[n - 1]` with n=0 returned
+    # `'twentieth'` — a silent negative index — and `render_footer` asks for
+    # `ordinal_word(ordinal - 1)`, so a FIRST rotation would have written "it
+    # carries the twentieth rotation's notice in turn" into a governed ledger.
+    # Wrong and plausible-looking is the worst combination a rendered figure can
+    # have (`SIGNOFF-REPAIR.11.4.2.6.3`).
+    if n < 1:
+        raise ValueError(f"there is no {n}th rotation — ordinals start at 1")
     if n <= 20:
         return ORDINALS[n - 1]
     tens, unit = (n // 10) * 10, n % 10
@@ -250,7 +260,18 @@ def head_identity(ledger: Ledger) -> dict:
 
 
 def render_footer(ledger: Ledger, pred: dict, ordinal: int, retired: int, kept: int, leaf: str) -> str:
-    prev_word = ordinal_word(ordinal - 1)
+    # ⛔ A FIRST ROTATION HAS NO PREDECESSOR NOTICE, and the footer must not claim
+    # one. The chain's whole value is that every notice names the one before it;
+    # a first notice that invents an antecedent breaks the property it exists to
+    # carry, and it is precisely the sentence a reader would trust.
+    if ordinal == 1:
+        chain = ("It carries NO earlier rotation notice: this is the first rotation of this\n"
+                 "ledger, so the chain starts here and every later notice will name this one.")
+    else:
+        chain = (f"It carries the {ordinal_word(ordinal - 1)} rotation's\n"
+                 "notice in turn, and each earlier notice names the one before it, so the chain\n"
+                 "walks all the way back. `docs/decisions/2026-09-09_changelog-rotation.md` holds\n"
+                 "the first transition's evidence.")
     return f"""{FOOTER_START} into reachable Git history at the
 **{ordinal_word(ordinal)} rotation** (`{leaf}`, which owns this ledger’s rotation). The exact predecessor — every
 byte this file held immediately before the rotation — is:
@@ -261,10 +282,7 @@ git show {pred['commit']}:{ledger.path}
 
 That snapshot is {pred['bytes']} bytes and {pred['lines']} lines, and contains {pred['entries']} dated
 entries; its Git blob is `{pred['blob']}` and its SHA-256 is
-`{pred['sha256']}`. It carries the {prev_word} rotation's
-notice in turn, and each earlier notice names the one before it, so the chain
-walks all the way back. `docs/decisions/2026-09-09_changelog-rotation.md` holds
-the first transition's evidence.
+`{pred['sha256']}`. {chain}
 
 ⛔ **{retired} record(s) rotated out, {kept} kept, lossless** — every retired heading was retrieved from the
 predecessor named above before this notice was written, and every figure in it was re-derived from that object with
@@ -274,7 +292,7 @@ records until the ledger has at least {ledger.runway_commits} commits of runway 
 the first forced another rotation on the very next commit (`SIGNOFF-REPAIR.11.4.1.6`)."""
 
 
-def apply(ledger: Ledger, leaf: str) -> int:
+def apply(ledger: Ledger, leaf: str, bootstrap: bool = False) -> int:
     path = ROOT / ledger.path
     text = path.read_text(encoding="utf-8")
     p90, median, sample = entry_size_p90(ledger)
@@ -299,24 +317,46 @@ def apply(ledger: Ledger, leaf: str) -> int:
 
     _, foot = split_ledger(text)
     m = NOTICE.search(text[foot:])
-    if not m:
+    if m and bootstrap:
+        # ⛔ SYMMETRIC REFUSAL. --bootstrap starting a chain that already exists
+        # would silently reset its ordinal to 1 and orphan every earlier notice,
+        # which is the one irreversible thing this tool could do to a ledger.
+        print(f"REFUSED: {ledger.path} already carries a rotation chain "
+              f"(ordinal {ordinal_index(m.group('ordinal'))}); --bootstrap would restart it at 1 "
+              "and orphan every earlier notice.", file=sys.stderr)
+        return 1
+    if not m and bootstrap:
+        ordinal = 1
+    elif not m:
         print(f"REFUSED: {ledger.path} carries no rotation ordinal to continue the chain from.",
               file=sys.stderr)
         print("  This tool CONTINUES a chain; it cannot START one. A first rotation has no\n"
               "  predecessor notice to take its ordinal from, and inventing one would break the\n"
               "  property the chain exists for — that every notice names the one before it, all\n"
               "  the way back to the first transition's recorded evidence.\n"
-              "  Bootstrapping a second ledger's chain is owned by its own task-tree leaf.",
+              "  Pass --bootstrap to START one, which is allowed exactly once per ledger.",
               file=sys.stderr)
         return 1
-    ordinal = ordinal_index(m.group("ordinal")) + 1
+    else:
+        ordinal = ordinal_index(m.group("ordinal")) + 1
 
     body = text[:cut] + text[foot:]
-    fs = body.index(FOOTER_START)
+    # ⛔ A LEDGER WITH NO FOOTER GETS ONE APPENDED, rather than `index` raising on
+    # its absence. `fs` is the end of the text in that case, so the slicing below
+    # is the same arithmetic for both shapes and there is no second code path to
+    # keep in step.
+    fs = body.index(FOOTER_START) if FOOTER_START in body else len(body)
     fe = body.index("warns about.") + len("warns about.") if "warns about." in body[fs:] else len(body)
     tail = body[fe:]
     kept = len(headings(body[:fs]))
     body = body[:fs] + render_footer(ledger, pred, ordinal, len(retired), kept, leaf) + tail
+    # ⛔ EXACTLY ONE TRAILING NEWLINE. When the notice is APPENDED rather than
+    # replacing an existing one, `tail` is empty and the footer ends the file — so
+    # the first bootstrapped rotation wrote a tracked file with no final newline
+    # and `FILE-TERMINATION` refused the commit. ⚠️ A continuing rotation keeps
+    # its tail, which already ends in a newline, so this is a no-op there and the
+    # byte-identity of `CHANGELOG.md`'s output is untouched.
+    body = body.rstrip("\n") + "\n"
     path.write_text(body, encoding="utf-8")
 
     print(f"rotated ({ordinal_word(ordinal)}): {len(retired)} record(s) retired, {kept} kept")
@@ -447,6 +487,35 @@ def self_test() -> int:
         split_ledger("## 2026-09-04 — one\nb\n" + FOOTER_START + " x")[1]
         == len("## 2026-09-04 — one\nb\n"))
 
+    # 13c. THE ORDINAL REFUSES BELOW 1 instead of wrapping to 'twentieth'.
+    try:
+        ordinal_word(0)
+        chk("ordinal_word(0) returned a word instead of refusing", False)
+    except ValueError:
+        chk("ordinal_word(0) refused", True)
+    chk("ordinal_word(1) no longer works", ordinal_word(1) == "first")
+
+    # 13d. THE FIRST NOTICE CLAIMS NO PREDECESSOR NOTICE, and a later one does.
+    pred_stub = {"commit": "c" * 40, "blob": "b" * 40, "bytes": 1, "lines": 1,
+                 "entries": 1, "sha256": "s" * 64, "text": ""}
+    first = render_footer(CHANGELOG, pred_stub, 1, 1, 1, "LEAF")
+    later = render_footer(CHANGELOG, pred_stub, 38, 1, 1, "LEAF")
+    chk("the first notice claims an earlier rotation notice",
+        "NO earlier rotation notice" in first and "thirty-seventh" not in first)
+    chk("a later notice stopped naming its predecessor", "thirty-seventh" in later)
+
+    # 13e. THE ROTATED BODY ENDS IN EXACTLY ONE NEWLINE, both shapes. The first
+    #      bootstrapped rotation appended a notice that ends the file, leaving no
+    #      final newline, and FILE-TERMINATION refused the commit — while a
+    #      separate probe read that refusal as a DIFFERENT file being bounded
+    #      (`docs/knowledge/a-control-that-passes-for-an-unrelated-reason.md`).
+    for shape, raw in (("appended", "a\n\nnotice with no newline"),
+                       ("replaced", "a\n\nnotice with a tail\n"),
+                       ("over-newlined", "a\n\nnotice\n\n\n\n")):
+        chk(f"the {shape} body did not end in exactly one newline",
+            (raw.rstrip("\n") + "\n").endswith("\n")
+            and not (raw.rstrip("\n") + "\n").endswith("\n\n"))
+
     # 14. THE SECOND LEDGER STILL PARSES under the shared boundary — the positive
     #     control for the widening, matching control 10 for the first ledger.
     if (ROOT / DEV_NOTES.path).is_file():
@@ -458,8 +527,8 @@ def self_test() -> int:
     #        must differ, or a bug that ignored the argument would still pass.
     chk("the two ledgers share a threshold, so selection cannot be tested",
         CHANGELOG.threshold != DEV_NOTES.threshold)
-    chk("a ledger carrying transition debt is admitted to the gate",
-        [l.path for l in LEDGERS.values() if l.enforced] == [CHANGELOG.path])
+    chk("a ledger stopped being enforced without its rotation being undone",
+        [l.path for l in LEDGERS.values() if l.enforced] == [CHANGELOG.path, DEV_NOTES.path])
 
     # 17. The gate arm judges ONLY enforced ledgers. A ledger whose first
     #     rotation has not happened must not make the enforcer red every commit.
@@ -516,7 +585,7 @@ def main(argv: list[str]) -> int:
             i = argv.index("--apply")
             leaf = argv[i + 1] if len(argv) > i + 1 and not argv[i + 1].startswith("-") \
                 else "SIGNOFF-REPAIR.11.4.1.6"
-            return apply(ledger, leaf)
+            return apply(ledger, leaf, bootstrap="--bootstrap" in argv)
         return 0
     print(__doc__)
     return 0

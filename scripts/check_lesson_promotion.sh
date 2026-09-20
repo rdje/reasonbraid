@@ -36,6 +36,23 @@ DECLINE_TOKEN="promotion: declined"
 # --- the decision, as a pure function so it can carry ground truth ---
 # $1 = count of newly added dated lesson headings; $2 = 1 if a promotion is staged; $3 = 1 if an
 # explicit decline is staged. Echoes: ok | needs-decision
+# ⛔ NO `grep -q` ON THE CONSUMER SIDE OF THIS PIPE, and the reason is measured.
+# The decline scan read `grep -E … "$f" | grep -vqF …`. `-q` exits on its first
+# match, closing the pipe; the producer then takes SIGPIPE and exits 141;
+# `set -o pipefail` above promotes that to the pipeline's status; and the caller
+# reads a decline that IS present as absent. It is a RACE, so it only bites once
+# the producer's output outgrows the pipe buffer — invisible for months, then
+# near-certain. Measured on the real task tree at 17,388 bytes of matches: 34 of
+# 40 runs returned non-zero, against 0 of 40 on a one-match file. ⛔ It fails
+# CLOSED, which is the safe direction and is also why it could never be spotted as
+# a false pass: it blocks a CORRECT commit and blames the author
+# (`SIGNOFF-REPAIR.11.4.2.6.3.1`). This form consumes all of its input, so there is
+# no early close to race with.
+declined_in() { # $1 = file; echoes the non-placeholder decline lines, if any
+    grep -E "${DECLINE_TOKEN} \(..*\)" "$1" 2>/dev/null \
+        | grep -vF "${DECLINE_TOKEN} (<reason>)" || true
+}
+
 lesson_promotion_verdict() {
     local added="$1" promoted="$2" declined="$3"
     if [ "$added" -eq 0 ]; then printf 'ok\n'; return 0; fi
@@ -68,7 +85,39 @@ lesson_promotion_self_check() {
     fi
 }
 lesson_promotion_self_check
-[ "${1:-}" = "--self-test" ] && { echo "LESSON-PROMOTION --self-test: 9/9 controls"; exit 0; }
+
+# --- ground truth for the EXTRACTION, not only the decision ---
+# ⛔ THE NINE CONTROLS ABOVE TEST `lesson_promotion_verdict`, WHICH WAS NEVER THE
+# BROKEN PART. The defect lived in the shell computing that function's INPUTS, and
+# a pure verdict with nine green controls said nothing at all about it. Arm 4 is
+# the one that reproduces the race: it needs enough matching output to outgrow the
+# pipe buffer, because the old pipeline passed on a small file every time.
+declined_in_self_check() {
+    local d rc=0 i miss=0
+    # ⛔ REPOSITORY-DERIVED, never TMPDIR: a bare `mktemp -d` follows TMPDIR, which
+    # is measured on another volume here, and project-owned data stays on the
+    # repository volume (STORAGE-LOCALITY). The gate refused this file for it.
+    mkdir -p "$ROOT/target/doctrine_scratch"
+    d="$(mktemp -d "$ROOT/target/doctrine_scratch/lesson-promotion-selftest.XXXXXX")"
+    printf 'nothing here\n' > "$d/none.md"
+    [ -z "$(declined_in "$d/none.md")" ] || { echo "LESSON-PROMOTION self-test: a file with no decline reported one" >&2; rc=1; }
+    printf '%s (a real reason)\n' "$DECLINE_TOKEN" > "$d/one.md"
+    [ -n "$(declined_in "$d/one.md")" ] || { echo "LESSON-PROMOTION self-test: a single real decline was not found" >&2; rc=1; }
+    printf '%s (<reason>)\n' "$DECLINE_TOKEN" > "$d/placeholder.md"
+    [ -z "$(declined_in "$d/placeholder.md")" ] || { echo "LESSON-PROMOTION self-test: the placeholder reason was accepted" >&2; rc=1; }
+    : > "$d/many.md"
+    for i in $(seq 1 400); do
+        printf '%s (reason %03d %s)\n' "$DECLINE_TOKEN" "$i" "$(printf 'y%.0s' $(seq 1 200))" >> "$d/many.md"
+    done
+    for i in $(seq 1 12); do
+        [ -n "$(declined_in "$d/many.md")" ] || miss=$((miss+1))
+    done
+    [ "$miss" -eq 0 ] || { echo "LESSON-PROMOTION self-test: the decline scan MISSED on $miss of 12 runs over a large file — the SIGPIPE race is back" >&2; rc=1; }
+    rm -rf "$d"
+    return "$rc"
+}
+declined_in_self_check || exit 2
+[ "${1:-}" = "--self-test" ] && { echo "LESSON-PROMOTION --self-test: 9 verdict + 4 extraction controls (incl. the SIGPIPE race arm over a 400-line file)"; exit 0; }
 
 # No staged set (a manual run outside a commit) => nothing to judge.
 staged="$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null || true)"
@@ -94,7 +143,7 @@ declined=0
 for f in $(printf '%s\n' "$staged" | grep -E '^docs/tasks/.*\.md$' || true); do
     [ -r "$f" ] || continue
     case "$f" in docs/tasks/TEMPLATE.md) continue ;; esac
-    if grep -E "${DECLINE_TOKEN} \(..*\)" "$f" | grep -vqF "${DECLINE_TOKEN} (<reason>)"; then
+    if [ -n "$(declined_in "$f")" ]; then
         declined=1; break
     fi
 done

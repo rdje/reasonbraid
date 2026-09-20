@@ -211,6 +211,7 @@
 - [`2026-09-20_an-acknowledgement-covers-a-range-and-the-tail-does-not.md`](docs/decisions/2026-09-20_an-acknowledgement-covers-a-range-and-the-tail-does-not.md)
 - [`2026-09-20_revoking-an-authority-records-when.md`](docs/decisions/2026-09-20_revoking-an-authority-records-when.md)
 - [`2026-09-20_the-tail-read-is-the-offer.md`](docs/decisions/2026-09-20_the-tail-read-is-the-offer.md)
+- [`2026-09-20_two-packs-produce-evidence-the-store-cannot-hold.md`](docs/decisions/2026-09-20_two-packs-produce-evidence-the-store-cannot-hold.md)
 
 ## Promoted lessons
 

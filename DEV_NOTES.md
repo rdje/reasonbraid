@@ -1,5 +1,59 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — The edge was missing because the node was
+
+This leaf was written to answer a tidy question: two resolver packs do not write
+a derivation edge, should they? I expected to read §12.6, decide yes for the
+browser and probably no for git, add two `derivations::submit` calls, and move
+on.
+
+The first thing I did was count the call sites rather than trust the sentence,
+and the sentence was wrong — not by a little. GIT and BROWSE do not merely skip
+the edge. **They persist nothing at all.** No `EvidenceSnapshot`, no row, no
+stored bytes. A git clone happens, a receipt goes back in the response, and when
+the response is gone so is every record that the acquisition occurred. Same for
+a rendered page.
+
+So the two `derivations::submit` calls I had in mind could not have been
+written: a derivation needs a parent snapshot id, and there is no snapshot.
+The edge was missing because the node was.
+
+**And both packs are blocked for the same reason**, which is the part worth
+keeping. `evidence_snapshots.raw_digest` is a foreign key into
+`snapshot_objects`, and that table's `bytes` column is `BYTEA NOT NULL`. So the
+schema can hold an artefact only if it is a byte string this process has in
+hand. R0 fetches bytes. R5 fetches bytes. R2 fetches bytes and derives chunks
+from them. R1's product is an object database on disk. R3's product is a page
+the worker rendered and reported the digest of, keeping the bytes to itself.
+
+Two of the five acquiring packs produce things the evidence store has no shape
+for, and the derivation graph's gaps are downstream of that.
+
+**§12.6 did answer the question the leaf actually flagged**, and better than I
+expected. The open question was whether a git acquisition is a snapshot or a
+derivation. The section settles it in a clause I had read past twice: *a quote,
+summary, OCR result, model-generated caption, or **repository analysis** is not
+the original source.* Naming repository analysis as a derivation makes the
+repository the parent. R1 owes a snapshot; it owes no automatic edge, because
+nothing in the resolve path analyses the tree, and an edge with no
+transformation behind it is decoration.
+
+⚠️ One thing I checked before leaning on it. §12.6 lists *storage/retention
+class* among a snapshot's fields, which is exactly where a repository-shaped
+artefact would go, and the schema has a `storage_class` column. It is written by
+three call sites, all with the literal `"standard"`, read back for display, and
+consulted by no predicate anywhere. I did not grade that a defect — it is latent
+data on a row an operator can inspect, the same arrangement I declined to grade
+for `accepted_at` last week, and grading it here would be reaching. But it does
+settle the narrow question I needed answered: there is one store behind that
+label, and it is inline bytes.
+
+⭐ What I would keep if this happens again: **a missing edge may be a missing
+node.** I nearly wrote two calls that could not compile against reality, because
+the finding named the edge and I went looking for where to add it rather than
+for what it would attach to. One instance is not a rule, so it is written here
+with its trigger rather than promoted.
+
 ## 2026-09-20 — The leaf asked about one direction; the other one was the dangerous one
 
 I opened this leaf to close a residual somebody (me, four commits ago) had

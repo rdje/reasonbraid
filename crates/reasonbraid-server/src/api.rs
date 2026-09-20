@@ -2508,6 +2508,25 @@ async fn resolve_resource(
                     std::time::Duration::from_secs(120),
                 ) {
                     Ok(response) => {
+                        // ⛔ THIS RENDER WRITES NO `EvidenceSnapshot` AND NO
+                        // DERIVATION EDGE, and it SHOULD write both
+                        // (`SIGNOFF-REPAIR.11.24.1.3`). §12.6 opens on exactly
+                        // this case — *a live Web page or branch can change, so
+                        // deliberation evidence points to an immutable
+                        // `EvidenceSnapshot`* — and the chunks below are its
+                        // *derived text/chunk digests and parent links*
+                        // verbatim. R2 two branches down does precisely that
+                        // with the same shape.
+                        //
+                        // ⛔ It is BLOCKED on one nameable thing rather than
+                        // omitted: `evidence_snapshots.raw_digest` is a foreign
+                        // key into `snapshot_objects`, whose `bytes` column is
+                        // `BYTEA NOT NULL`, and the browser worker returns
+                        // `parent_digest` WITHOUT the rendered bytes. A snapshot
+                        // is unrepresentable until the worker's wire response
+                        // carries them. `.11.24.1.3.1` owns that change; until
+                        // it lands, a rendered page's provenance is held by this
+                        // process and recorded nowhere.
                         outcome.acquisition = Some(crate::resolvers::Acquisition::Browse(
                             crate::browse::BrowserReceipt {
                                 parent_digest: response.parent_digest,
@@ -2715,6 +2734,30 @@ async fn resolve_resource(
             }
         }
         Some(crate::resolvers::R1_RESOLVER_ID) => {
+            // ⛔ THIS ACQUISITION WRITES NO `EvidenceSnapshot`, and the
+            // disposition is recorded here rather than only in the task tree
+            // (`SIGNOFF-REPAIR.11.24.1.3`).
+            //
+            // ⭐ THE SNAPSHOT IS OWED AND THE AUTOMATIC EDGE IS NOT, and §12.6
+            // says which is which rather than leaving it to taste: *a live Web
+            // page or BRANCH can change*, so the acquired tree is evidence; and
+            // *a quote, summary, OCR result, model-generated caption, or
+            // REPOSITORY ANALYSIS is not the original source*, which makes the
+            // repository the PARENT and an analysis of it the edge. Nothing
+            // here analyses the tree, so there is no edge to write — a
+            // derivation invented to fill a graph would be an edge with no
+            // transformation behind it.
+            //
+            // ⛔ The snapshot is blocked on a STORAGE question, not on effort:
+            // `evidence_snapshots.raw_digest` is a foreign key into
+            // `snapshot_objects`, whose `bytes` column is `BYTEA NOT NULL`, and
+            // R1's product is an on-disk object database addressed by
+            // `odb_path` — not a byte string this process holds. §12.6 lists a
+            // *storage/retention class* among a snapshot's fields for exactly
+            // this reason; the schema carries `storage_class`, every caller
+            // binds the literal `"standard"`, and no predicate reads it, so
+            // there is currently one store and it is inline bytes.
+            // `.11.24.1.3.2` owns that question.
             match state.git_fetcher.acquire(&reference.original_locator).await {
                 Ok(acquisition) => {
                     let requested_ref = url::Url::parse(&reference.original_locator)

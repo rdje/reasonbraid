@@ -5,6 +5,18 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **THE MISSING DERIVATION EDGES ARE A SYMPTOM, AND TWO PACKS PRODUCE EVIDENCE THE STORE CANNOT HOLD (`.11.24.1.3`, REPAIR-0310).**
+
+⭐ The leaf's own premise understated the gap, and the census it demanded is what corrected it.
+
+- 🔴 It opened as *only EXTRACT records derivations; GIT and BROWSE do not*. Measured at the call sites: **GIT and BROWSE record NOTHING AT ALL.** The resolve handler's `snapshots::submit` sites are R0, R5 and R2 (plus the explicit `POST /v1/snapshots` route outside it); R1 and R3 have none, **so there is no parent for an edge to hang from** and a `derivations::submit` added to either branch would have cited a snapshot that does not exist.
+- ⛔ **ONE CAUSE COVERS BOTH: the evidence store can only hold an artefact that is a byte string this process has in memory.** `evidence_snapshots.raw_digest` is a FOREIGN KEY into `snapshot_objects`, whose `bytes` is `BYTEA NOT NULL`. R1's product is an on-disk object database addressed by `odb_path`; R3's worker returns `parent_digest` WITHOUT the rendered bytes.
+- ✅ **R3 is owed a snapshot AND edges** — the archetype §12.6 opens with, its chunks that section's *derived text/chunk digests and parent links* verbatim, the shape R2 already implements one branch away. Blocked on the worker's wire response → `.11.24.1.3.1`.
+- ✅ **R1 is owed a snapshot and NOT an automatic edge**, and §12.6 answers the leaf's real question by naming the case: *a branch can change* puts the tree in scope as evidence, and *repository analysis is not the original source* makes the repository the PARENT. Nothing analyses the tree, so ⛔ **an edge invented to fill a graph is an edge with nothing behind it.** Blocked on a storage question → `.11.24.1.3.2`.
+- ⚪ **`storage_class` measured**: 10 occurrences over 2 files — a field, the `INSERT` bind, the read-back, and **three call sites all binding the literal `"standard"`** — and **no predicate branches on it**. Recorded as the evidence this rests on and ⛔ deliberately NOT graded a defect (the `accepted_at` arrangement). It establishes one thing: **one storage class behind the label, and it is inline bytes.**
+- ⚠️ **NOT decided here:** any storage design — §12.6 permits *a verifiable external archival reference* as an alternative to remaining addressable — and nothing about whether R0, R5 or R2 are complete.
+- ✅ **VERIFIED:** both dispositions recorded at their packs' own sites in `api.rs`, as the acceptance required. Clippy rc=0; fmt rc=0; book rc=0; gate green. ⛔ **Nothing to falsify, and that is the honest statement rather than a skipped box** — no behaviour changed; the census was capable of the other answer.
+
 🔴 **A RECEIPT IS EARNED BY AN OFFER, AND THE PROXY IT REPLACES WAS WRONG IN BOTH DIRECTIONS (`.11.24.1.1.1.1`, REPAIR-0309).**
 
 ⭐ The leaf opened on one direction of the error and found the other one — the dangerous one.

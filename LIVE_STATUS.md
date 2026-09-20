@@ -5,6 +5,13 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE RECORD BOUNDARY CANNOT BE DERIVED FROM THIS LOG, SO THE MIGRATION SEALS IT (`.11.4.2.6.6.1`, DOC-0095).**
+
+- **320 emoji-led candidate lines**: 265 carry a leaf or work-unit id, 55 do not. 🔴 **Preceding context does NOT discriminate** — 46 of the 55 follow another headline, exactly like 95 of the 265. ⭐ That contrast is the positive control.
+- ✅ **The migration SEALS this log wholesale into git history** and creates the boundary only for entries written AFTER the split, enforced from the first one rather than inferred from 320 old ones. ⛔ Sealing preserves every byte retrievably and removes the one step where a migration could silently merge or lose a record.
+- 🔴 My own first count was the usual error: 320 is emoji-led LINES, not entries; the earlier 318 came the same way. No entry count is published, because no mechanical rule produces one.
+- ⚠️ `rotate_changelog.py` is this file's FUTURE instrument, not its history's. Nothing created, sealed or moved.
+
 ✅ **THE MARKDOWN-TARGET POSITIONAL CENSUS, AND THE RATCHET DECLINED ON ITS OWN PRICING (`.11.4.2.6.5.1`, DOC-0094).**
 
 - **131 occurrences, 37 targets**: 127 in-range, 3 ambiguous, 1 past-end-of-file, 0 unresolved. **9** live-or-book, **17** targeting a prepend-only file where a line reference is broken by construction.

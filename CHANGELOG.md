@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-21 — The record boundary cannot be derived from this log, so the migration seals it instead (`SIGNOFF-REPAIR.11.4.2.6.6.1`)
+
+`REASONBRAID-DOC-0095`. Before creating the boundary `LIVE_STATUS.md` lacks: can one be derived? The answer decides which migration is safe.
+
+- **320 emoji-led candidate lines**, of which **265 carry a leaf or work-unit id** and **55 carry neither**.
+- 🔴 **Preceding context does NOT discriminate.** The 55 id-less candidates are 46 after another headline / 7 after prose / 2 after a bullet; the 265 id-carrying ones are 95 after another headline / 169 after a bullet / 1 after a heading. ⭐ That contrast is the positive control: if context discriminated the distributions would differ, and they do not.
+- ✅ **So the migration SEALS the existing log wholesale into git history and creates the boundary only for entries written AFTER the split**, where it is enforced from the first one rather than inferred from 320 old ones. ⛔ Not a shortcut: sealing preserves every byte exactly and retrievably, and removes the single step where a migration could silently merge or lose a record.
+- 🔴 **My own first count was wrong in the usual direction** — 320 is the count of emoji-led LINES, not entries, and the file's earlier census said 318 by the same method. Neither is an entry count, and this leaf publishes none, because the finding is that no mechanical rule produces one.
+- ⚠️ `rotate_changelog.py` is this file's FUTURE instrument, not its history's. Nothing created, sealed or moved; no code or ceiling touched.
+
 ## 2026-09-21 — The Markdown-target positional census, and the ratchet declined because its only firing would be the report of the defect (`SIGNOFF-REPAIR.11.4.2.6.5.1`)
 
 `REASONBRAID-DOC-0094`. `census_positional_refs.py` reports `unresolved=0` across 597 occurrences — a true statement about a population that does not contain Markdown targets. This counts that population.

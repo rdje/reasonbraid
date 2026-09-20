@@ -1,5 +1,71 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — The question that decided the migration was whether a boundary exists
+
+I was about to create a record boundary for `LIVE_STATUS.md`'s correction log so
+the rotation could split it. The obvious approach: the entries are emoji-led
+paragraphs, so turn each one into a dated `## ` heading and let the shipped
+mechanism handle it exactly as it handles the other two ledgers.
+
+Before writing that, I asked whether the entries can be identified at all.
+
+320 lines in the file start with an emoji at column 0 and bold text. 265 of them
+carry a leaf id or a work-unit id, which is what a headline looks like here. 55
+do not. So the question is whether those 55 are headlines that omitted their id,
+or second paragraphs of the entry above them.
+
+I tested the discriminator I expected to work: what precedes the line. A headline
+should follow the previous entry's last bullet; a continuation should follow other
+prose. Of the 55 id-less candidates, 46 directly follow another headline, 7 follow
+prose, 2 follow a bullet.
+
+Then I ran the same classification over the 265 I was confident about, as the
+control. 95 of them also directly follow another headline. 169 follow a bullet.
+
+**The two distributions have the same shape.** Preceding context cannot tell a
+second paragraph of one entry from the first paragraph of the next, because both
+happen, in both classes, at similar rates. There is no mechanical boundary in this
+file to find.
+
+I want to be clear about why running the control mattered. Looking at the 55 alone,
+"46 of 55 follow another headline" reads like a finding — it sounds like those 46
+are continuations. It is only when the same measurement over the known headlines
+returns 95 that the number stops meaning anything. A classification that produces
+the same answer for both classes is not a classification. That is the third time
+this week a number only became interpretable next to its control.
+
+What this changed is the migration, and for the better.
+
+A boundary could still be created by hand-classifying all 320. This project does
+that — it has hand-classified seven, seventeen and forty-five instance
+populations, and they were the right call each time. But every one of those was
+classifying evidence that was going to be USED. Here the work would go into
+retrofitting structure onto content that is entirely historical, so that a
+rotation mechanism could later retire it — when the content is already, by
+definition, all retirable.
+
+So: seal the whole log into git history in one transition, and create the boundary
+only for entries written after the split, where it is enforced from the first entry
+instead of inferred from 320 old ones. Sealing preserves every byte exactly and
+retrievably, which is what rotation is for, and it deletes the single step in the
+migration where a record could be silently merged or lost.
+
+The shipped rotation is not the wrong tool. It is the tool for this file's future
+rather than its past, and the leaf says so explicitly so nobody re-opens it.
+
+One correction to my own numbers, and it is the familiar one. I wrote "320
+correction entries" and used it as an entry count. It is the count of emoji-led
+lines, which is exactly the conflation the leaf is about — and the file's own
+earlier census reported 318 the same way. Neither number is an entry count. The
+leaf publishes none, which is the honest position when the whole finding is that
+no rule produces one. Third time this session that a first population described my
+parser rather than the corpus.
+
+Promotion: declined and recorded in `SIGNOFF-REPAIR.11.4.2.6.6.1` — a third
+instance of `docs/knowledge/an-instruments-first-population-describes-its-parser.md`,
+and the sealing choice is a disposition about this file rather than a transferable
+method.
+
 ## 2026-09-21 — The rule whose only firing would be the report of the defect
 
 I set out to extend a gate and ended up declining one, which is the right outcome

@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-20 — A relative leaf reference resolves against its own tree, and two dialects disagree about what that means (`SIGNOFF-REPAIR.11.24.1.6`)
+
+`REASONBRAID-REPAIR-0328`. The reference census, the convention, and a ratchet priced before it was registered.
+
+- 🔴 **The instance:** `docs/tasks/PHASE-8.md` wrote *no download mechanism exists (the `.2.3` distribution-channel deferral)* meaning `PHASE-7.2.3`, while `PHASE-8.2.3` exists, is `done`, and is the A2A facade. ⛔ **A resolver cannot notice that** — the wrong target EXISTS, so same-tree resolution returns a real leaf with a real status.
+- **THE CENSUS** — `scripts/census_relative_leaf_refs.py`, new, with an 11-arm two-sided `--self-test`. **5,634 references across the 12 tree files**: `home` 3,089 · `shared` 2,178 · `internally-ambiguous` 126 · `foreign` 165 · `dangling` 76.
+- 🔴 **THE FINDING THE LEAF DID NOT PREDICT: `PHASE-1.md` is written in a different dialect.** It writes a reference repeating its own phase number — 194 of its 252 read that way, against 46 in the dominant one. ⭐ **The instrument discovered that rather than being told it**: its first version knew one dialect and reported PHASE-1 as 194 defects; its first glob matched recursively and swept `docs/tasks/artifacts/` for 267 more rows of its own shape. Both scoping rules now live in the code with their reasons.
+- ✅ **The convention** is in `docs/TASK_TREE_README.md`: a leaf may be cited relatively inside its own tree, and **a reference to another tree is written in full**. ⚠️ PHASE-1's dialect is RECORDED, not migrated — rewriting 194 references in a closed tree is a mass edit with a real chance of introducing the errors it would be fixing.
+- ✅ **`RELATIVE-LEAF-REF` registered** — a RATCHET on the two classes a reader cannot follow at all (`dangling`, `internally-ambiguous`), priced over the 30 commits touching `docs/tasks/` before registering: they rose in **1** and **0**. It costs 0.41 s. ⛔ A ratchet and not a floor: 76 + 126 exist, and a gate red on arrival is a gate somebody turns off.
+- ⛔ **`foreign` is DECLINED with its number** — 3 rises in 30, ten times the cost — and it is the SAFE class besides: it cannot silently resolve to the wrong leaf, because it does not resolve in its own tree at all.
+- 🔴 **And the gate does NOT catch the instance that opened the leaf, said plainly in its own docstring.** That reference is `shared`, and `shared` is 2,178 strong; nothing mechanical separates a correct shared reference from an incorrect one. The repair for it is the convention plus the reference itself, now written in full.
+- 🔎 **62 of the 76 `dangling` are a different defect, and it is owned rather than counted** (`SIGNOFF-REPAIR.11.24.1.6.1`, new): the tree declares four top-level lanes as headings and lane 11 — with **195 children** — is not one of them, so every reference to it resolves to nothing and the gates that resolve an id to a heading cannot see it.
+- ✅ **VERIFIED:** doctrine gate all green with the new check registered (`make gate` 21.4 s); the instrument's `--self-test` **11/11**; `check_self_tests.sh` and `check_scaffold_coverage.sh` rc=0; `make book` rc=0; `cargo fmt --all --check` rc=0; `handoff: OK`. No Rust changed. **The gate was made to FIRE and then to clear** — a deliberately unresolvable reference produced `RISE — dangling 76 -> 77`, rc=1; reverting returned rc=0. ⭐ Writing this changelog entry fired it too, which is how the convention got applied to the entry.
+
 ## 2026-09-20 — A re-key signs the manifest, not the binaries (`SIGNOFF-REPAIR.11.24.1.4`)
 
 `REASONBRAID-REPAIR-0327`. The signing-key incident's recovery had a runbook and no command.

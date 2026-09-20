@@ -27,6 +27,36 @@ top-level task's recursive breakdown and its execution evidence.
 When a leaf uncovers new work, add child leaves (`<TREE-ID>.2.1`, …) rather than expanding
 the current leaf beyond a safe slice. The tree is meant to grow as understanding deepens.
 
+## Referring to a leaf
+
+A leaf may be cited **relatively** inside its own tree — `` `.2.3` `` in
+`PHASE-8.md` means `PHASE-8.2.3`. That is the convention, and it has exactly one
+rule attached:
+
+> ⛔ **A reference to a leaf in ANOTHER tree is written in full.** `PHASE-7.2.3`,
+> never `` `.2.3` ``.
+
+The reason is that the trees share a numbering shape, so a relative reference
+meant for another tree does not fail — it lands on a **real leaf with a real
+status**. `PHASE-8.4.4` wrote *the `.2.3` distribution-channel deferral* meaning
+`PHASE-7.2.3`, and `PHASE-8.2.3` exists and is the A2A facade. No resolver can
+notice that; only a reader of the surrounding words can
+(`SIGNOFF-REPAIR.11.24.1.6`).
+
+⚠️ **One tree is written in a different dialect, recorded here rather than
+migrated.** `PHASE-1.md` writes `` `.1.6.1` `` for `PHASE-1.6.1`, repeating its
+own phase number — 194 of its 252 references read that way, against 46 in the
+dominant one. It is `done`; rewriting 194 references in a closed tree is a mass
+edit with a real chance of introducing the errors it would be fixing, for no
+reader who is not already there. New work uses the dominant dialect.
+
+`scripts/census_relative_leaf_refs.py` measures the corpus, and its `--check`
+arm is a registered ratchet: a reference that resolves **nowhere**, or **both
+ways inside one tree**, may not become more numerous than it is at `HEAD`.
+⚠️ It does **not** catch a wrong cross-tree reference — that class is 2178
+strong and only the words distinguish a right one from a wrong one. The rule
+above is what catches those, and it is a rule for authors rather than a gate.
+
 ## When a tree completes
 
 Mark it `done` in `TASK_TREE.md`, ensure every leaf's evidence and commit is recorded, and

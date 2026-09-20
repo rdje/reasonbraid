@@ -283,4 +283,31 @@ if ! python3 -B scripts/census_advertised_policies.py --check >/dev/null 2>&1; t
     exit 1
 fi
 
+# RELATIVE-LEAF-REF (`SIGNOFF-REPAIR.11.24.1.6`) — a relative leaf reference
+# like `.2.3` resolves against its OWN tree, and the trees share a numbering
+# shape, so one meant for another tree can land on a real leaf with a real
+# status. The instance that opened the leaf: `PHASE-8.4.4` writes *the `.2.3`
+# distribution-channel deferral* and means `PHASE-7.2.3`, while `PHASE-8.2.3`
+# exists and is the A2A facade.
+#
+# ⛔ THE RATCHET IS NOT ON THAT CLASS, and the reason is that nothing mechanical
+# could be. A reference that resolves in its own tree AND names a leaf in
+# another is `shared`, and there are 2178 of those — only the surrounding words
+# separate a correct one from an incorrect one. What IS mechanical is the two
+# classes a reader cannot follow at all: `dangling` (resolves nowhere) and
+# `internally-ambiguous` (resolves BOTH ways inside one tree, because two
+# dialects coexist). Neither may RISE against HEAD.
+#
+# ⚠️ Priced over the 30 commits touching docs/tasks/ before registering:
+# `dangling` rose in 1, `internally-ambiguous` in 0, and `foreign` in 3.
+# `foreign` is DECLINED at ten times the cost and is the SAFE class besides — it
+# cannot silently resolve to the wrong leaf, because it does not resolve in its
+# own tree at all. The standing 76 + 126 are NOT a backlog to discharge: the
+# dominant `dangling` cause is a lane referenced but never declared as a node,
+# which is a different defect and is owned at `SIGNOFF-REPAIR.11.24.1.6.1`.
+if ! python3 -B scripts/census_relative_leaf_refs.py --check >/dev/null 2>&1; then
+    python3 -B scripts/census_relative_leaf_refs.py --check >&2
+    exit 1
+fi
+
 exit 0

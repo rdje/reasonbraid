@@ -5,6 +5,16 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **A RELATIVE LEAF REFERENCE RESOLVES AGAINST ITS OWN TREE, AND TWO DIALECTS DISAGREE (`.11.24.1.6`, REPAIR-0328).**
+
+- 🔴 The instance: `docs/tasks/PHASE-8.md` deferred to a bare `.2.3` meaning `PHASE-7.2.3`, while `PHASE-8.2.3` exists and is the A2A facade. **A resolver cannot notice it** — the wrong target exists.
+- **5,634 references censused**: home 3,089 · shared 2,178 · internally-ambiguous 126 · foreign 165 · dangling 76.
+- 🔴 **`PHASE-1.md` is written in a different dialect** — 194 references repeat its own phase number, against 46 in the dominant one. ⭐ **The instrument discovered that**: its first version knew one dialect and would have published 194 defects; its first glob swept the artifacts directory for 267 more rows of its own shape.
+- ✅ Convention in `docs/TASK_TREE_README.md`: a cross-tree reference is written IN FULL. PHASE-1's dialect is RECORDED, not migrated.
+- ✅ **`RELATIVE-LEAF-REF` registered** — a ratchet on the two unfollowable classes, priced at **1 and 0 rises in 30 commits**, 0.41 s. ⛔ **`foreign` DECLINED at 3 in 30**, and it is the safe class.
+- 🔴 **The gate does NOT catch the opening instance, stated in its own docstring**: that class is 2,178 strong and only the words separate right from wrong.
+- 🔎 **62 of the 76 dangling are a different defect, OWNED at `.11.24.1.6.1`**: lane 11 has 195 children and no node of its own.
+
 ✅ **A RE-KEY SIGNS THE MANIFEST, NOT THE BINARIES (`.11.24.1.4`, REPAIR-0327).**
 
 - 🔴 The signing-key runbook prescribed *re-sign the SAME manifest content* and **no command could do it** (`git grep -ci` → 0).

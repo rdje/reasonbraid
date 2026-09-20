@@ -1287,10 +1287,19 @@ Implementation ownership and remaining verification are in `docs/tasks/SIGNOFF-R
       suite (the guard's 30th: the seeded list, the
       allow/re-allow/revoke, the non-admin 403).
     - The load-path WIRING is the named follow-on:
-      no download mechanism exists (the `.2.3`
-      distribution-channel deferral) — the ladder +
-      the ledger + the verbs ship measured; the
-      first downloaded adapter rides them.
+      no download mechanism exists (the
+      `PHASE-7.2.3` distribution-channel
+      deferral) — the ladder + the ledger + the
+      verbs ship measured; the first downloaded
+      adapter rides them.
+      ⚠️ Written in FULL by
+      `SIGNOFF-REPAIR.11.24.1.6`, which found this
+      exact sentence: a bare `.2.3` here reads as
+      `PHASE-8.2.3` — the A2A facade, which exists
+      and is `done` — so the reference resolved to a
+      real leaf that has nothing to do with
+      distribution. The words are unchanged; only
+      the address is now unambiguous.
     Acceptance:
     - [x] **ROOT CAUSE (WHY + WHERE)** — the
       ADR-027 ladder existed as the vocabulary; the

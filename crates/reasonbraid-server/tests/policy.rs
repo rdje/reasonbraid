@@ -2802,30 +2802,43 @@ async fn the_publication_verbs_require_an_authority_the_caller_holds() {
             "owning_authority": grant,
         })
     };
+    // ⛔ `.9.2.1.2.3`: `publish` takes no `git_object_ids`, and since the verbs
+    // are typed it REFUSES one rather than ignoring it. The two verbs
+    // therefore need two bodies — which is the contract being honest rather
+    // than an inconvenience: one of these requests was always nonsense for one
+    // of the two verbs, and nothing said so.
+    let publish_body = |grant: &str| {
+        json!({
+            "repo_path": "live",
+            "owning_authority": grant,
+        })
+    };
 
     // Leg A — an enrolled principal naming NO authority is refused by both
     // verbs. Enrolment used to be the whole predicate.
-    for (verb, path) in [
-        ("publish", "/v1/policy-publications/pa-pub/publish"),
-        ("effective", "/v1/policy-publications/pa-pub/effective"),
+    // ⛔ `.9.2.1.2.3` typed both verbs, so each leg sends THAT VERB'S shape:
+    // `publish` does not accept `git_object_ids` and now says so rather than
+    // ignoring it. The refusal is the strict wire boundary's `422`, naming the
+    // field that is missing.
+    for (verb, path, body) in [
+        (
+            "publish",
+            "/v1/policy-publications/pa-pub/publish",
+            json!({ "repo_path": "live" }),
+        ),
+        (
+            "effective",
+            "/v1/policy-publications/pa-pub/effective",
+            json!({ "git_object_ids": object_ids.clone(), "repo_path": "live" }),
+        ),
     ] {
-        let (status, refused) = post(
-            &client,
-            &base,
-            path,
-            &alice_id,
-            &json!({ "git_object_ids": object_ids.clone(), "repo_path": "live" }),
-        )
-        .await;
+        let (status, refused) = post(&client, &base, path, &alice_id, &body).await;
         assert_eq!(
-            status, 400,
-            "{verb} without an authority refuses: {refused}"
+            status, 422,
+            "{verb} without an authority refuses at the boundary: {refused}"
         );
         assert!(
-            refused["message"]
-                .as_str()
-                .unwrap()
-                .contains("owning_authority"),
+            format!("{refused}").contains("owning_authority"),
             "{verb}: {refused}"
         );
     }
@@ -2834,12 +2847,19 @@ async fn the_publication_verbs_require_an_authority_the_caller_holds() {
     // ELSE is refused by both verbs. ⭐ This is the leg that distinguishes
     // holding from naming: `bob_grant` is derivable from bob's principal id,
     // which alice can read off any response.
-    for (verb, path) in [
-        ("publish", "/v1/policy-publications/pa-pub/publish"),
-        ("effective", "/v1/policy-publications/pa-pub/effective"),
+    for (verb, path, body) in [
+        (
+            "publish",
+            "/v1/policy-publications/pa-pub/publish",
+            publish_body(&bob_grant),
+        ),
+        (
+            "effective",
+            "/v1/policy-publications/pa-pub/effective",
+            effective_body(&bob_grant),
+        ),
     ] {
-        let (status, refused) =
-            post(&client, &base, path, &alice_id, &effective_body(&bob_grant)).await;
+        let (status, refused) = post(&client, &base, path, &alice_id, &body).await;
         assert_eq!(
             status, 403,
             "{verb} under another principal's grant refuses: {refused}"
@@ -2864,7 +2884,7 @@ async fn the_publication_verbs_require_an_authority_the_caller_holds() {
         &base,
         "/v1/policy-publications/pa-pub/publish",
         &alice_id,
-        &effective_body(&alice_grant),
+        &publish_body(&alice_grant),
     )
     .await;
     assert_eq!(status, 400, "the holder is admitted: {admitted}");
@@ -2982,15 +3002,15 @@ async fn the_failed_transition_requires_an_authority_the_caller_holds() {
         &json!({ "reason": "unauthorized failure" }),
     )
     .await;
+    // ⛔ `422` since `.9.2.1.2.3` typed this verb: a missing required field is
+    // the strict wire boundary's answer, not the handler's. The transition is
+    // still not reached, which is what leg A is for.
     assert_eq!(
-        status, 400,
-        "failed without an authority refuses: {refused}"
+        status, 422,
+        "failed without an authority refuses at the boundary: {refused}"
     );
     assert!(
-        refused["message"]
-            .as_str()
-            .unwrap()
-            .contains("owning_authority"),
+        format!("{refused}").contains("owning_authority"),
         "{refused}"
     );
     staged("leg A").await;
@@ -3036,6 +3056,122 @@ async fn the_failed_transition_requires_an_authority_the_caller_holds() {
         failed["failed_reason"],
         json!("the holder's failure"),
         "{failed}"
+    );
+}
+
+/// `SIGNOFF-REPAIR.9.2.1.2.3` — the three publication transitions took an
+/// untyped `serde_json::Value`, so an unknown field was SILENTLY IGNORED and
+/// every required field was graded by hand.
+///
+/// ⛔ §9.1 and this repository's own `command_api` control say a
+/// client-supplied field is *rejected, not ignored*, and `422 at the strict
+/// wire boundary` is how the other 46 typed extractors say it. These three
+/// could not: an untyped body has no declared shape to reject against.
+///
+/// ⭐ The `git_object_ids` leg is the sharpest. The handler did `.as_array()`
+/// then `filter_map(|v| v.as_str())`, so a non-string entry VANISHED before
+/// `.9.2.1.3`'s existence check ever saw it.
+#[tokio::test]
+async fn the_publication_transitions_refuse_a_body_that_is_not_their_shape() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "wb-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let grant_id = format!("grt_{human_id}");
+
+    // ⛔ No publication is seeded, and none is needed: the boundary refuses
+    // before the handler runs, so these legs prove the SHAPE is graded rather
+    // than that some record was found. Leg 3 is what keeps that honest.
+    let legs: [(&str, serde_json::Value); 3] = [
+        (
+            "/v1/policy-publications/wb-pub/effective",
+            json!({ "owning_authority": grant_id, "git_object_ids": ["abc"],
+                    "repo_path": "live" }),
+        ),
+        (
+            "/v1/policy-publications/wb-pub/failed",
+            json!({ "owning_authority": grant_id, "reason": "r" }),
+        ),
+        (
+            "/v1/policy-publications/wb-pub/publish",
+            json!({ "owning_authority": grant_id, "repo_path": "live" }),
+        ),
+    ];
+
+    for (path, body) in legs {
+        // Leg 1 — an UNKNOWN field is refused, not ignored.
+        let mut forged = body.clone();
+        forged["fabricated"] = json!(true);
+        let (status, rejected) = post(&client, &base, path, &human_id, &forged).await;
+        assert_eq!(
+            status, 422,
+            "{path}: the unknown field is refused: {rejected}"
+        );
+        assert!(
+            format!("{rejected}").contains("fabricated"),
+            "{path}: the rejection NAMES the forged field: {rejected}"
+        );
+
+        // Leg 2 — a MISSING required field is refused at the same boundary and
+        // named. ⛔ `owning_authority` is the field dropped, so one assertion
+        // serves all three verbs.
+        let mut missing = body.clone();
+        missing.as_object_mut().unwrap().remove("owning_authority");
+        let (status, rejected) = post(&client, &base, path, &human_id, &missing).await;
+        assert_eq!(
+            status, 422,
+            "{path}: the missing field is refused: {rejected}"
+        );
+        assert!(
+            format!("{rejected}").contains("owning_authority"),
+            "{path}: the rejection names the missing field: {rejected}"
+        );
+    }
+
+    // Leg 3 — THE MATCHED PAIR, and it is what stops legs 1 and 2 passing for
+    // a refuse-everything repair: a WELL-FORMED body of exactly this shape
+    // gets PAST the boundary and is refused later, by the authority check,
+    // with the typed `{code, message}` a semantic refusal uses.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-publications/wb-pub/failed",
+        &human_id,
+        &json!({ "owning_authority": "grt_nobody", "reason": "r" }),
+    )
+    .await;
+    assert_eq!(
+        status, 403,
+        "a well-formed body reaches the handler: {refused}"
+    );
+    assert_eq!(refused["code"], json!("unauthorized"), "{refused}");
+
+    // Leg 4 — `git_object_ids` is a list of STRINGS. A non-string entry used
+    // to be silently dropped by `filter_map`, so a caller could shorten the
+    // list `.9.2.1.3` then checked for existence. It is refused now.
+    let (status, rejected) = post(
+        &client,
+        &base,
+        "/v1/policy-publications/wb-pub/effective",
+        &human_id,
+        &json!({ "owning_authority": grant_id, "git_object_ids": ["abc", 7],
+                 "repo_path": "live" }),
+    )
+    .await;
+    assert_eq!(
+        status, 422,
+        "a non-string object id is refused rather than dropped: {rejected}"
     );
 }
 
@@ -3376,17 +3512,20 @@ async fn the_staging_verb_requires_an_authority_the_caller_holds() {
         &body(None),
     )
     .await;
+    // ⛔ `422`, THE STRICT WIRE BOUNDARY, and `.9.2.1.2.3` CORRECTED this leg.
+    // It first asserted `400`, because `.9.2.1.2.2` hand-graded the absence so
+    // that all four verbs answered alike — and the census says the other three
+    // were the anomaly: they were UNTYPED and could not use the boundary at
+    // all. 46 typed extractors answer `422` here, four suites assert it, and
+    // `.4.2.2` depends on it. The rejection NAMES the field, which is the
+    // convention's own point.
     assert_eq!(
-        status, 400,
-        "staging without an authority refuses: {refused}"
+        status, 422,
+        "a missing required field is refused at the wire boundary: {refused}"
     );
     assert!(
-        refused["message"]
-            .as_str()
-            .unwrap()
-            .contains("owning_authority"),
-        "⛔ the refusal is the TYPED one its three siblings give, not the \
-         deserializer's bare 422: {refused}"
+        format!("{refused}").contains("owning_authority"),
+        "the boundary rejection names the missing field: {refused}"
     );
     staged_rows("leg A", 0).await;
 

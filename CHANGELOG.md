@@ -1,5 +1,20 @@
 # CHANGELOG.md
 
+## 2026-09-20 — The three publication transitions are typed, and the convention I called a deviation was the convention (`SIGNOFF-REPAIR.9.2.1.2.3`)
+
+`REASONBRAID-REPAIR-0341`. The leaf's own premise refuted by its own census, and the divergence it found was one I had shipped.
+
+- 🔴 **The leaf opened on *a typed handler refuses off-contract*. It does not.** `422 at the strict wire boundary` is this project's convention: **46** typed extractors against **9** site routes, asserted BY NAME in four suites — `command_api` checks the body `contains("unknown field")`, `profiles` writes *"An unknown field is the typed 422"* two lines above *"A malformed digest is the typed 400"*, and `SIGNOFF-REPAIR.4.2.2` DEPENDS on a missing credential field being refused there rather than at the ladder.
+- ⛔ **`api::site_request` is a self-documenting exception** — *"Do not echo malformed caller input or driver diagnostics"* on an operator surface. Reading its own comment would have ended the question before a repair was written against it.
+- 🔴 **So the divergence was mine.** `.9.2.1.2.2` modelled `owning_authority` as `Option` and graded its absence by hand "so all four verbs answer one question with one refusal" — choosing the refusal the convention does not use at that boundary. Reverted here: the field is required again, the error variant is gone, and the control asserts `422` with a comment saying why it moved.
+- ✅ **The real finding underneath survived**: the three transitions took `Json<serde_json::Value>`, so an unknown field was **silently ignored** on all three — exactly what §9.1 and this repository's own forged-field control refuse. They are typed now, `deny_unknown_fields` on each.
+- ⛔ **`git_object_ids` is `Vec<String>`**: the handler used to do `.as_array()` then `filter_map(|v| v.as_str())`, so a non-string entry VANISHED before `.9.2.1.3`'s existence check ever saw it. A caller could shorten the list it was about to be checked on.
+- ✅ `held_publication_authority` is deleted — it existed only to fish a field out of an untyped body, and all four verbs now hold the grant id already.
+- ⭐ **The falsification's own refusal is the proof**: without `deny_unknown_fields`, the forged request reaches the handler and answers `503 publication_repository_unconfigured` — carried all the way through, not merely tolerated.
+- ⚠️ The suite found a fixture that had been sending nonsense: one body drove BOTH verbs while carrying `git_object_ids`, which `publish` does not take. Ignored for the life of that control; refused now.
+- ⭐ **Promoted**: `docs/knowledge/a-convention-is-what-the-corpus-asserts-not-what-one-surface-does.md`.
+- **No regression:** 6 suites including `node_channel` (the suite that asserts the convention), **198 tests, 0 failed**; `--lib` 133 passed; clippy `-D warnings` rc=0; gate green; book rc=0.
+
 ## 2026-09-20 — A publication carries the policy its proposal was approved for (`SIGNOFF-REPAIR.9.2.1.3.2`)
 
 `REASONBRAID-REPAIR-0340`. The measurement that decided `.9.2.1.2.2`, repaired.

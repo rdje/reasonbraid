@@ -1,5 +1,58 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — I generalised from the exception and shipped it
+
+Two surfaces in `api.rs` refuse a malformed body differently. `site_request`
+maps axum's `JsonRejection` into the API's `{code, message}` shape with `400`.
+Every other typed handler lets the rejection through as a bare `422` with a
+plain-text body.
+
+I looked at those two and concluded the `422` was off-contract. Then I wrote a
+repair against that conclusion: `owning_authority` became `Option<String>` on
+the staging input, and the handler graded its absence by hand — *"so all four
+verbs answer one question with one refusal."* It shipped.
+
+The census I should have run first:
+
+```text
+46   typed Json<T> extractors in api.rs, all answering 422
+ 9   site routes normalizing the rejection to 400
+ 4   test suites asserting the 422 BY NAME
+ 1   repair (SIGNOFF-REPAIR.4.2.2) that DEPENDS on it
+```
+
+And the assertions are not incidental. `command_api` checks the rejection body
+`contains("unknown field")` — naming the forged field is the point of it.
+`profiles` writes *"An unknown field is the typed 422"* two lines above *"A
+malformed digest is the typed 400"*: the two levels, named as two levels, in one
+test. `node_channel` calls it "the strict wire boundary".
+
+So the contract has two levels and both are deliberate. `422` means the body is
+not this verb's shape and the handler never ran. `400 invalid_command` means the
+handler ran and the request is semantically wrong. My repair had taught one
+typed verb to answer level 2 for a level 1 fault.
+
+⭐ What makes this worth writing down is that the evidence was not buried. The
+exception explains itself, one line above its own code:
+
+> Do not echo malformed caller input or driver diagnostics. Keep body-size and
+> media-type refusal statuses; normalize JSON syntax/schema errors to typed 400.
+
+That is an argument about *the site routes*. A convention does not need a reason
+written next to it; an exception does, and this one had one. **A surface that
+documents why it differs is telling you it is the minority.**
+
+⚠️ And the finding underneath the false premise was real, which is the part that
+made the false premise plausible: the three publication transitions took an
+untyped body, so their required fields *were* graded by hand and an unknown
+field *was* silently ignored. The defect was real, the direction was backwards.
+Typing them puts them on the convention instead of moving the convention to
+them — and it turned up a fixture that had been sending `git_object_ids` to
+`publish`, which does not take it, ignored for the life of that control.
+
+Promoted to
+`docs/knowledge/a-convention-is-what-the-corpus-asserts-not-what-one-surface-does.md`.
+
 ## 2026-09-20 — A value you can read out of a rendered artefact is not the same value
 
 Publications had to start requiring that the projection they publish carries

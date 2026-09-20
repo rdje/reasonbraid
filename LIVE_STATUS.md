@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **A CONVENTION I CALLED A DEVIATION WAS THE CONVENTION, AND THE DIVERGENCE WAS MINE (`.9.2.1.2.3`, REPAIR-0341).**
+
+- 🔴 `.9.2.1.2.2` graded a missing `owning_authority` by hand so all four publication verbs answered `400` alike. **The census says the other three were the anomaly**: `422 at the strict wire boundary` is this project's convention — **46** typed extractors against **9** site routes, asserted BY NAME in four suites, and `SIGNOFF-REPAIR.4.2.2` depends on it.
+- ⛔ `api::site_request` is a SELF-DOCUMENTING exception — *"do not echo malformed caller input or driver diagnostics"* on an operator surface. Reading its own comment would have ended the question before a repair was written against it. **Reverted**: the field is required again, the error variant deleted, the control asserting `422` and saying why.
+- ✅ **The finding underneath survived and is repaired**: the three transitions took `Json<serde_json::Value>`, so an unknown field was SILENTLY IGNORED on all three (§9.1 refuses exactly that). Typed now, `deny_unknown_fields` on each.
+- ⛔ **`git_object_ids` is `Vec<String>`** — `.as_array()` + `filter_map(|v| v.as_str())` used to DROP a non-string entry, shortening the list `.9.2.1.3` was about to check for existence.
+- ⭐ The falsification's own refusal is the proof: without `deny_unknown_fields` the forged request reaches a `503` raised from deep inside the verb. ⭐ **PROMOTED** to `docs/knowledge/a-convention-is-what-the-corpus-asserts-not-what-one-surface-does.md`.
+- ✅ 6 suites including `node_channel` (which asserts the convention), **198 tests, 0 failed**.
+
 ✅ **AN APPROVAL FOR ONE POLICY COULD PUBLISH ANOTHER'S BYTES — CLOSED (`.9.2.1.3.2`, REPAIR-0340).**
 
 - 🔴 **Reproduced live, not argued**: two registered policies, a projection each, an approved proposal for one — staging it against the OTHER projection returned **200**, `state: staged`. Same tenant on both, so tenancy is not what separates them.

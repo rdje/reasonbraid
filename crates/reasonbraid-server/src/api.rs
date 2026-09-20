@@ -3686,15 +3686,11 @@ async fn stage_publication(
         ));
     };
     // `.9.2.1.2.2`: authorized BEFORE any record is looked up, in the order
-    // the three transition verbs already use — and the absence is graded here
-    // rather than left to the deserializer, so all four verbs answer one
-    // question with one refusal.
-    let Some(owning_authority) = input.owning_authority.as_deref() else {
-        return Err(ControlApiError::invalid_command(
-            "the owning_authority is required",
-        ));
-    };
-    held_publication_grant(&state, &principal, owning_authority).await?;
+    // the three transition verbs already use. ⛔ `.9.2.1.2.3` removed the
+    // hand-graded absence that sat here: the field is required on a TYPED
+    // input, so the strict wire boundary refuses a request without it and
+    // this handler never runs — which is the convention, not an exception.
+    held_publication_grant(&state, &principal, &input.owning_authority).await?;
     match crate::publications::stage(&state.pool, &caller_tenant, &input).await {
         Ok(row) => Ok(Json(row)),
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
@@ -3734,7 +3730,7 @@ async fn mark_publication_effective(
     State(state): State<Arc<ApiState>>,
     Path(publication_id): Path<String>,
     headers: HeaderMap,
-    Json(body): Json<serde_json::Value>,
+    Json(input): Json<crate::publications::MarkEffectiveInput>,
 ) -> Result<Json<crate::publications::StoredPublication>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     // `SIGNOFF-REPAIR.6.1.5.2.1`: the tenant is BOUND, not tested with
@@ -3746,24 +3742,17 @@ async fn mark_publication_effective(
             "an unenrolled principal marks nothing effective",
         ));
     };
-    // `.9.2.1.2`: authorized BEFORE anything is parsed out of the body or
-    // looked up, so an unauthorized caller learns nothing about the request
-    // they were not entitled to make.
-    held_publication_authority(&state, &principal, &body).await?;
-    let git_object_ids: Vec<String> = body
-        .get("git_object_ids")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| ControlApiError::invalid_command("the git_object_ids are required"))?
-        .iter()
-        .filter_map(|v| v.as_str().map(str::to_owned))
-        .collect();
-    let requested = body
-        .get("repo_path")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ControlApiError::invalid_command("the repo_path is required"))?;
-    let repository =
-        crate::publisher::resolve_repository(state.publication_repo_root.as_deref(), requested)
-            .map_err(publication_repository_refused)?;
+    // `.9.2.1.2`: authorized BEFORE anything is looked up, so an unauthorized
+    // caller learns nothing about the request they were not entitled to make.
+    // ⛔ `.9.2.1.2.3`: the body's SHAPE is now graded before this handler runs
+    // at all, so there is nothing left here to parse out by hand.
+    held_publication_grant(&state, &principal, &input.owning_authority).await?;
+    let git_object_ids = input.git_object_ids;
+    let repository = crate::publisher::resolve_repository(
+        state.publication_repo_root.as_deref(),
+        &input.repo_path,
+    )
+    .map_err(publication_repository_refused)?;
     match crate::publications::mark_effective(
         &state.pool,
         &caller_tenant,
@@ -3790,7 +3779,7 @@ async fn mark_publication_failed(
     State(state): State<Arc<ApiState>>,
     Path(publication_id): Path<String>,
     headers: HeaderMap,
-    Json(body): Json<serde_json::Value>,
+    Json(input): Json<crate::publications::MarkFailedInput>,
 ) -> Result<Json<crate::publications::StoredPublication>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     // `SIGNOFF-REPAIR.6.1.5.2.1`: the tenant is BOUND, not tested with
@@ -3802,14 +3791,10 @@ async fn mark_publication_failed(
             "an unenrolled principal marks nothing failed",
         ));
     };
-    // `.9.2.1.2.1`: authorized BEFORE the reason is parsed, in the order the
-    // two siblings already use — an unauthorized caller learns nothing about
-    // the request they were not entitled to make.
-    held_publication_authority(&state, &principal, &body).await?;
-    let reason = body
-        .get("reason")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ControlApiError::invalid_command("the reason is required"))?;
+    // `.9.2.1.2.1`: authorized first, in the order the two siblings already
+    // use. ⛔ `.9.2.1.2.3`: the shape is graded at the wire boundary now.
+    held_publication_grant(&state, &principal, &input.owning_authority).await?;
+    let reason = input.reason.as_str();
     match crate::publications::mark_failed(&state.pool, &caller_tenant, &publication_id, reason)
         .await
     {
@@ -3822,40 +3807,16 @@ async fn mark_publication_failed(
 /// (`SIGNOFF-REPAIR.9.2.1.2` for `effective` and `publish`, `.9.2.1.2.1` for
 /// `failed`, `.9.2.1.2.2` for `stage`), in the shape
 /// `deployments::register_target` already uses: the request names an
-/// `owning_authority` and [`authority::grant_held_by`] decides. This wrapper
-/// serves the three that take an untyped body; `stage_publication` calls
-/// [`held_publication_grant`] directly because its input is typed.
+/// `owning_authority` and [`authority::grant_held_by`] decides.
 ///
-/// ⛔ That is THE predicate (`.9.3.1`), never a sixth spelling of the question.
-/// Naming a grant and holding one are exactly what that repair found conflated
-/// on three surfaces, and grant ids here are derivable (`grt_<principal_id>`),
-/// so "names an active grant" is not a check at all.
-///
-/// ⛔ ONE definition for the three verbs, rather than the same five lines
-/// three times: they do not share a core to put it in, so the shared thing is
-/// this function, and a later change cannot move one verb without the others.
-/// ⚠️ That property did NOT protect `failed`, and the reason is worth keeping:
-/// a shared helper binds the callers that call it, never the sibling that
-/// never did. `.9.2.1.2.1` found the third caller missing while its own
-/// module doc asserted three existed.
-///
-/// ⚠️ **A limit this cannot fix and must not imply away** (`.9.3.4`): no
-/// `GrantAction` and no `TargetSelector` can NAME a publication, so a held grant
-/// is effectively tenant-wide for these verbs. Holding is strictly stronger than
-/// enrolment and is the best today's vocabulary expresses; the narrowing belongs
-/// to `.9.3.4`, and the book says so rather than implying the verb is scoped.
-async fn held_publication_authority(
-    state: &ApiState,
-    principal: &GrantSubject,
-    body: &serde_json::Value,
-) -> Result<(), ControlApiError> {
-    let owning_authority = body
-        .get("owning_authority")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ControlApiError::invalid_command("the owning_authority is required"))?;
-    held_publication_grant(state, principal, owning_authority).await
-}
-
+/// ⛔ The body-reading wrapper this doc used to introduce is GONE
+/// (`.9.2.1.2.3`). It existed only because three of the four verbs took an
+/// untyped `serde_json::Value` and had to fish the field out; now all four are
+/// typed, so every caller already holds the grant id and the shared thing is
+/// the decision alone. ⚠️ Its own comment claimed *"a later change cannot move
+/// one verb without the other"* — a property that was never true of a verb
+/// that did not call it, which is how `failed` went unbound
+/// (`.9.2.1.2.1`).
 /// The DECISION itself, over a grant id this caller already has in hand.
 ///
 /// ⛔ Split out by `SIGNOFF-REPAIR.9.2.1.2.2` so the staging verb can ask the
@@ -3919,7 +3880,7 @@ async fn publish_publication(
     State(state): State<Arc<ApiState>>,
     Path(publication_id): Path<String>,
     headers: HeaderMap,
-    Json(body): Json<serde_json::Value>,
+    Json(input): Json<crate::publications::PublishInput>,
 ) -> Result<Json<crate::publications::StoredPublication>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     // `SIGNOFF-REPAIR.6.1.5.2.1`: the tenant is BOUND, not tested with
@@ -3933,12 +3894,9 @@ async fn publish_publication(
     };
     // `.9.2.1.2`: authorized BEFORE the path is resolved or the publication is
     // loaded — an unauthorized caller reaches neither the filesystem nor the
-    // database.
-    held_publication_authority(&state, &principal, &body).await?;
-    let requested = body
-        .get("repo_path")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ControlApiError::invalid_command("the repo_path is required"))?;
+    // database. ⛔ `.9.2.1.2.3`: the shape is graded at the wire boundary now.
+    held_publication_grant(&state, &principal, &input.owning_authority).await?;
+    let requested = input.repo_path.as_str();
     // `.9.2.1.1`: the caller names a location INSIDE the deployment's
     // configured root, and it is resolved here — before the publication is
     // loaded and before anything is written. An untrusted path is refused
@@ -3946,9 +3904,12 @@ async fn publish_publication(
     let repo_path =
         crate::publisher::resolve_repository(state.publication_repo_root.as_deref(), requested)
             .map_err(publication_repository_refused)?;
-    let expected_effective = body
-        .get("expected_effective")
-        .and_then(|v| v.as_str())
+    // ⚠️ A SUPPLIED value that will not parse stays a `400`: whether a string
+    // is a Git object id is a semantic question the handler answers, not a
+    // shape the deserializer can express (`.9.2.1.2.3`).
+    let expected_effective = input
+        .expected_effective
+        .as_deref()
         .map(|hex| {
             hex.parse::<gix::ObjectId>().map_err(|_| {
                 ControlApiError::invalid_command(format!(

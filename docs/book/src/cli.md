@@ -122,6 +122,30 @@ binds is the digest to the manifest *this system publishes*, which is the
 invariant the stored value needed; the hermetic compilation step is a separate,
 unshipped part of that ADR.
 
+### Two kinds of refusal
+
+The control API answers a bad request at one of two levels, and which one you
+get tells you how far the request travelled:
+
+| Status | Meaning |
+| --- | --- |
+| `422` | the body is not this verb's declared shape — a missing field, an unknown field, a field of the wrong type. The handler never ran, and the rejection **names the field**. |
+| `400 invalid_command` | the handler ran and the request is semantically wrong — a digest that is not a digest, a publication at the wrong stage, a path outside the configured root. |
+
+An unknown field is **rejected, not ignored**. Sending an extra key to a
+publication verb is an error, not a no-op, because a client-supplied field that
+the server silently drops is indistinguishable from one it honoured.
+
+All four publication verbs are on this contract. Three of them used to take an
+untyped body, so their required fields were checked by hand and answered `400`,
+and any extra field they were sent went quietly nowhere — including
+`git_object_ids: ["real-id", 7]`, where the `7` was dropped before the
+object-existence check could refuse it.
+
+⚠️ Site routes (`/v1/policies` and the other operator verbs) deliberately answer
+`400` for both levels. They must not echo caller input back, so the shape
+rejection is normalized rather than passed through.
+
 ### Who may publish
 
 A staged publication has exactly **three** exits, and all three now require an

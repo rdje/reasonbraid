@@ -37,17 +37,62 @@ pub struct PublicationInput {
     /// the one publication verb left on enrolment alone, and it is the verb
     /// that decides WHICH projection an approval publishes.
     ///
-    /// ⚠️ Modelled `Option` although it is REQUIRED, and the reason is the
-    /// wire contract rather than the semantics: this input is typed, so a
-    /// missing required field is refused by the deserializer as a bare `422`
-    /// with a plain-text body — while the three transition verbs read the same
-    /// field out of an untyped body and answer `400 invalid_command`. Four
-    /// verbs asking one question must not give two different refusals, so the
-    /// absence is graded here and answers exactly as its siblings do.
-    #[serde(default)]
-    pub owning_authority: Option<String>,
+    /// ⛔ REQUIRED, and graded at the WIRE BOUNDARY rather than by hand.
+    /// `.9.2.1.2.2` modelled it `Option` and refused the absence in the
+    /// handler so that all four publication verbs answered alike; `.9.2.1.2.3`
+    /// censused the surface and found that backwards. `422` at the strict wire
+    /// boundary is this project's convention for *the body does not match the
+    /// declared shape* — 46 typed extractors, asserted in four suites, and
+    /// `SIGNOFF-REPAIR.4.2.2` depends on it. The three transition verbs
+    /// answered `400` because they were UNTYPED, which is what that leaf
+    /// repairs.
+    pub owning_authority: String,
     #[serde(default)]
     pub manifest_digest: Option<String>,
+}
+
+/// `POST /v1/policy-publications/{id}/effective` — the staged → effective
+/// transition (`SIGNOFF-REPAIR.9.2.1.2.3` types it).
+///
+/// ⛔ These three inputs exist so the WIRE BOUNDARY grades what the handlers
+/// were grading by hand. Each verb had gained required fields one repair at a
+/// time — `owning_authority` (`.9.2.1.2`, `.9.2.1.2.1`), `repo_path`
+/// (`.9.2.1.3`) — and each read them out of a `serde_json::Value`, so a
+/// missing one answered `400` where the project's 46 other typed extractors
+/// answer `422`, and an UNKNOWN field was silently ignored where §9.1 says a
+/// client-supplied field is *rejected, not ignored*.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MarkEffectiveInput {
+    pub owning_authority: String,
+    /// ⛔ `Vec<String>`, so a non-string entry is REFUSED at the boundary. The
+    /// handler used to do `.as_array()` then `filter_map(|v| v.as_str())`,
+    /// which SILENTLY DROPPED one — a caller could send `["real", 7]` and have
+    /// the `7` disappear before `.9.2.1.3`'s existence check ever saw it.
+    pub git_object_ids: Vec<String>,
+    pub repo_path: String,
+}
+
+/// `POST /v1/policy-publications/{id}/failed` — the typed failure.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MarkFailedInput {
+    pub owning_authority: String,
+    pub reason: String,
+}
+
+/// `POST /v1/policy-publications/{id}/publish` — the Git publication half.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublishInput {
+    pub owning_authority: String,
+    pub repo_path: String,
+    /// The compare-and-swap precondition (ADR-020 step 7). ⚠️ Genuinely
+    /// optional, and its MALFORMED case stays a `400`: parsing a supplied
+    /// value into a `gix::ObjectId` is a semantic check the handler makes, not
+    /// a shape the deserializer can express.
+    #[serde(default)]
+    pub expected_effective: Option<String>,
 }
 
 /// The publication manifest (ADR-020 §15.7 step 2), as ONE definition.
@@ -118,8 +163,6 @@ pub enum PublicationError {
         state: String,
     },
     MalformedDigest(String),
-    /// The staging request named no authority (`SIGNOFF-REPAIR.9.2.1.2.2`).
-    MissingAuthority,
     /// The projection does not carry the policy version the proposal was
     /// approved for (`SIGNOFF-REPAIR.9.2.1.3.2`).
     ProjectionMissesApprovedPolicy {
@@ -179,12 +222,6 @@ impl std::fmt::Display for PublicationError {
                 state,
             } => {
                 write!(f, "publication `{publication_id}` is at stage `{state}` — the transition does not apply")
-            }
-            PublicationError::MissingAuthority => {
-                write!(
-                    f,
-                    "the owning_authority is required — staging names a grant the caller HOLDS"
-                )
             }
             PublicationError::ProjectionMissesApprovedPolicy {
                 projection_id,
@@ -316,12 +353,10 @@ pub async fn stage(
     tenant_id: &str,
     input: &PublicationInput,
 ) -> Result<StoredPublication, PublicationError> {
-    // ⛔ `.9.2.1.2.2`: graded HERE as well as in the handler. The handler must
-    // answer first, because authorization precedes every lookup; this arm is
-    // what makes the core safe for a caller that is not that handler.
-    let Some(owning_authority) = input.owning_authority.clone() else {
-        return Err(PublicationError::MissingAuthority);
-    };
+    // ⛔ `.9.2.1.2.3`: no hand-grading of the absence. The field is required on
+    // a TYPED input, so the wire boundary refuses a request without it before
+    // this function is reached — the convention `.9.2.1.2.2` diverged from.
+    let owning_authority = input.owning_authority.clone();
     // ⚠️ The shape check keeps its original POSITION — before any record is
     // looked up — so a malformed assertion is still refused without disclosing
     // anything about the proposal it names. Only its subject changed: it now

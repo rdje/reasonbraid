@@ -193,3 +193,50 @@ pub fn run_browse(url: &str, time_budget: Duration) -> Result<BrowseWorkerRespon
     serde_json::from_str::<BrowseWorkerResponse>(&output)
         .map_err(|e| BrowseError::RequestFailed(format!("the response failed to parse: {e}")))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `SIGNOFF-REPAIR.11.24.1.3.1.1` — the worker now sends the page's own
+    /// bytes beside their digest, and this server decodes that response.
+    ///
+    /// ⛔ The compatibility is DRIVEN rather than assumed. `BrowseWorkerResponse`
+    /// carries no `deny_unknown_fields`, so a new field is ignored — but
+    /// "ignored" is a property of an attribute that is absent, and an absent
+    /// attribute is exactly the kind of thing a later edit adds without
+    /// noticing what it breaks. This control fails the moment it is added.
+    ///
+    /// ⭐ It also pins what the server currently does with the document:
+    /// nothing. `parent_digest` is the digest of the page's bytes rather than
+    /// of the chunk derived from them, which is the whole of this leaf's
+    /// user-visible effect; storing the bytes is `.11.24.1.3.1`'s.
+    #[test]
+    fn a_worker_response_carrying_the_document_decodes_and_keeps_its_parent() {
+        let document = "<html><body><p>rendered</p></body></html>";
+        let payload = serde_json::json!({
+            "document": document,
+            "parent_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+            "chunks": [{
+                "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+                "text": "rendered",
+            }],
+            "network_log": [],
+            "refused_requests": [],
+            "page_title": "t",
+            "browser_version": "v",
+            "worker_version": "w",
+        });
+        let decoded: BrowseWorkerResponse =
+            serde_json::from_value(payload).expect("the server decodes the worker's response");
+        assert_eq!(
+            decoded.parent_digest,
+            "sha256:0000000000000000000000000000000000000000000000000000000000000001"
+        );
+        assert_eq!(decoded.chunks.len(), 1);
+        assert_ne!(
+            decoded.parent_digest, decoded.chunks[0].digest,
+            "the parent and the derivation are two different artefacts on the wire"
+        );
+    }
+}

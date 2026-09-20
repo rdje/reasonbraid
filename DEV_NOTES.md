@@ -1,5 +1,65 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — I went looking for the bytes and there were none
+
+The plan was small. The previous leaf had established that the browser pack
+writes no evidence snapshot, and named the blocker: the worker sends
+`parent_digest` and not the rendered bytes. So: add the bytes to the worker's
+response, and the snapshot becomes writable.
+
+I opened the worker to find where the bytes were, and they are not anywhere.
+The worker reads `body.inner_text()`, makes one chunk out of it, and computes
+
+```rust
+parent_digest: digest_sha256_hex(chunks.iter().flat_map(|c| c.text.as_bytes())…)
+```
+
+One chunk. So the concatenation is that chunk's text, and `parent_digest` is
+`chunks[0].digest`. **The parent and the derivation were the same bytes under
+two names**, on every render this pack has ever done.
+
+That is not a missing feature, it is a false statement in a receipt. §12.6's
+whole sentence about derivations exists to say *this is not the original
+source*, and an edge from X to X says the opposite of what it claims to.
+
+The empty case is the one that made me sure it was worth its own leaf rather
+than a line in the next one. If a page renders no text, the chunk list is
+empty, so the concatenation is empty, so `parent_digest` is the digest of the
+empty string. A real page — bytes, a title, a network log — reporting a parent
+that is nothing.
+
+**The repair is small and the shape of it is already in this file.** Read
+`page.content()`, digest that, carry it. And put the construction in a
+function, because `SIGNOFF-REPAIR.7.3.6.3` did exactly that to this same file
+three weeks ago and wrote the reason into the code: *it is a function so that a
+commit can guard it*. Inline in the render, the parent/derivation distinction
+was only testable by driving a real Chrome — which is why two lines that
+collapse it could sit there. Two offline controls now fail if it ever collapses
+again.
+
+⭐ One decision worth writing down because it looked like a detail. The worker
+has a 4 MiB output ceiling that bounded the rendered text. Adding a second
+artefact to the wire, I could have bounded the document separately — and the
+worst-case payload would have quietly become 8 MiB. The field is called
+`max_output_bytes`. It names the worker's output, so it now bounds the sum.
+Choosing the other reading would have been inventing a number without
+admitting it.
+
+⚠️ **And I ran it against a real browser, which I nearly did not.** Every
+control I had written was offline and green, and `page.content()` is one line.
+But it is a CDP call I had not made before, and the only thing that can say
+whether Chrome answers it is Chrome. Seventeen of eighteen roundtrip tests
+passed, including both that exercise the new call end to end.
+
+The eighteenth failed. My first instinct was that I had broken something, my
+second was that the host is slow — and both are hypotheses. So I stashed the
+two changed files, ran that single test at the parent commit, and watched it
+fail identically: same assertion, same message, same forty-one seconds. It is
+pre-existing, it is about the cleanup confirmation rather than the render, and
+it now has a leaf. What it does not have is a diagnosis, and I have written the
+leaf so that the next pass has to capture the worker's actual stderr rather
+than reason about it the way I just caught myself starting to.
+
 ## 2026-09-20 — The edge was missing because the node was
 
 This leaf was written to answer a tidy question: two resolver packs do not write

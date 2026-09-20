@@ -47,6 +47,14 @@ pub struct BrowseLimits {
 
 #[derive(Debug, Serialize)]
 pub struct BrowseResponse {
+    /// The page's OWN bytes — the serialized document the chunks derive from.
+    ///
+    /// ⛔ It is carried, not just digested (`SIGNOFF-REPAIR.11.24.1.3.1.1`).
+    /// §12.6's `EvidenceSnapshot` is *immutable* and addressable by its
+    /// *raw-byte digest*; a digest with no bytes behind it is a claim about an
+    /// artefact nobody kept.
+    pub document: String,
+    /// The digest of `document` — the PARENT of every chunk below.
     pub parent_digest: String,
     pub chunks: Vec<DerivedChunk>,
     pub network_log: Vec<NetworkEntry>,
@@ -516,17 +524,70 @@ async fn run_inner(
         .map_err(|e| ("title_failed".to_owned(), e.to_string()))?
         .unwrap_or_default();
 
-    if text.len() as u64 > request.limits.max_output_bytes {
+    // The page's OWN bytes: the serialized document, read BEFORE the response
+    // is shaped, because it is the artefact everything else here derives from.
+    let document = page
+        .content()
+        .await
+        .map_err(|e| ("document_failed".to_owned(), e.to_string()))?;
+
+    if (document.len() + text.len()) as u64 > request.limits.max_output_bytes {
         return Err((
             "output_too_large".to_owned(),
             format!(
-                "the rendered text ({}) exceeds the {}-byte ceiling",
+                "the render's output ({} document + {} text) exceeds the {}-byte ceiling",
+                document.len(),
                 text.len(),
                 request.limits.max_output_bytes
             ),
         ));
     }
 
+    let network_log = log.lock().await.clone();
+    let refused_requests = refusals.lock().await.clone();
+    let response = render_response(
+        document,
+        text,
+        network_log,
+        refused_requests,
+        title,
+        version,
+    );
+    drop(page);
+    Ok(response)
+}
+
+/// Shape one render's response from the page's OWN bytes and the text derived
+/// from it.
+///
+/// 🔴 **THE DEFECT THIS REPLACES** (`SIGNOFF-REPAIR.11.24.1.3.1.1`).
+/// `parent_digest` used to be `digest(concat of the chunk texts)`. The worker
+/// produces exactly one chunk — `body.inner_text()` — so the concatenation was
+/// that chunk's own text and **`parent_digest` equalled `chunks[0].digest`
+/// byte for byte**. The receipt advertised a parent/derivation pair in which
+/// the parent WAS the derivation, under a §12.6 clause written to keep them
+/// apart: *a quote, summary, OCR result, model-generated caption, or repository
+/// analysis is not the original source.* An empty page was worse still — the
+/// parent digested the empty string, so a render that returned no text claimed
+/// a parent that was nothing at all.
+///
+/// ⭐ **IT IS A FUNCTION SO THAT A CONTROL CAN GUARD IT**, which is
+/// `SIGNOFF-REPAIR.7.3.6.3`'s move applied a second time in this same file.
+/// Inline in the render, the parent/derivation distinction could only be
+/// exercised by driving a real Chrome, and the two lines that collapsed it
+/// would have needed a browser to catch.
+pub fn render_response(
+    document: String,
+    text: String,
+    network_log: Vec<NetworkEntry>,
+    refused_requests: Vec<RefusedRequest>,
+    page_title: String,
+    browser_version: String,
+) -> BrowseResponse {
+    // ⛔ The parent is the DOCUMENT, whatever the text turned out to be. A page
+    // that rendered to no text still has bytes, and they are still its
+    // provenance.
+    let parent_digest = digest_sha256_hex(document.as_bytes());
     let chunks = if text.is_empty() {
         Vec::new()
     } else {
@@ -535,26 +596,16 @@ async fn run_inner(
             text,
         }]
     };
-    let network_log = log.lock().await.clone();
-    let refused_requests = refusals.lock().await.clone();
-    let response = BrowseResponse {
-        parent_digest: digest_sha256_hex(
-            chunks
-                .iter()
-                .flat_map(|c| c.text.as_bytes())
-                .copied()
-                .collect::<Vec<_>>()
-                .as_slice(),
-        ),
+    BrowseResponse {
+        document,
+        parent_digest,
         chunks,
         network_log,
         refused_requests,
-        page_title: title,
-        browser_version: version,
+        page_title,
+        browser_version,
         worker_version: WORKER_VERSION.to_owned(),
-    };
-    drop(page);
-    Ok(response)
+    }
 }
 
 #[cfg(test)]
@@ -563,6 +614,7 @@ mod tests {
 
     fn rendered() -> BrowseResponse {
         BrowseResponse {
+            document: String::new(),
             parent_digest: digest_sha256_hex(b""),
             chunks: Vec::new(),
             network_log: Vec::new(),
@@ -578,6 +630,77 @@ mod tests {
             "time_budget_exceeded".to_owned(),
             "the render exceeded the 30-second budget".to_owned(),
         ))
+    }
+
+    /// `SIGNOFF-REPAIR.11.24.1.3.1.1` — the parent is the DOCUMENT, and the
+    /// chunk derived from it is something else.
+    ///
+    /// 🔴 **THE DEFECT, stated as the identity it produced.** `parent_digest`
+    /// was `digest(concat of the chunk texts)`, and this worker produces
+    /// exactly one chunk, so the concatenation WAS that chunk's text and the
+    /// two digests were equal byte for byte. §12.6's edge exists to say *this
+    /// derivation is not the original source*; an edge whose parent and child
+    /// are the same bytes says nothing.
+    ///
+    /// ⭐ The arm that matters is the INEQUALITY, not the equality: asserting
+    /// only that the parent digests the document would pass against a worker
+    /// that also made the chunk out of the document.
+    #[test]
+    fn the_parent_is_the_document_and_the_chunk_is_not() {
+        let document = "<html><body><p>rendered</p></body></html>".to_owned();
+        let text = "rendered".to_owned();
+        let response = render_response(
+            document.clone(),
+            text.clone(),
+            Vec::new(),
+            Vec::new(),
+            "t".to_owned(),
+            "v".to_owned(),
+        );
+
+        assert_eq!(
+            response.parent_digest,
+            digest_sha256_hex(document.as_bytes()),
+            "the parent is the page's own bytes"
+        );
+        assert_eq!(response.document, document, "and those bytes are carried");
+        assert_eq!(response.chunks.len(), 1);
+        assert_eq!(
+            response.chunks[0].digest,
+            digest_sha256_hex(text.as_bytes()),
+            "the chunk is the text derived from the page"
+        );
+        assert_ne!(
+            response.parent_digest, response.chunks[0].digest,
+            "a derivation whose digest equals its parent's is not a derivation — this \
+             is the equality the superseded construction produced on every render"
+        );
+    }
+
+    /// A page that rendered to NO text still has bytes, and they are still its
+    /// provenance. The superseded construction digested the empty string here,
+    /// so the receipt named a parent that was nothing at all.
+    #[test]
+    fn a_page_that_renders_no_text_still_has_a_parent() {
+        let document = "<html><body></body></html>".to_owned();
+        let response = render_response(
+            document.clone(),
+            String::new(),
+            Vec::new(),
+            Vec::new(),
+            String::new(),
+            "v".to_owned(),
+        );
+        assert!(response.chunks.is_empty(), "no text, no derivation");
+        assert_eq!(
+            response.parent_digest,
+            digest_sha256_hex(document.as_bytes())
+        );
+        assert_ne!(
+            response.parent_digest,
+            digest_sha256_hex(b""),
+            "an empty-rendering page is not an empty page"
+        );
     }
 
     /// The whole contract, on every host: the render's outcome and the

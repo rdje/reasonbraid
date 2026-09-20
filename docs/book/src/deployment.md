@@ -1959,6 +1959,43 @@ requirement outside the ADR-018 vocabulary is now refused by name with
 `invalid_command`, rather than answered as an empty result — a typo used to be
 indistinguishable from "no resolver available".
 
+### What a render receipt's parent is
+
+A render receipt carries a `parent_digest` and a list of chunks, and the
+relationship between them is the point: `ROADMAP.md` §12.6 says *every
+transformation is a `Derivation` edge*, and *a quote, summary, OCR result,
+model-generated caption, or repository analysis is not the original source*.
+
+Until `SIGNOFF-REPAIR.11.24.1.3.1.1` the receipt did not honour that. The
+worker derives exactly one chunk — the page's rendered text — and
+`parent_digest` was computed over the concatenation of the chunk texts. With
+one chunk, that concatenation *is* the chunk, so the parent's digest equalled
+the chunk's digest on every render: a parent/derivation pair whose two halves
+were the same bytes. A page that rendered no text was worse, because the
+concatenation was then empty and the receipt named a parent that was nothing at
+all.
+
+The parent is now **the page's own bytes** — the serialized document, read from
+the browser before the response is shaped. `parent_digest` is the digest of
+those bytes, the rendered text stays a derivation of them, and the document is
+carried beside its digest rather than only digested: an evidence snapshot is
+addressable by its raw-byte digest, and a digest with no bytes behind it is a
+claim about an artefact nobody kept.
+
+This is the shape the R2 extraction pipeline already had — there the handler
+refuses a receipt whose `parent_digest` is not the digest of the bytes the
+request supplied — and R3 now matches it.
+
+⚠️ The worker's output ceiling is unchanged at 4 MiB and now bounds the
+document and the text **together**, because the limit names the worker's
+output and a second artefact on the wire is more output. A render whose
+document and text exceed it together is refused with `output_too_large`, naming
+both sizes.
+
+⚠️ Storing that document as an evidence snapshot, and writing one derivation
+edge per chunk, is a separate step and is not done yet — `SIGNOFF-REPAIR
+.11.24.1.3.1` owns it. Until then the bytes reach the server and are not kept.
+
 ### How the advertisement and the enforcement are kept together
 
 The R3 pack advertises two deny-policies and enforces them, and those are two

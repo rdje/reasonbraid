@@ -5,6 +5,18 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **THE RENDER'S PARENT WAS ITS OWN DERIVATION, AND AN EMPTY PAGE'S PARENT WAS NOTHING (`.11.24.1.3.1.1`, REPAIR-0311).**
+
+⭐ Found while scoping the snapshot leaf: there were no rendered bytes to snapshot, because the worker never captured any.
+
+- 🔴 **`parent_digest` was a digest over the concatenated CHUNK TEXTS, and the worker derives exactly ONE chunk** (`body.inner_text()`, whole) — so the concatenation WAS that chunk's text and **the parent's digest equalled the chunk's, byte for byte, on every render**. §12.6 exists to keep them apart: *a quote, summary, OCR result, model-generated caption, or repository analysis is not the original source*. An edge whose parent and child are the same bytes asserts a distinction and encodes none.
+- 🔴 **The empty case was worse**: no text → empty concatenation → the receipt named a parent that was **nothing at all**, for a real page that simply rendered no text.
+- ✅ **The parent is now the page's OWN bytes** — the serialized document, read before the response is shaped — and they are **CARRIED, not merely digested**: a snapshot is addressable by its raw-byte digest, and a digest with no bytes behind it is a claim about an artefact nobody kept.
+- ⭐ **The construction is a pure function SO THAT A CONTROL CAN GUARD IT** — `.7.3.6.3`'s move, a second time in the same file: inline in the render, the distinction could only be exercised by driving a real Chrome, and the two lines that collapsed it would have needed a browser to catch.
+- ⛔ **The 4 MiB ceiling is unchanged in MEANING and that is derived**: it now bounds document + text TOGETHER, because the field names the worker's OUTPUT — bounding each separately would have doubled the worst case silently, which is inventing a number by omission.
+- ✅ **VERIFIED:** `reasonbraid-browse` **14/0** (12 at `c5d8831`, both sides); server lib **128/0**. ⭐ **Against a REAL Chrome**, which is what a new CDP call owes: the two roundtrip controls that exercise it end to end both pass. Clippy (both crates, all targets) rc=0; fmt rc=0; book rc=0; gate green. **FALSIFIED twice** — the superseded shape and an empty parent — both controls RED each time, file restored byte-identical.
+- 🔎 **One real-browser control fails at HEAD, MEASURED rather than attributed away**: `a_real_navigation_deadline_stops_the_browser_and_origin` fails on its CLEANUP assertion; stashed, re-run at `c5d8831`, **identical** failure. ⛔ OWNED at `.11.25`, not filed as a note.
+
 🔴 **THE MISSING DERIVATION EDGES ARE A SYMPTOM, AND TWO PACKS PRODUCE EVIDENCE THE STORE CANNOT HOLD (`.11.24.1.3`, REPAIR-0310).**
 
 ⭐ The leaf's own premise understated the gap, and the census it demanded is what corrected it.

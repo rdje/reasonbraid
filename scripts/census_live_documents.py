@@ -202,14 +202,49 @@ def measure_history(root: Path, path: str) -> History:
 PROBE_MARKER = "rb-census-live-documents probe"
 
 
-def probe_bound(root: Path, path: str, payload_bytes: int) -> tuple[int, bool]:
+def probe_verdict(path: str, rc: int, output: str) -> str:
+    """Classify one probe from the enforcer's REASON, never from its exit code.
+
+    ⛔ THE EXIT CODE IS THE ENFORCER'S VERDICT ON THE WHOLE TREE. This function
+    exists because reading it as the probed file's bound produced a measurably
+    wrong answer: with `DEV_NOTES.md` missing a final newline, this probe
+    reported `LIVE_STATUS.md` — a file with no size bound, untouched by the
+    commit — as BOUNDED, because `FILE-TERMINATION` had failed somewhere else
+    (`SIGNOFF-REPAIR.11.4.2.6.4`).
+
+    ⚠️ And the positive controls did NOT save it. An absence claim owes them
+    (`.11.25.1.1`) and this probe carried three — but a breach elsewhere makes
+    every surface refuse, so the controls fail in the same direction for the
+    same wrong reason. A control only discriminates if it can come apart from
+    the thing it is controlling.
+
+    A refusal counts only when some failing line NAMES the probed path.
+    """
+    if rc == 0:
+        return "unbounded"
+    for line in output.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("✅"):
+            continue
+        if path in stripped:
+            return "bounded"
+    return "refused-for-another-file"
+
+
+def enforcer(root: Path) -> tuple[int, str]:
+    r = subprocess.run(["bash", "scripts/check_doctrines.sh"],
+                       cwd=root, capture_output=True, text=True)
+    return r.returncode, r.stdout + r.stderr
+
+
+def probe_bound(root: Path, path: str, payload_bytes: int) -> tuple[str, bool]:
     """Append real bytes to the real file, run the real enforcer, restore.
 
-    Returns (enforcer rc, restored byte-identically). The original bytes are
-    held in memory and rewritten in `finally`, then the SHA-256 is compared —
+    Returns (verdict, restored byte-identically). The original bytes are held in
+    memory and rewritten in `finally`, then the SHA-256 is compared —
     `.11.4.2.4.1` restored four falsifications this way and compared the digest
-    each time, because a falsification that leaves the tree changed has
-    measured the gate and damaged the repository in the same run.
+    each time, because a falsification that leaves the tree changed has measured
+    the gate and damaged the repository in the same run.
     """
     target = root / path
     original = target.read_bytes()
@@ -218,14 +253,11 @@ def probe_bound(root: Path, path: str, payload_bytes: int) -> tuple[int, bool]:
     block = filler * max(1, payload_bytes // len(filler))
     try:
         target.write_bytes(original + block + b"\n")
-        rc = subprocess.run(
-            ["bash", "scripts/check_doctrines.sh"],
-            cwd=root, capture_output=True, text=True,
-        ).returncode
+        rc, output = enforcer(root)
     finally:
         target.write_bytes(original)
     after = hashlib.sha256(target.read_bytes()).hexdigest()
-    return rc, before == after
+    return probe_verdict(path, rc, output), before == after
 
 
 # ── self-test ─────────────────────────────────────────────────────────────────
@@ -282,6 +314,25 @@ def self_test() -> int:
     check("axes wide line", pressure_axes(b"a" * 50 + b"\n"), (1, 51, 50))
     check("axes many lines", pressure_axes(b"a\n" * 25 + b"\n"), (26, 51, 1))
     check("axes empty", pressure_axes(b""), (0, 0, 0))
+
+    # The probe classification, in all three directions. ⛔ Arm 2 is the defect
+    # this function exists for: a real refusal that names a DIFFERENT file.
+    named = "  ❌ LEDGER-RUNWAY\n       LEDGER-RUNWAY: DEV_NOTES.md has -161875 bytes of headroom"
+    other = "  ❌ PROJECT-SPECIFIC\n       FILE-TERMINATION: DEV_NOTES.md missing its final newline"
+    check("a refusal naming the subject is not bounded",
+          probe_verdict("DEV_NOTES.md", 1, named), "bounded")
+    check("a refusal naming ANOTHER file was read as a bound",
+          probe_verdict("LIVE_STATUS.md", 1, other), "refused-for-another-file")
+    check("rc=0 is not unbounded", probe_verdict("LIVE_STATUS.md", 0, ""), "unbounded")
+    check("rc=0 wins even when the output mentions the file",
+          probe_verdict("DEV_NOTES.md", 0, named), "unbounded")
+    # ⛔ A PASSING line naming the file must NOT count as a refusal: the enforcer
+    # prints one ✅ line per check and those lines carry doctrine descriptions.
+    check("a green line naming the file was read as a refusal",
+          probe_verdict("DEV_NOTES.md", 1,
+                        "  ✅ LESSON-PROMOTION a new dated lesson in DEV_NOTES.md is PROMOTED\n"
+                        "  ❌ README-STABILITY\n       README-STABILITY: README.md is 999 lines"),
+          "refused-for-another-file")
 
     if fails:
         for f in fails:
@@ -344,10 +395,26 @@ def main() -> int:
     if args.probe_bounds:
         print(f"\n=== bound probe — +{args.probe_bytes:,} bytes per surface, "
               f"real enforcer, restored byte-identically ===")
+        # ⛔ THE PROBE ESTABLISHES ITS OWN BASELINE AND REFUSES OVER A RED TREE.
+        # Every verdict below is a difference from this run; without it, a tree
+        # that was already failing makes every surface look bounded, and a
+        # refusal is indistinguishable from an instrument with nothing to say.
+        base_rc, _ = enforcer(root)
+        if base_rc != 0:
+            print("  REFUSED: the enforcer is already red on the unmodified tree, so no\n"
+                  "  verdict below would be a property of the file it names. Fix the tree\n"
+                  "  first — this probe measures a DIFFERENCE and there is no baseline.")
+            return 2
+        print(f"  baseline: enforcer green on the unmodified tree (rc={base_rc})")
+        labels = {
+            "bounded": "REFUSED (bounded — the refusal names this file)",
+            "unbounded": "⛔ ACCEPTED (unbounded)",
+            "refused-for-another-file":
+                "⚠️ REFUSED BUT FOR ANOTHER FILE — not a bound on this one",
+        }
         for path in live:
-            rc, restored = probe_bound(root, path, args.probe_bytes)
-            verdict = "REFUSED (bounded)" if rc != 0 else "⛔ ACCEPTED (unbounded)"
-            print(f"  {path:<16} enforcer rc={rc}  {verdict}  "
+            verdict, restored = probe_bound(root, path, args.probe_bytes)
+            print(f"  {path:<16} {labels[verdict]:<52} "
                   f"restored={'byte-identical' if restored else '⛔ NOT RESTORED'}")
     return 0
 

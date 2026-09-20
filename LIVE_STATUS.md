@@ -5,6 +5,14 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE BOUND PROBE READS THE ENFORCER'S REASON, AND REFUSES OVER A TREE IT HAS NOT BASELINED (`.11.4.2.6.4`, REPAIR-0353).**
+
+- ⛔ **The `5 of 5` printed last commit was WRONG; the truth is 4 of 5.** Corrected by hand then; repaired mechanically now.
+- **Cause** — the probe read the enforcer's EXIT CODE, a verdict on the whole tree, so any breach anywhere read as the probed file's bound. It could not express *refused, but for another file*.
+- ✅ **Two halves, both required**: a refusal counts only when a failing line NAMES the probed path, and the probe baselines the unmodified tree first, exiting 2 when it is already red.
+- ⚠️ **The positive controls did not save it** — a breach anywhere makes every surface refuse, so all three failed in the same direction for the same wrong reason as their subject. ⭐ A control only discriminates if it can come apart from what it controls.
+- ✅ Falsified by recreating the exact condition that produced the wrong answer → rc=2, refuses to report; restored with a matching SHA-256. ⛔ **`LIVE_STATUS.md` is the one remaining unbounded core live document.** `--self-test` **22 controls**.
+
 ✅ **THE SECOND LEDGER'S FIRST ROTATION, AND THE PROBE THAT READ ANOTHER FILE'S BREACH AS A BOUND (`.11.4.2.6.3`, REPAIR-0352).**
 
 - ✅ **`DEV_NOTES.md` IS BOUNDED**: 430 records retired into git history, 12 kept, **908,850 → 37,874 bytes**, ~10 commits of runway under its derived 76,000-byte threshold, `enforced=True`.

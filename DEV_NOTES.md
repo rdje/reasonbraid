@@ -1,5 +1,67 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — A control that fails for the same reason as its subject
+
+The bound probe reported that all five core live documents were bounded. One of
+them, `LIVE_STATUS.md`, has no bound at all and I had not touched it.
+
+The probe appends 200,000 bytes to one file, runs the doctrine enforcer, and
+reads the exit code. The exit code is the enforcer's verdict on the whole tree.
+So when a different file was missing its final newline, `FILE-TERMINATION`
+failed, the enforcer returned non-zero for every single probe, and the
+instrument read that as five bounds.
+
+I want to be precise about what this repository's own rules did and did not do
+here, because the rule that should have caught it is one I had applied
+deliberately, in writing, three commits earlier.
+
+`SIGNOFF-REPAIR.11.25.1.1` says: a probe whose conclusion is an absence owes a
+positive control in the same run. This probe's conclusion is an absence —
+*nothing bounds this file* — and it carried three positive controls. `README.md`,
+`MEMORY.md` and `CHANGELOG.md` are known to be bounded, and if the probe reported
+them as unbounded, the instrument would be broken.
+
+All three passed. They passed for the wrong reason. A breach anywhere makes every
+surface refuse, so the controls and the subject failed over in the same
+direction, driven by the same unrelated cause. **A positive control only
+discriminates if it can come apart from the thing it is controlling**, and mine
+could not: there was no state of the world in which the controls said "bounded"
+and the subject said "unbounded" for the reason I cared about.
+
+That is a sharper statement than the note I filed this under yesterday.
+`a-control-that-passes-for-an-unrelated-reason` is about a control that is green
+because of something other than the property it claims. This is about a control
+that cannot be green when its subject is red, which makes it an expensive way of
+observing the return code twice.
+
+The repair has two halves, and neither is enough alone. A refusal now counts only
+when a failing line names the probed path, which removes the misattribution. And
+the probe runs the enforcer on the unmodified tree first, refusing to report
+anything if that baseline is red, which removes the case where a naming line was
+already there before the probe ran. I nearly shipped the first half alone.
+
+The falsification was easy and I want to record why it was: I could recreate the
+exact condition, because I had caused it. Remove `DEV_NOTES.md`'s final newline,
+run the probe, and it now exits 2 saying no verdict below would be a property of
+the file it names. Then restore the file and compare SHA-256. A defect you can
+put back is a defect you can prove you fixed, and the reason I could put this one
+back is that I had written down precisely what the tree looked like when it
+misfired.
+
+One honest gap, recorded rather than smoothed. The baseline half is falsified
+against the real world. The naming half is only controlled by the self-test —
+including an arm for a green line that mentions the probed filename, which must
+not count, because the enforcer prints one `✅` per check and those descriptions
+name these very files. Arranging a live case where probing one file provokes a
+breach naming a different one is not something this tree hands you, and saying
+otherwise would be exactly the kind of sentence the leaf exists to delete.
+
+Promotion: declined and recorded in `SIGNOFF-REPAIR.11.4.2.6.4`. The statement is
+a sharpening of an already-promoted note, and that note is now at three instances
+in two commits. Its own text says a third should decide whether the sharpening
+earns its own entry. I am leaving that decision to whichever leaf meets the
+fourth, and writing the count down here so nobody starts over.
+
 ## 2026-09-21 — The word that was wrong and looked right
 
 `ordinal_word(0)` returned `'twentieth'`.

@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-21 — The bound probe reads the enforcer's reason, and refuses over a tree it has not baselined (`SIGNOFF-REPAIR.11.4.2.6.4`)
+
+`REASONBRAID-REPAIR-0353`. ⛔ **Stated first: the `5 of 5` the bound probe printed in the previous commit's session was WRONG. The truth was and is 4 of 5.** It was corrected by hand before anything shipped; the hand correction is not the repair, this is.
+
+- **Root cause** — the probe appended bytes to ONE file and read the enforcer's EXIT CODE, which is its verdict on the WHOLE TREE, so any breach anywhere read as the probed file's bound. It had no way to express the state it was in — *refused, but for another file* — so it reported the nearest one it had.
+- ✅ **The fix, in two halves, both required.** `probe_verdict` classifies from the REASON: a refusal counts only when a failing line NAMES the probed path. And `--probe-bounds` runs the enforcer on the unmodified tree first, exiting 2 when that baseline is red. ⛔ Naming alone still misreports when the naming line predates the probe; a baseline alone still misattributes a breach the probe itself provokes elsewhere.
+- ⚠️ **The positive controls did not save it, and that is the part worth keeping.** An absence claim owes a positive control in the same run, and this probe carried three — all useless here, because a breach anywhere makes every surface refuse. ⭐ **They failed in the same direction, for the same wrong reason, as the thing they were controlling. A control only discriminates if it can come apart from its subject.**
+- ✅ **Falsified by recreating the exact condition that produced the wrong answer** — `DEV_NOTES.md`'s final newline removed — giving rc=2 and a refusal to report, then restored with a matching SHA-256.
+- ✅ Live re-run reaches the true result mechanically: baseline green, four bounded each naming their own file, and ⛔ **`LIVE_STATUS.md` unbounded** — the one remaining ungoverned core live document. `--self-test` **22 controls** (was 17). No product code, schema, migration or test touched.
+
 ## 2026-09-21 — The second ledger's first rotation, and the probe that read another file's breach as a bound (`SIGNOFF-REPAIR.11.4.2.6.3`)
 
 `REASONBRAID-REPAIR-0352`. `DEV_NOTES.md` is bounded: **430 records retired into git history, 12 kept, 908,850 bytes to 37,874**, ~10 commits of runway under its derived 76,000-byte threshold, `enforced=True`.

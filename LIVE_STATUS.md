@@ -5,6 +5,13 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE PROMOTION CALL, DELEGATED AND TAKEN — AND MY OWN GENERALISATION CORRECTED (`.13.4.6.3`, DOC-0089).**
+
+- 🔴 I reported *six of these are one shape* and then held the lesson for a second instance. **Those two claims cannot both be right, and neither was.** Re-classified by MECHANISM: **four** are a stale SCOPE (already in the layer — no promotion owed, and claiming one would have duplicated a note) and **three** — five once this pass's own probes are counted — are an instrument's REACH.
+- ✅ **PROMOTED: `an-instruments-zero-describes-its-reach`.** ⛔ Not a duplicate: it is the sibling of *first-population-describes-its-parser* and the HARDER half, because an instrument that finds too much leaves a population you can inspect, and one that finds nothing leaves none.
+- ⭐ Its *how to apply* is three forms of one move — make the instrument prove its reach in the SAME run — each of which this session actually did.
+- ⚠️ The sub-claim *the argument you already rejected gets the least scrutiny* stays correctly HELD at one instance.
+
 ✅ **THE FROZEN ROADMAP AND THE CODE HELD TWO COPIES OF ONE LIST AND NOTHING RELATED THEM (`.11.7.1.1`, REPAIR-0347).**
 
 - ⭐ The director delegated the §9.8 freeze call. **The measurement it forced is the finding**: §9.8 and `KnownReasonCode` had never been compared — the census that produced every number in `DOC-0086` calls the enum *the §9.8 registry* and never opens `ROADMAP.md`. **20 and 20, symmetric difference empty.** They agreed by CARE.

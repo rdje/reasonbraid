@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-20 — Promote the instrument-reach lesson, and correct the six-instances-one-shape claim that deferred it (`SIGNOFF-REPAIR.13.4.6.3`)
+
+`REASONBRAID-DOC-0089`. The director delegated the promotion call; taking it required correcting the sentence that had deferred it.
+
+- 🔴 **I reported *six of these are one shape* and then held the lesson for a second instance.** Those two claims cannot both be right, and neither was. Re-classified by MECHANISM rather than by feel, the six are **two** shapes.
+- ⛔ **Four are a stale SCOPE** — `46`, `207`, the 12-vs-8 table census, and the ratio in a knowledge note. The instrument was correct; the commit it was correct at went unstated. Already covered by `a-metric-scoped-to-one-record-ages-silently`; **no promotion owed, and claiming one would have duplicated a note.**
+- ⭐ **Three are an instrument's REACH** — the census printing *not documented: 0* over a matcher that could not see the tenth code; the frontier gate exiting 0 over a table it had not parsed; `git grep -c` counting LINES under the label *occurrences*. **Five** once this pass's own two are counted. Three independently measured instances in one session, each with a named mechanism and a repair, is not a candidate awaiting a second.
+- ✅ **Promoted: `docs/knowledge/an-instruments-zero-describes-its-reach.md`.** ⛔ Not a duplicate, and the two nearest notes were read before writing rather than after: `an-instruments-first-population-describes-its-parser` is the sibling and the **easier** half — there the instrument finds too much and the majority class is inspectable — while a zero leaves no population to inspect at all. `an-absence-claim-is-a-census-over-the-corpus` is a *human's* absence claim; this is that claim delegated to a tool whose reach nobody examined.
+- ⭐ The note's *how to apply* is three forms of one move — **make the instrument prove its reach in the same run** — and each is something this session actually did: a positive control driven rather than written, an empty parse graded as a breach, and re-derivation by a route with a different failure mode (the compiler naming four call sites where no grep could).
+- ⚠️ **The sub-claim stays held at one instance**: *the claim least likely to be checked is the one you have already decided to reject* has exactly one. Promoting it beside a five-instance rule would be the over-generalisation this correction exists to fix.
+
 ## 2026-09-20 — The frozen roadmap and the code held two copies of one list and nothing related them (`SIGNOFF-REPAIR.11.7.1.1`)
 
 `REASONBRAID-REPAIR-0347`. The director delegated `.11.7.1`'s freeze call; the measurement it forced is the finding.

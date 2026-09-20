@@ -5,10 +5,21 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **A CENSORED OBSERVATION IS NOT A DURATION, AND A BLIND INSTRUMENT'S SILENCE IS NOT AN ABSENCE (`.11.25.1.1`, REPAIR-0314).**
+
+⭐ A correction to a figure this project published one commit earlier, and the refusal to publish a second.
+
+- 🔴 **`REPAIR-0313` published the drain as 16,427 ms; that is ONE UNCENSORED SAMPLE of a right-censored quantity.** The drain is cut off AT the 10,000 ms deadline, so a failing run reports **the remaining budget**, not the hold. Of **7** observations, **2** completed — **4,659 ms** and **16,427 ms**, a **3.5×** spread — and **5** were censored. Honest statement: *2 of 7 uncensored; the hold exceeds the budget in at least 5 of 7.*
+- ⚠️ **`REPAIR-0313`'s CONCLUSION is unaffected** — the drain is still the detector, the withdrawn repair stays withdrawn, and a browser-spawned process still outlives the reaped group. Annotated at each site rather than rewritten: every measurement was true as a measurement.
+- 🔴 **My own probe printed `over_budget=0` across four runs that ALL exceeded it**, comparing a censored value against the very deadline that censored it — a comparison that could only ever be false. A check that cannot fail is worse than no check, because it gets read.
+- ⛔ **A SECOND FINDING WAS REFUSED BEFORE PUBLICATION.** The FD probe saw no browser pipe while the drain was stuck — which contradicted the model and looked like a result. Its POSITIVE CONTROL, run mid-render with the browser certainly alive: `lsof` reported **3 pipes** (the harness's own stdio) and `pgrep -f "Google Chrome"` reported **0 processes**. Both blind on this host, so the silence is worth nothing.
+- ⭐ **Promoted to `TOOLBOX.md`**: a probe whose conclusion is an ABSENCE owes a positive control in the same run. The session's sixth instrument failure, which is what makes it a method rather than a note.
+- ✅ **VERIFIED:** no code changed. `.11.25.1`'s acceptance now REQUIRES the positive control, so the next attempt cannot repeat this one. Gate green; book rc=0; `handoff: OK`.
+
 ✅ **THE CLEANUP BUDGET NOW SAYS WHERE IT WENT, AND THE WAIT I WANTED TO SHORTEN IS THE DETECTOR (`.11.25`, REPAIR-0313).**
 
 - ⭐ **The instrument came first**: `cleanup_confirmed: false` named the stderr drain and gave no clock, while every cleanup step shares one budget — so the step that reports the failure is just the one that ran last. The receipt now carries `cleanup_budget_ms` and a per-step `cleanup_elapsed_ms`, and that is the whole shipped change.
-- **MEASURED on a real Chrome, render duration the only variable:** 5 s render → group reaped **314 ms**, drain **0 ms**, confirmed. 30 s render → reaped **273 ms**, drain **9,728 ms**, hits the 10,000 ms budget. Budget widened to 120 s → reaped **181 ms**, drain **16,427 ms** (**1.64× the whole budget**), then EOF arrives on its own.
+- **MEASURED on a real Chrome, render duration the only variable:** 5 s render → group reaped **314 ms**, drain **0 ms**, confirmed. 30 s render → reaped **273 ms**, drain **9,728 ms**, hits the 10,000 ms budget. Budget widened to 120 s → reaped **181 ms**, drain **16,427 ms** (**1.64× the whole budget**), then EOF arrives on its own. ⚠️ **CORRECTED by `.11.25.1.1`: the 9,728 ms is RIGHT-CENSORED at the deadline — the remaining budget, not a duration. Uncensored: 4,659 and 16,427 ms, 2 of 7 observations, a 3.5× spread.**
 - ⛔ **My first hypothesis was refuted by the instrument I had just built** — the kill sequence is not eating the budget (1,296 ms in-harness, 181 ms standalone) — and the failure **reproduces outside the test harness**, ruling the fixture out.
 - 🔴 **THE REPAIR I REACHED IS WITHDRAWN BY THIS LEAF'S OWN ACCEPTANCE CLAUSE.** Confirming the task's CANCELLATION rather than its EOF took the suite to **18/18** — and broke `a_render_refusal_survives_an_unconfirmed_cleanup`, which builds a `setsid` escapee ON PURPOSE and asserts the unconfirmed cleanup. **The drain is the detector**, and the weaker assertion did not fail on a browser that never cleans up. Reverted.
 - ✅ **The two controls assert the SAME thing** — one constructs an escape, the other produces one — so the detector is reporting something true.

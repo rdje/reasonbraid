@@ -526,6 +526,29 @@ The trigger is what makes the refusal safe to act on later: *a reader that must 
 order something by when this changed*. Write it in the decision, so the next person does
 not re-derive the census from scratch.
 
+### A probe whose conclusion is an ABSENCE owes a positive control in the same run
+
+Not the general rule about absence claims — this project already holds that one. The
+narrower operational one: **run the instrument against a known-present case before
+believing it about an unknown one.**
+
+`SIGNOFF-REPAIR.11.25.1` sampled a worker's file descriptors while a drain was stuck and
+saw no browser pipe. That looked like a finding, and it contradicted the model, which
+made it feel like an interesting one. Run mid-render instead — when the browser is
+certainly alive and its stderr certainly piped — `lsof -n -P -p <pid>` reported **6
+descriptors and 3 pipes**, all the harness's own stdio, and `pgrep -f "Google Chrome"`
+reported **0 processes**. Both are blind on that host.
+
+⛔ An instrument that cannot see a thing which is certainly there reports absence for
+free. Its silence is not an observation, and the finding was withdrawn before it was ever
+written down as one.
+
+⚠️ The same run produced the other half of the lesson. A summary line read
+`over_budget=0` across four runs that had all exceeded the budget — it compared a
+right-censored observation against the very deadline that censored it, so the comparison
+could only ever be false. **A censored observation is not a measurement of the quantity**,
+and a check that cannot fail is worse than no check, because it gets read.
+
 ### A falsification verdict needs a NAME, and a build needs an EXIT STATUS
 
 A mutation run reports two things, and both are easy to get wrong in the same way.

@@ -1,5 +1,56 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — Two numbers I should not have believed, one of which I published
+
+This leaf produced no repair. It produced a correction to something I shipped
+one commit earlier and a withdrawal of something I nearly shipped, and both
+came from the same habit.
+
+**The published one.** I reported the browser's stderr drain as 16,427 ms on a
+thirty-second render. Then I ran it four more times and got 9,638, 9,867, 9,817
+and 9,865 ms — and read that as a distribution around ten seconds. It is
+nothing of the kind. Every one of those runs was **cut off at the 10,000 ms
+deadline**: the number is how much budget was left when the drain was killed,
+not how long the hold lasts. Five of seven observations are right-censored. The
+two that actually completed are 4,659 ms and 16,427 ms, which differ by 3.5×,
+so the spread is real and I still do not know the distribution.
+
+My probe even printed `over_budget=0` for four runs that had all exceeded the
+budget. It compared the censored value against the deadline that produced it,
+so it could only ever print zero. I wrote a summary line that could not be
+true, and then read it.
+
+**The one I caught.** Sampling the worker's file descriptors while the drain
+was stuck showed no browser pipe at all. That contradicts the obvious model, so
+it felt like a discovery. Before writing it down I ran the same instrument
+mid-render, when Chrome is certainly alive and its stderr is certainly piped to
+the worker: `lsof` showed six descriptors and three pipes — my own harness's
+stdio — and `pgrep -f "Google Chrome"` found zero processes. The instrument is
+blind on this host. Its silence was never evidence, and the finding evaporated.
+
+⭐ The rule, and it is narrow on purpose because the broad version is already in
+this project: **a probe whose conclusion is an absence owes a positive control
+in the same run.** Not "absence claims need a census" — that one is about
+corpora. This is about instruments: run it against a case you know is present
+before you believe it about one you don't.
+
+⚠️ And the honest tally, because it is the real finding of this stretch: six
+instruments of mine have been wrong in this session. A build-detector that
+grepped for the word `error` in output that contains it on failure. A failure
+matcher that matched the summary line instead of the named failures. A
+falsification verdict I nearly published from a count rather than a name. An
+`lsof` filter keyed on a column index that dropped the one descriptor it was
+looking for. A censoring comparison that could not fail. And this blind probe.
+Four were caught before commit; two were not, and reached the director as
+statements I then withdrew.
+
+The product work in this session has held up — every repair was falsified
+against a control that could refuse it, and one repair *was* refused. The
+throwaway instruments have not, and the difference is that the product's
+controls get the same scrutiny the product does, while a probe written to
+answer one question gets none. That asymmetry is the thing to fix, and the
+positive-control rule is the first half of it.
+
 ## 2026-09-20 — The wait I wanted to shorten was the detector
 
 A browser control had been failing at HEAD on this host, on its cleanup

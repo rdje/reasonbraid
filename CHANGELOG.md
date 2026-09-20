@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-20 — The MCP tools are reachable, over a transport whose profile was priced rather than preferred (`SIGNOFF-REPAIR.6.8`)
+
+`REASONBRAID-REPAIR-0331`. Six implemented, authorized, live-tested MCP tools had no client that could reach them.
+
+- 🔴 **Re-derived with `cargo metadata` rather than a grep:** 0 workspace packages depended on `reasonbraid-mcp`, whose only targets were a `lib` and a build script. The tool router was constructed nowhere outside `#[cfg(test)]`. 🔎 The cause is recorded: `PHASE-8.3.3` deferred the transport to `PHASE-8.3.4`, which closed `done` without it.
+- ✅ **`rb-mcp` serves the tools over stdio**, and the profile was PRICED before the feature flag was added, which is what the acceptance asked for. `transport-io` adds **0** packages; `transport-streamable-http-server` adds **3** — `async-trait`, `base64 0.23.1`, `sse-stream`.
+- 🔴 **The third of those is the decision.** `deny.toml` sets `multiple-versions = "deny"` and the workspace already resolves `base64 0.22.1`, so the HTTP profile would **break `make deny`** unless an encoding crate were added to the reviewed skip list — weakening a supply-chain doctrine to enable a listener nobody is yet allowed to expose.
+- ⭐ **stdio is inside the LAN bar by construction**: no socket is opened and no inbound connection is accepted; the client spawns the process and owns its lifetime. ⛔ A binary of its own is **forced**, not preferred — stdio is one process per session, `rb-server` is a long-running shared service.
+- 🔎 **The first `initialize` this project ever answered came back `"serverInfo":{"name":"rmcp","version":"3.2.0"}`** — the string a client shows a person. Nothing was wrong with the tools; the server had no name. `#[tool_router(server_handler)]` is split into `#[tool_router]` plus an explicit handler.
+- 🔎 **And the crate's manifest claimed a protocol baseline the SDK does not offer.** It read *the MCP 2026-07-28 baseline*; `rmcp 3.2.0` defines `LATEST = V_2025_11_25`. ⛔ `get_info` advertises `LATEST` rather than forcing `2026-07-28`, because the one behaviour the SDK branches on for that version is an HTTP-header rule a stdio transport cannot carry. The comment is corrected instead.
+- ⛔ **The pool is lazy**, which is a property of the transport: a client expects a handshake immediately, and refusing to start on an unreachable database would make every tool unreachable again.
+- ✅ **VERIFIED:** `cargo test -p reasonbraid-mcp` → 6 lib + 1 transport passed; strict clippy rc=0; fmt rc=0; `make book` rc=0; book links rc=0; doctrine gate all green; `handoff: OK`. **Falsified three ways** — the SDK naming itself, an eager pool, and one `println!` that becomes a malformed JSON-RPC frame. ⭐ That third mutation is the hazard a stdio server actually has, and the control names it in a sentence.
+- 🔎 **A finding owned rather than acted on:** `make release` signs a manifest naming **four** binaries while `cargo metadata` reports **ten** targets and the line above it builds all of them. `rb-mcp` is deliberately not added to a list that already omits five — `SIGNOFF-REPAIR.6.8.1`.
+
 ## 2026-09-20 — A task tree has three relative-reference dialects, and not one of those references meant a lane (`SIGNOFF-REPAIR.11.24.1.6.1`)
 
 `REASONBRAID-REPAIR-0330`. The leaf's premise, refuted by its own census.

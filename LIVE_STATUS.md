@@ -5,6 +5,15 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **THE MCP TOOLS ARE REACHABLE, OVER A TRANSPORT WHOSE PROFILE WAS PRICED (`.6.8`, REPAIR-0331).**
+
+- 🔴 0 workspace packages depended on `reasonbraid-mcp` (`cargo metadata`, not a grep); its only targets were a lib and a build script. Six tools, no client.
+- ✅ **`rb-mcp` serves them over stdio.** `transport-io` adds **0** packages; the HTTP server profile adds **3**, one of them `base64 0.23.1` — 🔴 **a second major of a crate `deny.toml` forbids duplicating**, so it would break `make deny` unless a supply-chain doctrine were weakened for an encoding crate.
+- ⭐ **No socket is opened**, so the exposure question never arises; a separate binary is FORCED because stdio is one session and `rb-server` is a long-running service.
+- 🔎 **The first `initialize` this project answered came back `"name":"rmcp"`** — the server had no name. And the crate's manifest claimed a 2026-07-28 baseline the SDK does not offer (`LATEST = 2025-11-25`); `get_info` advertises what the SDK actually offers.
+- ✅ Falsified 3 ways, including a `println!` that becomes a malformed frame — the hazard a stdio server actually has.
+- 🔎 **`make release` signs 4 of 10 binaries** → OWNED at `.6.8.1`.
+
 🔴 **A TASK TREE HAS THREE RELATIVE-REFERENCE DIALECTS, AND NOT ONE OF THOSE REFERENCES MEANT A LANE (`.11.24.1.6.1`, REPAIR-0330).**
 
 - 🔴 **The leaf's premise was refuted by its own census.** It opened on *lane 11 has 195 children and no node, and every reference to it resolves to nothing*. Classified against their ENCLOSING LEAF: 44 are a third dialect (`ancestor` — a sibling reference), 21 cross-tree in PHASE-1's dialect, 4 elided-prefix compounds, 1 deliberate non-reference. **Zero meant a lane.**
@@ -376,7 +385,7 @@ Two `done` Phase-8 leaves were found in consecutive slices whose GOAL line named
 
 🔴 **NOTHING SERVES THE MCP TOOLS, and the book now says so (`.6.5`, REPAIR-0294).**
 
-The book documented no MCP surface at all while the surface shipped and `.6.1` repaired it five times. Writing the chapter honestly required a census, and the census found the surface unreachable.
+The book documented no MCP surface at all while the surface shipped and `.6.1` repaired it five times. Writing the chapter honestly required a census, and the census found the surface unreachable. ✅ **DISCHARGED by `.6.8` (REPAIR-0331): `rb-mcp` serves the tools over stdio**, and the chapter's reachability section is now what a client connects to.
 
 - ⛔ **Six implemented, authorized, live-tested tools, reachable by no MCP client.** `git grep -n McpTools -- crates` → **7 hits, all in one file**, and the five that construct the struct or its router sit below that file's `#[cfg(test)]`. No crate depends on `reasonbraid-mcp`, it declares no `[[bin]]`, and there is no stdio or HTTP transport anywhere. The tools run under `cargo test` and nowhere else.
 - 🔎 **The cause is a task-tree failure, not a coding one.** `PHASE-8.3.3` closed `done` saying *"The Streamable-HTTP transport + the live roundtrip ride `.3.4`"*; `PHASE-8.3.4` shipped the listen-stream durable state and closed `done` without one. ⛔ **A deferral that names a leaf dies with that leaf** — the pointer still reads correctly and points at something finished. Promoted: `docs/knowledge/a-deferral-dies-with-the-leaf-it-names.md`.

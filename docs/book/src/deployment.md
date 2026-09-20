@@ -1502,6 +1502,7 @@ make release
 | `rb-bench` | adapter benchmark runner |
 | `reasonbraid-browse` | browser acquisition worker |
 | `reasonbraid-extract` | resource extraction worker |
+| `rb-mcp` | the MCP server over stdio — one process per client, no socket |
 | `rb-release-manifest` | release manifest tooling |
 | `rb-node` | the node worker — outbound channel, SQLite journal, the adapter supervisor |
 | `rb-journal` | the node-journal inspection tool |

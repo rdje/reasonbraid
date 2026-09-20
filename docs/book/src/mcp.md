@@ -5,9 +5,9 @@ on (ADR-024) is that **a tool is the HTTP handler's re-expression, never a new
 authority path** — so a tool that no handler backs is not exposed, and a tool
 that is exposed runs the handler's own authorization by *calling* it.
 
-⛔ **Read the reachability section at the end before planning against this
-chapter.** The tools are implemented and tested; nothing serves them to an MCP
-client yet.
+The tools are served by **`rb-mcp`**, a binary that speaks MCP over stdio — see
+[Connecting a client](#connecting-a-client-rb-mcp-over-stdio) at the end for what
+to point a client at, and for what is deliberately not served.
 
 ## The tool vocabulary
 
@@ -89,14 +89,55 @@ error rather than a tool result.
   available as tools only.
 - **The listen stream** has its own chapter: [The MCP listen gateway](mcp-listen.md).
 
-## Reachability — no MCP client can reach this today
+## Connecting a client: `rb-mcp` over stdio
 
-⛔ **Nothing serves these tools.** `reasonbraid-mcp` builds as a library, no
-other crate depends on it, it declares no binary, and the tool router is
-constructed only inside the crate's own `#[cfg(test)]` module. There is no
-stdio transport, no HTTP transport, and no `rb-server` wiring.
+The tools are served by **`rb-mcp`**, a binary that speaks MCP over its own
+standard input and output. A client spawns it, and the process lives for that
+one session.
 
-So the six tools above run under `cargo test` and nowhere else. They are
-correct, they are exercised against a live database, and they are **not a
-feature an operator can switch on**. Treat this chapter as the contract the
-transport will be built against.
+```bash
+DATABASE_URL=postgres://localhost/reasonbraid ./target/release/rb-mcp
+```
+
+Most MCP clients take that as a command plus an environment, for example:
+
+```json
+{
+  "command": "/path/to/reasonbraid/target/release/rb-mcp",
+  "env": { "DATABASE_URL": "postgres://localhost/reasonbraid" }
+}
+```
+
+On connect the server answers `initialize` as `reasonbraid`, advertises the
+`tools` capability, and negotiates protocol version **`2025-11-25`** — the
+latest `rmcp 3.2.0` offers. The six tools above are what `tools/list` returns.
+
+⛔ **It opens no socket, and that is the point.** A stdio server accepts no
+inbound connection: the client owns the process and its lifetime, so serving the
+tools does not touch the Internet-exposure question that
+[Blockers](blockers.md) tracks. Closing the client's end of the pipe ends the
+session.
+
+⚠️ **The identity rides each tool call, not the transport.** stdio carries no
+header, so every tool takes the caller's `principal` as an argument — the same
+value the HTTP surface takes in its header — and the tool's own authorization
+decides the answer. Spawning `rb-mcp` grants nothing by itself.
+
+⚠️ **The database connection is lazy.** The process starts, handshakes and lists
+its tools without touching PostgreSQL; a tool that needs the database reports a
+connection failure as that tool's own error. A client can therefore discover the
+surface even while the deployment is down.
+
+### What is not served
+
+⛔ **There is no HTTP transport.** The Streamable-HTTP server profile was priced
+and deferred: it adds three crates, one of which is a second major of `base64`,
+and this workspace's supply-chain policy denies duplicate versions outright.
+Taking it means resolving that split deliberately rather than silently —
+`docs/decisions/2026-09-20_the-mcp-server-transport-is-stdio-first.md` records
+the measurement and what a later leaf owes.
+
+⛔ **ReasonBraid is an MCP server here, not an MCP client.** Consuming an
+upstream MCP server's listen stream through the SDK is a separate dependency and
+a separate decision; see [The MCP listen gateway](mcp-listen.md) for what that
+surface does and does not claim.

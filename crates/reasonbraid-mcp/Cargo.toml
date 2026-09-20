@@ -2,7 +2,15 @@
 # "behind reasonbraid-mcp"). The READ tools over the inspection verbs:
 # the same queries + the same authorization as the HTTP handlers, exposed
 # as MCP tools. The rmcp 3.2.0 exact pin (the `.3.2` census): the official
-# SDK's active line, the MCP 2026-07-28 baseline.
+# SDK's active line.
+#
+# ⛔ This comment used to say "the MCP 2026-07-28 baseline", and the served
+# surface does not advertise that (`SIGNOFF-REPAIR.6.8`). Measured in the pinned
+# source: `rmcp 3.2.0` defines `ProtocolVersion::LATEST = V_2025_11_25` and
+# knows `V_2026_07_28` as a later member of `KNOWN_VERSIONS`. 2026-07-28 is
+# therefore a version the SDK SUPPORTS, not the one it offers — and the single
+# behaviour it branches on for it is SEP-2243's standard HTTP headers, which a
+# stdio transport has no header to carry. `get_info` advertises `LATEST`.
 [package]
 name = "reasonbraid-mcp"
 version = "0.1.0"
@@ -19,10 +27,32 @@ reasonbraid-server = { path = "../reasonbraid-server", version = "0.1.0" }
 # (the `.3.2` decision: the explicit list only; the reqwest transports
 # stay off until the transport profile is needed — the workspace
 # single-provider rule).
-rmcp = { version = "=3.2.0", default-features = false, features = ["macros", "server", "transport-async-rw"] }
+#
+# `transport-io` is the stdio SERVER transport (`SIGNOFF-REPAIR.6.8`,
+# `docs/decisions/2026-09-20_the-mcp-server-transport-is-stdio-first.md`).
+# ⭐ It costs NOTHING new: `transport-io` = `transport-async-rw` (already on)
+# + `tokio/io-std`, measured with `cargo metadata` at **+0 packages**.
+# ⛔ `transport-streamable-http-server` was measured at +3 — `async-trait`,
+# `base64 0.23.1`, `sse-stream` — and `base64 0.23.1` is a SECOND major of a
+# crate `deny.toml` forbids duplicating (`multiple-versions = "deny"`, and
+# `base64` is not in the reviewed skip list). That profile is a later leaf's,
+# and its first job is that split.
+rmcp = { version = "=3.2.0", default-features = false, features = ["macros", "server", "transport-async-rw", "transport-io"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "tls-none", "chrono"] }
+# The stdio server's runtime. `io-std` is what `transport-io` needs; the rest
+# is the ordinary binary entry point. Promoted from dev-dependencies by
+# `SIGNOFF-REPAIR.6.8` — until it, this crate had no binary to run.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "signal"] }
+
+# The stdio MCP server (`SIGNOFF-REPAIR.6.8`): one process per client, spawned
+# by the client, speaking newline-delimited JSON-RPC over stdin/stdout. It is a
+# binary of its OWN rather than a route on `rb-server` because the lifetimes
+# cannot be shared — stdio is one session, `rb-server` is a long-running service.
+[[bin]]
+name = "rb-mcp"
+path = "src/bin/rb-mcp.rs"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

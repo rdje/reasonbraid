@@ -22,7 +22,9 @@
 //! sameness is now a CALL rather than a sentence — which is the only
 //! form of it a reader can check.
 
-use rmcp::{handler::server::wrapper::Parameters, schemars, tool, tool_router};
+use rmcp::{
+    handler::server::wrapper::Parameters, schemars, tool, tool_handler, tool_router, ServerHandler,
+};
 
 /// The tools' shared handle: the pool (the dev-profile trust shape —
 /// the same principal the HTTP header carries, per tool argument).
@@ -134,7 +136,7 @@ pub struct ProposePolicyChangeParams {
     pub thread_id: String,
 }
 
-#[tool_router(server_handler)]
+#[tool_router]
 impl McpTools {
     /// Read one thread's current projection — the SAME `thread_inspect`
     /// authorization and the SAME tenant-bound select the HTTP
@@ -323,6 +325,51 @@ fn render(
 
 /// Parse the dev-profile principal (the same shapes the HTTP header
 /// resolves).
+/// The server's own identity and negotiated protocol version
+/// (`SIGNOFF-REPAIR.6.8`).
+///
+/// 🔴 **Written by hand because the generated one identified the SDK as the
+/// product.** `#[tool_router(server_handler)]` emits a default `ServerHandler`,
+/// and the first `initialize` this project ever answered came back
+/// `"serverInfo":{"name":"rmcp","version":"3.2.0"}` — the string an MCP client
+/// shows a person when it lists what it is connected to. Nothing was wrong with
+/// the tools; the server had no name. The macro is split into `#[tool_router]`
+/// plus this explicit `#[tool_handler]` impl for exactly this reason, which the
+/// macro's own documentation names as the case for doing so.
+///
+/// ⛔ **The protocol version is the SDK's `LATEST` and is NOT forced to
+/// `2026-07-28`, although this crate's manifest comment used to say that was
+/// the baseline.** Measured: `rmcp 3.2.0` defines `LATEST = V_2025_11_25` and
+/// knows `V_2026_07_28` as a later member of `KNOWN_VERSIONS`. The one
+/// behaviour the SDK branches on for `>= 2026-07-28` is SEP-2243's standard
+/// HTTP headers — a rule about a transport that carries headers, and this one
+/// carries none. Advertising a version whose distinguishing requirement cannot
+/// apply here would be a claim the surface does not back, which is the defect
+/// class this tree keeps repairing. The manifest comment is corrected instead.
+#[tool_handler]
+impl ServerHandler for McpTools {
+    fn get_info(&self) -> rmcp::model::ServerInfo {
+        // ⛔ `ServerInfo` is `#[non_exhaustive]`, so it is built from the
+        // SDK's own default and then corrected field by field. That is the
+        // right shape anyway: a field the SDK adds later arrives with its
+        // default rather than failing to compile here.
+        let mut info = rmcp::model::ServerInfo::default();
+        info.protocol_version = rmcp::model::ProtocolVersion::LATEST;
+        info.capabilities = rmcp::model::ServerCapabilities::builder()
+            .enable_tools()
+            .build();
+        info.server_info =
+            rmcp::model::Implementation::new("reasonbraid", env!("CARGO_PKG_VERSION"));
+        info.instructions = Some(
+            "ReasonBraid's inspection and qualified-write tools. Every tool takes the \
+             caller's `principal` as an argument — this transport carries no identity of \
+             its own, and the tool's own authorization is what decides the answer."
+                .to_owned(),
+        );
+        info
+    }
+}
+
 pub fn principal(id: &str) -> Result<reasonbraid_core::GrantSubject, String> {
     if id.starts_with("hpr_") {
         id.parse::<reasonbraid_core::HumanPrincipalId>()

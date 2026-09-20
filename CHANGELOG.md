@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-21 — One rotation mechanism for two ledgers, and a threshold derived from the window the first one already runs (`SIGNOFF-REPAIR.11.4.2.6.2`)
+
+`REASONBRAID-REPAIR-0351`. `.11.4.2.6.1` quoted the record boundary and deliberately wrote no code. This is the code.
+
+- ✅ **One mechanism, two ledgers.** A frozen `Ledger` record (path, threshold, runway, window, `enforced`) threaded through every function, with `--ledger` and `--check-all`. ⛔ The record boundary stays SHARED, not per-ledger — a per-ledger pattern would reintroduce the two-definitions defect the previous leaf exists to close. An unknown `--ledger` exits 2 rather than falling back to the changelog.
+- ✅ **`CHANGELOG.md`'s behaviour is unchanged, proved by BYTE IDENTITY rather than by a count.** `--plan` captured before the first edit and re-run after both edits: identical all three times, SHA-256 `496d3ce6…`. A parser change that leaves the heading count identical can still move a split boundary, so the count was not accepted as the evidence.
+- 🔴 **The tool could not rotate a ledger for the first time, and it crashed rather than saying so.** `split_ledger` did `text.index(FOOTER_START)`; a never-rotated ledger has no footer, giving `ValueError: substring not found` and a traceback. A ledger before its first rotation is a legitimate state, not a malformed file. An absent footer is now the end of the text, so `--plan` answers and `--apply` reaches its own named refusal — a chain is continued, never started, because each notice takes its ordinal from its predecessor's.
+- ⭐ **`DEV_NOTES.md`'s threshold is DERIVED from an existing reviewed decision**: `CHANGELOG.md` runs a live window of **20.279 p90-entries** (96,000 / 4,734), and the same window in the second ledger's own measured entry size is 20.279 × 3,763 = 76,309 → **76,000, rounded DOWN**. Both p90s from one producer in matched units. Derived once at `7fc8913` and held fixed: recomputing a ceiling on read lets a ledger widen its own bound by growing.
+- 🔴 **I typed `65000` into the code before measuring anything, and the derivation refuted it.** Recorded rather than quietly overwritten — a ceiling with no producer would have shipped inside the leaf whose subject is deriving the ceiling.
+- ⚠️ **The rule fires on 385 of 430 versions (90%), and the SHAPE is what settles it.** The first 45 are clean, version 46 crosses, and all 385 after it fire with no recovery — a scattered 90% describes the rule, a contiguous tail after one crossing describes the file. ✅ And the remedy clears it: 427 records retired → 36,774 B, 10 commits of runway, no fire. `.11.9`'s rejected gate had no remedy; this one is one command.
+- ⛔ **No rotation performed, no threshold raised, and `DEV_NOTES.md` is kept out of the gate by a DECLARED `enforced=False`** — a gate that is always red is one people route around. `--self-test` **25 controls** (was 16). No product code, schema, migration or test touched.
+
 ## 2026-09-21 — What a record IS on the second ledger, quoted from the gate that already governs it (`SIGNOFF-REPAIR.11.4.2.6.1`)
 
 `REASONBRAID-DOC-0092`. `.11.4.2.5` left `DEV_NOTES.md` measured and unbounded — 427 of 427 versions grew it, zero bytes ever removed. A working rotation for an ordered ledger already runs next door. Before pointing it at a second file: what is one record, and who says?

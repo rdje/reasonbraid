@@ -226,6 +226,7 @@
 - [`2026-09-20_the-tail-read-is-the-offer.md`](docs/decisions/2026-09-20_the-tail-read-is-the-offer.md)
 - [`2026-09-20_two-packs-produce-evidence-the-store-cannot-hold.md`](docs/decisions/2026-09-20_two-packs-produce-evidence-the-store-cannot-hold.md)
 - [`2026-09-21_the-second-ledgers-record-boundary-is-quoted-not-chosen.md`](docs/decisions/2026-09-21_the-second-ledgers-record-boundary-is-quoted-not-chosen.md)
+- [`2026-09-21_the-second-ledgers-threshold-is-the-first-ledgers-window.md`](docs/decisions/2026-09-21_the-second-ledgers-threshold-is-the-first-ledgers-window.md)
 
 ## Promoted lessons
 

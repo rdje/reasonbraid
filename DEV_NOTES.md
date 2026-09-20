@@ -1,5 +1,64 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — The number I typed before I measured it
+
+Two things happened while generalising the ledger rotation to a second file, and
+the second one is the one worth keeping.
+
+The first was ordinary good luck of the kind a careful process manufactures. I
+parameterised `rotate_changelog.py` by ledger, widened its record boundary to the
+one quoted from `check_lesson_promotion.sh`, and then had to prove that none of
+this changed the ledger already in production. The previous leaf had already
+shown the two boundary patterns agree on all 664 versions of `CHANGELOG.md`, and
+I could have leaned on that. I did not, because a count agreeing is not the same
+as a split boundary agreeing — two patterns can find the same number of headings
+and still cut in different places. So `--plan` was captured before the first
+edit, and diffed after the parser change and again after a later fix. Identical
+output, same SHA-256, all three times. That is the claim I can actually make.
+
+The second thing is that while writing the `Ledger` record for `DEV_NOTES.md` I
+needed a threshold, and I typed `65000`.
+
+There was no reason for that number. It was a placeholder to make the dataclass
+valid while I finished threading the parameter through, and I fully intended to
+derive it afterwards. Which I did — and the derivation came out at 76,309.
+
+Had I been interrupted, or had the derivation felt like a formality after the
+code already ran green, `65000` would have shipped. It would have been a
+threshold in a governed registry with no producer behind it, sitting in the
+repository as a number that looked derived because it lived next to numbers that
+were. That is the entire subject of `SIGNOFF-REPAIR.11.6` — measure the
+population before proposing the rule — and I committed a small version of it
+inside the leaf whose one job was deriving that ceiling.
+
+The real derivation is worth stating because it makes the number arguable rather
+than personal. `CHANGELOG.md` has a reviewed threshold of 96,000 bytes and a
+measured p90 entry of 4,734 bytes per non-rotation commit. That is a live window
+of 20.279 entries. The question "how big should the second ledger be?" then stops
+being a preference and becomes "the same window, in that ledger's own units":
+20.279 × 3,763 = 76,309, rounded down to 76,000 because rounding up would grant
+headroom the derivation does not support. Both p90s come from the same function,
+so the ratio is not quietly comparing two different quantities — which is the
+mistake I nearly made earlier by reaching for the p90 *record size* instead of
+the p90 *commit delta*.
+
+One more note, on the calibration. The rule fires on 385 of 430 versions of
+`DEV_NOTES.md` — 90%. This project has already rejected a gate for firing on 114
+of 131, so 90% should stop you. What rescues it is not an argument, it is the
+shape: the first 45 versions are clean, version 46 crosses, and every version
+after that fires with no recovery. A rule that fires on a scattered 90% is
+describing itself. A rule that fires on a contiguous tail after a single crossing
+is describing a file that went over its bound once and was never rotated — which
+is precisely what was measured. And the remedy clears it in one command: retire
+427 records, land at 36,774 bytes, ten commits of runway, no fire. The rejected
+gate had no such remedy. That asymmetry, not the percentage, is the test.
+
+Promotion: declined and recorded in `SIGNOFF-REPAIR.11.4.2.6.2`. The crash — the
+tool raising `ValueError` on a ledger that had simply never been rotated — is a
+further instance of `docs/knowledge/an-instrument-must-explain-its-own-failure.md`,
+already promoted. The derived-once-held-fixed rule is a disposition about these
+two files rather than a transferable method, so it is a decision record instead.
+
 ## 2026-09-21 — Two gates over one file, disagreeing about what a record is
 
 Before pointing the changelog rotation at a second ledger I asked what I thought

@@ -5,6 +5,14 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+✅ **ONE ROTATION MECHANISM FOR TWO LEDGERS, AND A DERIVED THRESHOLD (`.11.4.2.6.2`, REPAIR-0351).**
+
+- ✅ **A frozen `Ledger` record threaded through every function**, with `--ledger` and `--check-all`; the record boundary stays SHARED, not per-ledger. An unknown `--ledger` exits 2 rather than falling back to the changelog.
+- ✅ **`CHANGELOG.md` unchanged, proved by BYTE IDENTITY across both edits** (SHA-256 `496d3ce6…`) — not by the heading count, since a parser change can leave the count identical and still move a split boundary.
+- 🔴 **The tool crashed on a ledger that had never been rotated** — `ValueError: substring not found` from `split_ledger`. A pre-rotation ledger is a legitimate state; an absent footer is now the end of the text, and `--apply` reaches a named refusal instead of a traceback.
+- ⭐ **`DEV_NOTES.md` threshold DERIVED = 76,000**: `CHANGELOG.md`'s live window is **20.279 p90-entries** (96,000 / 4,734); 20.279 × 3,763 = 76,309, rounded DOWN. Derived once at `7fc8913`, held fixed. 🔴 **I typed `65000` before measuring and the derivation refuted it** — recorded, not quietly overwritten.
+- ⚠️ **Calibration fires on 385 of 430 (90%) and the rule still holds**: first 45 clean, version 46 crosses, all 385 after fire with no recovery — the shape of a file, not a rule. ✅ The remedy clears it (427 retired → 36,774 B, 10 commits runway, no fire). ⛔ **No rotation performed, no threshold raised**; `enforced=False` keeps it off the commit path. `--self-test` **25 controls** (was 16).
+
 ✅ **WHAT A RECORD IS ON THE SECOND LEDGER, QUOTED FROM THE GATE THAT ALREADY GOVERNS IT (`.11.4.2.6.1`, DOC-0092).**
 
 - 🔴 **The rotation's record parser is narrower than the gate governing `DEV_NOTES.md`, by a third of the file** — narrow **291** records / 717,211 B against wide **439** / 895,767 B; **148 records and 178,556 bytes invisible**. A rotation states in its chain notice how many records it retired, so the narrow parser would retire content it never counted and publish a false figure.

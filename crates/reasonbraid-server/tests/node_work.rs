@@ -1776,21 +1776,38 @@ async fn a_revoked_grant_makes_its_undelivered_command_revoked_and_withholds_it(
          the row was never offered, and a terminal a sweep can leave is not a terminal"
     );
 
-    // ⛔ AND THE COLUMN UNDERNEATH IT IS NOT WRITTEN EITHER
-    // (`SIGNOFF-REPAIR.11.24.1.1.2.1`). The precedence above keeps the STATE
-    // honest; this keeps the FACT honest. `acknowledged_at` means the node
-    // durably holds the command, and it never received this one — and that
-    // column is the retention prune's DELETE predicate, so a false receipt here
-    // makes work that was never delivered eligible for deletion.
-    let receipt: Option<chrono::DateTime<chrono::Utc>> =
-        sqlx::query_scalar("SELECT acknowledged_at FROM node_inbox WHERE node_id = $1")
-            .bind(&role)
-            .fetch_one(&pool)
-            .await
-            .expect("read the row's receipt");
+    // ⭐ AND THE COLUMN UNDERNEATH IT NOW RECORDS THE TRUTH, WHICH IS THE
+    // REPAIR AND NOT A REGRESSION (`SIGNOFF-REPAIR.11.24.1.1.1.1`).
+    //
+    // 🔴 This assertion used to read `receipt.is_none()`, and it passed for the
+    // WRONG REASON. The ack's superseded predicate excluded the row because it
+    // was authority-ended AT ACK TIME — not because the transport never carried
+    // it. But this control's own positive arm above HANDED THE ROW TO THE NODE
+    // before the revocation: the tail carried it, and `acknowledged_at` means
+    // *the node process durably holds this command*, which is true of this row.
+    // The control asserted the node never received a row it had just watched the
+    // node receive.
+    //
+    // ⛔ The guarantee that assertion was protecting is unchanged and is driven
+    // where it can be stated exactly — on rows the tail NEVER carried, in
+    // `node_inbox`'s `an_acknowledgement_receipts_what_was_offered_and_nothing_else`
+    // (a node acking PAST a row it was never offered) and
+    // `a_cursor_ack_does_not_receipt_a_row_the_tail_withheld`. Here the receipt
+    // is asserted TOGETHER with the offer that earns it, so the pair cannot come
+    // apart: a receipt without a recorded offer is the defect, not a receipt.
+    let (offered, receipt): (
+        Option<chrono::DateTime<chrono::Utc>>,
+        Option<chrono::DateTime<chrono::Utc>>,
+    ) = sqlx::query_as("SELECT offered_at, acknowledged_at FROM node_inbox WHERE node_id = $1")
+        .bind(&role)
+        .fetch_one(&pool)
+        .await
+        .expect("read the row's offer and receipt");
+    let offered = offered.expect("the positive arm above offered this row to the node");
+    let receipt = receipt.expect("a row the tail carried earns its receipt");
     assert!(
-        receipt.is_none(),
-        "the withheld row carries no transport receipt: {receipt:?}"
+        offered <= receipt,
+        "the receipt cannot precede the offer that earns it: offered {offered}, acked {receipt}"
     );
 }
 

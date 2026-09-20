@@ -1294,6 +1294,146 @@ async fn poll_ids(
         .collect()
 }
 
+/// One ack of a cursor, as the node channel's public surface takes it.
+async fn ack_cursor(
+    client: &reqwest::Client,
+    base: &str,
+    node_id: &str,
+    cursor: i64,
+    fencing_token: &str,
+    lease_epoch: i64,
+) {
+    let response = client
+        .post(format!("{base}/v1/nodes/ack"))
+        .json(&json!({
+            "channel_version": CHANNEL_VERSION,
+            "node_id": node_id,
+            "ack_cursor": cursor,
+            "fencing_token": fencing_token,
+            "lease_epoch": lease_epoch,
+        }))
+        .send()
+        .await
+        .expect("ack request");
+    assert_eq!(response.status().as_u16(), 200, "the ack is accepted");
+}
+
+/// `SIGNOFF-REPAIR.11.24.1.1.1.1` — the acknowledgement keys on the RECORDED
+/// OFFER, not on what the tail happens to withhold at ack time.
+///
+/// 🔴 **The superseded predicate was a proxy, and it was wrong in BOTH
+/// directions.** `.11.24.1.1.2.1` excluded rows the tail withholds *for a
+/// reason about that row* — quarantined, or past their authority — which is an
+/// ack-time guess at *was this row carried*. `migrations/0078` records the fact
+/// it stood in for.
+///
+///   * **OVER-recording, the dangerous direction, and unnoticed until now.** A
+///     cursor ack is a wire input bounded only by `current_cursor`, so a node
+///     can ack past a row this tail never offered it — one enqueued after its
+///     last poll. Such a row is neither quarantined nor authority-ended, so the
+///     proxy admitted it, and `acknowledged_at` is the retention prune's DELETE
+///     predicate: **undelivered work became eligible for deletion on a number
+///     the node supplied.** That is `.4.2.4`'s harm model by a second route.
+///   * **UNDER-recording, the residual `.11.24.1.1.2.1` named.** A row offered
+///     and THEN quarantined was excluded although the node demonstrably held
+///     it, so the receipt was suppressed and the row re-delivered.
+///
+/// Both arms run here, and the second one also pins the interaction the
+/// narrowing creates: a row that earns a true receipt after its authority ended
+/// still READS `revoked`, because `migrations/0076` ranks the act above the
+/// receipt deliberately.
+#[tokio::test]
+async fn an_acknowledgement_receipts_what_was_offered_and_nothing_else() {
+    let _g = guard().await;
+    let Some(pool) = pool().await else { return };
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let node_id = "nod_00000000-0000-7000-8000-000000000212";
+    let (tenant, alice) = bootstrap_admin(&client, &base).await;
+    let (cert_hex, key_hex) = seed_node_in(&pool, node_id, &tenant).await;
+
+    // Cursor 1 exists when the node polls; cursor 2 is enqueued afterwards.
+    enqueue_in(&state, node_id, "cmd_ahead_polled", &tenant).await;
+    let hs = handshake(&client, &base, node_id, &cert_hex, &key_hex).await;
+    let fencing_token = hs["fencing_token"]
+        .as_str()
+        .expect("a fencing token")
+        .to_string();
+    let lease_epoch = hs["lease_epoch"].as_i64().expect("a lease epoch");
+    assert_eq!(
+        poll_ids(&client, &base, node_id, &fencing_token, lease_epoch).await,
+        vec!["cmd_ahead_polled".to_string()],
+        "the poll carries the only row that exists yet"
+    );
+    enqueue_in(&state, node_id, "cmd_ahead_unpolled", &tenant).await;
+
+    // ── ARM 1: the node acks PAST a row it was never offered.
+    ack_cursor(&client, &base, node_id, 2, &fencing_token, lease_epoch).await;
+    let (polled_ack, polled_state) = row_facts(&pool, "cmd_ahead_polled").await;
+    assert!(
+        polled_ack.is_some(),
+        "the row the node was offered carries its receipt"
+    );
+    assert_eq!(polled_state, "transport_received");
+    let (unpolled_ack, unpolled_state) = row_facts(&pool, "cmd_ahead_unpolled").await;
+    assert_eq!(
+        (unpolled_ack, unpolled_state),
+        (None, "queued".to_string()),
+        "a row this tail never offered earns no receipt, whatever cursor the node acks — \
+         `acknowledged_at` is the prune's DELETE predicate, so a false one destroys work"
+    );
+
+    // ── ARM 2: a row offered and THEN quarantined keeps the receipt it earned.
+    enqueue_in(&state, node_id, "cmd_offer_then_quarantine", &tenant).await;
+    // The tail is keyed on the reported cursor, not on the receipt, so a poll
+    // from 0 re-offers the row already acknowledged too. That is harmless and
+    // the arms below depend on it being understood: `offered_at` is write-once
+    // and the ack's own `acknowledged_at IS NULL` guard refuses a second mark.
+    assert_eq!(
+        poll_ids(&client, &base, node_id, &fencing_token, lease_epoch).await,
+        vec![
+            "cmd_ahead_polled".to_string(),
+            "cmd_ahead_unpolled".to_string(),
+            "cmd_offer_then_quarantine".to_string()
+        ],
+        "polling from cursor 0 offers every row the filters allow"
+    );
+    let response = client
+        .post(format!("{base}/v1/nodes/quarantine"))
+        .header(PRINCIPAL_HEADER, &alice)
+        .json(&json!({
+            "tenant_id": tenant,
+            "node_id": node_id,
+            "command_id": "cmd_offer_then_quarantine",
+            "reason": "quarantined after the node already held it",
+        }))
+        .send()
+        .await
+        .expect("quarantine request");
+    assert_eq!(response.status().as_u16(), 200, "the quarantine succeeds");
+    ack_cursor(&client, &base, node_id, 3, &fencing_token, lease_epoch).await;
+    let (quarantined_ack, quarantined_state) = row_facts(&pool, "cmd_offer_then_quarantine").await;
+    assert!(
+        quarantined_ack.is_some(),
+        "a row quarantined AFTER it was offered keeps the receipt it earned — the \
+         superseded predicate suppressed it and the row was re-delivered"
+    );
+    assert_eq!(
+        quarantined_state, "dead_lettered",
+        "the quarantine still outranks the receipt in the published state"
+    );
+    // The row offered in the same poll and never withheld is receipted too.
+    let (now_delivered, _) = row_facts(&pool, "cmd_ahead_unpolled").await;
+    assert!(
+        now_delivered.is_some(),
+        "the previously unoffered row earns its receipt once it IS offered — which is \
+         why the pre-0078 cohort costs nothing: an unacknowledged row stays in the tail"
+    );
+}
+
 /// `SIGNOFF-REPAIR.11.24.1.1.1` — §10.6's `offered`: the rung between *the row
 /// exists* and *the node holds it*.
 ///

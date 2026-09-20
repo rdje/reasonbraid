@@ -5,6 +5,18 @@ snapshot. Historical implementation and verification records live in the phase
 task-trees and git; the pre-review snapshot is `9c2d2ba:LIVE_STATUS.md`.
 
 ## Qualification correction
+🔴 **A RECEIPT IS EARNED BY AN OFFER, AND THE PROXY IT REPLACES WAS WRONG IN BOTH DIRECTIONS (`.11.24.1.1.1.1`, REPAIR-0309).**
+
+⭐ The leaf opened on one direction of the error and found the other one — the dangerous one.
+
+- 🔴 **The ack keyed on a PROXY**: *skip the rows the tail withholds for a reason about that row*, an ACK-TIME guess at *was this row carried*. `.11.24.1.1.2.1` recorded its UNDER-recording half (a row offered then quarantined was skipped although the node held it).
+- 🔴 **The OVER-recording half destroys work, and nobody had named it.** A cursor ack is a **wire input** bounded only by `current_cursor`, so a node may ack PAST rows this tail never offered it — neither quarantined nor authority-ended, so the proxy ADMITTED them — and `acknowledged_at` is the retention prune's DELETE predicate. ⛔ **Undelivered work became eligible for deletion on a number the node supplied**: `.4.2.4`'s harm model by a second route.
+- ✅ **`offered_at IS NOT NULL` replaces both clauses**, answering from the record `migrations/0078` writes rather than from a guess made at the wrong moment.
+- ⛔ **An unscoped fallback for the pre-`0078` cohort was REFUSED** — nothing distinguishes a legacy row from one not yet offered, so it would re-admit the hole for every row. ✅ **The cohort costs nothing**, and the reason is the tail's own shape: an unacknowledged row is still in the tail, so the next poll offers, records and receipts it. Driven end to end.
+- ⚠️ **The two per-NODE reasons are honoured BY CONSTRUCTION**: a row carried BEFORE the node lost its certificate keeps its receipt. ⚠️ **One interaction stated rather than discovered**: a row offered → revoked → acked earns a true receipt, still READS `revoked` (`0076` ranks the act above the receipt), and the prune now ages it as delivered.
+- 🔴 **A CONTROL WAS ASSERTING THE OPPOSITE OF WHAT IT HAD JUST WATCHED HAPPEN** — `a_revoked_grant_…` asserted *it never received this one* one step after its own positive arm handed the row over, and passed under the proxy for the WRONG reason. It now asserts the receipt TOGETHER with the offer that earns it, ordered.
+- ✅ **VERIFIED:** `node_inbox` **11/0** (10 at `11679b8`), `node_work` **12/0**, `node_channel` **40/0**, `node_result_ordering` **6/0**, `mcp_listen` **6/0**. Clippy rc=0; fmt rc=0; book rc=0; gate green. ⭐ **FALSIFIED in two directions and the ASYMMETRY is the result** — the superseded proxy turns both suites RED; removing the clause turns `node_inbox` RED and leaves `node_work` GREEN, so neither closes both alone. ⚠️ The verdicts needed SEPARATE runs: `run_pg_tests.py` breaks at the first failing suite, and a combined run reported only the first.
+
 ✅ **THE TAIL READ IS THE OFFER (`.11.24.1.1.1`, REPAIR-0308).**
 
 §10.6's `offered` ships; `acknowledged` is DEFERRED with a measured trigger.

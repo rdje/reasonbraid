@@ -294,21 +294,43 @@ deletion, leaving the node's ledger and the server's permanently disagreed.
 
 ⛔ **An acknowledgement covers a range, and the tail does not.** `ack` names a
 cursor and marks every row up to it; the replay tail withholds rows the node
-must not receive. Those two disagree, so the acknowledgement **skips the rows
-the tail withheld for a reason about that row** — a quarantine, or authority
-that has ended. Otherwise `acknowledged_at` would record *the node durably holds
-this command* for a command the node was never handed, and the retention prune
-would then be entitled to delete it.
+must not receive. Those two disagree, so a plain `cursor <= N` would record
+*the node durably holds this command* for a command the node was never handed —
+and the retention prune would then be entitled to delete it.
+
+**The acknowledgement therefore marks exactly the rows a response carried**: the
+ones with a recorded offer. Until `migrations/0078` the channel had no such
+record and used a proxy — *skip the rows the tail withholds for a reason about
+that row, a quarantine or authority that has ended* — evaluated at the moment of
+the ack. That proxy was wrong in both directions:
+
+- it **under-recorded**: a row offered and then quarantined was skipped although
+  the node demonstrably held it, so the receipt was lost and the row
+  re-delivered;
+- it **over-recorded**, which is the direction that destroys work. A cursor is a
+  number the node supplies, bounded only by the server's own high-water mark, so
+  a node can acknowledge past a row this tail never offered it — one enqueued
+  after its last poll, for instance. Such a row is neither quarantined nor
+  authority-ended, so the proxy accepted it, and undelivered work became
+  eligible for deletion.
 
 ⚠️ The two *per-node* reasons a tail can be empty — no usable certificate, or a
-profile declaring zero concurrency — are deliberately **not** part of that
-exclusion. They describe the node's standing now rather than whether any row was
-carried, and excluding them would suppress true receipts for rows the node
-demonstrably holds. The residual gap is a row offered before its quarantine and
-acknowledged after it: that receipt goes unrecorded, the row is re-delivered on
-the next replay, and the node's journal deduplicates it by command id — which is
-what the channel relies on anyway. Recording a receipt that never happened
-destroys work; failing to record one costs a redelivery.
+profile declaring zero concurrency — describe the node's standing now rather
+than whether a row was carried, and they never suppress a receipt. Keying on the
+recorded offer is exactly the distinction the old proxy was reaching for: a row
+carried before the node lost its certificate keeps its receipt, and a row never
+carried never gains one.
+
+⚠️ Rows enqueued before `migrations/0078` carry no offer record, and that NULL
+means *not offered since the migration* — never *never offered*. It costs them
+nothing: a row with no acknowledgement is still in the tail, so the node's next
+poll offers it, records the offer, and the next acknowledgement receipts it.
+
+⚠️ **One consequence worth knowing.** A row offered, then revoked, then
+acknowledged now earns a true receipt. Its delivery state still reads `revoked`
+— the act is the more informative answer to *why was this never completed* —
+while the retention prune ages it as a delivered row, by the receipt, rather
+than by the revocation instant. Both are right for the question each answers.
 
 `poll` deliberately keeps the plain check and is **not** wrapped, because it
 writes nothing: it reads the cursor, the replay tail and the revocation epoch,

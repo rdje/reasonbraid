@@ -1,5 +1,63 @@
 # DEV_NOTES.md
 
+## 2026-09-20 — The leaf asked about one direction; the other one was the dangerous one
+
+I opened this leaf to close a residual somebody (me, four commits ago) had
+already written down: the cursor acknowledgement skipped rows the tail withheld,
+so a row offered and *then* quarantined lost a receipt it had earned. Annoying,
+cheap, safe — the row gets re-delivered and the node's journal dedupes it.
+
+Writing the control forced me to say out loud what the old predicate actually
+tested, and that is where it turned. It tested *is this row withheld right now*.
+It did not test *was this row carried*. Those coincide only if the set of rows
+the tail withholds at ack time equals the set it never offered — and they do not,
+in either direction.
+
+The direction I came for is the harmless one. The other direction is this: a
+cursor is a number the node sends, and the server's only bound on it is its own
+high-water mark. So a node can acknowledge cursor 7 having been offered rows 1
+through 5, and rows 6 and 7 — enqueued after its last poll, never on any wire —
+are neither quarantined nor authority-ended. The proxy admitted them.
+`acknowledged_at` is the retention prune's `DELETE` predicate. **A node can make
+the server delete work it never received, by acking a larger number.**
+
+That is the same harm `.4.2.4` recorded for fenced sessions, reached from a
+completely different direction, and the leaf that introduced the proxy said in
+its own comment that over-recording "destroys work instead" — while leaving a
+path that over-records. Not because anyone was careless: the proxy was the best
+available answer before the channel recorded offers, and the case needs a node
+whose ack runs ahead of its own receipts, which a correct node never does. The
+server is not entitled to assume a correct node.
+
+**The correction to the control is the part I want to remember.** When I first
+ran the suite, `a_revoked_grant_makes_its_undelivered_command_revoked_and_
+withholds_it` went red on `the withheld row carries no transport receipt`. My
+reflex was that I had broken something. I had not. That control has a positive
+arm — handshake before revoking, so an empty tail afterwards proves something —
+and the positive arm *hands the row to the node*. Then it asserted the node had
+never received it. It passed for years because the proxy excluded the row for a
+different reason entirely: authority-ended at ack time.
+
+So the control was making a claim its own setup contradicted, and the green tick
+came from a coincidence between two unrelated facts. I have hit this shape
+repeatedly in this tree under the name *a control that passes for an unrelated
+reason*, and it keeps arriving disguised as a regression.
+
+⭐ **And the falsification matrix came out asymmetric, which I did not expect
+and which is the most useful thing in the leaf.** Restoring the old proxy turns
+both suites red. Removing the offer clause *entirely* turns `node_inbox` red and
+leaves `node_work` green — because `node_work`'s corrected assertion is
+*positive* (this row has a receipt), and a positive assertion cannot be broken
+by marking more rows. Over-recording is invisible to it by construction. The two
+suites cover opposite directions and neither closes both.
+
+⚠️ One process note worth keeping: I nearly published `node_work`'s verdict
+without having observed it. `run_pg_tests.py` breaks at the first failing suite,
+so a combined `node_inbox node_work` run under a mutation reports only
+`node_inbox` — and an absent failure reads exactly like a pass. I re-ran with
+`node_work` alone. A runner that stops early makes every suite after the first
+unmeasured, and the output does not say so.
+
 ## 2026-09-20 — Two refusals and a star
 
 Shipping §10.6's `offered` rung took about twenty lines. The leaf was three

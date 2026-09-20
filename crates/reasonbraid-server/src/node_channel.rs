@@ -105,21 +105,53 @@ pub const LEASE_TTL: ChronoDuration = ChronoDuration::seconds(60);
 /// demonstrably holds. The per-row reasons are the ones about which the server
 /// has positive knowledge that this tail did not carry the row.
 ///
-/// ⭐ **The residual error is the safe one, and the design already tolerates
-/// it.** Without an `offered` column (`.11.24.1.1.1`) the server cannot tell
-/// *withheld now* from *withheld when it was offered*, so a row offered before
-/// its quarantine and acked after it goes unmarked. That under-records a
-/// receipt; the row is simply re-delivered on the next replay and the node's
-/// journal deduplicates by command id, which is what `migrations/0003` says the
-/// channel relies on. Over-recording, the behaviour this replaces, destroys
-/// work instead.
+/// ⭐ **AND IT NOW KEYS ON THE OFFER ITSELF** (`SIGNOFF-REPAIR.11.24.1.1.1.1`).
+/// The two per-row clauses above were a PROXY for *was this row carried*,
+/// evaluated at ACK TIME; `migrations/0078` records the fact they stood in for,
+/// and `offered_at IS NOT NULL` replaces both. The proxy was wrong in both
+/// directions, and the replacement fixes both:
+///
+///   * it UNDER-recorded — a row offered and then quarantined was excluded
+///     although the node demonstrably held it, so the receipt was suppressed
+///     and the row re-delivered (the residual `.11.24.1.1.2.1` recorded);
+///   * it OVER-recorded, which is the dangerous direction and was not noticed
+///     then. A cursor ack is a wire input bounded only by `current_cursor`, so
+///     a node may ack PAST rows this tail never offered it — one enqueued after
+///     its last poll, say. Those rows are neither quarantined nor
+///     authority-ended, so the proxy admitted them, and `acknowledged_at` is the
+///     retention prune's DELETE predicate: undelivered work became eligible for
+///     deletion on a number the node supplied. That is `.4.2.4`'s harm model
+///     reached by a second route.
+///
+/// ⛔ **The pre-`0078` cohort is answered, not omitted.** Those rows have
+/// `offered_at IS NULL` whatever their history, and that NULL means *not
+/// offered since the migration* — never *never offered*. It costs nothing, and
+/// the reason is the tail's own shape rather than an estimate: a row with no
+/// `acknowledged_at` is still in the tail, so the node's next poll offers it,
+/// marks it, and the next ack receipts it. The only pre-`0078` rows that never
+/// regain a receipt are ones the tail withholds — which the superseded clauses
+/// excluded too, or which were never carried and should never have been marked.
+///
+/// ⚠️ **The two per-NODE reasons stay honoured, and the mechanism is better
+/// than the clause that used to say so.** `replay` also withholds for no usable
+/// certificate (`.4.1.3.1`) and a profile declaring zero concurrency; those
+/// describe the node's standing NOW, not whether a row was carried. Keying on a
+/// recorded offer is exactly the distinction that clause was reaching for: a row
+/// carried BEFORE the node lost its certificate keeps its receipt, and one never
+/// carried does not get one.
+///
+/// ⚠️ **One interaction, stated rather than left to be discovered.** A row
+/// offered, then revoked, then acked now earns a true `acknowledged_at`. Its
+/// `delivery_state` still reads `revoked`, because `migrations/0076` ranks the
+/// ACT above the receipt deliberately, while the retention prune now ages it as
+/// a DELIVERED row (`acknowledged_at`) instead of by the revocation instant.
+/// Both are right for the question each answers — the operator asking *why was
+/// this never delivered* gets the act, and the window measuring *how long has
+/// the node held this* gets the receipt — and a control pins the pair so the
+/// agreement cannot drift silently.
 const ACKNOWLEDGE_SQL: &str = "UPDATE node_inbox SET acknowledged_at = $3 \
      WHERE node_id = $1 AND cursor <= $2 AND acknowledged_at IS NULL \
-       AND quarantined_at IS NULL \
-       AND NOT EXISTS (SELECT 1 FROM authorization_records r \
-                         JOIN authority_grants g ON g.grant_id = r.grant_id \
-                        WHERE r.record_id = node_inbox.authz_ref \
-                          AND (g.status <> 'active' OR g.expires_at <= now()))";
+       AND offered_at IS NOT NULL";
 
 /// `LEASE_TTL` as the `double precision` seconds `make_interval(secs => …)`
 /// takes, so the two lease writers bind the constant instead of spelling `60`

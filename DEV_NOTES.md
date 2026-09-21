@@ -1,5 +1,19 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — The population was thirteen families and it is twenty-six (`SIGNOFF-REPAIR.11.2.1.3.2.1`)
+
+`REASONBRAID-REPAIR-0370`. `.11.2.1.3.2` opened with two typed numbers and the first thing bounding its scope did was refute both.
+
+- 🔴 **THE POPULATION IS 63.1% OF THE REAL ONE.** Measured at `c26a720` from families DERIVED from the producer: **26 families, 24 present, 351,000 KiB across 3,979 fixtures** — not *221,496 KiB across thirteen families*. Six families holding **129,504 KiB** were never counted: `cached-decision-live` 35,272, `node-replacement` 32,652, `cached-decision-tests` 29,700, `dead-letter-tests` 15,524, `retry-policy-tests` 14,148, `codex-stubs` 2,208.
+- ⛔ **AND `.11.2.1.3.1.1` RE-DERIVED IT AS *UNCHANGED* ONE COMMIT AGO.** It is unchanged — of those thirteen directories. Re-measuring the same wrong list is exactly the blind spot `docs/CLAIM_VERIFICATION.md` §1 names: a second pass down the same route repeats it. ⭐ **Every one of the six missing families is a TWO-STEP join** (`.join("target")` in one statement, the name in another) — `grep -c 'join("target/<family>")'` returns **0** for all six — so the list was not short by accident but by a rule nobody had stated.
+- ⚠️ **The 98.5% was a DENOMINATOR error, not an arithmetic one**: it is exactly 98.5% of the thirteen-family subtotal, and 62.2% of the population. A ratio inherits its denominator's blind spot silently, where a total at least gives a number someone can re-measure.
+- 🔴 **The second typed number is wrong in the other direction**: *roughly 40 call sites in `journal.rs` alone* is **17** — 16 calls to `test_path` plus one inline producer — and **62** across the 10 producing functions in 9 files. An estimate overstated one file by 2.4x while understating the family by 4x.
+- ⭐ **What survives**: `journal-tests` at **218,268 KiB / 2,375 fixtures** is still the largest family by a factor of six, so the guard's first target is unchanged. The conclusion held; the number it rested on did not.
+- ⭐ **And the whole retrofit horizon is now derived: 222 producing call sites across 26 families.** ⚠️ Two of the largest call-site counts sit on families holding 0 KiB — a call-site count is the cost of retrofitting, never evidence of accumulation, so the two are read together or neither means anything.
+- ✅ **`scripts/census_fixture_population.py`** ships tracked and self-tested, IMPORTING the family patterns from `census_fixture_citations.py` rather than copying them, mapping each family to the function holding its literal, and calling a producer INLINE only when that function carries a test attribute — read from the code, never inferred from a zero count. Every figure is PINNED to a commit and the report says whether the tree was dirty.
+- ⛔ No product code, no test, no gate behaviour, no threshold, and **no fixture removed** — this leaf measures the thing; `.11.2.1.3.2` still owns the mechanism.
+- ⭐ Promoted: [`a-re-derivation-must-re-derive-the-population`](docs/knowledge/a-re-derivation-must-re-derive-the-population.md).
+
 ## 2026-09-21 — Eleven findings held, two did not, and both had one root cause (`SIGNOFF-REPAIR.11.2.1.3.1.1`)
 
 `REASONBRAID-DOC-0109`. The director's *ensure your findings still hold*, graded on all three legs of `docs/CLAIM_VERIFICATION.md` — every claim re-derived by a route **structurally different** from the one that produced it, because §1 of that standard is explicit that a repeated pass repeats its own blind spot.

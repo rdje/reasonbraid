@@ -1,5 +1,44 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — A rule declined on a count nobody took
+
+The leaf that opened this census had already written the conclusion into its own
+acceptance note: a rule demanding a registry row for every Markdown file in the
+tree is "a different and much worse rule". I agreed with that when I read it. It
+is wrong, and the reason it is wrong is arithmetic rather than judgement.
+
+The registry resolves by prefix — a row's path governs that path and everything
+under it. So the cost of the complete rule is not the number of documents it
+covers; it is the number of entries it would require, which is the minimal set of
+containers whose members are all undeclared, plus the loose files that sit beside
+governed siblings and cannot collapse. Eighty-nine undeclared documents come to
+fourteen entries, four of which are directories carrying 49, 13, 11 and 6 members.
+
+What makes this worth writing down is that the wrong number was never computed.
+Nobody counted 432 and decided; the sentence was written from the shape of the
+idea — "a row for every file" sounds like one row per file — and it then sat in
+the acceptance criteria as a constraint on what the census was allowed to
+recommend. A prior stated as a fact in a task leaf is heavier than one stated in
+conversation, because the next reader inherits it as scope rather than as opinion.
+
+The general form is in `docs/knowledge/a-prefix-closed-rule-costs-terminals-not-members.md`.
+The local consequence is that the recommendation this census makes is the one the
+leaf had pre-declined, and it makes it on a routing fact rather than the price:
+`check_lesson_promotion.sh` requires every promoted lesson to land in
+`docs/knowledge/`, a collection with no lifecycle, no owner and no ceiling. A gate
+that moves pressure into an ungoverned destination is precisely what the closure
+exists to forbid, and it has been doing it all along.
+
+Two smaller things, both caught by controls rather than by reading. The
+instrument's self-test refused a span extractor that would have lifted two shell
+functions when asked for one, because the function it was asked for had no closing
+brace on its own line. And the closure verification's negative arm failed on its
+first run — the gate went red when I predicted green — for a reason that had
+nothing to do with the closure: a different check's adjudication table must match
+the registry exactly, so removing any row reddens it. The finding survived; the
+control did not, and the difference between those two outcomes is the only thing
+that made the run worth anything.
+
 ## 2026-09-21 — Two authorities for one rule, one commit after refusing exactly that
 
 The director pointed out that `MEMORY_ARCHITECTURE.md` governs what `MEMORY.md` is.

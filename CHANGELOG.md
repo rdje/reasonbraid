@@ -1,5 +1,22 @@
 # CHANGELOG.md
 
+## 2026-09-21 — The closure is anchored at one link graph, and the rule it declined costs fourteen rows (`SIGNOFF-REPAIR.11.4.2.7.3`)
+
+`REASONBRAID-DOC-0100`. The census the previous commit opened on its second measured instance, and it found a third of each.
+
+- ⭐ **THE CLOSURE IS RUN, NOT RE-IMPLEMENTED.** `scripts/census_routing_closure.py` lifts the guard's own `extract_routes`, `routes_from_readme`, `routes_from_hint` and `routes_from_controls` definitions out of its source and executes them under `bash`, with one named substitution — `"$0"` becomes the guard's path. A Python transcription would be a second copy of a gate's verdict, and it also makes `--as-of` free: the guard's source is versioned, so a past commit's closure is that commit's own.
+- ⭐ **At `d8df245`: 432 tracked Markdown documents, 21 rows, 21 closure tokens. The closure would ever propose 308 of them; 340 have a row it names, 3 have a row it can NEVER name, and 89 have no row at all.** The census reads the COMMITTED tree and prints the revision in its header, so a figure quoted from it carries the commit it belongs to.
+- 🔴 **A THIRD HAND-PLACED ROW that nobody had noticed: `knowledge-map/`.** The routing hint names the GENERATED index `KNOWLEDGE_MAP.md` and never the directory of sources behind it, so the blind spot is 3 of 21 rows rather than the 2 the leaf opened with.
+- 🔴 **AND A THIRD INSTANCE STILL OPEN: `DOCTRINE_ENFORCEMENT.md` — the document defining how every doctrine here is enforced — has no row and is bounded by NOTHING.** +200,000 real bytes and the real enforcer stays green. Owner `.11.4.2.7.3.1`.
+- ⛔ **"No row" is not "ungoverned", and the probe keeps them apart rather than a sentence promising to.** `README.md` refuses at the guard's own caps, `MEMORY.md` under `MEMORY-ARCH`; both have no row and both are bounded.
+- ⚠️ **A row is not a size bound either, and the probe's first "positive control" proved it the hard way** — it selected `AGENTS.md`, which has a row and accepts 200,000 bytes. The controls are now derived from what the registry DECLARES: a `ceiling=` row must refuse (`CHANGELOG.md` does), a row without one is expected not to (`AGENTS.md` does not).
+- ⭐ **The complete rule costs 14 entries, not 432 — and this leaf's own opening text had declined it on a population nobody had counted.** The registry governs by prefix: `docs/knowledge/` covers 49 members, `docs/runbooks/` 13, `docs/evidence/` 11, `spec/` 6. Promoted → `docs/knowledge/a-prefix-closed-rule-costs-terminals-not-members.md`.
+- ⛔ **Anchor B is REFUTED by measurement**: `grep -c DEV_NOTES CLAUDE.md` → 0, so the bootstrap-list anchor the leaf floated would have left the FIRST instance exactly as invisible. A catches both at 3 rows, B misses one at 3, C catches both at 14.
+- ✅ **Falsified at both instances' own commits**: `--as-of 386aa64^` reports `DEV_NOTES.md` and `MEMORY_ARCHITECTURE.md` `invisible`; `--as-of 8aadac3` reports `MEMORY_ARCHITECTURE.md` `invisible` while `DEV_NOTES.md` has become `governed_by_hand` — the two-stage history read back correctly.
+- 🔴 **The verification's arm B failed first time and the CONTROL was wrong, not the finding.** It read the whole enforcer and caught `ROUTE-CONTROL`'s adjudication rule refusing the same path, while `README-STABILITY` was green throughout — which is what the arm exists to show. It now matches the guard's own `unrouted destination:` sentence and reports the other red doctrines by name instead of scoring them.
+- 🔴 **The instrument's self-test caught two defects in it before any number was published**: a one-line shell function made `function_span` swallow the next definition, and a collapsed reachability test reported all 32 unlinked `docs/adr/` files as hand-placed rows. Both repaired; **21 controls**, the count produced by the run.
+- ⛔ No rule proposed (`.11.6`); no cap, threshold or ceiling moved; `README.md` untouched and absent from the commit.
+
 ## 2026-09-21 — The rule moves to the document that governs it, and the row that governs that document crashed the gate (`SIGNOFF-REPAIR.11.4.2.7.2`)
 
 `REASONBRAID-DOC-0099`. A director correction — *`MEMORY_ARCHITECTURE.md` is the document that governs what `MEMORY.md` is* — and two defects behind it.

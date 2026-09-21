@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-21 — The long tail, and the one producer a `Drop` guard structurally cannot reach (`SIGNOFF-REPAIR.11.2.1.3.2.6`)
+
+`REASONBRAID-REPAIR-0376`. What remained in tracked Rust that accumulates: `r2-join-controls` 52 fixtures, `conformance-stubs` 34, `release-tool-controls` 6.
+
+- ⭐ **TWO MORE SHAPES.** `temp_dir()` takes no name and numbers from an `AtomicU64`; `control_scratch(name)` returns a FILE inside the fixture that the control then **spawns as a child process**, and `write_browse_stub` RETURNS that path — so it now returns `(Fixture, PathBuf)`, guard first, so the path drops before the guard.
+- ⭐ **THE RELEASE-TOOL CONTROLS HAD HAND-ROLLED THIS RULE ALREADY.** All three ended with `std::fs::remove_dir_all(&dir).ok();` — cleanup that runs on success and is skipped by a panic, which IS the guard's semantics, written out three times. ⛔ And `.ok()` **swallows a failed cleanup silently**, which is the one thing the guard refuses to do. The three lines are deleted and the guard owns it: identity checked before removal, removal confirmed, retention announced.
+- 🔴 **`conformance-stubs` IS DECLINED, FOR A STRUCTURAL REASON RATHER THAN A COST ONE.** Its fixture is built inside `static STUBS: OnceLock<Stubs>`, and **a `static` is never dropped** — a `Fixture` stored there would never run its `Drop` and the guard would be decoration. ⭐ The design is right as it stands: the two executable stubs are written once per test BINARY so every test shares them, which means there is no moment at which *this test passed* is even a question about them. Giving that family cleanup needs a different mechanism — a process-exit hook, or per-test stubs — and that is a decision rather than a retrofit. ⛔ The reason is recorded **beside the `OnceLock`**, where the next reader will meet it, not only in the tree.
+- ⭐ **MEASURED, AND NOT BY A FLAT COUNT** — `release-tool-controls` **6 → 6** with **PEAK 9** over 12,916 samples, so all three fixtures were alive at once and all three were removed; `r2-join-controls` **52 → 52** with **PEAK 54** over 14,984 samples during the live run. A flat before/after cannot tell *created and removed* from *never created*; a peak can.
+- ✅ 63 live controls pass with the cluster removed; 55 passed / 0 failed across the adapter and release-tool suites; clippy `-D warnings`, fmt and gate clean.
+- ⚠️ `conformance-stubs` still carries residue from before `.11.2.1.1` — `process-95655` and `process-23697` beside uuid-named entries — and **nothing is swept here**: this leaf removes no fixture.
+
 ## 2026-09-21 — The two largest families left, and the live run found two defects review had not (`SIGNOFF-REPAIR.11.2.1.3.2.5`)
 
 `REASONBRAID-REPAIR-0375`. `cached-decision-live` **35,272 KiB / 411 fixtures** and `node-replacement` **32,652 KiB / 150** — 67,924 KiB from four call sites, both in `reasonbraid-server`.

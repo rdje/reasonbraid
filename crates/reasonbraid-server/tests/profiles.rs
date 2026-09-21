@@ -21,6 +21,7 @@ mod site_fixture;
 use std::net::SocketAddr;
 use std::sync::OnceLock;
 
+use reasonbraid_core::fixture::Fixture;
 use reasonbraid_server::{api_router, ca::ensure_server_ca, node_router, PRINCIPAL_HEADER};
 use serde_json::{json, Value};
 use sqlx::PgPool;
@@ -3617,28 +3618,14 @@ async fn submit_hinted(
 /// nothing reaches for a system temporary directory. The returned file is owned
 /// by a directory created EXCLUSIVELY for this call, so no two callers can be
 /// handed the same path whatever names they pass.
-fn control_scratch(name: &str) -> std::path::PathBuf {
-    let root = std::env::current_dir()
-        .expect("cwd")
-        .ancestors()
-        .find(|path| {
-            path.join("Cargo.toml").is_file() && path.join("rust-toolchain.toml").is_file()
-        })
-        .expect("run inside the repository")
-        .to_path_buf();
-    let parent = root.join("target/r2-join-controls");
-    std::fs::create_dir_all(&parent).expect("the control parent is created");
-    // The per-call directory is what OWNS the file inside it. The
-    // superseded `{name}-{process id}` only proposed ownership: every
-    // test in one integration binary runs under one process id, so the
-    // name rested entirely on callers picking distinct ones, and the
-    // `std::fs::write` that follows TRUNCATES an existing file instead
-    // of refusing it (SIGNOFF-REPAIR.11.2.1.1).
-    let dir = parent.join(uuid::Uuid::now_v7().to_string());
-    std::fs::DirBuilder::new()
-        .create(&dir)
-        .expect("the control directory is new");
-    dir.join(name)
+/// A control directory, created exclusively on the repository's own volume and
+/// REMOVED when the control passes (`SIGNOFF-REPAIR.11.2.1.3.2.6`). A failing
+/// control keeps the stub it wrote as the diagnostic.
+///
+/// ⚠️ The guard must be BOUND to a local that outlives the CHILD PROCESS the
+/// stub is spawned as, not merely the statement that writes it.
+fn control_fixture() -> Fixture {
+    Fixture::create("r2-join-controls", "control").expect("the control directory is new")
 }
 
 /// The extraction worker both R2 joins need. A control whose whole purpose is
@@ -3996,7 +3983,8 @@ async fn the_r2_mismatch_refusal_persists_neither_snapshot_nor_derivation() {
     // A well-formed response for a document nobody supplied. It is well-formed
     // deliberately: a malformed reply would be refused by the parser, which is
     // a different refusal and would not exercise the digest binding at all.
-    let stub = control_scratch("mismatch-worker.sh");
+    let fixture = control_fixture();
+    let stub = fixture.join("mismatch-worker.sh");
     std::fs::write(
         &stub,
         "#!/bin/sh\ncat > /dev/null\nprintf '%s\\n' '{\"parent_digest\":\
@@ -12194,7 +12182,7 @@ fn write_browse_stub(
     document: &str,
     declared_digest: &str,
     chunk: &str,
-) -> std::path::PathBuf {
+) -> (Fixture, std::path::PathBuf) {
     let response = json!({
         "document": document,
         "parent_digest": declared_digest,
@@ -12209,7 +12197,8 @@ fn write_browse_stub(
         "worker_version": "stub",
     })
     .to_string();
-    let stub = control_scratch(name);
+    let fixture = control_fixture();
+    let stub = fixture.join(name);
     std::fs::write(
         &stub,
         format!("#!/bin/sh\ncat > /dev/null\ncat <<'RESPONSE'\n{response}\nRESPONSE\n"),
@@ -12220,7 +12209,11 @@ fn write_browse_stub(
         .permissions();
     std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o700);
     std::fs::set_permissions(&stub, permissions).expect("the stub is executable");
-    stub
+    // 🔴 The guard comes back FIRST so that `let (_fixture, stub) = …` drops the
+    // PATH first and the fixture last: the stub is spawned as a child process,
+    // and removing it out from under a spawn would be a control failing for a
+    // reason that has nothing to do with what it tests.
+    (fixture, stub)
 }
 
 /// `SIGNOFF-REPAIR.11.24.1.3.1` — the R3 render persists its evidence: the
@@ -12324,7 +12317,8 @@ async fn the_r3_render_persists_the_document_and_one_edge_per_chunk() {
     };
 
     // ── ARM 1: an honest worker. The page's bytes become the snapshot.
-    let honest = write_browse_stub("r3-honest-worker.sh", DOCUMENT, &document_digest, CHUNK);
+    let (_honest_fixture, honest) =
+        write_browse_stub("r3-honest-worker.sh", DOCUMENT, &document_digest, CHUNK);
     std::env::set_var("R3_WORKER_BIN", &honest);
     let reference = submit(format!("http://127.0.0.1:{port}/rendered")).await;
     let acquired = resolve(reference.clone()).await;
@@ -12411,7 +12405,7 @@ async fn the_r3_render_persists_the_document_and_one_edge_per_chunk() {
             .await
             .unwrap(),
     );
-    let dishonest = write_browse_stub(
+    let (_dishonest_fixture, dishonest) = write_browse_stub(
         "r3-dishonest-worker.sh",
         DOCUMENT,
         "sha256:0000000000000000000000000000000000000000000000000000000000000000",

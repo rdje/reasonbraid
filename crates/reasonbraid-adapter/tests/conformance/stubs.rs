@@ -31,6 +31,18 @@ struct Stubs {
     claude: PathBuf,
 }
 
+// ⛔ NO CLEANUP GUARD HERE, AND THE REASON IS STRUCTURAL RATHER THAN AN
+// OVERSIGHT (`SIGNOFF-REPAIR.11.2.1.3.2.6`). Every other fixture producer in
+// this workspace now returns a `reasonbraid_core::fixture::Fixture`, whose
+// `Drop` removes the directory when the test passes and keeps it when the test
+// fails. A `static` is NEVER DROPPED, so a guard stored in this `OnceLock`
+// would never run and would be decoration.
+//
+// ⭐ And the design is right as it stands: these two stubs are written once per
+// test BINARY precisely so that every test in it shares them, which means there
+// is no moment at which *this test passed* is even a question about them.
+// Giving this family cleanup needs a different mechanism — a process-exit hook,
+// or per-test stubs — and that is a decision, not a retrofit.
 static STUBS: OnceLock<Stubs> = OnceLock::new();
 
 fn stubs() -> &'static Stubs {

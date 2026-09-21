@@ -3,9 +3,10 @@
 //! (a changed binary, a tampered manifest, a wrong key). OFFLINE — no
 //! database, the subprocess boundary is the real tool.
 
-use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
+
+use reasonbraid_core::fixture::Fixture;
 
 static COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -17,21 +18,21 @@ fn tool() -> &'static str {
 /// data never lands in an ambient temporary directory), created exclusively so
 /// an existing path is refused rather than adopted. The process id plus a
 /// counter is already unique; the creation now proves it.
-fn temp_dir() -> PathBuf {
-    // Derived at RUNTIME (§12) (SIGNOFF-REPAIR.11.2.1.2.2.2).
-    let parent = reasonbraid_core::repository_root()
-        .expect("the tests run inside the repository")
-        .join("target/release-tool-controls");
-    std::fs::create_dir_all(&parent).expect("create the control parent");
-    let dir = parent.join(format!(
-        "rb-release-tool-{}-{}",
-        std::process::id(),
-        COUNTER.fetch_add(1, Ordering::Relaxed)
-    ));
-    std::fs::DirBuilder::new()
-        .create(&dir)
-        .expect("the control directory is new");
-    dir
+/// A control directory, created exclusively on the repository's own volume and
+/// REMOVED when the control passes (`SIGNOFF-REPAIR.11.2.1.3.2.6`). A failing
+/// control keeps its keys, manifests and signatures as the diagnostic.
+///
+/// ⚠️ The guard must be BOUND to a local: as a temporary it would be dropped at
+/// the end of its statement, taking the control's files with it.
+fn temp_fixture() -> Fixture {
+    Fixture::create(
+        "release-tool-controls",
+        &format!(
+            "rb-release-tool-{}",
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ),
+    )
+    .expect("the control directory is new")
 }
 
 fn run(args: &[&str]) -> std::process::Output {
@@ -43,7 +44,8 @@ fn run(args: &[&str]) -> std::process::Output {
 
 #[test]
 fn the_manifest_signs_and_the_refusals_are_typed() {
-    let dir = temp_dir();
+    let fixture = temp_fixture();
+    let dir = fixture.path();
     let key = dir.join("release-key.pk8");
     let manifest = dir.join("release-manifest.json");
     let sig = dir.join("release-manifest.json.sig");
@@ -180,8 +182,6 @@ fn the_manifest_signs_and_the_refusals_are_typed() {
         sig.to_str().unwrap(),
     ]);
     assert!(!out.status.success(), "the wrong key refuses");
-
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 /// 🔴 **THE SIGNING-KEY INCIDENT'S RECOVERY, DRIVEN END TO END**
@@ -197,7 +197,8 @@ fn the_manifest_signs_and_the_refusals_are_typed() {
 /// reader would take the new command for a convenience.
 #[test]
 fn the_manifest_re_signs_under_a_new_identity_and_the_old_one_stops_verifying() {
-    let dir = temp_dir();
+    let fixture = temp_fixture();
+    let dir = fixture.path();
     let bin_dir = dir.join("bin");
     std::fs::create_dir_all(&bin_dir).expect("the bin dir");
     std::fs::write(bin_dir.join("rb"), b"binary-a-content").expect("write bin");
@@ -403,8 +404,6 @@ fn the_manifest_re_signs_under_a_new_identity_and_the_old_one_stops_verifying() 
         out.status.success(),
         "leg 5: the signature is over the FILE's bytes, not a re-serialization: {out:?}"
     );
-
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 /// 🔴 **A SIGNATURE WHOSE VERIFIER MUST HOLD THE SIGNING KEY PROVES NOTHING TO
@@ -422,7 +421,8 @@ fn the_manifest_re_signs_under_a_new_identity_and_the_old_one_stops_verifying() 
 /// let happen.
 #[test]
 fn a_manifest_verifies_from_the_public_key_alone() {
-    let dir = temp_dir();
+    let fixture = temp_fixture();
+    let dir = fixture.path();
     let signed = dir.join("signed");
     let published = dir.join("published");
     std::fs::create_dir_all(&signed).expect("the signing dir");
@@ -596,6 +596,4 @@ fn a_manifest_verifies_from_the_public_key_alone() {
         out.status.success(),
         "the private-key path still works: {out:?}"
     );
-
-    std::fs::remove_dir_all(&dir).ok();
 }

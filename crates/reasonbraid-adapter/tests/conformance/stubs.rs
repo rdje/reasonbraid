@@ -38,12 +38,18 @@ fn stubs() -> &'static Stubs {
         let base = std::env::var_os("CARGO_TARGET_TMPDIR")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target"));
-        // The process id keeps concurrent test BINARIES apart; within this
-        // process the lock keeps the writes apart from every spawn.
-        let dir = base
-            .join("conformance-stubs")
-            .join(format!("process-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        // The lock keeps this process's writes apart from every spawn. What
+        // keeps this RUN apart from every other is exclusive creation, not the
+        // name: a process id separates concurrent binaries, because two live
+        // processes cannot share one, but it is REUSED across runs — and
+        // `create_dir_all` turns that reuse from a refusal into an adoption of
+        // whatever an earlier run left behind (SIGNOFF-REPAIR.11.2.1.1).
+        let parent = base.join("conformance-stubs");
+        std::fs::create_dir_all(&parent).unwrap();
+        let dir = parent.join(uuid::Uuid::now_v7().to_string());
+        std::fs::DirBuilder::new()
+            .create(&dir)
+            .expect("the stub directory is new");
         Stubs {
             codex: write_stub(&dir, "codex", CODEX_SCRIPT),
             claude: write_stub(&dir, "claude", CLAUDE_SCRIPT),

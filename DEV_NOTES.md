@@ -1,5 +1,18 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — A name proposed ownership that only creation can prove (`SIGNOFF-REPAIR.11.2.1.1`)
+
+`REASONBRAID-REPAIR-0365`. The parent's *per-family bounded children*, with the census run first.
+
+- 🔴 **The parent's source list was stale by 14 of 15, and a SIBLING is what staled it.** `REPAIR-0085` (`.11.4.3.1.2.21`) removed the fractional-second naming and installed exclusive creation across that whole family; `.11.2.1` went on naming them. Measured per file: clock-named tokens **0 of 15**, exclusive creation present in **14 of 15**. The one exception, `conformance/stubs.rs`, is not stale for the reason the parent gives — its name is a process id, never a fractional second.
+- ⭐ **The census, run over the whole tree instead of that list: 61 `create_dir_all` sites, every one classified, 0 unresolved** — 22 uuid-named and exclusive, 33 subdirectories of an already-owned root, 3 exclusive under another naming, **3 that name a path and then adopt it**.
+- 🔴 **Its own first version reported 6.** It knew `DirBuilder::new()` as the exclusivity idiom and not `std::fs::create_dir`, which this project also uses and which equally refuses an existing path — three false positives, all in `reasonbraid-cli`. Repaired in the instrument before a number was published.
+- ⭐ **What a process id buys, measured rather than argued**: it separates concurrent test BINARIES, because two live processes cannot share one; nothing WITHIN a binary, because every `#[test]` runs under one id; and nothing ACROSS runs, because an id is reused — which is the case `create_dir_all` turns from a refusal into an adoption. Reproduced against an occupied path: the superseded call returned `Ok(())` with the earlier run's sentinel file intact, the repaired one `AlreadyExists`.
+- ⛔ **No collision is claimed.** The caller names in flight are distinct today, so uniqueness holds BY CALLER DISCIPLINE — which is the parent's own sentence and exactly the property replaced.
+- ⭐ The dependency is PRICED: `496` packages before and after, one line in `Cargo.lock`.
+- ⛔ No product code, schema, migration or wire surface; every existing assertion unchanged.
+- promotion: declined — a name proposes storage and only exclusive creation proves it is already in `STORAGE-LOCALITY`'s own header; repairing the instrument before publishing its number is `TOOLBOX.md`; pricing a dependency with `cargo metadata` is `.6.8`.
+
 ## 2026-09-21 — The rule was fine; the matcher was the problem
 
 The leaf I picked up said: install `.11.32`'s narrow rule as a gate. The narrow

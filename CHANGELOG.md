@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-21 — A name proposed ownership that only creation can prove (`SIGNOFF-REPAIR.11.2.1.1`)
+
+`REASONBRAID-REPAIR-0365`. The parent ordered per-family bounded children; the census went first, and it re-measured the parent's own population rather than trusting it.
+
+- 🔴 **The parent's fifteen-file source list was stale by 14 of 15, and a sibling leaf is what staled it.** `REPAIR-0085` (`.11.4.3.1.2.21`) had already removed the fractional-second naming and installed exclusive creation across that family. Measured per file: clock-named tokens **0 of 15**, exclusive creation present in **14 of 15**. The survivor, `crates/reasonbraid-adapter/tests/conformance/stubs.rs`, is not stale for the reason the parent gives — its name is a process id, never a fractional second.
+- ⭐ **The census, run over the whole tree instead of that list**: **61** `create_dir_all` call sites in tracked Rust, every one classified, **0 unresolved** — 22 uuid-named and exclusively created, 33 subdirectories inside a root already owned exclusively, 3 exclusively created under another naming, and **3 that name a path and then ADOPT it**. Only one of the three is in the parent's list.
+- 🔴 **The census's own first version reported 6, and three were false positives of its parser** — it knew `DirBuilder::new()` as the exclusivity idiom and not `std::fs::create_dir`, which this project also uses and which equally refuses an existing path. Repaired in the instrument before any number was published.
+- ⭐ **What a process id buys, MEASURED**: it separates concurrent test BINARIES, because two live processes cannot share one; nothing WITHIN a binary, because every `#[test]` in one integration target runs under a single id; and nothing ACROSS runs, because ids are reused — the case `create_dir_all` turns from a refusal into an adoption. Falsified against an occupied path: the superseded expression returned `Ok(())` with the earlier run's sentinel file **still present**, the repaired one `AlreadyExists`, and two calls passing one caller name returned **one path**.
+- ✅ **One shape for all three sites**: the shared parent keeps `create_dir_all` (it is shared by design), the per-call directory is created with `DirBuilder::new().create()`, and the two server helpers return a file inside it — so the caller's name stays readable in the path while ownership no longer rests on it. `496` packages before and after, one line in `Cargo.lock`.
+- ✅ Suites: adapter conformance `4 passed; 0 failed`, claude `8 passed`, codex `7 passed`, `extraction_input` `7 passed`, and `profiles` **`63 passed; 0 failed`** on a disposable PostgreSQL cluster, including both tests that call the repaired helper. Strict lint rc=0 for both crates; `make gate` 25 checks green.
+- ⛔ **No collision is claimed, and no product code, schema, migration or wire surface changed.** Uniqueness holds today by caller discipline — the parent's own sentence, and the property replaced.
+- 🔎 **Opened `.11.2.1.2` from the parent's remaining clause**: `CARGO_TARGET_TMPDIR` is **unset** in this project's test runs, so the live base at all 17 sites reading it is a compile-time absolute path.
+
 ## 2026-09-21 — The warning about the key collapse named the wrong site (`SIGNOFF-REPAIR.11.31.1.1.1`)
 
 `REASONBRAID-DOC-0107`. A third *ensure your findings still hold*, asked of a batch whose two previous rounds had each found an error — so this one asked the remaining leg, **durability**: are the corrections themselves sound?

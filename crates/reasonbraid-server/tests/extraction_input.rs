@@ -37,6 +37,11 @@ fn worker_selection() -> MutexGuard<'static, ()> {
     lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// A repository-local, same-volume scratch path (§13): the root is discovered at
+/// runtime from the current directory, so moving the checkout needs no edit and
+/// nothing reaches for a system temporary directory. The returned file is owned
+/// by a directory created EXCLUSIVELY for this call, so no two callers can be
+/// handed the same path whatever names they pass.
 fn scratch(name: &str) -> PathBuf {
     let root = std::env::current_dir()
         .expect("cwd")
@@ -46,9 +51,19 @@ fn scratch(name: &str) -> PathBuf {
         })
         .expect("run inside the repository")
         .to_path_buf();
-    let dir = root.join("target/extraction-input-controls-fixtures");
-    std::fs::create_dir_all(&dir).expect("the control scratch is created");
-    dir.join(format!("{name}-{}", std::process::id()))
+    let parent = root.join("target/extraction-input-controls-fixtures");
+    std::fs::create_dir_all(&parent).expect("the control parent is created");
+    // The per-call directory is what OWNS the file inside it. The
+    // superseded `{name}-{process id}` only proposed ownership: every
+    // test in one integration binary runs under one process id, so the
+    // name rested entirely on callers picking distinct ones, and the
+    // `std::fs::write` that follows TRUNCATES an existing file instead
+    // of refusing it (SIGNOFF-REPAIR.11.2.1.1).
+    let dir = parent.join(uuid::Uuid::now_v7().to_string());
+    std::fs::DirBuilder::new()
+        .create(&dir)
+        .expect("the control directory is new");
+    dir.join(name)
 }
 
 /// The whole point of owning the input: the worker's receipt describes the

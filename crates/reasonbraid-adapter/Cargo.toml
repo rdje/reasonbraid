@@ -37,3 +37,7 @@ tokio = { version = "1", features = ["sync", "io-util", "process", "rt", "macros
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+# The conformance stubs name their directory by exclusive creation rather
+# than by a process id (SIGNOFF-REPAIR.11.2.1.1). Already resolved in the
+# lock for reasonbraid-node and reasonbraid-server, so this costs 0 packages.
+uuid = { version = "1", features = ["v7"] }

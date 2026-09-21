@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-21 — Seven findings held, three had drifted, and one described its author rather than the gate (`SIGNOFF-REPAIR.11.33.1`)
+
+`REASONBRAID-REPAIR-0363`. The director's *ensure the findings still hold*, re-derived by routes that did not produce the originals.
+
+- ✅ **SEVEN HELD EXACTLY**: 432 tracked documents and 89 ungoverned at `d8df245` (a shell prefix walk, not the Python census); **the 14 covering terminals, the same 14 paths** (an independent implementation); **4,092** references in `SIGNOFF-REPAIR.md` and **6,129** across the trees by `grep -o`, where the 267-reference gap proved to be `docs/tasks/artifacts/`, which the census correctly excludes; **no ceiling ever raised** by a textual `git log -p` scan — three `+` ceiling lines and no `-` line at all; all **7 `rust_clock` sites contained**, by reading `NodeEnrollResponse` and its siblings rather than trusting the escape triage.
+- ⭐ **One came back STRONGER than published**: `leaf.not_after` was argued second-granular from the X.509 encoding; the code sets the nanosecond component to literal zero — `from_timestamp(params.not_after.unix_timestamp(), 0)`.
+- 🔴 **ONE WAS FRAMED WRONGLY, and it is the reason this leaf exists.** *"It fires on 15 commits"* does not describe `BACKTICK-SUBSTITUTION`, which is **unconditional**: while a defect is present it refuses EVERY commit. The founding instance stood from `f0ca96a` to `24c50d7` — **626 commits**, all 626 reds true. The 15 counts commits that CHANGED a shell file in that window, a fact about authorship. ⛔ **And setting it beside the rejected gates' 87%, 93% and 71% was not like-for-like, in the direction that flattered my own work**: those are FALSE-POSITIVE rates, and the comparable number here is **zero**. Corrected in all five places it was published; the withdrawn comparison is stated as withdrawn.
+- 🔴 **THREE FIGURES HAD ALREADY DRIFTED, two of them moved by my own commits in the same batch**: `docs/knowledge` *50 of 50* → **52**; *105 commits touching a shell file* → **106**, moved by `REPAIR-0362` itself so it was stale in the commit that published it; *92.8% of the file* → **93.3%**, moved by the registry row `REPAIR-0362` added. None carried a revision. Each now does.
+- ⭐ **The systemic half: `--calibrate` prints the commit its figures belong to** — the repair `census_routing_closure.py` took three commits earlier and I did not carry across, which is why two of the three drifts were mine.
+- 🔴 **The registry row carried the wrong duration IN WORDS** — *"for fifteen commits"* — where `census_mirror_numbers.py`, which counts numerals, was structurally blind to it.
+- ⭐ **The project's own instrument scored the repair**: bare numerals in registry rationale cells were **131 before this batch, 140 after my row landed — all nine new ones mine — and 131 again now.**
+- 🔴 **Instance 4 of the backtick class occurred during this verification, in my own shell command** — a double-quoted `echo` containing `` `now` ``, bash running it, the reference emptied. ⛔ It does not meet `.11.33`'s trigger and the trigger is not stretched: a session command is not a tracked file. The runtime arm stays declined, now on five instances — three in tracked files, all caught, and two session commands neither candidate reaches.
+- ⛔ **No verdict, threshold, registry value or gate behaviour changed.** The gate was right; its calibration sentence described its author. Promoted → `docs/knowledge/a-fire-count-is-not-a-fire-rate.md`.
+
 ## 2026-09-21 — None of the forty-three is the defect, because a Rust variable is not a second clock (`SIGNOFF-REPAIR.11.31.1`)
 
 `REASONBRAID-DOC-0106`. The adjudication of the population `.11.31` counted, and the axis it was counted on turned out to be wrong.

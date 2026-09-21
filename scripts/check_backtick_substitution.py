@@ -4,7 +4,7 @@ command substitution, and when the author meant a literal it silently empties th
 line (`SIGNOFF-REPAIR.11.33`).
 
 🔴 THE DEFECT IS SILENT, WHICH IS WHY IT NEEDED A GATE. `scripts/demo_two_host.sh`
-carried ``log "… node dev secrets (`.1.2.1`)"`` for fifteen commits. Bash ran
+carried ``log "… node dev secrets (`.1.2.1`)"`` for 626 commits. Bash ran
 `.1.2.1`, wrote `command not found` to stderr and substituted its empty output, so
 the published demonstration log read *node dev secrets ()* — the roadmap reference
 gone, with CI green throughout. `.11.29` found ONE instance because its stderr
@@ -23,12 +23,25 @@ expanded double-quoted string, including an assignment or a heredoc body.
 
 ⭐ CALIBRATED OVER THE HISTORY THAT CONTAINS THE INSTANCE
 (`docs/knowledge/calibrate-over-the-history-that-contains-the-instance.md`).
-Across **105 commits touching a shell file and 171 shell blobs**, it fires on
-**15 commits, and behind them are exactly 3 real defect sites — all in
-`demo_two_host.sh`** — each counted from the commit that introduced it to the
-commit that escaped it. **Zero false positives in the project's history.** The
-three are the one `.11.29` repaired and the two `.11.32` found afterwards, which
-is the class this gate exists to stop being found by hand. For comparison the gates this
+**Zero false positives** over the whole history: every hit it has ever produced
+is one of **3 real defect sites, all in `demo_two_host.sh`** — the one `.11.29`
+repaired and the two `.11.32` found afterwards.
+
+🔴 AND THE FIRE COUNT IS STATED THE WAY THE GATE ACTUALLY BEHAVES, because the
+first version of this sentence was not (`SIGNOFF-REPAIR.11.33.1`). This check is
+UNCONDITIONAL — it scans the whole tree every commit — so it would have been RED
+continuously from the commit that introduced the defect to the commit that
+escaped it: **626 commits**, `f0ca96a` (2026-09-06) to `24c50d7` (2026-09-20).
+The figure first published, *15*, counts commits that CHANGED a shell file while
+the defect was present, which is a statement about authorship rather than about
+the gate.
+
+⛔ SO THE NUMBER THAT BELONGS BESIDE A REJECTED GATE'S FIRE RATE IS **ZERO**, not
+626 and not 15. The gates rejected here at 87%, 93% and 71% were refusing CORRECT
+code; every one of this gate's 626 reds would have been true, on a defect that
+was genuinely in the tree. Comparing a red count with a false-positive rate is
+the error the first version made, and it flattered this gate rather than testing
+it. For comparison the gates this
 repository REJECTED fired at 87%, 93% and 71% of the population they were priced
 over, and `POSITIONAL-REF` shipped at 9.5%.
 
@@ -289,18 +302,26 @@ def calibrate(root: Path) -> int:
 
     commits_fired = {f[0] for f in fired}
     sites = {(f[1], f[3]) for f in fired}
-    print(f"=== BACKTICK-SUBSTITUTION, priced over the history that contains the instance ===")
+    head = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=root,
+                          capture_output=True, text=True).stdout.strip()
+    print("=== BACKTICK-SUBSTITUTION, priced over the history that contains the instance ===")
+    print(f"  measured at                   : {head}   <- every figure below belongs to")
+    print("                                    this commit; they move as history grows")
     print(f"  commits touching a shell file : {len(commits)}")
     print(f"  shell blobs scanned           : {blobs}")
-    print(f"  commits it would have FIRED on: {len(commits_fired)}")
+    print(f"  blobs-changed commits with a hit: {len(commits_fired)}")
     print(f"  distinct defect sites behind them: {len(sites)}")
     for rel, text in sorted(sites):
         print(f"      {rel}  {text}")
     print()
-    print("  ⭐ Every fire is the same standing defect, from the commit that introduced")
-    print("     it to the commit that escaped it — zero false positives in the whole")
-    print("     history. The gates this repository REJECTED fired at 87%, 93% and 71%")
-    print("     of the population they were priced over.")
+    print("  ⛔ THE LINE ABOVE IS NOT THIS GATE'S FIRE RATE, and reading it as one was")
+    print("     the defect `SIGNOFF-REPAIR.11.33.1` repaired. This check is")
+    print("     UNCONDITIONAL: it scans the whole tree, so while a defect is present it")
+    print("     refuses EVERY commit, not only the ones that touch a shell file.")
+    print("  ⭐ The number comparable to a rejected gate's fire rate is the FALSE")
+    print("     POSITIVE count, and it is ZERO: every hit in this history is one of the")
+    print(f"     {len(sites)} real sites above. The gates rejected at 87%, 93% and 71% were")
+    print("     refusing correct code; this one has never refused any.")
     return 0
 
 

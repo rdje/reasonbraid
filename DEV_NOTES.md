@@ -1,5 +1,82 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — Counting what twenty sentences actually claim
+
+`.11.4.2.6.7` is the leaf that will make a declared pressure control checkable,
+and it opened with a constraint on itself: census the population first, because
+*a scheme that fits 3 of 20 is a scheme for 3 rows*. This is that census.
+
+The registry is `.doctrine/readme_routes.txt`, twenty rows of
+`path|class|pressure control|owner`, and the third field is a sentence a human
+wrote about what holds that destination's growth. The guard that reads the file
+validates four non-empty fields. Arity, not truth — which is how `LIVE_STATUS.md`
+declared *overwritten rather than appended* for months while 614 of its 632
+versions grew and the tip sat at its all-time high.
+
+The first thing I did was the wrong thing, on purpose, and it is worth keeping.
+
+I wrote the obvious extractor: pull doctrine-shaped tokens and byte-shaped numbers
+straight out of the prose. Eighteen operands came back. Five of them are not
+claims at all. `PHASE-0` and `PHASE-1` are task-tree names in a sentence about
+what `KICKOFF.md` is; `620448`, `908850` and `48495` are a predecessor size, a
+pre-rotation size and a recorded baseline — figures a row cites as HISTORY,
+sitting in the same sentence as the ceiling it must not be confused with. The
+extractor cannot tell a cited number from a governing one, because nothing in the
+text marks the difference.
+
+And it is wrong in the other direction at the same time. Six of the nineteen real
+claims belong to kinds no such regex can see: an index-coverage claim, a build
+target, a guard's refuse-list, a content-identity claim. The naive reading does
+not merely under-perform; it is answering a different question and returning a
+number for this one.
+
+So the operand has to be DECLARED by the row, not parsed out of it. That is the
+census's actual output, and it was measured rather than argued.
+
+The count itself refuted the worry the parent leaf opened with. Fourteen of the
+twenty rows carry at least one machine-expressible claim; six are genuinely
+narrative. Nineteen claims across six kinds, and I evaluated eighteen of them in
+the same run rather than calling them evaluable — seventeen hold and one is
+refuted.
+
+The refuted one is the same defect one row over. `docs/TASK_TREE.md` says
+*TABLE-ARITY and TASK-TREE-OWNERSHIP doctrines enforce its shape*. There is no
+doctrine called `TABLE-ARITY`. The enforcer registers `TABLE-ARITY-RATCHET`, and
+that ratchet does run over staged `*.md`, so the file IS governed — the row names
+its governor wrongly, and nothing in the repository has ever compared the two.
+I want to be precise about that rather than dramatic: this is a name defect, not
+an absent control, and a census that reported it as "unenforced" would be making
+the second mistake while reporting the first.
+
+One claim is expressible and unanchored, and I gave it its own outcome instead of
+filing it under narrative. `KICKOFF.md` declares *content identity once the
+PHASE-0 tree closes*. That is an identity claim — pin a revision and it is one
+`git cat-file` — but the moment it starts from is prose. It has already been
+broken: `PHASE-0` first read `done` on 2026-09-06 and the file changed on
+2026-09-09, by a legitimate correction that kept the repository public. The
+correction was right. The row had no way to notice it happened.
+
+The part I will reuse is the shape of the instrument, not its numbers.
+
+Deciding whether a sentence makes a machine-evaluable claim is a judgement over
+prose. A matcher that tried would be guessing at paraphrase, which is the failure
+`.11.6` is about, so the classification is hand-written and carried as data. What
+makes that acceptable is that everything around it is mechanical: the adjudication
+must cover the registry exactly in both directions, so a new row refuses the census
+rather than going unclassified; every adjudicated clause must still be a verbatim
+substring of its row's control, so rewriting the sentence detaches the judgement
+loudly; and a kind with no evaluator is refused.
+
+That third rule — the verbatim quote in the key — is the one I promoted. This is
+its second instance and the first one shipped: `census_advertised_policies.py` was
+keyed by pack and field alone, and flipping a resolver pack's `subresource_policy`
+from `deny` to `allow` left it green, still reporting `enforced` for a line that
+now advertised the opposite. Both instruments record the method in their own
+source and neither is reachable from the other, which is when the note is owed.
+
+⛔ No scheme is proposed here, no gate registered, no registry row touched. The
+count is the input the next leaf is forbidden to design without.
+
 ## 2026-09-21 — The notice that described a procedure I did not follow
 
 `LIVE_STATUS.md` is bounded. 620,448 bytes to 13,995, the snapshot it is named for

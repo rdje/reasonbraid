@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-21 — Fourteen of the twenty declared controls are machine-expressible, and the naive reading of them is wrong 27.8% of the time (`SIGNOFF-REPAIR.11.4.2.6.7.1`)
+
+`REASONBRAID-DOC-0096`. The census `.11.4.2.6.7` is forbidden to design without: what do the twenty routed-destination rows actually claim?
+
+- ⭐ **20 rows → 14 carrying at least one machine-expressible claim, 6 narrative-only; 19 claims across SIX kinds** — `doctrine` 10 · `ceiling` 3 · `index_entry` 3 · `guard_required` 1 · `build_target` 1 · `identity` 1. The vocabulary was read OFF the twenty sentences, not chosen first. `.11.4.2.6.7`'s stated worry — *a scheme that fits 3 of 20 is a scheme for 3 rows* — is refuted by measurement rather than by argument.
+- ✅ **18 of the 19 claims were EVALUATED in the same run, not called evaluable: 17 hold, 1 refuted.** An expressibility census that does not evaluate is an opinion.
+- 🔴 **The refuted one is a second instance of the class the parent leaf owns.** `docs/TASK_TREE.md` declares *TABLE-ARITY and TASK-TREE-OWNERSHIP doctrines enforce its shape*, and no doctrine `TABLE-ARITY` is registered — the enforcer carries `TABLE-ARITY-RATCHET`. ⚠️ Precisely: a NAME defect, not an absent control. `check_table_arity.sh` runs over staged `*.md`, so the file is governed; nothing has ever compared the declared name to the registry.
+- ⚠️ **One claim is expressible but UNANCHORED, given its own outcome rather than filed under narrative.** `KICKOFF.md` declares *content identity once the PHASE-0 tree closes* and names no revision. It is already broken: `PHASE-0` first read `done` at `23be232` (2026-09-06) and the file changed at `457d3a7` (2026-09-09), 16,210 → 16,313 bytes — by a legitimate public-repository correction, which is the argument FOR an anchor.
+- ⛔ **The obvious alternative was run as a CONTROL, not dismissed.** Extracting operands from the prose yields **18, of which 5 are not claims (27.8%)**: two task-tree names read as doctrine ids, three HISTORICAL byte figures read as ceilings. And **6 of the 19 claims are invisible to any such extractor**. Wrong in both directions at once — the measured reason an operand must be DECLARED by a row rather than parsed out of it.
+- 🔎 **An unlooked-for third finding:** `docs/adr/`'s control (*one ADR per file + INDEX entry*) is enforced by nothing — 2 readers of that path, both censuses, neither a gate — and holds by care over 32 records.
+- ⭐ **A judgement over prose is allowed in an instrument only because everything around it is mechanical**: exact coverage in both directions, every clause a verbatim substring of its row's control, and no kind without an evaluator. `shape_verdict` and the registry parser are imported from `census_live_documents.py`, never re-implemented. Promoted → `docs/knowledge/an-adjudication-is-keyed-to-the-words-it-judged.md`, on a second instance whose first one shipped the defect.
+- ⛔ No scheme proposed, no gate registered, no registry row, class, control sentence or threshold changed. `--self-test` **20 controls**; `make gate` green.
+- ⭐ **The book DOES move, and the first reading of this leaf said it would not.** The three findings are about whether this project's own governance surface says true things, so the `.11.2`–`.11.4` row of `docs/book/src/qualification-review.md` now carries them in the reader's language — no live counts, which a reader could mistake for derived figures.
+
 ## 2026-09-21 — The status file is split: the snapshot it is named for, and the log sealed into git (`SIGNOFF-REPAIR.11.4.2.6.6`)
 
 `REASONBRAID-REPAIR-0355`. The last ungoverned core live document is bounded, and the lane that opened nine commits ago is discharged.

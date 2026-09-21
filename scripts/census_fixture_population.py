@@ -2,11 +2,22 @@
 """Census the generated fixture population under `target/` and the call sites that
 produce it (`SIGNOFF-REPAIR.11.2.1.3.2.1`).
 
+⛔ AND ITS OWN SCOPE WAS TYPED TOO, WHICH IS THE SAME DEFECT ONE LEVEL UP
+(`SIGNOFF-REPAIR.11.2.1.3.2.1.1`). This file shipped reading tracked RUST only —
+a corpus stated in a docstring rather than derived — and therefore published
+**15.9%** of the bytes. The largest fixture families here are created by PYTHON,
+and `target/pg-tests` alone (1,309,464 KiB) is **3.64x** the whole population it
+was reporting. Replacing a hand-written list with a derivation over the wrong
+corpus is not better than the list: it is the same error wearing an instrument's
+authority, so the number now looks re-derivable. The real population at
+`028217c` is **2,264,752 KiB across 4,334 fixtures in 35 of 37 families**.
+
 ⭐ WHY THIS EXISTS AS A TRACKED INSTRUMENT. `.11.2.1.3.2` opened with two typed
 numbers and both are wrong:
 
   - *221,496 KiB across thirteen families* — the families are **26**, of which 24
-    exist, holding **351,000 KiB across 3,979 fixtures** at `c26a720`. Six families
+    exist, holding **351,000 KiB across 3,979 fixtures** at `c26a720` (the RUST
+    half; see the scope correction above). Six families
     carrying 129,504 KiB were never counted, and every one of them is a TWO-STEP
     join (`.join("target")` in one statement, the family name in another) — the
     shape a hand-written list cannot see and `census_fixture_citations.py`
@@ -70,18 +81,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 # drift from that definition silently — and would have had to learn the second
 # shape twice.
 from census_fixture_citations import (  # noqa: E402
-    FAMILY_GUARD,
-    FAMILY_PUSHED,
-    FAMILY_SOURCE,
-    FAMILY_TWO_STEP,
+    CORPORA,
+    INSTRUMENT,
     families_of,
 )
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# The enclosing function of a family literal: the last `fn NAME(` at or before it.
+# The enclosing definition of a family literal: the last one at or before it.
+# Rust `fn` and Python `def` are one pattern because the question is the same —
+# which callable holds this literal — and a second copy would drift.
 FUNCTION = re.compile(
-    r"^[ \t]*(?:pub(?:\([^)]*\))?[ \t]+)?(?:async[ \t]+)?(?:unsafe[ \t]+)?fn[ \t]+"
+    r"^[ \t]*(?:pub(?:\([^)]*\))?[ \t]+)?(?:async[ \t]+)?(?:unsafe[ \t]+)?(?:fn|def)[ \t]+"
     r"([A-Za-z_][A-Za-z0-9_]*)",
     re.MULTILINE,
 )
@@ -92,9 +103,16 @@ TEST_ATTRIBUTE = re.compile(r"#\[(?:[A-Za-z_][A-Za-z0-9_]*::)*test\b")
 
 
 def call_sites(text: str, name: str) -> int:
-    """Calls to `name` in `text`, excluding its own definition."""
+    """Calls to `name` in `text`, excluding its own definition.
+
+    ⚠️ `fn|def` here must stay in step with `FUNCTION` above. It did not, for one
+    commit: adding the Python corpus taught the enclosing-definition pattern
+    `def` and left this one knowing only `fn`, so every Python helper counted its
+    own definition as a call and reported one caller too many. The self-test's
+    two-caller case is what returned 3.
+    """
     total = len(re.findall(rf"\b{re.escape(name)}[ \t]*\(", text))
-    defined = len(re.findall(rf"\bfn[ \t]+{re.escape(name)}[ \t]*\(", text))
+    defined = len(re.findall(rf"\b(?:fn|def)[ \t]+{re.escape(name)}[ \t]*\(", text))
     return total - defined
 
 
@@ -112,10 +130,10 @@ def enclosing(text: str, offset: int) -> tuple[str, bool] | None:
     return last.group(1), bool(TEST_ATTRIBUTE.search(preamble))
 
 
-def producers(text: str) -> dict[str, list[dict]]:
+def producers(text: str, patterns) -> dict[str, list[dict]]:
     """Family name -> the producing functions in this one file."""
     found: dict[str, dict[str, dict]] = {}
-    for pattern in (FAMILY_SOURCE, FAMILY_PUSHED, FAMILY_TWO_STEP, FAMILY_GUARD):
+    for pattern in patterns:
         for match in pattern.finditer(text):
             family = match.group(1)
             site = enclosing(text, match.start())
@@ -169,12 +187,19 @@ def revision(root: Path) -> dict:
 def census(root: Path) -> dict:
     families = families_of(root, None)
     sources: dict[str, dict[str, list[dict]]] = {name: {} for name in families}
-    listing = subprocess.run(["git", "ls-files", "--", "*.rs"], cwd=root,
-                             capture_output=True, text=True).stdout.split()
-    for relative in listing:
-        text = (root / relative).read_text(encoding="utf-8", errors="replace")
-        for family, sites in producers(text).items():
-            sources.setdefault(family, {})[relative] = sites
+    # ⛔ EACH CORPUS BY ITS OWN PATTERNS, and an instrument skipped, exactly as
+    # the shared derivation does it — otherwise the two halves of this census
+    # would disagree about what a producer is (`SIGNOFF-REPAIR.11.2.1.3.2.1.1`).
+    for glob, patterns in CORPORA.items():
+        suffix = glob.lstrip("*")
+        listing = subprocess.run(["git", "ls-files", "--", glob], cwd=root,
+                                 capture_output=True, text=True).stdout.split()
+        for relative in (path for path in listing if path.endswith(suffix)):
+            text = (root / relative).read_text(encoding="utf-8", errors="replace")
+            if INSTRUMENT.search(text) or relative.endswith("census_fixture_citations.py"):
+                continue
+            for family, sites in producers(text, patterns).items():
+                sources.setdefault(family, {})[relative] = sites
 
     report = []
     for name in families:
@@ -212,13 +237,14 @@ def report(root: Path, as_json: bool) -> int:
     state = " (tree DIRTY — the code census reflects the working tree)" if \
         result["revision"]["dirty"] else " (tree clean)"
     print(f"fixture-population census at {where}{state}")
-    print(f"  fixture families DERIVED from tracked Rust : {len(rows)}")
+    print(f"  fixture families DERIVED from the producers: {len(rows)}")
+    print(f"  corpora read (each by ITS OWN patterns)    : {', '.join(CORPORA)}")
     print(f"  families PRESENT under target/             : {len(present)}")
     print(f"  disk usage, the unit `du -sk` reports      : {used // 1024:,} KiB")
     print(f"  apparent size (sum of st_size)             : {apparent // 1024:,} KiB")
     print(f"  top-level entries (fixtures)               : {top:,}")
     print(f"  all entries (recursive)                    : {entries:,}")
-    print(f"  producing call sites in tracked Rust       : {sites:,}")
+    print(f"  producing call sites across both corpora   : {sites:,}")
 
     print("\n  per family, largest first "
           "(KiB is disk usage; `fixtures` is top-level entries):")
@@ -233,6 +259,9 @@ def report(root: Path, as_json: bool) -> int:
 
     print("\n  the retrofit scope, per producing file "
           "(a call site is what must bind a cleanup guard):")
+    print("    ⚠️ a call site is counted by NAME, so a constructor reports 0 — "
+          "nothing calls\n       `__init__` by that name. The producing FILE is "
+          "the load-bearing column there.")
     for row in rows:
         if not row["producing_files"]:
             continue
@@ -300,8 +329,23 @@ fn six() { let f = guarded("c"); drop(f); }
 '''
 
 
+SELF_TEST_PYTHON_SOURCE = '''
+def cluster_root(root):
+    return project_env.local_directory(root, "target/python-tests")
+
+def nested_root(root):
+    return local_directory(root, "target/python-nested/one-case")
+
+def first(root):
+    return cluster_root(root) / "a"
+
+def second(root):
+    return cluster_root(root) / "b"
+'''
+
+
 def self_test() -> int:
-    found = producers(SELF_TEST_RUST)
+    found = producers(SELF_TEST_RUST, CORPORA["*.rs"])
     checks: list[tuple[str, object, object]] = []
 
     checks.append(("every producer shape is seen", sorted(found),
@@ -333,6 +377,16 @@ def self_test() -> int:
     checks.append(("a guard helper's scope is its callers too",
                    flat["guarded-controls"]["call_sites"], 3))
 
+    # ⭐ The PYTHON corpus, whose absence made this census report 15.9% of the
+    # bytes. The enclosing definition is a `def`, found by the same pattern.
+    python = producers(SELF_TEST_PYTHON_SOURCE, CORPORA["*.py"])
+    checks.append(("the Python producer's families are derived", sorted(python),
+                   ["python-nested", "python-tests"]))
+    checks.append(("the enclosing DEF is found, not just a fn",
+                   python["python-tests"][0]["function"], "cluster_root"))
+    checks.append(("a Python helper's scope is its callers",
+                   python["python-tests"][0]["call_sites"], 2))
+
     # The two units must be able to disagree, or printing both proves nothing.
     measured = disk(Path(__file__).resolve().parent.parent / "scripts")
     checks.append(("disk usage is measured in allocated blocks, not st_size",
@@ -354,8 +408,11 @@ def self_test() -> int:
           "`target/` join at all), each mapped to the function that holds the "
           "literal; a helper's scope is its 3, 2 and 1 CALLERS while an inline "
           "producer inside a test is 1, read from the test ATTRIBUTE rather than "
-          "inferred from a zero count; and disk usage is proved to be allocated "
-          "blocks rather than st_size, which is why both units are printed")
+          "inferred from a zero count; the PYTHON corpus is derived too, with its "
+          "enclosing `def` found by the same pattern and its 2 callers counted, "
+          "because reading Rust alone once made this census publish 15.9% of the "
+          "bytes; and disk usage is proved to be allocated blocks rather than "
+          "st_size, which is why both units are printed")
     return 0
 
 

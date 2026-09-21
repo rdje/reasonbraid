@@ -11,12 +11,18 @@ revision. `docs/CLAIM_VERIFICATION.md` §3 leg 3 names that failure precisely �
 *a number nothing re-derives goes stale silently*, and *replacing a wrong
 unwatched number with a right unwatched number is not a fix*.
 
-⛔ THE FAMILIES ARE DERIVED FROM THE PRODUCER, never listed here. §2 of that
+⛔ THE FAMILIES ARE DERIVED FROM THE PRODUCERS, never listed here. §2 of that
 standard: *derive classifiers, shape lists and membership tests from the code
-that emits the thing, never from a description of it.* The families are read
-out of the `.join("target/…")` literals in tracked Rust, so a new fixture family
+that emits the thing, never from a description of it.* A new fixture family
 joins this census the moment a test creates one — a hand-kept list would be a
 second copy that drifts, which is the defect this file was written about.
+
+⛔ AND THE CORPUS IS PART OF THE POPULATION. This census once read tracked RUST
+only, which is a scope typed into a docstring rather than derived, and it
+therefore reported **15.9%** of the bytes: the largest fixture families here are
+created by PYTHON, and `target/pg-tests` alone is 3.64x the whole population it
+was publishing (`SIGNOFF-REPAIR.11.2.1.3.2.1.1`). Each corpus is now read with
+its OWN language's patterns — see `CORPORA` — and never with another's.
 
 ⛔ AND THE UNIT IS PRINTED, not implied. *57* was a per-family line sum, which
 double-counts a line naming two families; the distinct-line count happened to
@@ -71,6 +77,46 @@ FAMILY_TWO_STEP = re.compile(
 # derives from the producer is correct only while it knows every shape the
 # producer has, and the producer just grew one.
 FAMILY_GUARD = re.compile(r'Fixture::create\(\s*"([A-Za-z0-9_][A-Za-z0-9_.-]*)"')
+# ⭐ THE PYTHON PRODUCER, and it holds the LARGEST families in this repository.
+# `project_env.local_directory(root, "target/<family>")` is the one idiom every
+# script creates through — it refuses symlinks and cross-volume escapes before
+# creating, which is the §13 gate — so all ten Python families come out of it.
+# ⛔ `SIGNOFF-REPAIR.11.2.1.3.2.1.1`: this census published *the families are read
+# out of the `.join("target/…")` literals in tracked Rust* and therefore reported
+# **15.9%** of the bytes. `target/pg-tests` alone is 3.64x the whole population it
+# was reporting. Deriving membership perfectly from the wrong CORPUS is the same
+# error as a hand-written list, wearing the instrument's authority.
+# ⚠️ Only a FIRST path component is a family; `local_directory` is also called with
+# two-level paths (`target/doctrine_scratch/task-acceptance`), and counting the
+# child as a family would double-count its parent's bytes.
+FAMILY_PYTHON = re.compile(
+    r'local_directory\(\s*[A-Za-z_][A-Za-z0-9_.]*\s*,\s*"target/([A-Za-z0-9_][A-Za-z0-9_.-]*)')
+
+# ⛔ EACH CORPUS IS MATCHED BY ITS OWN LANGUAGE'S PATTERNS AND ONLY ITS OWN, and
+# that is a defence rather than tidiness. This file and `census_fixture_population.py`
+# carry `target/widget-controls`, `target/gizmo-tests` and `target/pushed-controls`
+# inside their own self-test corpora — Rust-shaped literals living in Python source.
+# Running the Rust patterns over `.py` would invent three families out of the
+# censuses' own text, which is the self-reference failure `check_self_tests.sh`
+# recursed on and this family of instruments has already hit once, on a doc comment.
+CORPORA = {
+    "*.rs": (FAMILY_SOURCE, FAMILY_PUSHED, FAMILY_TWO_STEP, FAMILY_GUARD),
+    "*.py": (FAMILY_PYTHON,),
+}
+
+# ⛔ AN INSTRUMENT IS NOT A PRODUCER, and this file is the proof: adding the
+# Python corpus made the census read ITSELF and report `python-tests` and
+# `python-nested` — the names in its own self-test text — as live families, 37
+# becoming 39. That is the failure `scripts/check_self_tests.sh` recursed on,
+# arriving here for the third time in this instrument family.
+#
+# ⭐ DERIVED, NOT LISTED. An instrument declares itself by IMPORTING these
+# patterns, so the import is the test. A future census that reuses them is
+# excluded the moment it is written, and one that does not reuse them is a
+# producer like any other and stays in scope. Listing filenames here would be a
+# second copy of exactly the kind this file exists to argue against.
+INSTRUMENT = re.compile(r"^\s*(?:from|import)\s+census_fixture_citations\b", re.M)
+SELF = "scripts/census_fixture_citations.py"
 # A reference in prose, with whatever path follows the family name.
 def reference(families: list[str]) -> re.Pattern[str]:
     alt = "|".join(re.escape(name) for name in families)
@@ -92,15 +138,17 @@ def git(args: list[str], root: pathlib.Path) -> str:
 
 def families_of(root: pathlib.Path, at: str | None) -> list[str]:
     names: set[str] = set()
-    listing = (git(["ls-tree", "-r", "--name-only", at], root).split()
-               if at else git(["ls-files", "--", "*.rs"], root).split())
-    for relative in (path for path in listing if path.endswith(".rs")):
-        text = (git(["show", f"{at}:{relative}"], root) if at
-                else (root / relative).read_text(encoding="utf-8", errors="replace"))
-        names.update(FAMILY_SOURCE.findall(text))
-        names.update(FAMILY_PUSHED.findall(text))
-        names.update(FAMILY_TWO_STEP.findall(text))
-        names.update(FAMILY_GUARD.findall(text))
+    for glob, patterns in CORPORA.items():
+        suffix = glob.lstrip("*")
+        listing = (git(["ls-tree", "-r", "--name-only", at], root).split()
+                   if at else git(["ls-files", "--", glob], root).split())
+        for relative in (path for path in listing if path.endswith(suffix)):
+            text = (git(["show", f"{at}:{relative}"], root) if at
+                    else (root / relative).read_text(encoding="utf-8", errors="replace"))
+            if relative == SELF or INSTRUMENT.search(text):
+                continue  # an instrument's corpus is not a producer's code
+            for pattern in patterns:
+                names.update(pattern.findall(text))
     return sorted(names)
 
 
@@ -137,7 +185,9 @@ def report(root: pathlib.Path, at: str | None) -> int:
     result = census(root, at)
     where = at or "the working tree"
     print(f"fixture-citation census at {where}")
-    print(f"  fixture families DERIVED from tracked Rust : {len(result['families'])}")
+    print(f"  fixture families DERIVED from the producers: {len(result['families'])}")
+    print(f"  corpora read (each by ITS OWN patterns)    : "
+          f"{', '.join(CORPORA)}")
     print(f"  tracked Markdown lines carrying a reference: {result['lines']}")
     print(f"  references (OCCURRENCES, not lines)        : {result['occurrences']}")
     print(f"  per-family line sum (double-counts a line naming two families): "
@@ -172,6 +222,13 @@ SELF_TEST_MD = [
 ]
 
 
+SELF_TEST_PYTHON = '''
+    parent = project_env.local_directory(root, "target/python-tests")
+    nested = local_directory(ROOT, "target/python-nested/one-case")
+    read_only = ROOT / "target" / "debug" / "some-binary"
+'''
+
+
 def self_test() -> int:
     families = sorted(set(FAMILY_SOURCE.findall(SELF_TEST_RUST))
                       | set(FAMILY_PUSHED.findall(SELF_TEST_RUST))
@@ -179,6 +236,45 @@ def self_test() -> int:
                       | set(FAMILY_GUARD.findall(SELF_TEST_RUST)))
     expected = ["gizmo-tests", "guarded-controls", "pushed-controls",
                 "two-step-controls", "widget-controls"]
+
+    # ⭐ The Python producer: a first path component only, and a path merely READ
+    # beneath `target/` is not a family — which is why `target/debug`, at 64 GiB,
+    # needs no deny-list.
+    python = sorted(set(FAMILY_PYTHON.findall(SELF_TEST_PYTHON)))
+    if python != ["python-nested", "python-tests"]:
+        print(f"SELF-TEST FAILED: the Python producer derives {python}, expected "
+              f"['python-nested', 'python-tests'] — a first component only, and "
+              f"nothing for a path that is merely read", file=sys.stderr)
+        return 1
+
+    # ⛔ THE SELF-REFERENCE DEFENCE, asserted rather than trusted: this module's
+    # own Rust corpus is Python source, and the Rust patterns must never be run
+    # over it. If they were, this file would invent its own self-test families.
+    leaked = set()
+    for pattern in CORPORA["*.rs"]:
+        leaked.update(pattern.findall(SELF_TEST_PYTHON))
+    for pattern in CORPORA["*.py"]:
+        leaked.update(pattern.findall(SELF_TEST_RUST))
+    if leaked:
+        print(f"SELF-TEST FAILED: a corpus was matched by another language's "
+              f"patterns and produced {sorted(leaked)}", file=sys.stderr)
+        return 1
+
+    # ⛔ THE SELF-REFERENCE DEFENCE CHECKED AGAINST THE REAL TREE, not a model of
+    # it. The corpus-isolation assertion above would have passed while this
+    # census read ITS OWN self-test text and published `python-tests` as a live
+    # family. Only running the real derivation catches that, so it is what runs.
+    root = pathlib.Path(subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                                       capture_output=True, text=True,
+                                       check=True).stdout.strip())
+    live = set(families_of(root, None))
+    invented = live & ({"python-tests", "python-nested"} | set(expected))
+    if invented:
+        print(f"SELF-TEST FAILED: the live census invented {sorted(invented)} out "
+              f"of an instrument's own self-test text — an instrument declares "
+              f"itself by importing these patterns and must be skipped",
+              file=sys.stderr)
+        return 1
     if families != expected:
         print(f"SELF-TEST FAILED: families derived from the producer = {families}, "
               f"expected {expected}", file=sys.stderr)
@@ -219,7 +315,13 @@ def self_test() -> int:
           "array literal, one joined in TWO STEPS — the shape whose absence made "
           "this instrument's first version miss a family the hand-written census had "
           "found — and one named to the SHARED GUARD, which is how fifty call sites "
-          "stopped carrying a joinable literal in a single commit), 6 reference lines, 7 "
+          "stopped carrying a joinable literal in a single commit), 2 more from the "
+          "PYTHON producer that this census read NOTHING of until it was found "
+          "reporting 15.9% of the bytes — a first path component only, and nothing "
+          "for a path merely read beneath target/, which is why target/debug needs "
+          "no deny-list — with each corpus proved to be matched by its own "
+          "language's patterns and only its own, so this file cannot invent "
+          "families out of its own self-test text, 6 reference lines, 7 "
           "occurrences — so the two-family line is proved to count once as a line "
           "and twice as an occurrence, which is the unit confusion this instrument "
           "exists to end — and 2 individuals, a prefix and a placeholder correctly "

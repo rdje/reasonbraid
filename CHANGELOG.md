@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-21 — I replaced the hand-written LIST and left the SCOPE typed, and the scope was 84% of the bytes (`SIGNOFF-REPAIR.11.2.1.3.2.1.1`)
+
+`REASONBRAID-REPAIR-0373`. Found while pricing the server conversion: `scripts/run_pg_tests.sh` builds its clusters under `target/pg-tests`, a directory of **216 entries** the census had never once counted.
+
+- 🔴 **THE CENSUS WAS REPORTING 15.9% OF THE BYTES.** Measured at `028217c`: **1,904,932 KiB across 298 fixtures in 10 PYTHON-derived families**, against the **359,820 KiB** it published. The real population is **2,264,752 KiB / 4,334 fixtures in 35 of 37 families** — **6.29x** what it reported. 🔴 **`target/pg-tests` alone is 1,309,464 KiB — 3.64x the entire population the census believed in** — then `ci-browser` 554,756 / 28, `ci-scanners` 28,760 / 17, `doctrine_scratch` 9,416 / 8, `ci-browser-tests` 1,428 / 21, `ci-workflow-controls` 1,008 / 6, `check-phases` 100 / 2.
+- ⛔ **THIS IS `.11.2.1.3.2.1`'s OWN DEFECT ONE LEVEL UP, SHIPPED IN THE COMMIT THAT FIXED IT.** That leaf found the population 63.1% of the real one because the family list was hand-written, and replaced the list with a derivation. The derivation is correct; the CORPUS it runs over was typed into a docstring — *the literals in tracked Rust*. ⭐ Replacing a list with a rule does not remove the typed decision, it moves it up a level where it is harder to see and carries the instrument's authority — and re-running the instrument can never find it, because the corpus is what decides what running means.
+- ✅ **The fix is the same shape as the last one**: Python has one canonical producer too, `project_env.local_directory(root, "target/<family>")`, the volume-safety helper every script already creates through. All 10 families come out of one pattern, and nothing is listed. ⚠️ `target/debug` (67,555,676 KiB) needs no deny-list: a family is something a producer CREATES, and nothing creates it — the scripts only read paths beneath it.
+- 🔴 **THE SELF-REFERENCE TRAP FIRED ON ME WHILE I WAS CLOSING IT.** Adding the Python corpus made the census read its OWN self-test text and publish `python-tests` and `python-nested` as live families — **37 became 39**, with no producer anywhere. ⛔ The corpus-isolation rule I had just written for exactly this passed throughout, because it tests a MODEL of the corpus rather than the tree. ⭐ The repair is derived, not listed: a file that IMPORTS these patterns is an instrument rather than a producer and is skipped, so a future census is excluded the moment it is written — and the self-test now asserts it against the real tree.
+- ⭐ **The new Python self-test case then caught a second defect in the same change**: `call_sites` had learned `fn` and not `def`, so every Python helper counted its own definition as a caller and returned 3 where 2 was right.
+- ✅ Falsified by `du -sk` over the 35 present families: **2,264,752 KiB**, agreeing to the KiB by a completely different traversal. Eight publishing sites across five tracked documents corrected with their superseded figures kept. ⚠️ `TABLE-ARITY-RATCHET` refused the first correction pass and was right — the note had gone after a table row's closing pipe.
+- ⛔ No fixture removed. `target/pg-tests` is owned by `.7.3.2.1` and `census_retained_fixtures.py`'s reduce-never-delete contract; this leaf repairs a MEASUREMENT, not a population.
+- ⭐ Promoted: [`a-derivation-is-only-as-wide-as-the-corpus-you-read`](docs/knowledge/a-derivation-is-only-as-wide-as-the-corpus-you-read.md).
+
 ## 2026-09-21 — The five families the control run caught growing, and the drop order that decides whether the guard is safe (`SIGNOFF-REPAIR.11.2.1.3.2.4`)
 
 `REASONBRAID-REPAIR-0372`. Not a projection: the previous leaf's own six suite runs added 0 fixtures to the family it converted and +8,820 KiB / +57 to five it had not. Those five.
@@ -30,7 +43,7 @@
 
 `REASONBRAID-REPAIR-0370`. `.11.2.1.3.2` opened with two typed numbers and the first thing bounding its scope did was refute both.
 
-- 🔴 **THE POPULATION IS 63.1% OF THE REAL ONE.** Measured at `c26a720` from families DERIVED from the producer: **26 families, 24 present, 351,000 KiB across 3,979 fixtures** — not *221,496 KiB across thirteen families*. Six families holding **129,504 KiB** were never counted: `cached-decision-live` 35,272, `node-replacement` 32,652, `cached-decision-tests` 29,700, `dead-letter-tests` 15,524, `retry-policy-tests` 14,148, `codex-stubs` 2,208.
+- 🔴 **THE POPULATION IS 63.1% OF THE REAL ONE.** Measured at `c26a720` from families DERIVED from the producer: **26 families, 24 present, 351,000 KiB across 3,979 fixtures** — not *221,496 KiB across thirteen families*. Six families holding **129,504 KiB** were never counted: `cached-decision-live` 35,272, `node-replacement` 32,652, `cached-decision-tests` 29,700, `dead-letter-tests` 15,524, `retry-policy-tests` 14,148, `codex-stubs` 2,208. ⚠️ **CORRECTED by `.11.2.1.3.2.1.1`: that figure is the RUST-derived population only, and the census's scope was typed rather than derived.** The corpus now includes the PYTHON producer (`project_env.local_directory(root, "target/<family>")`), and at `028217c` the population is **2,264,752 KiB across 4,334 fixtures in 35 of 37 derived families** — so 351,000 was **15.9%** of the bytes, and `target/pg-tests` ALONE (1,309,464 KiB) is 3.64x it. The superseded figure stands per `TOOLBOX.md` as a statement about tracked Rust. Re-derive rather than read: `python3 -B scripts/census_fixture_population.py`.
 - ⛔ **AND `.11.2.1.3.1.1` RE-DERIVED IT AS *UNCHANGED* ONE COMMIT AGO.** It is unchanged — of those thirteen directories. Re-measuring the same wrong list is exactly the blind spot `docs/CLAIM_VERIFICATION.md` §1 names: a second pass down the same route repeats it. ⭐ **Every one of the six missing families is a TWO-STEP join** (`.join("target")` in one statement, the name in another) — `grep -c 'join("target/<family>")'` returns **0** for all six — so the list was not short by accident but by a rule nobody had stated.
 - ⚠️ **The 98.5% was a DENOMINATOR error, not an arithmetic one**: it is exactly 98.5% of the thirteen-family subtotal, and 62.2% of the population. A ratio inherits its denominator's blind spot silently, where a total at least gives a number someone can re-measure.
 - 🔴 **The second typed number is wrong in the other direction**: *roughly 40 call sites in `journal.rs` alone* is **17** — 16 calls to `test_path` plus one inline producer — and **62** across the 10 producing functions in 9 files. An estimate overstated one file by 2.4x while understating the family by 4x.
@@ -223,190 +236,23 @@
 - ⛔ **Nothing was routed out to close it.** The one question it could not answer — `TOOLBOX.md`'s unevaluated prose control — is named in `.11.4.2.7.3.2`'s decision record rather than left implied.
 - ✅ Frontier moves to `.11.33`, promoted in place rather than given a second row (`FRONTIER-STATUS` rule 3), with `docs/TASK_TREE.md` updated in the same commit.
 
-## 2026-09-21 — A parent whose children all closed had never run its own acceptance (`SIGNOFF-REPAIR.11.4.2.6`)
-
-`REASONBRAID-DOC-0103`. Found by enumerating every `.11.4.2` descendant's status before closing the grandparent.
-
-- 🔴 **`REPAIR-0357` published *`.11.4.2.6` is fully closed — all four strands*, and the leaf itself still said `Verification / commit: pending` with no `- Status:` line at all.** Every child was `done`; the parent's own acceptance — a claim about the RESULT — had never been run.
-- ✅ **It is met, and it was EXECUTED rather than inspected.** `census_live_documents.py --probe-bounds` → **all five core live documents REFUSED**, each restored byte-identically. When the leaf was opened the same command returned rc=0 for `LIVE_STATUS.md` and `DEV_NOTES.md` — the two surfaces it exists because of — so that is the before half of the measurement.
-- ✅ **Each refusal names a numeric cap, captured from the real enforcer**: `README.md is 202109 bytes (> cap 2400)`; `MEMORY.md has 1914 lines (> cap 50)`; `LIVE_STATUS.md has -173920 bytes of headroom under its 55000-byte threshold`; `CHANGELOG.md is 271864 bytes (> rotation threshold 96000)`; `DEV_NOTES.md has -175610 bytes of headroom under its 76000-byte threshold`.
-- ⛔ **No ceiling was chosen in the slice that had to fit under it**, which was this leaf's own prohibition: each threshold was derived one leaf ahead of the migration and registered `enforced=False` until the rotation landed.
-- ⭐ The fourth strand shipped as `ROUTE-CONTROL` and has since been extended twice — to the lifecycle field and to thirteen destinations the closure could not see. It evaluates 31 declared assertions across 34 rows every commit.
-- ⛔ No code and no registry row changed; this commit executes an acceptance and records the result.
-
-## 2026-09-21 — One tree is 70% of the task collection, and rotating it is refuted by its own 4,092 references (`SIGNOFF-REPAIR.11.4.2.9`)
-
-`REASONBRAID-DOC-0102`. The last unexecuted words of `.11.4.2`'s scope — *archive retrieval and collection bounds*.
-
-- 🔴 **`docs/tasks/` is 5,642,809 bytes over 72 files and `SIGNOFF-REPAIR.md` alone is 3,964,829 of them — 70.3%**, which is **2.4× the combined size of every other governed collection**. The next largest tree is 194,929 bytes, a factor of 20 below it.
-- ⛔ **ROTATION IS REFUTED BY MEASUREMENT, and that is the finding rather than the sizes.** That one file carries **4,092 internal leaf references** — 67% of the 6,129 across all eleven trees — so a closed leaf is not a retired record but an address 4,092 sentences resolve against. `RELATIVE-LEAF-REF` tracks 2 dangling references today; retiring closed leaves would create them by the thousand.
-- ⭐ **The opposite of the measurement that authorized the ledgers' rotation.** `.11.4.2.6.1` recorded of `DEV_NOTES.md`: *no consumer cites an individual record*. Two collections that accumulate, are large and are governed by the same registry, with **opposite retrieval models** — applying the ledger remedy on the resemblance would have been the mirror error this lane keeps finding. Promoted → `docs/knowledge/two-collections-that-look-alike-can-have-opposite-retrieval.md`.
-- ⭐ **The declared control was already the right one**, and this leaf's job was to check it rather than replace it: *trees close when exhausted*. The bound is the tree's LIFECYCLE, not its bytes, and nothing in that sentence is false.
-- ✅ **Cost measured, not assumed**: the ten enforcer checks that scan `docs/tasks/` cost **2.04 s** together against a ~47 s enforcer — **4.3%**. A 3.96 MB file costs two seconds a commit.
-- ⛔ **No ceiling, no rotation, no split**, each refused by name: a ceiling's remedy IS retirement, so a ceiling on a collection that cannot retire has only one compliant response — delete something irreplaceable; and a split would grow the bounded index (*one row per tree*) to shrink an unbounded file.
-- ⛔ No registry row changed, no threshold moved, no file split, no code touched.
-
-## 2026-09-21 — The lifecycle field is a taxonomy, not a contract, and one of its classifications was mine and wrong (`SIGNOFF-REPAIR.11.4.2.8`)
-
-`REASONBRAID-REPAIR-0361`. The last named strand of `.11.4.2` — *lifecycle and pressure controls* — whose pressure half shipped at `.11.4.2.6.7`.
-
-- 🔴 **The registry's SECOND field is a lifecycle class from a seven-word vocabulary, and the only code that touched it PRINTED it.** `check_readme_stability.sh` validated it for non-emptiness alone, exactly as it validated the control sentence before `ROUTE-CONTROL` existed, so a row could declare a class no vocabulary contains and every gate stayed green.
-- ⭐ **MEASURED: a declared class does not predict a mechanism.** Of the six classes in use, only the three with **two rows or fewer** share an assertion kind across their rows; `reader_navigation` (15), `author_overflow` (9) and `hot_live` (5) share **none**. So the field is a reader's taxonomy and the registry now says so — what holds a destination's growth is the FIFTH field.
-- 🔴 **The census found one misclassification and it was mine, three commits old.** `docs/evidence/` was classed `append_only_history`, which in this registry means a FILE whose records rotate into git (`CHANGELOG.md`, `DEV_NOTES.md`, each declaring ceiling + LEDGER-RUNWAY + growth). It is a DIRECTORY whose bound is an index — `docs/adr/`'s shape. ✅ Corrected, and the correction shows in the measurement: `append_only_history` went from sharing nothing to sharing all three kinds, and consistent classes 2 → 3.
-- ⚠️ **`external_service` has no instance** — 34 rows over 6 of the 7 words. Kept as a reserved word and named in the header as untested rather than established; deleting it would be a decision about the future taken on an absence.
-- ✅ **One rule ships, the cheapest true one: a class must be a word the registry's own header defines.** Not a new mechanism — `ROUTE-CONTROL` already refuses an unknown assertion KIND for the same reason. Zero current violations; its value is preventing the next typo, said plainly so a green run is not mistaken for a caught defect.
-- ⭐ **The vocabulary is DERIVED from the registry's own header**, because that header is the sentence a row's author reads. 🔴 **And the first parser guessed the continuation rule** — it continued onto any comment line containing a pipe, which works on today's header only because its second line happens to have some. A fixture whose continuation carried one bare word caught it; the marker is now the trailing pipe, which is the actual grammar.
-- ✅ **Falsified twice by injection, each restored byte-identically.** A `hot_live` → `hot-live` typo gives rc=1 naming the row, the bad word and the vocabulary. Removing `frozen_legacy` from the HEADER ALONE makes `KICKOFF.md` refuse — the arm that proves the vocabulary is read from the registry rather than the code.
-- ⛔ No class was changed to make a measurement look better; the three classes that share nothing are left as they are, because sharing nothing is not a defect. 42 self-test controls (was 35).
-
-## 2026-09-21 — A doctrine document is deliberately unbounded, because the ledgers' threshold cannot be borrowed (`SIGNOFF-REPAIR.11.4.2.7.3.2`)
-
-`REASONBRAID-DOC-0101`. The class question the previous leaf refused to answer with an invented number.
-
-- 🔴 **Four of four spine doctrine documents accept 200,000 appended bytes with a green enforcer** — `DOCTRINE_ENFORCEMENT.md` (41 versions, 40 grew, 0 shrank), `TOOLBOX.md` (46/44/1), `MEMORY_ARCHITECTURE.md` and `COMMIT.md` — all monotone, all at their all-time high, while three sibling ledgers in the same registry each carry a derived `ceiling=`.
-- ⭐ **DECIDED: no ceiling, because one cannot be DERIVED here.** A ledger's threshold comes from a pinned window — how much history must stay reachable IN the file — and a doctrine document retires nothing: every clause describes a rule in force. There is no quantity to derive from, and a chosen number is what `.11.6` forbids.
-- ⛔ **The remedy a ceiling triggers is also the wrong one.** Rotation is lossless for a ledger; for a reader document it means deleting rationale that has no other home.
-- ⭐ **The growth is structural, measured against the population it mirrors**: 6,700 → 56,424 bytes (**×8.4**) while registered doctrines went 13 → 24 (**×1.8**). **92.8% of the file is one section** — `## The enforcer registry`, 51,713 of 55,711 bytes, one row per doctrine.
-- ✅ **The measurement got a tracked producer in the instrument that already owns this document** — `census_mirror_numbers.py --growth`, two pure functions with self-test arms, importing `parse_doctrine_registry` as the denominator rather than copying it.
-- 🔴 **That denominator was wrong until one commit ago**, which is why this leaf paused to repair it: the first version of the ratio was computed against 14 and 25 rather than 13 and 24. Checking a number's producer before publishing it is what found `.11.4.2.7.3.2.1`.
-- ⭐ **And the self-test's own arm count was a restated literal `12`** — in the instrument that exists because this repository's mirrors drift. Produced by the run now: **15 arms**.
-- ⛔ **A ratchet on the ratio is DECLINED** (`.11.6`): calibrated against a single trajectory, the objection `.11.4.2.7.1` recorded. ✅ **The trigger that would reopen this is not a byte count but a second information role** — the `.11.4.2.6.5` shape — and `--growth` reports both halves of that condition.
-- ⚠️ One gap recorded rather than implied: `TOOLBOX.md`'s prose control *the tool-registry table grows only with new diagnostic tools* is the same mirror shape and nothing evaluates it.
-
-## 2026-09-21 — A comment describing the entry format was read as an entry, and a gate believed it (`SIGNOFF-REPAIR.11.4.2.7.3.2.1`)
-
-`REASONBRAID-REPAIR-0360`. Found while checking the producer of a number before publishing it.
-
-- 🔴 **`scripts/check_doctrines.sh` prints `24 checks` from its own `${#DOCTRINES[@]}`; the shared `parse_doctrine_registry` returned **25**.** The extra entry was `('ID', 'relative/path/to/check.sh')`, lifted out of the enforcer's own format comment — *Each entry: `"ID|what it proves|relative/path/to/check.sh"`*. A description of the format read as an instance of it.
-- 🔴 **It reached a GATE, not just a printed number.** `ROUTE-CONTROL`'s `eval_doctrine` resolves a declared control through that parser, so a registry row declaring `doctrine=ID` would have been ACCEPTED — *"ID is registered, run by relative/path/to/check.sh"* — by the gate whose whole purpose is refusing a control nothing enforces.
-- ✅ **One predicate, at the enforcer's own semantics: a comment line is not an entry.** ⛔ Not a filter on the id `ID`, which would fix the instance and leave the class.
-- ✅ **25 → 24, matching `${#DOCTRINES[@]}`**; `doctrine=ID` now refused by name while `MEMORY-ARCH` still resolves to its check.
-- ⭐ **The old self-test could not have caught it: its fixture was two array entries and no comment.** The new one carries the enforcer's own format comment and an indented one, plus a second arm pinning that a trailing comment on a real entry still parses — third instance of `a-self-test-cannot-be-tidier-than-the-real-input`.
-- ✅ Falsified in situ: the pre-fix body reddens the new arm **by name** and prints both false entries it recovers; restored byte-identically (`cmp -s`).
-- ⚠️ **Not claimed: that any row ever declared `doctrine=ID`.** None does, and the 31 evaluated assertions are unchanged — a latent acceptance the gate would have granted, not a false verdict it did grant.
-
-## 2026-09-21 — The closure gets a second anchor, and the thirteen destinations nobody had ever been asked to govern (`SIGNOFF-REPAIR.11.4.2.7.3.1`)
-
-`REASONBRAID-REPAIR-0359`. The repair the previous commit measured and deliberately did not ship.
-
-- ✅ **Every tracked Markdown document must now end at a governed row, and the instrument that found the defect measures the repair**: rows the closure can never name **3 → 0**, undeclared documents **90 → 0**, closure tokens 21 → 437, proposing 433 of 434. The one remaining document is `README.md`, reported as `excluded_subject` rather than as a gap.
-- ⭐ **Anchor C on a routing fact, not the arithmetic.** `LESSON-PROMOTION` REQUIRES a new dated `DEV_NOTES.md` lesson to be promoted into `docs/knowledge/` — a gate moving pressure into a collection with no lifecycle, owner or ceiling, every time a lesson lands. That is precisely what the closure exists to forbid.
-- ✅ **Thirteen rows, six of them adjudicated NARRATIVE — a positive classification, not an omission.** `ROUTE-CONTROL` evaluates **31 declared assertions across 34 rows** (was 23 across 21), all holding; every index claim was checked against the real index (9 of 9, 4 of 4, 50 of 50) before it was written.
-- 🔴 **The previous commit's emphasis on `DOCTRINE_ENFORCEMENT.md` is corrected rather than left standing.** It is unbounded — and so are `TOOLBOX.md`, `COMMIT.md` and `MEMORY_ARCHITECTURE.md`, all three of which HAVE rows. **Four of four spine documents accept 200,000 bytes with a green enforcer**, so the defect that leaf found was the missing ROW; the missing BOUND is a property of the class, opened as `.11.4.2.7.3.2` rather than answered with an invented threshold.
-- ⭐ **The transitive leg refused my own first draft, correctly**: a control sentence naming the enforcing script demanded a governed row for the SCRIPT. It is a mechanism, not a destination — the path moved to the assertion field, which that leg does not read, and the row says so.
-- ✅ **Falsified by putting the shipped rule back against the trees that hid the instances.** `--anchor-check` applies the working tree's anchor to a past revision's file list AND that revision's registry: at `386aa64^` it refuses 88 destinations including `DEV_NOTES.md` by name; at `8aadac3`, 89 including `MEMORY_ARCHITECTURE.md`.
-- 🔴 **Two defects in my own controls, both caught by the controls.** The falsification arm first required both instances to be refused at EVERY revision, so it failed where one had already been routed — scoring the calendar rather than the rule. And `--verify-closure` surveyed `HEAD` while probing the CHECKOUT, so prediction and measurement came from different trees; both it and `--probe-bounds` now survey the working tree, which is what the gate judges.
-- ⭐ **Arm B retires itself and says so instead of refusing** — with every row reachable there is no row outside the closure to delete, and that absence is the repair. A control that failed when the defect was fixed would be `.11.27`'s shape again.
-- ⛔ Cost measured: the guard goes **0.06 s → 0.23 s** over three runs each, +0.36 % of a ~47 s enforcer. No cap, threshold or ceiling raised; `README.md` untouched and excluded by derivation rather than by a name written into the census.
-
-## 2026-09-21 — The closure is anchored at one link graph, and the rule it declined costs fourteen rows (`SIGNOFF-REPAIR.11.4.2.7.3`)
-
-`REASONBRAID-DOC-0100`. The census the previous commit opened on its second measured instance, and it found a third of each.
-
-- ⭐ **THE CLOSURE IS RUN, NOT RE-IMPLEMENTED.** `scripts/census_routing_closure.py` lifts the guard's own `extract_routes`, `routes_from_readme`, `routes_from_hint` and `routes_from_controls` definitions out of its source and executes them under `bash`, with one named substitution — `"$0"` becomes the guard's path. A Python transcription would be a second copy of a gate's verdict, and it also makes `--as-of` free: the guard's source is versioned, so a past commit's closure is that commit's own.
-- ⭐ **At `d8df245`: 432 tracked Markdown documents, 21 rows, 21 closure tokens. The closure would ever propose 308 of them; 340 have a row it names, 3 have a row it can NEVER name, and 89 have no row at all.** The census reads the COMMITTED tree and prints the revision in its header, so a figure quoted from it carries the commit it belongs to.
-- 🔴 **A THIRD HAND-PLACED ROW that nobody had noticed: `knowledge-map/`.** The routing hint names the GENERATED index `KNOWLEDGE_MAP.md` and never the directory of sources behind it, so the blind spot is 3 of 21 rows rather than the 2 the leaf opened with.
-- 🔴 **AND A THIRD INSTANCE STILL OPEN: `DOCTRINE_ENFORCEMENT.md` — the document defining how every doctrine here is enforced — has no row and is bounded by NOTHING.** +200,000 real bytes and the real enforcer stays green. Owner `.11.4.2.7.3.1`.
-- ⛔ **"No row" is not "ungoverned", and the probe keeps them apart rather than a sentence promising to.** `README.md` refuses at the guard's own caps, `MEMORY.md` under `MEMORY-ARCH`; both have no row and both are bounded.
-- ⚠️ **A row is not a size bound either, and the probe's first "positive control" proved it the hard way** — it selected `AGENTS.md`, which has a row and accepts 200,000 bytes. The controls are now derived from what the registry DECLARES: a `ceiling=` row must refuse (`CHANGELOG.md` does), a row without one is expected not to (`AGENTS.md` does not).
-- ⭐ **The complete rule costs 14 entries, not 432 — and this leaf's own opening text had declined it on a population nobody had counted.** The registry governs by prefix: `docs/knowledge/` covers 49 members, `docs/runbooks/` 13, `docs/evidence/` 11, `spec/` 6. Promoted → `docs/knowledge/a-prefix-closed-rule-costs-terminals-not-members.md`.
-- ⛔ **Anchor B is REFUTED by measurement**: `grep -c DEV_NOTES CLAUDE.md` → 0, so the bootstrap-list anchor the leaf floated would have left the FIRST instance exactly as invisible. A catches both at 3 rows, B misses one at 3, C catches both at 14.
-- ✅ **Falsified at both instances' own commits**: `--as-of 386aa64^` reports `DEV_NOTES.md` and `MEMORY_ARCHITECTURE.md` `invisible`; `--as-of 8aadac3` reports `MEMORY_ARCHITECTURE.md` `invisible` while `DEV_NOTES.md` has become `governed_by_hand` — the two-stage history read back correctly.
-- 🔴 **The verification's arm B failed first time and the CONTROL was wrong, not the finding.** It read the whole enforcer and caught `ROUTE-CONTROL`'s adjudication rule refusing the same path, while `README-STABILITY` was green throughout — which is what the arm exists to show. It now matches the guard's own `unrouted destination:` sentence and reports the other red doctrines by name instead of scoring them.
-- 🔴 **The instrument's self-test caught two defects in it before any number was published**: a one-line shell function made `function_span` swallow the next definition, and a collapsed reachability test reported all 32 unlinked `docs/adr/` files as hand-placed rows. Both repaired; **21 controls**, the count produced by the run.
-- ⛔ No rule proposed (`.11.6`); no cap, threshold or ceiling moved; `README.md` untouched and absent from the commit.
-
-## 2026-09-21 — The rule moves to the document that governs it, and the row that governs that document crashed the gate (`SIGNOFF-REPAIR.11.4.2.7.2`)
-
-`REASONBRAID-DOC-0099`. A director correction — *`MEMORY_ARCHITECTURE.md` is the document that governs what `MEMORY.md` is* — and two defects behind it.
-
-- 🔴 **A SECOND AUTHORITY, created one commit after refusing one.** The previous commit's decision record stated *"the resume pointer answers one question and nothing else"* as a rule of its own, beside a `MEMORY_ARCHITECTURE.md` §6 that already governs exactly that. `.11.4.2.7` had declined the donor's root doctrine on precisely this ground — *two sources plausibly claim canonical authority for the same information* — and the same author did it in the next commit.
-- ✅ **One normative home, one provenance record.** §6 gains the one-question rule and *it shall not grow*: *"if it grows, that is the signal that something is being written into it that does not belong, not a signal that the cap is tight"*, with the 81% → 425-byte measurement as its worked instance. The record is reduced to the quoted instruction, its date, the measurements, and a table naming which document owns which rule.
-- 🔴 **And the governing document had NO REGISTRY ROW** — `grep -c '^MEMORY_ARCHITECTURE.md|' .doctrine/readme_routes.txt` → 0, while `CLAUDE.md`, `AGENTS.md`, `COMMIT.md` and `TOOLBOX.md` each have one. It now declares `doctrine=MEMORY-ARCH`; `ROUTE-CONTROL` reports **23 assertions across 21 rows**.
-- 🔴 **Adding it made that gate CRASH on its first real use.** `--check` printed the correct refusal and then raised `KeyError` on the same row, because the loop indexed the adjudication after the guard had reported it missing. An instrument must explain its own failure, not crash after diagnosing it. ✅ Falsified: an unclassified probe row now gives **rc=1 with a named refusal and no traceback**.
-- ⭐ **The closure leg then refused the row's first draft, correctly**: its control named the two files the policy is ABOUT, and the transitive leg reads a path inside a control as a destination that must itself be governed. They are subjects, not destinations — reworded rather than given rows they do not need.
-- ⚠️ **The blind spot is named on its second instance and opened as `.11.4.2.7.3`**: the closure is anchored at the landing page's link graph, so a document the landing page does not link never enters it. `DEV_NOTES.md` was ungoverned for the life of the project for the same reason. ⛔ The remedy is a second anchor, never a link added to the landing page.
-
-## 2026-09-21 — An overwrite-only pointer cannot accumulate, so the 81% that did was a second role (`SIGNOFF-REPAIR.11.4.2.7.1`)
-
-`REASONBRAID-REPAIR-0358`. The director refuted the previous commit's diagnosis in one sentence, and the measurement agreed with the director.
-
-- 🔴 **The question that broke it open:** *"`MEMORY.md` is overwrite not append, so why is it hitting its limit so often — makes no sense to me."* It cannot, if the contract holds. `scripts/census_memory_warnings.py` measured why: **26 standing warnings, 5,184 of 6,412 bytes — 81% of the file** — against a resume pointer that was the other 19%. The file sat at **exactly its 7,168-byte cap twice**, and at 7,167 three more times.
-- ⛔ **So the remedy was NOT the health target `.11.4.2.7` proposed.** `MEMORY_ARCHITECTURE.md` §6 already names this symptom — *"the Current state block accumulating under a heading that says to overwrite it"* — and prescribes eviction: *"information is in the wrong layer; move it down to B or C."* A threshold whose correct response is to delete what made it fire institutionalises the bloat.
-- ⭐ **Same defect as `LIVE_STATUS.md` one lane over**: two information roles in one document. That was a snapshot that had become a ledger; this is a pointer that had become a warnings board. The lens was established in this very lane and never turned on this file.
-- ✅ **`MEMORY.md` is a pointer again: 6,412 → 425 bytes, 26 lines → 9, 26 standing warnings → 0, headroom 756 → 6,743.** No cap raised; it sits at **6%** of its byte cap. ⚠️ Three cuts, the last two the director's: *it answers the question 'What's next?', that's it* removed the how-to-resume block, and *remove stuff that is not used to describe the next action* removed the contract sentence I had left at the top — a paragraph about what does not belong in the file is itself something that does not belong in it. What remains is the five pointer fields.
-- ✅ **Zero facts lost, proved per warning.** 17 were instrument-anchored to a leaf; all **9 UNCITED** were hand-classified against the durable layers and every one is recorded there. ⛔ The census's own output forbids assuming this: an uncited item is a population to classify, and one once turned out to be an environment fact existing nowhere else.
-- ⚠️ **The `README.md` half of the previous finding is WITHDRAWN on the measurement**: 12 versions in the project's life, **never once refused**, and its two largest growths were status narrative that a later commit already replaced with a one-line pointer, shrinking the file. Pairing the two as one pressure case was an error.
-- ⛔ No new gate — a ratchet calibrated against a population discharged to zero in the same commit is calibrated against one point (`.11.6`). The guard is the file's own contract sentence plus the instrument. Promoted → `docs/knowledge/an-overwrite-only-file-cannot-accumulate.md`.
-- 🔴 **The eviction BROKE a gate, and the gate was wrong: it required the defect to be present.** `census_memory_warnings.py`'s live-corpus self-test arm asserted *the real `MEMORY.md` yields warnings* — written when 26 were normal — so it failed the moment the file became correct (`.11.27`'s shape). Repaired in this commit because it refuses a correct one. ✅ Falsified: breaking `collect_warnings` in situ reddens **four fixture arms by name**, so removing the live requirement lost no coverage.
-- ⚠️ **A third correction, on the reporting rather than the repository: `README.md` was never touched.** It is byte-identical to `HEAD`, **zero of this session's five commits contain it**, and it last changed on 2026-09-15. The impression came from a report that named it beside `MEMORY.md` as a pressure case. The standing instruction it prompted — the landing page is quasi-static, the pointer answers one question — is now `docs/decisions/2026-09-21_the-landing-page-is-quasi-static-and-the-pointer-answers-one-question.md`, with a no-growth ratchet DECLINED on the measurement (it would have fired on 6 of 11 changes).
-
-## 2026-09-21 — The containment contract is adopted and met, and the donor's document is declined on the donor's own stop condition (`SIGNOFF-REPAIR.11.4.2.7`)
-
-`REASONBRAID-DOC-0098`. The donor-package review `.11.4.1` deferred on 2026-09-09, executed against what this repository has since built.
-
-- ⭐ **DECIDED: the contract is ADOPTED and MET; the root document is NOT copied.** The guide says to stop when *two sources plausibly claim canonical authority for the same information*, and `README_POLICY.md` plus `.doctrine/readme_routes.txt` already hold that authority — enforced by `README-STABILITY`, `LEDGER-RUNWAY` and `ROUTE-CONTROL`. A 32 KB second body nobody here wrote and nothing here derives is the mirror this lane keeps removing.
-- ✅ **The guide's COMPLETION TEST is behavioural, not documentary, and every clause was EVALUATED**: a bounded current view (`MEMORY.md` 6,214 B under a 7,168 cap), one exact enforced pointer (`POINTER-CURRENCY`), deterministic retrieval through each ledger's chain notice, one unconditional gate in the hook and CI, and no monolith — the five core live documents ~145 KB, from 1,559,250 before this lane.
-- ✅ **The donor's revision state is MEASURED (§18), not assumed**: unchanged since `727e0d086`, 2026-09-05, with its SHA-256 recorded so the next check is a comparison.
-- 🔴 **One deliverable is genuinely unmet and has an owner.** The guide asks for a HEALTH TARGET as well as an enforcement ceiling per surface, and only the three ledgers have both — `README.md` and `MEMORY.md` refuse AT the cap with no earlier signal, and `MEMORY.md`'s has been crossed **seven recorded times**, each resolved by evicting a standing warning under pressure. `SIGNOFF-REPAIR.11.4.2.7.1`, census-first, with the harder half named: a ledger's remedy is mechanical rotation and `MEMORY.md`'s is a human decision.
-- ⚠️ One deliverable is met by a DIFFERENT mechanism and recorded as such rather than as a miss: `.11.4.2.4` ran the exact-current-state census over 645 pointer versions and shipped `POINTER-CURRENCY` instead of the donor's registry form.
-- ⛔ **Nothing of the donor's was copied** — no threshold, path, identifier, task id, decision, debt allowance or retention guarantee; the guide names those as evidence about the donor project rather than portable policy.
-- 🔴 **My own book box was the THIRD draft, and the first two cited commands that refuted them** — *returns nothing* against 6 hits, then *returns 0* against 1, the latter being the row this lane added a commit earlier. Writing the claim before running the check is this lane's own defect, met in the leaf that closes it.
-
-## 2026-09-21 — The rotation notice now describes the object it names, and 31 of 48 said otherwise (`SIGNOFF-REPAIR.11.4.2.6.8`)
-
-`REASONBRAID-DOC-0097`. A published sentence that was untrue whenever the ledger had moved — which is the normal case.
-
-- 🔴 **The notice called its predecessor *every byte this file held immediately before the rotation***, and a rotation runs on the tree that CROSSED the threshold, so the ledger holds that commit's own entry and the named object does not.
-- ⭐ **Censused before the wording was chosen** (`.11.6`): `--audit-notices` reports **at least 31 of 48** rotation notices describing a ledger that had moved — `CHANGELOG.md` 29/46, `DEV_NOTES.md` 2/2, `LIVE_STATUS.md` 0/0, whose transition was a SEAL with a hand-written notice that was already correct. Shipped as an arm rather than a figure, because a published number owes a producer.
-- ⚠️ **A LOWER BOUND, and it says so in its own output**: it sees a moved ledger only when the rotating commit added a WHOLE record, so the 17 remaining are *not measured dirty* rather than *measured clean*.
-- 🔴 **It was not discovered here — it was DECLARED and left.** `.11.4.2.6.3`'s acceptance already carried *"an honest limit on the notice's wording"*, with no owner. A defect stated in the leaf that ships it is `SIGNOFF-REPAIR.11.13`'s finding exactly.
-- ✅ **The repair is the sentence and the ANCHOR DOES NOT MOVE** — a state never committed has no address a reader can `git show`, and the retrieval command is the notice's whole purpose. It now says *this file as it stood at the commit named below, which is the object every retired record was checked against before this notice was written*, which is true in the clean and the dirty case alike and tells the reader WHY that object is the right one.
-- ⛔ **Nothing was ever at risk of being lost, and separating that from the defect is the point**: `--apply` refuses when any retired heading is absent from the predecessor, and those two arms are untouched and pass.
-- ✅ Falsified in situ — the old wording put back, `--self-test` rc=1 with **3 controls red by name**, rc=0 restored, `cmp -s` byte-identical. 38 controls, was 35. Both LIVE footers corrected alongside the renderer; no threshold, ledger or retired record moved.
-
-## 2026-09-21 — A declared control is now evaluated, and the row that was false for months is refused by name (`SIGNOFF-REPAIR.11.4.2.6.7`)
-
-`REASONBRAID-REPAIR-0357`. The last strand of `.11.4.2.6`: a routed-destination row could state a pressure control that nothing performed, and one did.
-
-- ✅ **An optional FIFTH registry field of `kind=operand` terms, beside the human sentence, evaluated every commit by `ROUTE-CONTROL`.** 14 rows declare **22 assertions across seven kinds** — ceiling, doctrine, growth, index_entry, guard_required, build_target, identity; 6 rows declare nothing, which is the positive adjudication *this states nothing a machine can decide*. ⛔ **No row's sentence was deleted to fit a field**: two were extended, one corrected.
-- ⛔ **DECLARED, NEVER EXTRACTED, and that is a measurement**: the obvious extractor scores **5 wrong operands in 18**, inventing two task-tree names as doctrine ids and three HISTORICAL byte figures as ceilings, while **6 of the 19 claims are invisible to it**. Wrong in both directions at once.
-- ✅ **FALSIFIED AGAINST THE REAL HISTORICAL DEFECT WITH NO EDIT AT ALL.** `--check --as-of 9221467` puts the row's growth claim back against the tree that refuted it: rc=1, `LIVE_STATUS.md … IT IS FALSE — 623 grew, 17 shrank, tip 620448 against a peak of 620448 -> at_all_time_high`. ⭐ **And it discriminates** — the two sibling ledgers declare the identical claim and both hold at that same commit.
-- 🔴 **My first falsification was a control passing for an unrelated reason.** Editing the fifth field made all seven kinds refuse, and all seven refused through the DRIFT leg rather than their own evaluator, because a patched operand necessarily disagrees with the prose reading. Called directly, **7 of 7 return True on the declared operand and False on a wrong one**.
-- ✅ **All three census findings REPAIRED, not recorded**: `docs/TASK_TREE.md`'s `TABLE-ARITY` corrected to the registered `TABLE-ARITY-RATCHET` — ⛔ not by accepting a prefix, which is `.11.27`'s refused move; `KICKOFF.md` anchored at `457d3a7`, taking expressible-but-unanchored to **0 of 20**; `docs/adr/`'s index claim, previously enforced by nothing, now gated over 32 records.
-- ⭐ **Double-entry is what stops it being theatre**: the check refuses a term the prose reading found that the row drops (the field cannot be emptied to go green) AND a term the row declares that no reading supports (a term cannot be invented).
-- ⚠️ **The existing legs proved unchanged** by running HEAD's own guard over the PRE-CHANGE registry — byte-identical output. The fifth `read` name exists because four names put `repo-local|ceiling=55000 …` in the owner field and the arity test still passed. The closure leg is deliberately NOT extended: a declared operand names a doctrine's own script, which no registry row is a prefix of.
-- ⚠️ Priced before registering: **0.18 s**, enforcer 28.74 s → 29.17 s (+1.5%). `--self-test` **35 controls** (was 20).
-
-## 2026-09-21 — One git process per path instead of one per version, and the real-tree identity check could not see the semantic at risk (`SIGNOFF-REPAIR.11.4.2.6.7.2`)
-
-`REASONBRAID-REPAIR-0356`. `.11.4.2.6.7` must falsify against a GROWTH claim, so a growth assertion has to be affordable at commit time. It was not.
-
-- 🔴 **23.24 s against a 28.74 s whole-enforcer run.** `measure_history` spawned one `git cat-file -s` per version, and the three ledgers a growth assertion must cover hold 1,756 of them. A gate leg that nearly doubles the gate is one people route around (`.11.5`).
-- ✅ **0.11 s.** One `git cat-file --batch-check` process per path, inside the SHARED function — `version_sizes` for the walk, `batch_sizes` for the parse. ⛔ No fast twin beside the old one: two producers of one number is the drift this repository keeps repairing.
-- ✅ **Output-identical, by the method `.11.4.2.6.6.2` established** — HEAD's own script extracted with `git show` and run against the SAME tree, not before-and-after on a moving one. **24 paths, 4,579 versions, every FIELD of every record compared, 0 disagreements**; 62.19 s → 0.79 s over that set.
-- 🔴 **And that comparison could not reach the one semantic being preserved.** The behaviour is a SKIP — a commit that DELETED the path is reported by `git log` and does not resolve — and **no routed path has ever been deleted**, so all twenty exercise it zero times. ⭐ Measured instead on three paths that do: each **2 revisions, 1 resolvable object**, old and new agreeing and each dropping exactly one.
-- ⭐ **Falsified**: a reader that counts a miss as `0` returns `[12, 0, 7]` where the shipped one returns `[12, 7]`, so the identity check can report a difference rather than only ever agreeing. Five new self-test controls pin the parse in both directions.
-- ⛔ No caller, threshold, registry row, gate or doctrine count changed. `--self-test` **27 controls** (was 22); `--shapes` prints the same twenty shapes in 0.54 s, down from 33.05 s.
-- 🔎 **A defect found while running this commit's own prescribed rotation, and owned rather than noted.** `LEDGER-RUNWAY` fired on `DEV_NOTES.md`; the one-command rotation retired 13 records and left 46,866 bytes of headroom — and its notice says *every byte this file held immediately before the rotation* while naming an object **2,948 bytes smaller** than the file was at that moment, because a rotation always runs on the dirty tree that crossed the threshold. ⭐ The guarantee is intact (every retired heading is verified against `HEAD:<ledger>` or the rotation refuses), so the defect is a false published sentence. Owner `SIGNOFF-REPAIR.11.4.2.6.8`, `pending`, census-first.
-
 The entries before those above were rotated into reachable Git history at the
-**thirty-ninth rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
+**fortieth rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
 stood at the commit named below, which is the object every retired record was
 checked against before this notice was written — is:
 
 ```bash
-git show 7fd148daa02d32e193081ff3d022ea05d3d41273:CHANGELOG.md
+git show 028217caddaff7d564d7a4ae952561c5256837de:CHANGELOG.md
 ```
 
-That snapshot is 91407 bytes and 420 lines, and contains 32 dated
-entries; its Git blob is `4a2bf9b967c0e396ce40b91e0704c0af6b8980d3` and its SHA-256 is
-`c9a948b95f2304668e2ace69e55db9e3422c982505e4acecd4e04b431315d3a0`. It carries the thirty-eighth rotation's
+That snapshot is 91779 bytes and 414 lines, and contains 30 dated
+entries; its Git blob is `d8fb417850bf172d0150b58d84c6a95e8d79004c` and its SHA-256 is
+`78475e1a632066439cfa0638873580a6023439cb7b485e7d7a217abe101a2fda`. It carries the thirty-ninth rotation's
 notice in turn, and each earlier notice names the one before it, so the chain
 walks all the way back. `docs/decisions/2026-09-09_changelog-rotation.md` holds
 the first transition's evidence.
 
-⛔ **13 record(s) rotated out, 20 kept, lossless** — every retired heading was retrieved from the
+⛔ **13 record(s) rotated out, 18 kept, lossless** — every retired heading was retrieved from the
 predecessor named above before this notice was written, and every figure in it was re-derived from that object with
 `git rev-parse`, `git cat-file` and SHA-256 rather than typed. ⭐ The cut is DERIVED, not chosen: it retires whole
 records until the ledger has at least 10 commits of runway at the p90 entry size measured over the last

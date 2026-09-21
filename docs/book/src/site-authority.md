@@ -150,6 +150,16 @@ before checking that the grant's window fits its parent. This permits an identic
 parent/child window without an accidental nanosecond-rounding refusal. Explicit
 future provisioning is supported, but it grants no access before validity begins.
 
+A timestamp the server reports is the one it stored. Instants that are written to
+the database and may also be returned are sampled from the database clock rather
+than from the process, so the value in a response and the value in the row are the
+same microsecond — a returned `decided_at` or `expires_at` can be compared against
+a later read without an apparent difference that is only rounding. Values supplied
+by a caller are normalized to the same precision before they are used in a
+comparison.
+
+
+
 Issuance facts are immutable. In particular, an existing grant cannot be moved
 to a different boundary. Revoking an old boundary and issuing an unrelated new
 boundary does not rearm its grants. Restoring access requires explicit issuance

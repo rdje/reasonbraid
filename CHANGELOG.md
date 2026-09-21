@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-21 — None of the forty-three is the defect, because a Rust variable is not a second clock (`SIGNOFF-REPAIR.11.31.1`)
+
+`REASONBRAID-DOC-0106`. The adjudication of the population `.11.31` counted, and the axis it was counted on turned out to be wrong.
+
+- 🔴 **The leaf's framing was the wrong axis.** It asks for sites binding *a Rust-side instant*, and 43 do — but the hazard needs **two clocks**, and a Rust variable is not a second clock if the value in it came from the database. `SELECT clock_timestamp()` is already truncated to microseconds, so the Rust copy and the stored column are the same value by construction. **PROVENANCE is the discriminator**, and neither the leaf nor `.11.30` had named it.
+- ⭐ **THE DECISION: none of the 43 is the `.11.30` defect, and the EMPTY CELL is the reason.** Crossing origin with escape gives eight cells: `database_clock` 2/2, `normalized` 0/4, `caller_supplied` 19/5, `other` 1/3, **`rust_clock` 7 contained / 0 reaching a return**. No site both invents a clock value and hands it out.
+- ✅ **Every cell followed to its origin, not classified by shape.** All 24 `caller_supplied` sites were traced BY HAND to their call sites — every one passes `database_now_in_tx` or `tx.database_now()`. The 7 `rust_clock` sites are contained: `acknowledge_in_tx` fills seven columns nothing reads back, `recruitment::open_call` returns only `call_id`, and `api.rs` binds `Utc::now()` inline so no variable exists to escape. The 4 `other` are two X.509 `not_after` bounds (second-granular by encoding), one echo of the caller's own request field, and one contained.
+- ⛔ **The gate is DECLINED on the soundness of one leg.** Provenance and normalization are decidable; **escape is a triage** — *does this identifier appear inside a `return`/`Ok(`/`Some(` after the write* — neither sound nor complete for *the caller compares this against the stored column*, and a gate resting on it would refuse correct code unarguably. The narrower rule needing no escape analysis fires on **7 of 43 correct sites**, the shape rejected at 87%, 93% and 66/50/71%. ⚠️ Trigger: the first site landing in the empty cell reopens it with a real instance to calibrate against.
+- ⭐ **The thing actually missing was the CONVENTION, which is `.11.31`'s own complaint one level down.** 30 of 43 sites are safe because somebody used `database_now_in_tx`, and nothing said that was why — its doc comment explains a different property and no design document mentioned it. It is now in the book beside the microsecond note it explains.
+- ⛔ **No product code changed, and that is the finding rather than a shortcut.** Inventing a repair for a population that adjudicates clean would be a change with no defect behind it. Promoted → `docs/knowledge/a-second-copy-is-only-a-risk-if-it-has-a-second-source.md`.
+
 ## 2026-09-21 — The precision hazard has a population, and a gate on it would fire on all forty-three (`SIGNOFF-REPAIR.11.31`)
 
 `REASONBRAID-DOC-0105`. The census the leaf ordered before any gate.

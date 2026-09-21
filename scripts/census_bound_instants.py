@@ -142,6 +142,9 @@ class Column:
     value: str          # the SQL expression filling it
     bound: str | None   # the Rust expression, when the value is a placeholder
     verdict: str
+    fn: str = ""        # the enclosing function, when one was found
+    escape: str = ""    # "", "reaches_return", "contained" — the triage only
+    origin: str = ""    # where the bound instant came from
 
 
 def unescape_rust_string(raw: str) -> str:
@@ -326,6 +329,118 @@ def analyse(sql: str, binds: list[str],
     return out
 
 
+# ⭐ PROVENANCE IS THE DISCRIMINATOR THE LEAF'S FRAMING MISSED, and it is the one
+# that decides. `.11.31` asks for sites that bind "a Rust-side instant", but an
+# instant this process READ BACK from PostgreSQL is already truncated to
+# microseconds — binding it and returning it creates no second opinion, because
+# there is only ever one value. The hazard needs a SECOND clock, not merely a
+# Rust variable.
+DB_ORIGIN = re.compile(r"database_now_in_tx|database_now\s*\(|clock_timestamp")
+RUST_CLOCK = re.compile(r"Utc::now\s*\(\)|SystemTime::now|Instant::now")
+NORMALIZED = re.compile(r"\.checked\s*\(\)|from_timestamp_micros")
+
+FN_HEAD = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+(\w+)", re.M)
+ROOT_IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+RETURN_SHAPE = re.compile(r"\breturn\b|\bOk\s*\(|\bSome\s*\(")
+
+
+def enclosing_fn(text: str, pos: int) -> tuple[str, int, int]:
+    """(name, start, end) of the `fn` containing `pos`.
+
+    ⛔ THE END IS FOUND BY BRACE BALANCE FROM THE SIGNATURE, not by the next
+    `fn` keyword: a nested closure or an inner `fn` would end the span early and
+    the escape triage would stop reading before the function's own return.
+    """
+    heads = [m for m in FN_HEAD.finditer(text) if m.start() <= pos]
+    if not heads:
+        return "", 0, len(text)
+    head = heads[-1]
+    brace = text.find("{", head.end())
+    if brace == -1:
+        return head.group(1), head.start(), len(text)
+    depth, k = 0, brace
+    while k < len(text):
+        if text[k] == "{":
+            depth += 1
+        elif text[k] == "}":
+            depth -= 1
+            if depth == 0:
+                return head.group(1), head.start(), k + 1
+        k += 1
+    return head.group(1), head.start(), len(text)
+
+
+def escape_triage(text: str, pos: int, bound: str) -> tuple[str, str]:
+    """Does the bound expression's root binding reach a return-shaped position?
+
+    ⚠️ A TRIAGE, NOT A VERDICT, and the distinction is the whole point. It answers
+    a decidable question — *does this identifier appear inside a `return`, `Ok(`
+    or `Some(` after the write, within the same function* — which is neither
+    sound nor complete for "the caller compares this against the stored column".
+    It exists to ORDER the hand adjudication, and the adjudication is what
+    decides. Publishing its output as the answer would be the error
+    `docs/knowledge/a-census-is-as-wide-as-its-key.md` describes.
+    """
+    name, start, end = enclosing_fn(text, pos)
+    if not bound:
+        return name, ""
+    m = ROOT_IDENT.search(bound.lstrip("&*"))
+    if not m:
+        return name, ""
+    root = m.group(0)
+    after = text[pos:end]
+    for line in after.splitlines():
+        if RETURN_SHAPE.search(line) and re.search(rf"\b{re.escape(root)}\b", line):
+            return name, "reaches_return"
+    # a struct literal spanning lines: the field appears after an `Ok(`/`return`
+    tail = after
+    for m2 in RETURN_SHAPE.finditer(tail):
+        if re.search(rf"\b{re.escape(root)}\b", tail[m2.start():m2.start() + 400]):
+            return name, "reaches_return"
+    return name, "contained"
+
+
+def provenance(text: str, pos: int, bound: str) -> str:
+    """Where the bound instant came from, within its own function.
+
+    `database_clock` — assigned from `database_now_in_tx` / `tx.database_now()`
+                       / `clock_timestamp()`. Already microsecond-truncated by
+                       PostgreSQL, so there is no second clock and no hazard.
+    `normalized`     — assigned through `.checked()` or `from_timestamp_micros`,
+                       the mitigation `site_authority/mod.rs` documents.
+    `rust_clock`     — `Utc::now()` and friends. The only origin that can carry
+                       a nanosecond the column will discard.
+    `caller_supplied`— a parameter: the origin is the caller's and this pass does
+                       not follow it. ⚠️ Reported as its own class rather than
+                       guessed, because guessing is how the name heuristic got
+                       four columns wrong one measurement ago.
+    `other`          — a local whose right-hand side matches none of the above.
+    """
+    b = bound.lstrip("&*")
+    m = ROOT_IDENT.search(b)
+    if not m:
+        return "other"
+    root = m.group(0)
+    if RUST_CLOCK.search(b):
+        return "rust_clock"
+    name, start, end = enclosing_fn(text, pos)
+    body = text[start:end]
+    assign = re.search(rf"let\s+{re.escape(root)}\s*(?::[^=]+)?=\s*([^;]*);", body, re.S)
+    if assign:
+        rhs = assign.group(1)
+        if DB_ORIGIN.search(rhs):
+            return "database_clock"
+        if NORMALIZED.search(rhs):
+            return "normalized"
+        if RUST_CLOCK.search(rhs):
+            return "rust_clock"
+        return "other"
+    signature = body[:body.find("{")] if "{" in body else ""
+    if re.search(rf"\b{re.escape(root)}\s*:", signature):
+        return "caller_supplied"
+    return "other"
+
+
 def scan_file(text: str, types: dict[tuple[str, str], str] | None = None) -> list[Column]:
     other_store = bool(SQLITE_DRIVER.search(text))
     found: list[Column] = []
@@ -343,6 +458,11 @@ def scan_file(text: str, types: dict[tuple[str, str], str] | None = None) -> lis
             if other_store and col.verdict == "unknown_column":
                 col = Column(col.statement, col.table, col.name, col.value,
                              col.bound, "other_store")
+            if col.verdict == "bound_unread":
+                fn, esc = escape_triage(text, m.start(), col.bound or "")
+                col = Column(col.statement, col.table, col.name, col.value,
+                             col.bound, col.verdict, fn, esc,
+                             provenance(text, m.start(), col.bound or ""))
             found.append(col)
     return found
 

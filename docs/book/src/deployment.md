@@ -1514,6 +1514,130 @@ the checkout for private storage discovery. The `rb-site` operator tool also run
 from within the checkout to verify storage locality. The node's
 journal is a local SQLite file that stays on the node's own volume.
 
+## Release manifests and verifying a build
+
+`rb-release-manifest` is the tool that signs a release and the tool somebody
+else uses to check one. It is the only binary here whose audience includes
+people outside the deployment.
+
+⛔ **The manifest is the single verification unit.** The binaries are verified
+*through* it, never individually: it records one `sha256:<hex>` digest per
+binary, and one Ed25519 signature covers the manifest's canonical bytes.
+
+### Signing a release
+
+```bash
+# once — creates the release identity, and refuses to overwrite an existing one
+rb-release-manifest keygen --key release-key.pk8
+
+# per release — digests each named binary and signs the manifest
+rb-release-manifest generate \
+  --key release-key.pk8 \
+  --bin-dir target/release \
+  --bin rb --bin rb-server --bin rb-node \
+  --out release.json \
+  --release-name 0.1.0
+```
+
+The signature lands beside the manifest at `<out>.sig`.
+
+⛔ **`generate` is not reproducible, and nothing here claims it is.** The
+manifest stamps `created_at` from the clock, so two runs over one unchanged
+binary produce different bytes and different signatures. What `verify`
+re-derives is each **binary's** digest against the stored one; the manifest
+itself is a durable artefact to be kept, not one to be rebuilt.
+
+### Publishing the identity so others can verify
+
+```bash
+rb-release-manifest pubkey --key release-key.pk8 --out release-key.pub
+```
+
+This writes the raw 32-byte Ed25519 public key as hex.
+
+🔴 **Until this verb existed, every verification required the PRIVATE key.**
+`verify` derived the public key from the PKCS8 file, so the only party who could
+check a release was the party who signed it — and a signature whose verifier
+must hold the signing key proves nothing to anybody else, which is the property
+signatures exist for. That arrangement caught accidental corruption, not forgery.
+
+The public key is public by definition, so unlike `keygen` it carries no
+permission tightening — but it is still never overwritten, because a published
+identity being silently replaced is the failure this whole area is about.
+
+### Verifying a release
+
+A third party verifies with the published key and never touches a private one:
+
+```bash
+rb-release-manifest verify \
+  --public-key release-key.pub \
+  --bin-dir ./downloaded-binaries \
+  --manifest release.json \
+  --sig release.json.sig
+```
+
+The releaser's own check may pass `--key release-key.pk8` instead, and with
+neither flag the tool defaults to `release-key.pk8` so `make release` is
+unchanged. Verification checks **both** halves: every stored digest re-derived
+against the binary on disk, and the signature over the manifest's exact bytes.
+
+### Re-signing after a key incident
+
+If the release identity is lost or compromised, the recovery is to re-sign the
+**same manifest** under a new identity. The full procedure is the
+`docs/runbooks/signing-key-incident.md` runbook in the repository.
+
+```bash
+rb-release-manifest keygen --key new-release-key.pk8
+rb-release-manifest re-sign \
+  --key new-release-key.pk8 \
+  --manifest release.json \
+  --sig release.json.sig.new
+```
+
+⛔ **This is not `generate` with a different key, and it cannot be.** `generate`
+rebuilds the manifest from `--bin-dir`, which needs the original binaries still
+present and byte-identical — exactly what a compromise investigation cannot
+assume — and stamps a fresh `created_at`, so it publishes a *new* manifest
+rather than the same one under a new identity, breaking anything that pinned the
+manifest's own digest.
+
+⭐ So `re-sign` reads the manifest's bytes **verbatim** and signs those. It
+parses them only far enough to refuse a file that is not a manifest, and never
+re-serializes — a second canonicalization is a second chance to produce
+different bytes. `--sig` is required and never overwritten, because the old
+signature is the incident's evidence.
+
+⛔ It deliberately does **not** verify the old signature first: the key that
+would check is the one presumed lost or compromised, so requiring it would make
+the command unusable in the only situation it exists for. What the digests
+assert about the binaries is unchanged either way, which is why the manifest is
+worth re-signing at all.
+
+### Certification records
+
+The same identity signs adapter qualification records:
+
+```bash
+rb-release-manifest certify sign   --key release-key.pk8 --record qualification.json
+rb-release-manifest certify verify --public-key release-key.pub --record qualification.json
+```
+
+`sign` re-derives the record's **self-digest first** — a record whose digest
+lies is refused before any signature is produced — then writes the canonical
+bytes back and signs them. `verify` checks the signature over the record's exact
+bytes and re-derives the self-digest, and takes `--public-key` for the
+third-party path just as `verify` does.
+
+### What ADR-027 defers
+
+⚠️ Two rungs of the load ladder are **named deferrals, not met requirements**:
+protected release identities (the key here is the releaser's own file, and
+`release-key.pk8` is gitignored rather than held in hardware) and reproducible
+builders. A verified manifest says these bytes are the bytes that identity
+signed — not that they were built from the source they claim.
+
 ## The two profiles
 
 `ROADMAP.md` §6.6 names the initial profiles; Phase 1 ships two of them:

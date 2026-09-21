@@ -1,5 +1,21 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — Zero gaps: every shipped surface is documented or deliberately internal (`SIGNOFF-REPAIR.11.4.6.8`, closing `.11.4.6`)
+
+`REASONBRAID-DOC-0117`. The last gap, and the leaf that opened on *fourteen undocumented surfaces* closes on a measured zero.
+
+- ✅ **`rb-release-manifest` — the one binary with an audience OUTSIDE the deployment, and the one the coarse measure was least able to see.** Its entire book presence was the table cell `| \`rb-release-manifest\` | release manifest tooling |`, which satisfies a bare-name match exactly as `census_book_coverage.py` warns in its own report. `deployment.md` now carries `keygen`, `generate`, `pubkey`, `verify` by **both** paths, `re-sign` and the `certify` pair, each with a worked invocation.
+- ⭐ **The section's centre is the third-party path, because that is the verb that had no reader.** `pubkey` exists so somebody who does **not** hold the signing key can verify a release; before it, `verify` derived the public key from the PKCS8 file, so **the only party who could check a release was the party who signed it** — an arrangement that caught accidental corruption, never forgery. A verb that exists to serve an outside audience, documented nowhere they can read, is this whole leaf's subject in one instance.
+- ⛔ **Three claims the section could easily have made, and the code refuses all three**: `generate` is **not reproducible** (`created_at` is the clock, which is exactly why `re-sign` exists); `re-sign` is **not** `generate` under another key — it signs the manifest's bytes verbatim and deliberately does not check the old signature, because that key is the one presumed compromised; and ADR-027's protected identities and reproducible builders are **named deferrals**, so a verified manifest says *these bytes are the bytes that identity signed*, never *these were built from the source they claim*.
+
+### `.11.4.6` closes — and the backlog it opened expecting is not the one it closed
+
+- ⭐ **43 members: 40 covered · 3 internal · 0 gap.** The leaf opened on *fourteen undocumented surfaces*, a figure derived by **subtracting chapters from route families** — the exact anti-pattern `docs/CLAIM_VERIFICATION.md` names. Measured properly the population was **17 gaps over 43 members**, and three of its four biggest surprises were not the ones it predicted.
+- 🔴 **The headline was stale before the leaf ran** — the MCP chapter it said was missing had existed since `REPAIR-0294`, put there by a sibling (`.1`). 🔴 **The coarse mention test was wrong in BOTH directions** — 21 of 30 families looked covered where 14 were, and `/` read as a bare mention while a whole chapter describes it (`.2`). 🔴 **And the largest single cause was not absence at all**: **fourteen routes were already explained and simply never addressed**, repaired by seven contract blocks rather than fourteen sections (`.6`, promoted as `a-coverage-gap-names-what-is-missing-not-what-is-absent`).
+- ⭐ **Every `/v1/` product route is now documented.** `census_route_documentation.py` moves **62 described / 2 mentioned / 40 absent** at the leaf's start to **101 / 1 / 2**; the remaining three are the console's own page and its two assets, adjudicated `covered` and `internal`.
+- ⭐ **And the leaf's own sentence is no longer true, which is its most durable output.** It recorded *nothing gates what it omits, which is why this went unmeasured*. `SURFACE-JUDGEMENT` now refuses a commit that adds a shipped surface nobody has judged, that keeps a judgement whose member is gone, or whose witness no longer holds — so the coverage cannot decay the way it accumulated.
+- ⛔ `.11.4` stays `active`: `.11.4.3` is still open, so closing this child does not close its parent. The frontier moves to **`.11.2.7`**, where one of `COMMIT.md`'s four pre-push gates answers differently about the same bytes.
+
 ## 2026-09-21 — The deliberation verbs, and the note promoted one commit earlier paid for itself (`SIGNOFF-REPAIR.11.4.6.7`)
 
 `REASONBRAID-DOC-0116`. Four routes, two different causes — and separating them is what the leaf was.

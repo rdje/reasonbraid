@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-21 — One git process per path instead of one per version, and the real-tree identity check could not see the semantic at risk (`SIGNOFF-REPAIR.11.4.2.6.7.2`)
+
+`REASONBRAID-REPAIR-0356`. `.11.4.2.6.7` must falsify against a GROWTH claim, so a growth assertion has to be affordable at commit time. It was not.
+
+- 🔴 **23.24 s against a 28.74 s whole-enforcer run.** `measure_history` spawned one `git cat-file -s` per version, and the three ledgers a growth assertion must cover hold 1,756 of them. A gate leg that nearly doubles the gate is one people route around (`.11.5`).
+- ✅ **0.11 s.** One `git cat-file --batch-check` process per path, inside the SHARED function — `version_sizes` for the walk, `batch_sizes` for the parse. ⛔ No fast twin beside the old one: two producers of one number is the drift this repository keeps repairing.
+- ✅ **Output-identical, by the method `.11.4.2.6.6.2` established** — HEAD's own script extracted with `git show` and run against the SAME tree, not before-and-after on a moving one. **24 paths, 4,579 versions, every FIELD of every record compared, 0 disagreements**; 62.19 s → 0.79 s over that set.
+- 🔴 **And that comparison could not reach the one semantic being preserved.** The behaviour is a SKIP — a commit that DELETED the path is reported by `git log` and does not resolve — and **no routed path has ever been deleted**, so all twenty exercise it zero times. ⭐ Measured instead on three paths that do: each **2 revisions, 1 resolvable object**, old and new agreeing and each dropping exactly one.
+- ⭐ **Falsified**: a reader that counts a miss as `0` returns `[12, 0, 7]` where the shipped one returns `[12, 7]`, so the identity check can report a difference rather than only ever agreeing. Five new self-test controls pin the parse in both directions.
+- ⛔ No caller, threshold, registry row, gate or doctrine count changed. `--self-test` **27 controls** (was 22); `--shapes` prints the same twenty shapes in 0.54 s, down from 33.05 s.
+- 🔎 **A defect found while running this commit's own prescribed rotation, and owned rather than noted.** `LEDGER-RUNWAY` fired on `DEV_NOTES.md`; the one-command rotation retired 13 records and left 46,866 bytes of headroom — and its notice says *every byte this file held immediately before the rotation* while naming an object **2,948 bytes smaller** than the file was at that moment, because a rotation always runs on the dirty tree that crossed the threshold. ⭐ The guarantee is intact (every retired heading is verified against `HEAD:<ledger>` or the rotation refuses), so the defect is a false published sentence. Owner `SIGNOFF-REPAIR.11.4.2.6.8`, `pending`, census-first.
+
 ## 2026-09-21 — Fourteen of the twenty declared controls are machine-expressible, and the naive reading of them is wrong 27.8% of the time (`SIGNOFF-REPAIR.11.4.2.6.7.1`)
 
 `REASONBRAID-DOC-0096`. The census `.11.4.2.6.7` is forbidden to design without: what do the twenty routed-destination rows actually claim?

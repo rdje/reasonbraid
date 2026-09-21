@@ -165,19 +165,45 @@ class History:
     hist_max: int
 
 
-def measure_history(root: Path, path: str) -> History:
+def batch_sizes(lines: list[str]) -> list[int]:
+    """`git cat-file --batch-check` output → the sizes, absent objects dropped.
+
+    ⛔ THE DROP IS THE OLD BEHAVIOUR, PRESERVED EXACTLY. The per-version walk
+    this replaces tested `returncode == 0` and skipped anything else, which is
+    how a commit that DELETED the path — `git log -- path` reports it, and
+    `rev:path` does not resolve there — stayed out of the series. Batch mode
+    reports the same revision as `<input> missing` on its own line, one line per
+    input line and in order, so the skip is the same skip rather than a new rule
+    that happens to agree today.
+    """
+    return [int(line) for line in lines if line.strip().isdigit()]
+
+
+def version_sizes(root: Path, path: str) -> list[int]:
+    """Every version's size, oldest first, in ONE `git cat-file` process.
+
+    ⚠️ It used to be one process PER VERSION. Measured on the three ledgers a
+    growth assertion must cover (`SIGNOFF-REPAIR.11.4.2.6.7.2`): 1,756 versions
+    cost **23.24 s** that way against a **28.74 s** whole-enforcer run, and
+    **0.11 s** this way — the same numbers, 211 times cheaper. A gate leg that
+    nearly doubles the gate is one people route around (`SIGNOFF-REPAIR.11.5`).
+    """
     revs = subprocess.run(
         ["git", "log", "--reverse", "--format=%H", "--", path],
         cwd=root, capture_output=True, text=True,
     ).stdout.split()
-    sizes: list[int] = []
-    for rev in revs:
-        p = subprocess.run(
-            ["git", "cat-file", "-s", f"{rev}:{path}"],
-            cwd=root, capture_output=True, text=True,
-        )
-        if p.returncode == 0:
-            sizes.append(int(p.stdout.strip()))
+    if not revs:
+        return []
+    out = subprocess.run(
+        ["git", "cat-file", "--batch-check=%(objectsize)"],
+        cwd=root, capture_output=True, text=True,
+        input="".join(f"{rev}:{path}\n" for rev in revs),
+    )
+    return batch_sizes(out.stdout.splitlines())
+
+
+def measure_history(root: Path, path: str) -> History:
+    sizes = version_sizes(root, path)
     if not sizes:
         return History(0, 0, 0, 0, 0, 0, 0, 0, 0)
     grew = shrank = same = added = removed = 0
@@ -333,6 +359,20 @@ def self_test() -> int:
                         "  ✅ LESSON-PROMOTION a new dated lesson in DEV_NOTES.md is PROMOTED\n"
                         "  ❌ README-STABILITY\n       README-STABILITY: README.md is 999 lines"),
           "refused-for-another-file")
+
+    # The batch size reader, whose whole job is to preserve a SKIP the previous
+    # per-version walk expressed as `returncode != 0` (`.11.4.2.6.7.2`).
+    check("batch sizes: plain sizes survive in order",
+          batch_sizes(["12", "7", "100"]), [12, 7, 100])
+    check("batch sizes: a missing object is DROPPED, not zero",
+          batch_sizes(["12", "deadbeef:gone.md missing", "7"]), [12, 7])
+    check("batch sizes: nothing but misses is empty",
+          batch_sizes(["a:b missing", "c:d missing"]), [])
+    check("batch sizes: blank lines are not sizes", batch_sizes(["", "  ", "5"]), [5])
+    # ⛔ A dangling-symlink-style entry reports an object id and a type, never a
+    # bare number, so the digit test is what separates a size from a report.
+    check("batch sizes: an id+type+size line is not a bare size",
+          batch_sizes(["1a2b3c blob 44"]), [])
 
     if fails:
         for f in fails:

@@ -491,10 +491,17 @@ def scan_file(text: str, types: dict[tuple[str, str], str] | None = None) -> lis
 # (`docs/knowledge/an-adjudication-is-keyed-to-the-words-it-judged.md`).
 #
 # ⚠️ THE KEY IS (file, function, table.column) AND TWO SITES CAN SHARE ONE.
-# `snapshots::submit` writes `evidence_snapshots.retrieved_at` from two
-# statements, so 43 sites map to 42 keys. `adjudication_drift` checks EVERY
-# site against its key's recorded pair, so if the two ever diverge the census
-# refuses instead of quietly judging one by the other's reading.
+# `profiles::write_profile_in_tx` writes `agent_profiles.updated_at` from TWO
+# statements — the INSERT at crates/reasonbraid-server/src/profiles.rs:394 and the UPDATE at :425, the two
+# halves of its upsert — so 43 sites map to 42 keys. `adjudication_drift` checks
+# EVERY site against its key's recorded pair, so if the two ever diverge the
+# census refuses instead of quietly judging one by the other's reading.
+#   🔴 THIS COMMENT NAMED THE WRONG FUNCTION UNTIL `SIGNOFF-REPAIR.11.31.1.1.1`.
+#   It said `snapshots::submit`/`evidence_snapshots.retrieved_at`, which has two
+#   SITES in the census but two distinct KEYS (`submit` and `submit_external`),
+#   so it never collapsed at all. The guard was unaffected — it checks sites, not
+#   keys — but a warning that names the wrong instance sends the next reader to
+#   the wrong file.
 #
 # Verdicts:
 #   contained             — written, never read back; the caller's clock is

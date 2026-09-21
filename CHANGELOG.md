@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-21 — A parent whose children all closed had never run its own acceptance (`SIGNOFF-REPAIR.11.4.2.6`)
+
+`REASONBRAID-DOC-0103`. Found by enumerating every `.11.4.2` descendant's status before closing the grandparent.
+
+- 🔴 **`REPAIR-0357` published *`.11.4.2.6` is fully closed — all four strands*, and the leaf itself still said `Verification / commit: pending` with no `- Status:` line at all.** Every child was `done`; the parent's own acceptance — a claim about the RESULT — had never been run.
+- ✅ **It is met, and it was EXECUTED rather than inspected.** `census_live_documents.py --probe-bounds` → **all five core live documents REFUSED**, each restored byte-identically. When the leaf was opened the same command returned rc=0 for `LIVE_STATUS.md` and `DEV_NOTES.md` — the two surfaces it exists because of — so that is the before half of the measurement.
+- ✅ **Each refusal names a numeric cap, captured from the real enforcer**: `README.md is 202109 bytes (> cap 2400)`; `MEMORY.md has 1914 lines (> cap 50)`; `LIVE_STATUS.md has -173920 bytes of headroom under its 55000-byte threshold`; `CHANGELOG.md is 271864 bytes (> rotation threshold 96000)`; `DEV_NOTES.md has -175610 bytes of headroom under its 76000-byte threshold`.
+- ⛔ **No ceiling was chosen in the slice that had to fit under it**, which was this leaf's own prohibition: each threshold was derived one leaf ahead of the migration and registered `enforced=False` until the rotation landed.
+- ⭐ The fourth strand shipped as `ROUTE-CONTROL` and has since been extended twice — to the lifecycle field and to thirteen destinations the closure could not see. It evaluates 31 declared assertions across 34 rows every commit.
+- ⛔ No code and no registry row changed; this commit executes an acceptance and records the result.
+
 ## 2026-09-21 — One tree is 70% of the task collection, and rotating it is refuted by its own 4,092 references (`SIGNOFF-REPAIR.11.4.2.9`)
 
 `REASONBRAID-DOC-0102`. The last unexecuted words of `.11.4.2`'s scope — *archive retrieval and collection bounds*.

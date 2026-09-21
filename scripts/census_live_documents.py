@@ -56,6 +56,7 @@ class RouteRow:
     klass: str
     control: str
     owner: str
+    assertions: str = ""
 
 
 def parse_route_registry(text: str) -> list[RouteRow]:
@@ -64,6 +65,13 @@ def parse_route_registry(text: str) -> list[RouteRow]:
     A row short of four fields is returned with empty tails rather than
     skipped: `check_readme_stability.sh` calls that shape MALFORMED and fails
     on it, so a census that silently dropped it would disagree with the gate.
+
+    ⚠️ The FIFTH field is OPTIONAL and holds the row's machine-readable
+    assertions (`SIGNOFF-REPAIR.11.4.2.6.7`); an absent one is the empty string,
+    which is the adjudication *this control states nothing a machine can
+    decide*. ⛔ A SIXTH field and beyond would be silently swallowed by a
+    fixed-width split, so the tail is joined back rather than dropped, and
+    `ROUTE-CONTROL` refuses the unparseable term that produces.
     """
     rows: list[RouteRow] = []
     for line in text.splitlines():
@@ -71,8 +79,8 @@ def parse_route_registry(text: str) -> list[RouteRow]:
         if not line or line.startswith("#"):
             continue
         parts = line.split("|")
-        parts += [""] * (4 - len(parts))
-        rows.append(RouteRow(parts[0], parts[1], parts[2], parts[3]))
+        parts += [""] * (5 - len(parts))
+        rows.append(RouteRow(parts[0], parts[1], parts[2], parts[3], "|".join(parts[4:])))
     return rows
 
 
@@ -179,8 +187,15 @@ def batch_sizes(lines: list[str]) -> list[int]:
     return [int(line) for line in lines if line.strip().isdigit()]
 
 
-def version_sizes(root: Path, path: str) -> list[int]:
+def version_sizes(root: Path, path: str, rev: str = "HEAD") -> list[int]:
     """Every version's size, oldest first, in ONE `git cat-file` process.
+
+    `rev` truncates the history to what was reachable at that commit, so a
+    growth shape can be asked as of a past state — the only way to put a
+    registry row's claim back against the tree that refuted it
+    (`SIGNOFF-REPAIR.11.4.2.6.7`). ⛔ The default `HEAD` is the behaviour this
+    function already had: `git log -- path` walks from HEAD, and naming it
+    explicitly was proved to return a byte-identical revision list.
 
     ⚠️ It used to be one process PER VERSION. Measured on the three ledgers a
     growth assertion must cover (`SIGNOFF-REPAIR.11.4.2.6.7.2`): 1,756 versions
@@ -189,7 +204,7 @@ def version_sizes(root: Path, path: str) -> list[int]:
     nearly doubles the gate is one people route around (`SIGNOFF-REPAIR.11.5`).
     """
     revs = subprocess.run(
-        ["git", "log", "--reverse", "--format=%H", "--", path],
+        ["git", "log", "--reverse", "--format=%H", rev, "--", path],
         cwd=root, capture_output=True, text=True,
     ).stdout.split()
     if not revs:
@@ -202,8 +217,8 @@ def version_sizes(root: Path, path: str) -> list[int]:
     return batch_sizes(out.stdout.splitlines())
 
 
-def measure_history(root: Path, path: str) -> History:
-    sizes = version_sizes(root, path)
+def measure_history(root: Path, path: str, rev: str = "HEAD") -> History:
+    sizes = version_sizes(root, path, rev)
     if not sizes:
         return History(0, 0, 0, 0, 0, 0, 0, 0, 0)
     grew = shrank = same = added = removed = 0
@@ -359,6 +374,17 @@ def self_test() -> int:
                         "  ✅ LESSON-PROMOTION a new dated lesson in DEV_NOTES.md is PROMOTED\n"
                         "  ❌ README-STABILITY\n       README-STABILITY: README.md is 999 lines"),
           "refused-for-another-file")
+
+    # The optional fifth field, and the tail a fixed-width split would swallow.
+    five = parse_route_registry(
+        "A.md|hot_live|ceiling text|me|ceiling=100 doctrine=X\n"
+        "B.md|reader_navigation|narrative text|me\n"
+        "C.md|hot_live|odd|me|a=1|b=2\n"
+    )
+    check("fifth field read", five[0].assertions, "ceiling=100 doctrine=X")
+    check("absent fifth field is empty, not missing", five[1].assertions, "")
+    check("owner is no longer swallowed by the fifth field", five[0].owner, "me")
+    check("a sixth field is kept for the checker to refuse", five[2].assertions, "a=1|b=2")
 
     # The batch size reader, whose whole job is to preserve a SKIP the previous
     # per-version walk expressed as `returncode != 0` (`.11.4.2.6.7.2`).

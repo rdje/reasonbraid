@@ -192,8 +192,18 @@ for token in $(routes_from_readme; routes_from_hint; routes_from_controls); do
 done
 
 malformed=0
-while IFS='|' read -r path class control owner; do
+# ⛔ FIVE NAMES, FOUR REQUIRED. The fifth field carries the row's machine-readable
+# assertions (`SIGNOFF-REPAIR.11.4.2.6.7`) and is OPTIONAL — a row with none is
+# adjudicated narrative. It is named here only so that `owner` stays the owner:
+# with four names, `read` puts every remaining field into the last one, so a
+# five-field row would have read `repo-local|ceiling=55000 …` as its owner and
+# still passed this non-empty test. ⚠️ The arity verdict itself is UNCHANGED and
+# that was measured, not assumed: this loop still requires exactly class, control
+# and owner, and still ignores the fifth. The assertions are evaluated by
+# ROUTE-CONTROL, which owns their shape and their truth.
+while IFS='|' read -r path class control owner assertions; do
   case "$path" in ''|'#'*) continue ;; esac
+  : "${assertions:=}"
   if [ -z "$class" ] || [ -z "$control" ] || [ -z "$owner" ]; then
     note "malformed route row in $INVENTORY: '$path' — path|class|control|owner are all required."
     malformed=$((malformed + 1))

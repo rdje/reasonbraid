@@ -361,4 +361,44 @@ if ! python3 -B scripts/census_external_ledger.py --check >/dev/null 2>&1; then
     exit 1
 fi
 
+# ROUTE-CONTROL (`SIGNOFF-REPAIR.11.4.2.6.7`) — every pressure control the
+# routed-destination registry DECLARES is evaluated, and a false one refuses.
+#
+# 🔴 THE DEFECT IT CLOSES: `.doctrine/readme_routes.txt` gave `LIVE_STATUS.md`
+# the control *overwritten rather than appended* while its own 632 versions
+# showed 614 growing against 17 shrinking with the tip at its all-time high, and
+# `check_readme_stability.sh` passed throughout — it validates that a row has
+# four non-empty fields, which is ARITY, not truth.
+#
+# ⛔ THE OPERAND IS DECLARED, NEVER EXTRACTED FROM THE PROSE. A census of all
+# twenty controls measured the obvious extractor at **5 wrong operands in 18**
+# — two task-tree names read as doctrine ids, three HISTORICAL byte figures read
+# as ceilings — with **6 of the 19 real claims invisible to it**
+# (`SIGNOFF-REPAIR.11.4.2.6.7.1`). A paraphrase matcher is `.11.6`'s measured
+# failure mode, so a row carries machine-readable terms BESIDE its human
+# sentence and the sentence is never deleted to fit them.
+#
+# ⭐ IT IS DOUBLE-ENTRY, WHICH IS WHAT STOPS IT BEING THEATRE. The check refuses a
+# term the prose reading found and the row does not declare (the field cannot be
+# emptied to go green) AND a term the row declares that no reading of its prose
+# supports (a term cannot be invented). The hand reading and the declaration are
+# produced by different acts; their agreement is the assertion.
+#
+# ⚠️ Falsified against the REAL historical defect with no edit at all:
+# `--check --as-of 9221467` puts the row's growth claim back against the tree
+# that refuted it and returns rc=1 naming `LIVE_STATUS.md` — *623 grew, 17
+# shrank, tip 620448 against a peak of 620448 -> at_all_time_high* — while the
+# two sibling ledgers' identical claims still hold, so the control comes apart
+# from its subject rather than failing wholesale at an old commit. Each of the
+# seven evaluators is separately two-sided.
+#
+# ⚠️ Priced before registering (`SIGNOFF-REPAIR.11.5`): 0.18 s over three runs
+# against a 28.74 s enforcer, about 0.6%. The growth leg reads 1,756 ledger
+# versions and is affordable only because `.11.4.2.6.7.2` made that one
+# `git cat-file` call instead of 1,756.
+if ! python3 -B scripts/census_route_controls.py --check >/dev/null 2>&1; then
+    python3 -B scripts/census_route_controls.py --check >&2
+    exit 1
+fi
+
 exit 0

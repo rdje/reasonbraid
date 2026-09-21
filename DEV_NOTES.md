@@ -1,5 +1,58 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — The falsification that refused for the wrong reason
+
+The scheme is an optional fifth field on each routed-destination row: space-separated
+`kind=operand` terms sitting beside the human sentence, evaluated every commit. Fourteen
+of the twenty rows declare something; six declare nothing, and that is a judgement
+recorded rather than a gap.
+
+The interesting part was not the design. It was the falsification.
+
+I wanted to show every evaluator can refuse, so I did the obvious thing: patch a
+declared operand in the registry to a false value, run the check, confirm it refuses,
+restore. Seven kinds, seven refusals, all naming the right row, registry restored
+byte-identically. It looked complete.
+
+It was not. Every one of the seven refused through the DRIFT leg.
+
+The scheme has a double-entry property: the instrument carries a hand reading of each
+sentence, the row carries a declaration, and the check refuses when they disagree in
+either direction. That is there so the field cannot be quietly emptied, and so a term
+cannot be invented that the sentence never made. But it means that patching an operand
+in the registry ALWAYS produces a disagreement — so the refusal I was reading as
+"the ceiling evaluator works" was really "the declaration no longer matches the prose",
+which would have printed identically if every evaluator returned True unconditionally.
+
+Seven controls, one reason, and not the reason any of them was written for. This is
+`a-control-that-passes-for-an-unrelated-reason`, and I produced a clean example of it
+in the pass whose entire purpose was rigour — the same shape `.11.4.2.6.4` found when
+three positive controls all failed in the same direction as their subject.
+
+The isolation is to call each evaluator directly with its declared operand and with a
+wrong one, which cannot involve the drift leg at all. Seven of seven return True then
+False, each naming its own reason.
+
+The other falsification needed no edit at all, and I prefer it for that. The original
+defect was a growth claim — a row saying a file was overwritten rather than appended
+while its tip sat at its all-time high — so the check takes `--as-of`, and asking it as
+of the commit before that file was split refuses it by name with the original numbers.
+What makes it evidence rather than theatre is that the two sibling ledgers declare the
+IDENTICAL claim and both hold at that same commit. A falsification where everything
+fails at an old date proves nothing about which thing is broken.
+
+One more thing I would have got wrong by reflex. `docs/TASK_TREE.md` declared the
+doctrine `TABLE-ARITY` and the enforcer registers `TABLE-ARITY-RATCHET`. The cheap fix
+is a prefix match — one of those is a prefix of the other, after all. That is the move
+`.11.27` refused for a different instrument: it makes today's answer right and hides
+the next one. The sentence is corrected instead, and the refusal names the closest
+registered id so an author is helped without the check being weakened.
+
+⛔ promotion: declined. The transferable method is
+`an-adjudication-is-keyed-to-the-words-it-judged`, promoted one commit ago and applied
+here; double-entry is its mechanical form and is recorded in the source and in the
+doctrine reference rather than restated as a second note.
+
 ## 2026-09-21 — The identity check that could not see the thing it was checking
 
 The next leaf has to falsify a scheme against a growth claim, so I went to price a

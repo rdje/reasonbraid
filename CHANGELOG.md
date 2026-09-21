@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-21 — A declared control is now evaluated, and the row that was false for months is refused by name (`SIGNOFF-REPAIR.11.4.2.6.7`)
+
+`REASONBRAID-REPAIR-0357`. The last strand of `.11.4.2.6`: a routed-destination row could state a pressure control that nothing performed, and one did.
+
+- ✅ **An optional FIFTH registry field of `kind=operand` terms, beside the human sentence, evaluated every commit by `ROUTE-CONTROL`.** 14 rows declare **22 assertions across seven kinds** — ceiling, doctrine, growth, index_entry, guard_required, build_target, identity; 6 rows declare nothing, which is the positive adjudication *this states nothing a machine can decide*. ⛔ **No row's sentence was deleted to fit a field**: two were extended, one corrected.
+- ⛔ **DECLARED, NEVER EXTRACTED, and that is a measurement**: the obvious extractor scores **5 wrong operands in 18**, inventing two task-tree names as doctrine ids and three HISTORICAL byte figures as ceilings, while **6 of the 19 claims are invisible to it**. Wrong in both directions at once.
+- ✅ **FALSIFIED AGAINST THE REAL HISTORICAL DEFECT WITH NO EDIT AT ALL.** `--check --as-of 9221467` puts the row's growth claim back against the tree that refuted it: rc=1, `LIVE_STATUS.md … IT IS FALSE — 623 grew, 17 shrank, tip 620448 against a peak of 620448 -> at_all_time_high`. ⭐ **And it discriminates** — the two sibling ledgers declare the identical claim and both hold at that same commit.
+- 🔴 **My first falsification was a control passing for an unrelated reason.** Editing the fifth field made all seven kinds refuse, and all seven refused through the DRIFT leg rather than their own evaluator, because a patched operand necessarily disagrees with the prose reading. Called directly, **7 of 7 return True on the declared operand and False on a wrong one**.
+- ✅ **All three census findings REPAIRED, not recorded**: `docs/TASK_TREE.md`'s `TABLE-ARITY` corrected to the registered `TABLE-ARITY-RATCHET` — ⛔ not by accepting a prefix, which is `.11.27`'s refused move; `KICKOFF.md` anchored at `457d3a7`, taking expressible-but-unanchored to **0 of 20**; `docs/adr/`'s index claim, previously enforced by nothing, now gated over 32 records.
+- ⭐ **Double-entry is what stops it being theatre**: the check refuses a term the prose reading found that the row drops (the field cannot be emptied to go green) AND a term the row declares that no reading supports (a term cannot be invented).
+- ⚠️ **The existing legs proved unchanged** by running HEAD's own guard over the PRE-CHANGE registry — byte-identical output. The fifth `read` name exists because four names put `repo-local|ceiling=55000 …` in the owner field and the arity test still passed. The closure leg is deliberately NOT extended: a declared operand names a doctrine's own script, which no registry row is a prefix of.
+- ⚠️ Priced before registering: **0.18 s**, enforcer 28.74 s → 29.17 s (+1.5%). `--self-test` **35 controls** (was 20).
+
 ## 2026-09-21 — One git process per path instead of one per version, and the real-tree identity check could not see the semantic at risk (`SIGNOFF-REPAIR.11.4.2.6.7.2`)
 
 `REASONBRAID-REPAIR-0356`. `.11.4.2.6.7` must falsify against a GROWTH claim, so a growth assertion has to be affordable at commit time. It was not.

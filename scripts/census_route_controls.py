@@ -14,10 +14,18 @@ rather than appended* while its own 632 versions showed 614 growing against 17
 shrinking with the tip at its all-time high, and the guard was green throughout,
 because four non-empty fields is arity rather than truth.
 
-⛔ THIS INSTRUMENT PROPOSES NO SCHEME AND SHIPS NO GATE. `.11.4.2.6.7` may not
-design one before its population is counted (`SIGNOFF-REPAIR.11.6`), and its own
-constraint is that *a scheme that fits 3 of 20 is a scheme for 3 rows*. This
-counts, and the count is the input to that decision.
+⭐ THE CENSUS CAME FIRST AND THE SCHEME FOLLOWED IT (`.11.4.2.6.7`). Of the
+twenty rows, **14 carry a machine-expressible claim and 6 are narrative**, so the
+scheme is for fourteen rows rather than the three `.11.4.2.6.7` feared. Those
+rows now DECLARE their claims in an optional fifth registry field, and `--check`
+is the `ROUTE-CONTROL` gate that evaluates every one of them each commit.
+
+⛔ DECLARED, NEVER EXTRACTED — and that is a measurement, not a preference.
+`--extraction-control` runs the obvious alternative, pulling doctrine-shaped
+tokens and byte-shaped numbers straight out of the prose, and scores it: **5 of
+18 operands are not claims at all** (two task-tree names read as doctrine ids,
+three HISTORICAL byte figures read as ceilings) while **6 of the 19 real claims
+are invisible to it**. Wrong in both directions at once.
 
 ⛔ THE CLASSIFICATION IS A JUDGEMENT OVER PROSE AND IS CARRIED AS DATA. Deciding
 whether a sentence makes a machine-evaluable claim is not itself mechanizable —
@@ -33,21 +41,24 @@ that rots:
   - every claim called evaluable is EVALUATED in the same run, so *expressible*
     is demonstrated rather than asserted.
 
-⭐ AND THE OBVIOUS ALTERNATIVE IS RUN AS A CONTROL RATHER THAN DISMISSED.
-`--extraction-control` runs the naive reading — pull doctrine-shaped tokens and
-byte-shaped numbers straight out of the prose — and scores it against the
-adjudication. It is wrong in both directions at once, which is the measured
-reason an operand must be DECLARED by a row rather than extracted from it.
+⭐ AND THE HAND READING IS KEPT HONEST BY DOUBLE-ENTRY. `ADJUDICATION` is what a
+person read out of each sentence; the fifth field is what the row declares to a
+checker. `--check` refuses when they disagree in EITHER direction — a term the
+prose states and the row drops (so the field cannot be emptied to go green), and
+a term the row declares that no reading supports (so a term cannot be invented).
 
-    python3 -B scripts/census_route_controls.py
+    python3 -B scripts/census_route_controls.py                    # the census
+    python3 -B scripts/census_route_controls.py --check            # ROUTE-CONTROL
+    python3 -B scripts/census_route_controls.py --check --as-of REV
     python3 -B scripts/census_route_controls.py --extraction-control
     python3 -B scripts/census_route_controls.py --shapes
     python3 -B scripts/census_route_controls.py --self-test
 
-⚠️ `--shapes` is opt-in because it walks every version of every routed file
-through the sibling census's `measure_history`, which costs one `git cat-file`
-per version. It is the growth axis the historical defect lived on, and it is
-reported as CONTEXT — no row declares a growth claim today.
+⚠️ `--as-of` exists for ONE purpose: putting a row's claim back against the tree
+that refuted it. `--check --as-of 9221467` returns rc=1 naming `LIVE_STATUS.md`,
+whose growth claim was false at that commit, while the two sibling ledgers'
+identical claims still hold — a control that comes apart from its subject rather
+than failing wholesale at an old commit.
 
 Self-test: scripts/census_route_controls.py --self-test
 """
@@ -69,6 +80,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 # defect this repository keeps repairing — most recently at SCAFFOLD-COVERAGE,
 # where a list nothing derived had drifted by seven checks.
 from census_live_documents import (  # noqa: E402
+    History,
     RouteRow,
     measure_history,
     parse_doctrine_registry,
@@ -110,7 +122,12 @@ class Claim:
 # Kinds, each with an evaluator below. The vocabulary was READ OFF the twenty
 # sentences rather than chosen first: every kind here is present in at least one
 # row, and no kind was added that no row uses.
-KINDS = ("ceiling", "doctrine", "index_entry", "guard_required", "build_target", "identity")
+KINDS = ("ceiling", "doctrine", "growth", "index_entry", "guard_required",
+         "build_target", "identity")
+
+# The growth shapes `shape_verdict` produces. ⛔ Quoted from that function rather
+# than restated: it is the producer, and a second list here could drift from it.
+GROWTH_SHAPES = ("append_only", "at_all_time_high", "below_peak")
 
 # ⛔ ONE ENTRY PER REGISTRY PATH, INCLUDING THE NARRATIVE ONES. An empty tuple
 # is the adjudication "this control makes no claim a machine could evaluate" and
@@ -126,11 +143,14 @@ ADJUDICATION: dict[str, tuple[Claim, ...]] = {
     # about WHY a change happens. Nothing decidable: a machine can see that bytes
     # moved, never whether an errata rule authorized them.
     "ROADMAP.md": (),
-    # "content identity once the PHASE-0 tree closes" IS an identity claim — the
-    # kind is expressible — but the moment it starts from is prose. No revision
-    # is named, so nothing can be compared. `param` is deliberately empty.
+    # ⭐ THIS ONE WAS THE CENSUS'S *expressible but unanchored* ROW. The kind was
+    # always expressible — pin a revision and the comparison is one
+    # `git cat-file` — but the sentence started the identity at *once the PHASE-0
+    # tree closes*, which no machine can resolve, and the file had already
+    # changed three days after that close. The row now names the revision, and
+    # the clause quotes it, so prose and operand cannot drift apart.
     "KICKOFF.md": (
-        Claim("identity", "content identity once the PHASE-0 tree closes", ""),
+        Claim("identity", "anchored at 457d3a7", "457d3a7"),
     ),
     "CLAUDE.md": (
         Claim("doctrine", "MEMORY-ARCH doctrine verifies the pointer", "MEMORY-ARCH"),
@@ -155,23 +175,37 @@ ADJUDICATION: dict[str, tuple[Claim, ...]] = {
         Claim("index_entry", "bounded index `docs/TASK_TREE.md` (one row per tree)",
               "docs/TASK_TREE.md"),
     ),
+    # 🔴 THE CENSUS'S ONE REFUTED CLAIM. The sentence said `TABLE-ARITY`, and no
+    # doctrine of that id is registered — the enforcer carries
+    # `TABLE-ARITY-RATCHET`, which does run over staged Markdown, so the control
+    # was real and its NAME was wrong. Corrected in the sentence, not papered
+    # over with a prefix match: loosening the comparison would hide the next one
+    # (`SIGNOFF-REPAIR.11.27`).
     "docs/TASK_TREE.md": (
-        Claim("doctrine", "TABLE-ARITY and TASK-TREE-OWNERSHIP doctrines enforce its shape",
-              "TABLE-ARITY"),
-        Claim("doctrine", "TABLE-ARITY and TASK-TREE-OWNERSHIP doctrines enforce its shape",
+        Claim("doctrine", "TABLE-ARITY-RATCHET and TASK-TREE-OWNERSHIP doctrines enforce its shape",
+              "TABLE-ARITY-RATCHET"),
+        Claim("doctrine", "TABLE-ARITY-RATCHET and TASK-TREE-OWNERSHIP doctrines enforce its shape",
               "TASK-TREE-OWNERSHIP"),
     ),
+    # ⛔ THE GROWTH CLAIM IS THE CLASS THE ORIGINAL DEFECT LIVED IN. This row once
+    # declared `overwritten rather than appended` while 614 of its 632 versions
+    # grew and the tip sat at its all-time high, and nothing read it. Each ledger
+    # now asserts the shape its own sentence describes, and `shape_verdict` — the
+    # function that produced the refutation — is the evaluator.
     "LIVE_STATUS.md": (
         Claim("ceiling", "Threshold 55,000 bytes", "55000"),
         Claim("doctrine", "enforced by LEDGER-RUNWAY", "LEDGER-RUNWAY"),
+        Claim("growth", "620,448 bytes became 13,995", "below_peak"),
     ),
     "DEV_NOTES.md": (
         Claim("ceiling", "Threshold 76,000 bytes", "76000"),
         Claim("doctrine", "enforced by LEDGER-RUNWAY", "LEDGER-RUNWAY"),
+        Claim("growth", "908,850 bytes to 37,874", "below_peak"),
     ),
     "CHANGELOG.md": (
         Claim("ceiling", "96,000-byte rotation threshold", "96000"),
         Claim("doctrine", "enforced by the README-STABILITY guard", "README-STABILITY"),
+        Claim("growth", "rotation = git history", "below_peak"),
     ),
     "COMMIT.md": (),
     # Declared and, as this census measures, enforced by nothing at all.
@@ -361,14 +395,85 @@ def eval_identity(root: Path, path: str, param: str) -> tuple[bool | None, str]:
     return size == int(out.stdout.strip()), f"{size} bytes against {param}'s {out.stdout.strip()}"
 
 
+def eval_growth(root: Path, path: str, param: str, rev: str = "HEAD") -> tuple[bool | None, str]:
+    """Does this file's history have the shape its row declares?
+
+    ⛔ THE EVALUATOR IS `shape_verdict`, THE FUNCTION THAT PRODUCED THE
+    REFUTATION. `LIVE_STATUS.md`'s row claimed *overwritten rather than
+    appended*, and that function's own docstring says only `below_peak` is
+    consistent with such a claim. Writing a second classifier here would let the
+    gate and the measurement that found the defect disagree about it.
+
+    `rev` asks the question as of a past commit, which is how the historical
+    defect is put back in front of the shipped check.
+    """
+    if param not in GROWTH_SHAPES:
+        return None, f"{param!r} is not a growth shape ({', '.join(GROWTH_SHAPES)})"
+    history: History = measure_history(root, path, rev)
+    if history.versions == 0:
+        return None, f"{path} has no history at {rev}"
+    got = shape_verdict(history.added, history.removed, history.current, history.hist_max)
+    where = "" if rev == "HEAD" else f" as of {rev}"
+    return got == param, (f"{history.versions} versions{where}: {history.grew} grew, "
+                          f"{history.shrank} shrank, tip {history.current} against a peak of "
+                          f"{history.hist_max} -> {got}")
+
+
 EVALUATORS = {
     "ceiling": eval_ceiling,
     "doctrine": eval_doctrine,
+    "growth": eval_growth,
     "index_entry": eval_index_entry,
     "guard_required": eval_guard_required,
     "build_target": eval_build_target,
     "identity": eval_identity,
 }
+
+# Only these kinds mean anything about a PAST tree. `--as-of` says so rather than
+# quietly evaluating a doctrine registry that only exists at HEAD.
+HISTORICAL_KINDS = ("growth",)
+
+
+def parse_assertions(field: str) -> tuple[list[tuple[str, str]], list[str]]:
+    """The fifth field → ([(kind, operand)], [malformed terms]).
+
+    ⛔ DECLARED, NEVER EXTRACTED. A census of these twenty controls measured the
+    obvious alternative — pull doctrine-shaped tokens and byte-shaped numbers out
+    of the prose — at 5 wrong operands in 18, with 6 of the 19 real claims
+    invisible to it (`SIGNOFF-REPAIR.11.4.2.6.7.1`). A term a row did not write
+    is a term nobody adjudicated.
+
+    Malformed terms are RETURNED rather than skipped: a typo that silently
+    vanishes is a declared control nobody reads, which is the defect this whole
+    scheme exists to end.
+    """
+    good: list[tuple[str, str]] = []
+    bad: list[str] = []
+    for term in field.split():
+        kind, sep, operand = term.partition("=")
+        if not sep or not kind or not operand or kind not in KINDS:
+            bad.append(term)
+        else:
+            good.append((kind, operand))
+    return good, bad
+
+
+def adjudicated_terms(claims: tuple[Claim, ...]) -> list[tuple[str, str]]:
+    """The (kind, operand) pairs the hand reading of the prose produced."""
+    return sorted((c.kind, c.param) for c in claims if c.param)
+
+
+def declaration_drift(adjudged: list[tuple[str, str]],
+                      declared: list[tuple[str, str]]) -> tuple[list, list]:
+    """(adjudicated but not declared, declared but not adjudicated).
+
+    ⭐ THIS IS DOUBLE-ENTRY, NOT A SECOND COPY. One side is a hand reading of the
+    sentence; the other is what the row declares to a checker. They are produced
+    by different acts, and their agreement is the property being asserted — a row
+    whose terms are edited without re-reading its prose comes apart here.
+    """
+    a, d = sorted(set(adjudged)), sorted(set(declared))
+    return [x for x in a if x not in d], [x for x in d if x not in a]
 
 
 # ── the census ────────────────────────────────────────────────────────────────
@@ -501,6 +606,74 @@ def extraction_control(root: Path) -> int:
     return 0
 
 
+def check(root: Path, rev: str = "HEAD") -> int:
+    """ROUTE-CONTROL — every DECLARED assertion is evaluated, and a false one refuses.
+
+    ⛔ It refuses on four things, and the last two are what stop the scheme being
+    theatre: a malformed term, an assertion that does not hold, an assertion the
+    prose reading found that the row does not declare, and an assertion the row
+    declares that no reading of the prose supports. Without the third, the field
+    could be emptied to make the gate green; without the fourth, a term could be
+    invented that the sentence never claimed.
+
+    `rev` restricts evaluation to the kinds that mean anything about a past tree
+    and says which ones it skipped, rather than quietly judging a doctrine
+    registry that exists only at HEAD.
+    """
+    rows = load_rows(root)
+    fails = guard_adjudication(rows)
+    historical = rev != "HEAD"
+    evaluated = skipped = 0
+
+    for row in rows:
+        declared, malformed = parse_assertions(row.assertions)
+        for term in malformed:
+            print(f"ROUTE-CONTROL: {row.path} declares {term!r}, which is not "
+                  f"kind=operand with a kind in {', '.join(KINDS)}.", file=sys.stderr)
+            fails += 1
+
+        missing, invented = declaration_drift(adjudicated_terms(ADJUDICATION[row.path]), declared)
+        for kind, operand in missing:
+            print(f"ROUTE-CONTROL: {row.path} — its control states {kind}={operand} and the row "
+                  f"does not declare it. A term may not be dropped to make this gate green.",
+                  file=sys.stderr)
+            fails += 1
+        for kind, operand in invented:
+            print(f"ROUTE-CONTROL: {row.path} declares {kind}={operand}, which no reading of its "
+                  f"control supports. Declare what the sentence claims, or change the sentence.",
+                  file=sys.stderr)
+            fails += 1
+
+        for kind, operand in declared:
+            if historical and kind not in HISTORICAL_KINDS:
+                skipped += 1
+                continue
+            evaluator = EVALUATORS[kind]
+            verdict, detail = (evaluator(root, row.path, operand, rev)
+                               if kind in HISTORICAL_KINDS else
+                               evaluator(root, row.path, operand))
+            evaluated += 1
+            if verdict is None:
+                print(f"ROUTE-CONTROL: {row.path} declares {kind}={operand} and it cannot be "
+                      f"evaluated — {detail}. A declared operand must be checkable.",
+                      file=sys.stderr)
+                fails += 1
+            elif not verdict:
+                print(f"ROUTE-CONTROL: {row.path} declares {kind}={operand} and IT IS FALSE — "
+                      f"{detail}. Repair the destination or withdraw the claim; a control the "
+                      f"registry states and nothing holds is the defect this gate exists for.",
+                      file=sys.stderr)
+                fails += 1
+
+    if fails:
+        print(f"ROUTE-CONTROL: {fails} declared-control breach(es) in {REGISTRY}.", file=sys.stderr)
+        return 1
+    where = "" if not historical else f" as of {rev} ({skipped} non-historical skipped)"
+    print(f"ROUTE-CONTROL: OK — {evaluated} declared assertion(s) evaluated across "
+          f"{len(rows)} routed rows{where}; every one holds.")
+    return 0
+
+
 def shapes(root: Path) -> int:
     """The growth axis, reported as CONTEXT rather than as a claim.
 
@@ -586,6 +759,42 @@ def self_test() -> int:
     check("scorecard: multiplicity survives",
           extraction_scorecard(["A", "A"], ["A"]), (["A"], [], ["A"]))
 
+    # The declared-term parser. ⛔ A malformed term is RETURNED, never skipped:
+    # a typo that silently vanishes is a declared control nobody reads, which is
+    # the whole defect.
+    check("terms: a well-formed pair",
+          parse_assertions("ceiling=55000"), ([("ceiling", "55000")], []))
+    check("terms: several, whitespace separated",
+          parse_assertions("ceiling=1 doctrine=X"),
+          ([("ceiling", "1"), ("doctrine", "X")], []))
+    check("terms: an empty field declares nothing", parse_assertions(""), ([], []))
+    check("terms: a bare word is malformed", parse_assertions("ceiling"), ([], ["ceiling"]))
+    check("terms: an unknown kind is malformed", parse_assertions("vibes=1"), ([], ["vibes=1"]))
+    check("terms: an empty operand is malformed", parse_assertions("ceiling="), ([], ["ceiling="]))
+    check("terms: a stray sixth field survives as one malformed term",
+          parse_assertions("a=1|b=2"), ([], ["a=1|b=2"]))
+    check("terms: the good and the bad are separated, not merged",
+          parse_assertions("ceiling=5 junk"), ([("ceiling", "5")], ["junk"]))
+
+    # Double-entry between the prose reading and the declaration, both directions.
+    check("drift: agreement", declaration_drift([("a", "1")], [("a", "1")]), ([], []))
+    check("drift: a term DROPPED from the row is caught",
+          declaration_drift([("a", "1")], []), ([("a", "1")], []))
+    check("drift: a term INVENTED by the row is caught",
+          declaration_drift([], [("a", "1")]), ([], [("a", "1")]))
+    check("drift: a CHANGED operand is caught in both directions",
+          declaration_drift([("a", "1")], [("a", "2")]), ([("a", "1")], [("a", "2")]))
+    check("adjudicated terms skip an unanchored claim",
+          adjudicated_terms((Claim("identity", "x", ""), Claim("ceiling", "y", "5"))),
+          [("ceiling", "5")])
+
+    # A growth operand outside the producer's vocabulary is unevaluable, not false.
+    root0 = repo_root()
+    check("growth: an operand that is not a shape is refused as unevaluable",
+          eval_growth(root0, "CHANGELOG.md", "shrinking")[0], None)
+    check("growth: the shapes are the producer's three",
+          sorted(GROWTH_SHAPES), ["append_only", "at_all_time_high", "below_peak"])
+
     # 18. The imported verdict is the one that produced the refutation; a local
     # copy of it would be the drift this instrument refuses elsewhere.
     check("imported shape_verdict: at_all_time_high",
@@ -613,11 +822,17 @@ def main() -> int:
     ap.add_argument("--extraction-control", action="store_true",
                     help="score the naive prose reading against the adjudication")
     ap.add_argument("--shapes", action="store_true",
-                    help="growth shape per routed file (walks every version; slow)")
+                    help="growth shape per routed file (context, not a claim)")
+    ap.add_argument("--check", action="store_true",
+                    help="ROUTE-CONTROL: evaluate every declared assertion; refuse on a false one")
+    ap.add_argument("--as-of", metavar="REV", default="HEAD",
+                    help="evaluate the history-based assertions against a past commit")
     args = ap.parse_args()
     if args.self_test:
         return self_test()
     root = repo_root()
+    if args.check:
+        return check(root, args.as_of)
     if args.extraction_control:
         return extraction_control(root)
     if args.shapes:

@@ -23,10 +23,10 @@ mod pg_test_support;
 mod pg_cleanup;
 
 use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
 use chrono::Utc;
+use reasonbraid_core::fixture::Fixture;
 use reasonbraid_node::{Journal, Node, NodeState};
 use reasonbraid_server::{
     api_router, ca::ensure_server_ca, node_router, NodeChannelState, LEASE_TTL, PRINCIPAL_HEADER,
@@ -251,23 +251,15 @@ impl TestServer {
 }
 
 /// A unique node journal path under the build dir (same volume as the repo).
-fn journal_path(name: &str) -> PathBuf {
-    // The base follows the PROCESS, not the build (§12). `CARGO_TARGET_TMPDIR`
-    // was measured UNSET in this project's runs, so the compile-time fallback
-    // this replaces was the live path, baking one checkout's absolute path
-    // into the binary (SIGNOFF-REPAIR.11.2.1.2.1).
-    let base = reasonbraid_core::repository_root()
-        .expect("the tests run inside the repository")
-        .join("target");
-    let unique = uuid::Uuid::now_v7();
-    let dir = base.join("journal-tests").join(format!("{name}-{unique}"));
-    std::fs::create_dir_all(dir.parent().expect("the fixture parent")).unwrap();
-    // Exclusive: an existing directory belongs to another fixture or an
-    // earlier run, and must never be adopted.
-    std::fs::DirBuilder::new()
-        .create(&dir)
-        .expect("the fixture directory is new");
-    dir.join("node.db")
+/// A fixture directory for one control, created exclusively on the repository's
+/// own volume and REMOVED when the control passes (`SIGNOFF-REPAIR.11.2.1.3.2.3`).
+/// A failing control keeps its fixture, and its WAL, as the diagnostic.
+///
+/// ⚠️ The guard must be BOUND to a local: as a temporary it would be dropped at
+/// the end of its statement, taking the journal out from under the node. Every
+/// call site below binds it and reads the journal as `fixture.join("node.db")`.
+fn journal_fixture(name: &str) -> Fixture {
+    Fixture::create("journal-tests", name).expect("the fixture directory is new")
 }
 
 async fn enqueue(state: &NodeChannelState, node_id: &str, command_id: &str) -> i64 {
@@ -309,8 +301,9 @@ async fn fresh_node_handshake_plays_the_whole_inbox_and_becomes_schedulable() {
         enqueue(&state, &node_id, &format!("cmd_fresh_{i}")).await;
     }
 
+    let fixture = journal_fixture("fresh");
     let node = Node::open(
-        journal_path("fresh"),
+        fixture.join("node.db"),
         server.base_url(),
         node_id.clone(),
         cert_der.clone(),
@@ -350,8 +343,9 @@ async fn reconnect_replays_only_the_tail_after_the_reported_cursor() {
     for i in 1..=3 {
         enqueue(&state, &node_id, &format!("cmd_tail_{i}")).await;
     }
+    let fixture = journal_fixture("tail");
     let node = Node::open(
-        journal_path("tail"),
+        fixture.join("node.db"),
         server.base_url(),
         node_id.clone(),
         cert_der.clone(),
@@ -395,8 +389,9 @@ async fn duplicate_command_delivery_never_creates_a_second_local_operation() {
     for i in 1..=3 {
         enqueue(&state, &node_id, &format!("cmd_dup_{i}")).await;
     }
+    let fixture = journal_fixture("duplicate");
     let node = Node::open(
-        journal_path("duplicate"),
+        fixture.join("node.db"),
         server.base_url(),
         node_id.clone(),
         cert_der.clone(),
@@ -442,7 +437,8 @@ async fn node_is_not_schedulable_until_reconciliation_completes() {
     let dead_url = format!("http://{}", dead.local_addr().unwrap());
     drop(dead);
 
-    let journal = journal_path("schedulable");
+    let fixture = journal_fixture("schedulable");
+    let journal = fixture.join("node.db");
     let node = Node::open(
         &journal,
         dead_url,
@@ -505,7 +501,8 @@ async fn ambiguous_attempt_without_server_receipt_stays_outcome_unknown() {
     let node_id = "nod_00000000-0000-7000-8000-000000000005".to_string();
     let (cert_der, key_der) = seed_node(&pool, &node_id).await;
 
-    let journal_path = journal_path("ambiguous-unknown");
+    let fixture = journal_fixture("ambiguous-unknown");
+    let journal_path = fixture.join("node.db");
     {
         let journal = Journal::open(&journal_path).await.unwrap();
         let payload = json!({ "operation": "contribute" });
@@ -575,7 +572,8 @@ async fn ambiguous_attempt_with_server_receipt_is_adjudicated_and_events_dedupe(
     let node_id = "nod_00000000-0000-7000-8000-000000000006".to_string();
     let (cert_der, key_der) = seed_node(&pool, &node_id).await;
 
-    let journal_path = journal_path("ambiguous-adjudicated");
+    let fixture = journal_fixture("ambiguous-adjudicated");
+    let journal_path = fixture.join("node.db");
     let (op, event_id) = {
         let journal = Journal::open(&journal_path).await.unwrap();
         let payload = json!({ "operation": "contribute" });
@@ -678,7 +676,8 @@ async fn pending_events_are_reemitted_with_their_original_ids() {
     let node_id = "nod_00000000-0000-7000-8000-000000000007".to_string();
     let (cert_der, key_der) = seed_node(&pool, &node_id).await;
 
-    let journal_path = journal_path("reemit");
+    let fixture = journal_fixture("reemit");
+    let journal_path = fixture.join("node.db");
     let op = {
         let journal = Journal::open(&journal_path).await.unwrap();
         let payload = json!({ "operation": "contribute" });
@@ -753,7 +752,8 @@ async fn server_restart_preserves_the_inbox_and_resume() {
     let node_id = "nod_00000000-0000-7000-8000-000000000008".to_string();
     let (cert_der, key_der) = seed_node(&pool, &node_id).await;
 
-    let journal_path = journal_path("restart");
+    let fixture = journal_fixture("restart");
+    let journal_path = fixture.join("node.db");
     {
         let server = TestServer::start(&pool).await;
         for i in 1..=2 {
@@ -830,8 +830,9 @@ async fn reporting_a_cursor_ahead_of_the_server_ledger_is_refused() {
     enqueue(&state, &node_id, "cmd_ahead_1").await;
     enqueue(&state, &node_id, "cmd_ahead_2").await;
 
+    let fixture = journal_fixture("ahead");
     let node = Node::open(
-        journal_path("ahead"),
+        fixture.join("node.db"),
         server.base_url(),
         node_id.clone(),
         cert_der.clone(),
@@ -869,8 +870,9 @@ async fn poll_returns_the_tail_after_a_cursor() {
     for i in 1..=3 {
         enqueue(&state, &node_id, &format!("cmd_poll_{i}")).await;
     }
+    let fixture = journal_fixture("poll");
     let node = Node::open(
-        journal_path("poll"),
+        fixture.join("node.db"),
         server.base_url(),
         node_id.clone(),
         cert_der.clone(),
@@ -978,7 +980,8 @@ async fn server_known_events_skip_reemission_of_already_delivered_results() {
     let node_id = "nod_00000000-0000-7000-8000-000000000011".to_string();
     let (cert_der, key_der) = seed_node(&pool, &node_id).await;
 
-    let journal_path = journal_path("known-events");
+    let fixture = journal_fixture("known-events");
+    let journal_path = fixture.join("node.db");
     let (op_known, _op_new) = {
         let journal = Journal::open(&journal_path).await.unwrap();
         let payload = json!({ "operation": "contribute" });
@@ -1098,8 +1101,9 @@ async fn duplicate_event_emission_dedupes_server_side() {
     let (cert_der, key_der) = seed_node(&pool, &node_id).await;
 
     enqueue(&state, &node_id, "cmd_dedupe").await;
+    let fixture = journal_fixture("event-dedupe");
     let node = Node::open(
-        journal_path("event-dedupe"),
+        fixture.join("node.db"),
         server.base_url(),
         node_id.clone(),
         cert_der.clone(),

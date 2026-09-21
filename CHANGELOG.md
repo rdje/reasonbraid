@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-21 — Every `journal-tests` call site is guarded, and the prediction from two commits ago came true (`SIGNOFF-REPAIR.11.2.1.3.2.3`)
+
+`REASONBRAID-REPAIR-0374`. The server's 12 sites and **1,308** fixtures — 55% of the family, and the single largest producer in the repository.
+
+- ⭐ **ALL 62 CALL SITES NOW BIND THE GUARD, AND ZERO `join("target/journal-tests")` LITERALS REMAIN.** Six of the twelve passed the path straight into `Node::open(` as a temporary and were hoisted to a bound local; five of the other six shadowed the helper's own name (`let journal_path = journal_path("…")`). `reasonbraid-core` is named in the server's `[dev-dependencies]` with `features = ["test-support"]` explicitly, because Cargo's feature unification is not a contract.
+- ✅ **41 passed, 0 failed** against a live cluster, three runs, `pg-tests: stopped and removed …` every time — `target/pg-tests` is **216** before and after, so no cluster leaked and every result was consumed.
+- ⭐ **THE COUNT ALONE COULD NOT TELL *CREATED AND REMOVED* FROM *NEVER CREATED*, SO IT WAS NOT RELIED ON.** Sampling `target/journal-tests` at full rate during the live run — 4,907 samples — gives **PEAK 2,376**, one fixture alive at a time and returning to 2,375. One rather than twelve because **36 of the 41 controls serialize** behind `channel_guard()`'s global mutex.
+- 🔴 **The first sampling pass reported PEAK 2,375 — a FALSE NULL — and was root-caused rather than explained away.** It slept 1 s between samples and used sorted `ls` over 2,375 entries. The sampler was then validated against a suite needing no cluster: `journal_kill_points` at full rate, 1,342 samples, **PEAK 2,385 = baseline + exactly its 10 tests**. The loop was sound and the interval was wrong, and the re-run at full rate saw the fixtures.
+- ⭐ **AND THE PREDICTION CAME TRUE, EXACTLY AS WRITTEN.** Deriving families with the three join-shaped patterns and NOT `FAMILY_GUARD` now returns `journal-tests` → **False**; with it → **True**; and `d154682` still carried one literal. So this is the commit that would have silently dropped a **2,375-fixture** family out of the population, had `.11.2.1.3.2.2` not taught the census the guard shape in the very commit that created the blindness — which is what [`deriving-from-the-producer-goes-blind-when-the-producer-moves`](docs/knowledge/deriving-from-the-producer-goes-blind-when-the-producer-moves.md) was written about, two commits before it happened.
+- ⛔ A deliberate-failure control was NOT run here, deliberately: retention is already produced in two other suites through the identical `Drop`, and failing a `pg-tests` control would retain a CLUSTER in a population `.7.3.2.1` owns rather than this lane.
+- ⏳ Still unguarded: `cached-decision-live` 35,272 KiB, `node-replacement` 32,652 KiB, `r2-join-controls`, `conformance-stubs` and the `cli-*` set.
+
 ## 2026-09-21 — I replaced the hand-written LIST and left the SCOPE typed, and the scope was 84% of the bytes (`SIGNOFF-REPAIR.11.2.1.3.2.1.1`)
 
 `REASONBRAID-REPAIR-0373`. Found while pricing the server conversion: `scripts/run_pg_tests.sh` builds its clusters under `target/pg-tests`, a directory of **216 entries** the census had never once counted.

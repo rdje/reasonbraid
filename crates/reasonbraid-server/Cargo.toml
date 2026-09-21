@@ -118,6 +118,12 @@ gix-transport = { version = "0.59", features = ["http-client"] }
 # tests need a raw HTTP client; plain http, no TLS features). The `.1.5.2` cached-
 # decision test drives the REAL node worker against the live server, with the scripted
 # fake adapter standing in for the provider.
+# The fixture guard (`SIGNOFF-REPAIR.11.2.1.3.2.3`): a generated fixture that removes
+# itself when its control passes and retains itself, with its WAL, when the control
+# fails. Named HERE rather than relying on Cargo unifying the feature in from
+# `reasonbraid-node`'s dev-dependencies — unification is not a contract, which is the
+# same reason `stream` is named explicitly below.
+reasonbraid-core = { path = "../reasonbraid-core", version = "0.1.0", features = ["test-support"] }
 reasonbraid-node = { path = "../reasonbraid-node", version = "0.1.0" }
 # `stream` is named explicitly for the `SIGNOFF-REPAIR.6.2.4` reconnect
 # control, which reads a listen body as it arrives and needs the truncation

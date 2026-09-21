@@ -131,17 +131,19 @@ CHANGELOG = Ledger(path="CHANGELOG.md", threshold=96000, enforced=True)
 # ceiling would let the ledger widen its own bound by growing.
 DEV_NOTES = Ledger(path="DEV_NOTES.md", threshold=76000, enforced=True)
 
-# ⛔ NOT YET ENFORCED — this ledger has not been split. `SIGNOFF-REPAIR.11.4.2.6.5`
-# measured it carrying TWO information roles in one file, with the 14-row status
-# table it is named for at 1.58% of its bytes and 92.6% of the file above it, and
-# `.11.4.2.6.6.1` measured that its 320 emoji-led candidate lines carry no
-# derivable record boundary — so its history is SEALED wholesale rather than
-# rotated, and the boundary is created only for what is written afterwards.
+# ⭐ ENFORCED SINCE ITS SPLIT (`SIGNOFF-REPAIR.11.4.2.6.6`): 620,448 bytes to
+# 13,995, the 14-row snapshot it is named for moved to the TOP, and its entire
+# correction log SEALED into git history in one transition. It carried TWO
+# information roles in one file, with that table at 1.58% of its bytes and 92.6%
+# of the file above it (`.11.4.2.6.5`), and its 320 emoji-led candidate lines
+# carried NO derivable record boundary (`.11.4.2.6.6.1`) — so the history was
+# sealed wholesale rather than rotated, and the boundary exists only from the
+# first record written afterwards, where it is enforced rather than inferred.
 # ⭐ Threshold from the pinned window: LIVE_WINDOW 20.279 x p90 2,726 = 55,280,
 # rounded DOWN to 55,000. `entry_size_p90` needs no record boundary — it measures
 # bytes added per non-rotation commit — which is why this file has a derivable
 # threshold despite having no identifiable records.
-LIVE_STATUS = Ledger(path="LIVE_STATUS.md", threshold=55000, enforced=False)
+LIVE_STATUS = Ledger(path="LIVE_STATUS.md", threshold=55000, enforced=True)
 
 LEDGERS = {"changelog": CHANGELOG, "dev-notes": DEV_NOTES, "live-status": LIVE_STATUS}
 NOTICE = re.compile(r"\*\*(?P<ordinal>[a-z-]+) rotation\*\*")
@@ -552,8 +554,9 @@ def self_test() -> int:
     #        must differ, or a bug that ignored the argument would still pass.
     chk("the two ledgers share a threshold, so selection cannot be tested",
         CHANGELOG.threshold != DEV_NOTES.threshold)
-    chk("a ledger stopped being enforced without its rotation being undone",
-        [l.path for l in LEDGERS.values() if l.enforced] == [CHANGELOG.path, DEV_NOTES.path])
+    chk("a ledger stopped being enforced without its transition being undone",
+        [l.path for l in LEDGERS.values() if l.enforced]
+        == [CHANGELOG.path, DEV_NOTES.path, LIVE_STATUS.path])
     # ⛔ EVERY THRESHOLD IS THE ONE PINNED WINDOW IN ITS OWN UNITS, ROUNDED DOWN.
     # The p90s are the values measured when each was derived, quoted so the
     # relation is checkable without re-measuring — re-measuring is exactly what

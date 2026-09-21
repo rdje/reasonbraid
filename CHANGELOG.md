@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-21 — The status file is split: the snapshot it is named for, and the log sealed into git (`SIGNOFF-REPAIR.11.4.2.6.6`)
+
+`REASONBRAID-REPAIR-0355`. The last ungoverned core live document is bounded, and the lane that opened nine commits ago is discharged.
+
+- ✅ **`LIVE_STATUS.md`: 620,448 → 13,995 bytes.** The 14-row snapshot it is named for sits FIRST under `## Current status`; its entire correction log is SEALED into git history behind a chain notice; `enforced=True` at the 55,000 ceiling with **41,005 bytes of headroom**.
+- ⭐ **The opening measurement is discharged.** The five core live documents were **1,559,250 bytes, with two unbounded holding 96.3% of them**. They now total **157,217**, and `--probe-bounds` returns **bounded for 5 of 5**, each refusal naming its own file, over a green baseline, every file restored byte-identically.
+- ⛔ **Sealed, not rotated**, because the log's 320 emoji-led candidate lines carry no derivable record boundary. The boundary exists from the first record written after the split, enforced rather than inferred.
+- 🔴 **The generic rotation notice produced three false claims for a seal** — *"contains 0 dated entries"*, *"every retired heading was retrieved from the predecessor"* (there were none to retrieve) and *"the cut is DERIVED … it retires whole records until the ledger has 10 commits of runway"* (it was a wholesale seal). ⭐ **A renderer written for one procedure will describe a different procedure in that procedure's words, confidently, and a reader cannot tell.** Rewritten for a seal rather than shipped.
+- ⛔ **Losslessness proved independently of anything that wrote it**, from the notice's own named commit `9221467`: 620,448 bytes, 3,184 lines, blob `503127c6…`, SHA-256 `ce9468cd…` all exact; **15 of 15 surviving table rows present in the predecessor, 0 missing**, with two positive controls in the same run.
+- ⭐ **No book change, and it is checked rather than assumed**: both book references point at the file whole and call it *the snapshot*, which splitting makes more true, not less. ⚠️ Roughly 600 KB was sealed — not deleted; every byte is at `9221467` and the footer carries the retrieval command, and the file's own header already said history lives in the task trees and git.
+- ⚠️ One strand of `.11.4.2.6` stays open with its own owner and acceptance: a check that reads a registry row's DECLARED control instead of only its arity. No product code, schema, migration or test touched; no cap raised.
+
 ## 2026-09-21 — The live window is a project constant, because the anchor it was read from drifted 14% in eight commits (`SIGNOFF-REPAIR.11.4.2.6.6.2`)
 
 `REASONBRAID-REPAIR-0354`. Deriving the third ledger's ceiling the same way the second's was derived gives a different answer, and the reason is the method rather than the file.

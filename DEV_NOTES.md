@@ -1,5 +1,66 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — The notice that described a procedure I did not follow
+
+`LIVE_STATUS.md` is bounded. 620,448 bytes to 13,995, the snapshot it is named for
+at the top, the correction log sealed into git behind a chain notice. That closes
+the lane: all five core live documents now refuse oversize input, each refusal
+naming its own file, and the corpus went from 1,559,250 bytes to 157,217.
+
+The thing worth writing down happened in the last ten minutes of it.
+
+I generated the chain notice with `render_footer`, the same function the changelog
+rotation has used thirty-seven times. It produced a well-formed notice with the
+right predecessor commit, the right blob, the right SHA-256. It also said this:
+
+> That snapshot is 620448 bytes and 3184 lines, and contains **0 dated entries**
+> […] ⛔ **0 record(s) rotated out, 0 kept, lossless** — every retired heading was
+> retrieved from the predecessor named above before this notice was written […]
+> ⭐ The cut is DERIVED, not chosen: it retires whole records until the ledger has
+> at least 10 commits of runway at the p90 entry size.
+
+Three claims, all false here, all in confident language.
+
+There were no dated entries because this file never used that heading form — so
+"0" reads as "nothing was retired" when in fact 600 KB was. No retired heading was
+retrieved from the predecessor, because there were no headings; the retrieval
+check that sentence describes never ran. And the cut was not derived by a runway
+rule at all: it was a wholesale seal, chosen precisely because no record boundary
+existed to retire records at.
+
+None of this is a bug in `render_footer`. It is a renderer doing exactly what it
+was written to do, applied to a case it was not written for. **A renderer written
+for one procedure will describe a different procedure in that procedure's words**,
+and the output is not merely wrong, it is wrong in the register of something that
+was verified. Every one of those sentences exists because an earlier leaf wanted
+the notice to be checkable. Reused out of shape, they are the opposite.
+
+What makes this the worst kind of defect is the audience. A chain notice is read
+by someone trying to retrieve history they cannot see. They cannot check it
+against the thing it describes, because the thing it describes is what they are
+trying to reach. The notice is load-bearing precisely where verification is
+hardest.
+
+So the notice is written for a seal. It says it is a seal, says why rotation was
+unavailable — 320 emoji-led candidate lines and no rule that separates a headline
+from a continuation — and keeps only the claims this transition actually earns:
+the predecessor's identity, re-derived from the object itself with plain git, and
+the fact that nothing was rewritten or summarised.
+
+Two checks I would not skip again. First, the chain still has to parse: I ran the
+tool's own `split_ledger` and `NOTICE` over the new file and confirmed it finds one
+record, finds the footer, reads the ordinal `first`, and would number the next
+rotation `second`. A notice a human finds convincing and the tool cannot read is a
+chain that has quietly ended. Second, before claiming no book change I checked
+what the book actually says, and it says this file "carries the same snapshot at
+the repository root". Splitting it makes that sentence true for the first time —
+the file used to contain a snapshot at 1.58% of its bytes.
+
+Promotion: declined and recorded in `SIGNOFF-REPAIR.11.4.2.6.6`. The statement is
+a further instance of `docs/knowledge/a-fields-name-is-not-its-contract.md` one
+level up — there a field's name, here a renderer's sentences. If a second renderer
+is reused out of shape it earns its own note; the count is one.
+
 ## 2026-09-21 — The derivation whose anchor moved
 
 Two commits ago I gave `DEV_NOTES.md` a rotation threshold and was pleased with

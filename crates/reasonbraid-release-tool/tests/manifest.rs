@@ -18,8 +18,10 @@ fn tool() -> &'static str {
 /// an existing path is refused rather than adopted. The process id plus a
 /// counter is already unique; the creation now proves it.
 fn temp_dir() -> PathBuf {
-    let parent =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/release-tool-controls");
+    // Derived at RUNTIME (§12) (SIGNOFF-REPAIR.11.2.1.2.2.2).
+    let parent = reasonbraid_core::repository_root()
+        .expect("the tests run inside the repository")
+        .join("target/release-tool-controls");
     std::fs::create_dir_all(&parent).expect("create the control parent");
     let dir = parent.join(format!(
         "rb-release-tool-{}-{}",

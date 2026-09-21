@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-21 — Zero scratch bases left, and a clock in a shipped binary (`SIGNOFF-REPAIR.11.2.1.2.2.2`)
+
+`REASONBRAID-REPAIR-0368`. The last seven, closing `.11.2.1.2.2` on its own executed acceptance.
+
+- ✅ **ZERO.** The census returns **13 storage-base expressions in tracked Rust, every one SOURCE, no scratch bucket at all, `0 unresolved`** — and `git grep 'var_os("CARGO_TARGET_TMPDIR")' -- '*.rs'` returns nothing. Every base that reaches generated project data now derives the repository root at RUNTIME, and the twelve-plus-one that read tracked SOURCE keep the compile-time form, which is correct for paths that travel with their crate.
+- ✅ **`rb-bench`'s clock is REPAIRED, not routed.** A shipped binary named its report directory `target/bench/<UTC %Y%m%d-%H%M%S>` and created it with `create_dir_all`, so a second-granularity clock was the only uniqueness source: two runs starting in one second shared a directory and the later overwrote the earlier's `report.json`. It now PROPOSES the stamp and PROVES it — `DirBuilder::create`, advancing `-1`, `-2` … to a bound of 64, then a typed refusal. The timestamp stays because the book documents `target/bench/<run>/` and operators read these by date. ⭐ Invisible to `STORAGE-LOCALITY` all along, because that gate matches `subsec_nanos`/`as_nanos` and this is a `format!`.
+- ⭐ **Both added dependencies PRICED: 496 packages before, 496 after**, two lines in `Cargo.lock`.
+- 🔴 **The browser suite failed 4 of 18 controls on the first run — and attribution was TESTED rather than assumed.** All four `worker deadline exceeded`, all writing to the correct repaired location. The pre-repair source was restored and passed 18/18 in 17.99 s; the repair was restored and passed 18/18 in 12.02 s, then three more times at loads 9.19, 9.62 and 9.69. **The same source produced both outcomes — 1 failure in 5 — so the change is excluded as the cause.**
+- ⭐ **The occurrence is ROUTED rather than consumed as a passing rerun.** It goes to `.11.2`'s browser verification follow-up with its co-occurring condition: the failing run began immediately after a 2 m 22 s four-crate Clippy build — the *unit-only rebuild overlapped execution* that follow-up already names — and took **45.03 s** against 12–18 s for every passing run, at load 8.3 with 6.8 of 8 GB of swap used. ⛔ A condition, not a cause; no wait stack was captured.
+- 🔴 **That routing first named `.11.26`, and reading the leaf refuted it.** `.11.26` is the **Python script gate** — `test_ci_browser.py` children exceeding a 15-second bound, 2 failures in 17 runs — a different suite in a different language. The *42 runs* phrasing that made the two feel like one belongs to `.11.25.1`. Corrected before it shipped.
+- ✅ **`.11.2.1.2.2` closed on its OWN acceptance, executed** — `.11.4.2.6`'s lesson that a parent is not closed by its children — with every clause re-checked against the running system and its escape clause (*or given a leaf that owns it*) left unused.
+- ⛔ One production file changed, a developer benchmark binary; its harness passes `5 passed; 0 failed` and the book's documented path shape is unchanged.
+
 ## 2026-09-21 — The server's eleven, and a correction to the number two commits ago (`SIGNOFF-REPAIR.11.2.1.2.2.1`)
 
 `REASONBRAID-REPAIR-0367`. The first half of the decomposition; the second is `.11.2.1.2.2.2`.

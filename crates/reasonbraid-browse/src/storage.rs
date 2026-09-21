@@ -135,8 +135,11 @@ mod tests {
     use std::os::unix::fs::{symlink, PermissionsExt};
 
     fn root() -> PathBuf {
-        let mut root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
+        // Derived at RUNTIME (§12), then canonicalized as before: the
+        // device and symlink checks below are unchanged, only their
+        // anchor is (SIGNOFF-REPAIR.11.2.1.2.2.2).
+        let mut root = reasonbraid_core::repository_root()
+            .expect("the tests run inside the repository")
             .canonicalize()
             .unwrap();
         let device = std::fs::metadata(&root).unwrap().dev();

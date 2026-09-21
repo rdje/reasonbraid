@@ -57,10 +57,34 @@ fn default_corpus_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("bench/v1")
 }
 
-fn default_out_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/bench")
-        .join(chrono::Utc::now().format("%Y%m%d-%H%M%S").to_string())
+/// A report directory this run OWNS, under the repository's own `target/`
+/// (§13), with the root derived at RUNTIME (§12).
+///
+/// The timestamp stays: the book documents the path as `target/bench/<run>/`
+/// and an operator reads these directories by date. What it no longer does is
+/// settle the name by itself. A SECOND-granularity clock is not a uniqueness
+/// source — two runs starting in the same second shared one directory and the
+/// later overwrote the earlier's `report.json`. Creation is now exclusive, and
+/// a taken name moves to the next candidate rather than being adopted
+/// (`SIGNOFF-REPAIR.11.2.1.2.2.2`).
+fn default_out_dir() -> std::io::Result<PathBuf> {
+    let parent = reasonbraid_core::repository_root()?.join("target/bench");
+    std::fs::create_dir_all(&parent)?;
+    let stamp = chrono::Utc::now().format("%Y%m%d-%H%M%S").to_string();
+    for attempt in 0..64 {
+        let candidate = parent.join(match attempt {
+            0 => stamp.clone(),
+            n => format!("{stamp}-{n}"),
+        });
+        match std::fs::DirBuilder::new().create(&candidate) {
+            Ok(()) => return Ok(candidate),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    Err(std::io::Error::other(
+        "64 report directories already carry this second's timestamp",
+    ))
 }
 
 fn git_rev() -> String {
@@ -135,7 +159,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         other => return Err(format!("unknown agent `{other}` (scripted | codex)").into()),
     }
 
-    let out_dir = args.out.unwrap_or_else(default_out_dir);
+    let out_dir = match args.out {
+        Some(out) => out,
+        None => default_out_dir()?,
+    };
     let report = build(
         &run_id,
         &git_rev(),

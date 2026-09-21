@@ -28,3 +28,9 @@ serde_json = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 # The certification record shape (the `.4.3` certify verb).
 reasonbraid-adapter = { path = "../reasonbraid-adapter", version = "0.1.0" }
+
+[dev-dependencies]
+# Fixture roots are derived at RUNTIME rather than baked in by
+# env!("CARGO_MANIFEST_DIR") (§12, SIGNOFF-REPAIR.11.2.1.2.2.2). The crate is
+# workspace-local and already in the graph, so this costs 0 packages.
+reasonbraid-core = { path = "../reasonbraid-core", version = "0.1.0" }

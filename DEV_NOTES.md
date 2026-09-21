@@ -1,5 +1,18 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — The two largest families left, and the live run found two defects review had not (`SIGNOFF-REPAIR.11.2.1.3.2.5`)
+
+`REASONBRAID-REPAIR-0375`. `cached-decision-live` **35,272 KiB / 411 fixtures** and `node-replacement` **32,652 KiB / 150** — 67,924 KiB from four call sites, both in `reasonbraid-server`.
+
+- ⭐ **A fourth call-site shape**: `the_replacement_ritual_recovers_a_lost_node` creates **two** journals in one test, 127 lines apart, because the drill is about a node being replaced by another. Two guards, distinctly named, both alive to the end.
+- 🔴 **DEFECT ONE, AND IT CAME FROM ASSUMING THE TEN `journal_path` HELPERS AGREED.** Nine returned `dir.join("node.db")`; `node_replacement.rs`'s returned **`dir`**, and its call sites append `node.db` themselves. The mechanical conversion produced `…/node.db/node.db` and the drill died on `SqliteError { code: 14, "unable to open database file" }`. ⛔ Nine agreeing is not ten agreeing, and the name `journal_path` said nothing — its CONSUMER did.
+- 🔴 **DEFECT TWO, AND IT WOULD HAVE PANICKED A PASSING CONTROL.** That same test **deletes its own fixture**: `remove_dir_all(&journal_one).expect("the machine burned down")`, because the drill is about a machine that is gone. The guard's `remove()` then found nothing, returned an error, and `Drop` panicked the control for having been thorough. ⭐ `NotFound` on a guard's OWN path is the end state the guard exists to produce, so it is now SUCCESS — with `a_fixture_the_test_removed_itself_is_not_a_cleanup_failure` producing the case. ⛔ Not a hole: the path can only be this guard's own.
+- ⛔ **Both were invisible to review and to strict lint.** Both were caught by running the real suite against a live cluster, which is the whole argument for doing so.
+- ⭐ **MEASURED, AND NOT BY A FLAT COUNT** — `cached-decision-live` **411 → 411** with PEAK **412**; `node-replacement` **150 → 150** with PEAK **151** over 13,263 samples; `journal-tests` 2,375 unchanged. PEAK 151 rather than 152 for a test that creates two fixtures, because it deletes the first before creating the second: the count and the mechanism agree.
+- ✅ 2 + 12 + 41 live controls pass with every cluster removed; 167 passed / 0 failed across core and node; clippy `-D warnings`, fmt and gate clean.
+- ⚠️ **One retained pg cluster is left behind on purpose**: the failed run retained `target/pg-tests/run-8rvfci_t` (216 → **217**). It is stopped, its evidence is consumed — the defect was in the test binary, not the cluster — and it is NOT deleted here, because that population carries `census_retained_fixtures.py`'s reduce-never-delete contract and is owned by `.7.3.2.1`.
+- ⏳ Left: the long tail — `r2-join-controls` (in the 8,587-line `profiles.rs`), `conformance-stubs`, `release-tool-controls`, the `cli-*` set.
+
 ## 2026-09-21 — Every `journal-tests` call site is guarded, and the prediction from two commits ago came true (`SIGNOFF-REPAIR.11.2.1.3.2.3`)
 
 `REASONBRAID-REPAIR-0374`. The server's 12 sites and **1,308** fixtures — 55% of the family, and the single largest producer in the repository.

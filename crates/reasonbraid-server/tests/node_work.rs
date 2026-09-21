@@ -24,6 +24,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, OnceLock};
 
 use chrono::{DateTime, Utc};
+use reasonbraid_core::fixture::Fixture;
 use reasonbraid_core::{CommandEnvelope, RequestId, PROTOCOL_VERSION};
 use reasonbraid_server::{
     api_router, ca::ensure_server_ca, node_router, CHANNEL_VERSION, PRINCIPAL_HEADER,
@@ -1184,25 +1185,14 @@ async fn ordinary_channel_events_stay_receipts_only() {
 }
 
 /// A temporary journal path under the repo's build dir (same-volume locality, §13).
-fn journal_path(name: &str) -> std::path::PathBuf {
-    // The base follows the PROCESS, not the build (§12). `CARGO_TARGET_TMPDIR`
-    // was measured UNSET in this project's runs, so the compile-time fallback
-    // this replaces was the live path, baking one checkout's absolute path
-    // into the binary (SIGNOFF-REPAIR.11.2.1.2.1).
-    let base = reasonbraid_core::repository_root()
-        .expect("the tests run inside the repository")
-        .join("target");
-    let unique = uuid::Uuid::now_v7();
-    let dir = base
-        .join("cached-decision-live")
-        .join(format!("{name}-{unique}"));
-    std::fs::create_dir_all(dir.parent().expect("the fixture parent")).unwrap();
-    // Exclusive: an existing directory belongs to another fixture or an
-    // earlier run, and must never be adopted.
-    std::fs::DirBuilder::new()
-        .create(&dir)
-        .expect("the fixture directory is new");
-    dir.join("node.db")
+/// A fixture directory for one control, created exclusively on the repository's
+/// own volume and REMOVED when the control passes (`SIGNOFF-REPAIR.11.2.1.3.2.5`).
+/// A failing control keeps its fixture, and its WAL, as the diagnostic.
+///
+/// ⚠️ The guard must be BOUND to a local: as a temporary it would be dropped at
+/// the end of its statement, taking the journal out from under the node.
+fn journal_fixture(name: &str) -> Fixture {
+    Fixture::create("cached-decision-live", name).expect("the fixture directory is new")
 }
 
 /// THE `.1.5.2` acceptance leg (ADR-008), measured end-to-end: the delivery
@@ -1274,8 +1264,9 @@ async fn a_revocation_invalidates_the_cached_decision_at_the_next_dispatch() {
     let key = rcgen::KeyPair::from_der_and_sign_algo(&der, &rcgen::PKCS_ECDSA_P256_SHA256)
         .expect("key parses");
     let cert_der = from_hex(&cert_hex).expect("cert hex");
+    let fixture = journal_fixture("revoked-cache");
     let node = reasonbraid_node::Node::open(
-        journal_path("revoked-cache"),
+        fixture.join("node.db"),
         server.base(),
         role.clone(),
         cert_der,
@@ -1464,7 +1455,8 @@ async fn a_dead_lettered_command_replays_and_redispatches() {
     .await;
 
     let cert_der = from_hex(&cert_hex).expect("cert hex");
-    let journal = journal_path("dead-letter-live");
+    let fixture = journal_fixture("dead-letter-live");
+    let journal = fixture.join("node.db");
 
     // Phase 1: a worker whose adapter ALWAYS refuses before dispatch. Three
     // bounded attempts (`.2.3`), then the retry gate's terminal refusal

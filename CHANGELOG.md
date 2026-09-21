@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-21 — The two largest families left, and the live run found two defects review had not (`SIGNOFF-REPAIR.11.2.1.3.2.5`)
+
+`REASONBRAID-REPAIR-0375`. `cached-decision-live` **35,272 KiB / 411 fixtures** and `node-replacement` **32,652 KiB / 150** — 67,924 KiB from four call sites, both in `reasonbraid-server`.
+
+- ⭐ **A fourth call-site shape**: `the_replacement_ritual_recovers_a_lost_node` creates **two** journals in one test, 127 lines apart, because the drill is about a node being replaced by another. Two guards, distinctly named, both alive to the end.
+- 🔴 **DEFECT ONE, AND IT CAME FROM ASSUMING THE TEN `journal_path` HELPERS AGREED.** Nine returned `dir.join("node.db")`; `node_replacement.rs`'s returned **`dir`**, and its call sites append `node.db` themselves. The mechanical conversion produced `…/node.db/node.db` and the drill died on `SqliteError { code: 14, "unable to open database file" }`. ⛔ Nine agreeing is not ten agreeing, and the name `journal_path` said nothing — its CONSUMER did.
+- 🔴 **DEFECT TWO, AND IT WOULD HAVE PANICKED A PASSING CONTROL.** That same test **deletes its own fixture**: `remove_dir_all(&journal_one).expect("the machine burned down")`, because the drill is about a machine that is gone. The guard's `remove()` then found nothing, returned an error, and `Drop` panicked the control for having been thorough. ⭐ `NotFound` on a guard's OWN path is the end state the guard exists to produce, so it is now SUCCESS — with `a_fixture_the_test_removed_itself_is_not_a_cleanup_failure` producing the case. ⛔ Not a hole: the path can only be this guard's own.
+- ⛔ **Both were invisible to review and to strict lint.** Both were caught by running the real suite against a live cluster, which is the whole argument for doing so.
+- ⭐ **MEASURED, AND NOT BY A FLAT COUNT** — `cached-decision-live` **411 → 411** with PEAK **412**; `node-replacement` **150 → 150** with PEAK **151** over 13,263 samples; `journal-tests` 2,375 unchanged. PEAK 151 rather than 152 for a test that creates two fixtures, because it deletes the first before creating the second: the count and the mechanism agree.
+- ✅ 2 + 12 + 41 live controls pass with every cluster removed; 167 passed / 0 failed across core and node; clippy `-D warnings`, fmt and gate clean.
+- ⚠️ **One retained pg cluster is left behind on purpose**: the failed run retained `target/pg-tests/run-8rvfci_t` (216 → **217**). It is stopped, its evidence is consumed — the defect was in the test binary, not the cluster — and it is NOT deleted here, because that population carries `census_retained_fixtures.py`'s reduce-never-delete contract and is owned by `.7.3.2.1`.
+- ⏳ Left: the long tail — `r2-join-controls` (in the 8,587-line `profiles.rs`), `conformance-stubs`, `release-tool-controls`, the `cli-*` set.
+
 ## 2026-09-21 — Every `journal-tests` call site is guarded, and the prediction from two commits ago came true (`SIGNOFF-REPAIR.11.2.1.3.2.3`)
 
 `REASONBRAID-REPAIR-0374`. The server's 12 sites and **1,308** fixtures — 55% of the family, and the single largest producer in the repository.
@@ -225,46 +238,23 @@
 - ⛔ **A gate on the candidate class is already refuted by the census**: it fires on **43 of 43**, the shape this repository has rejected three times (87%, 93%, 71%). Mechanizability turns entirely on the ESCAPE question — *does the Rust value also reach a caller or get compared against the stored column?* — which `.11.31.1` owes.
 - ⚠️ **Not claimed: that the 43 contain a second defect.** None has been adjudicated; `bound_unread` is a candidate and the instrument says so in its own output.
 
-## 2026-09-21 — The backtick rule becomes a gate, and the narrowing it inherited was compensating for a parser (`SIGNOFF-REPAIR.11.33`)
-
-`REASONBRAID-REPAIR-0362`. The class this project had repaired by hand three times now has a check.
-
-- ✅ **`BACKTICK-SUBSTITUTION` ships** — `scripts/check_backtick_substitution.py`, registered in the enforcer, mirrored in `DOCTRINE_ENFORCEMENT.md`, carried by the scaffold's NEUTRAL list, **18 self-test controls**, **0.10 s**. The enforcer now runs 25 checks and stays green.
-- ⭐ **The rule shipped is BROADER than the sentence it inherited, and that is a measurement.** `.11.32` narrowed to *an output-emitting command whose double-quoted argument carries an unescaped backtick* because the obvious matcher returned 19 hits of which 17 were false. Re-measured with a parser that tracks quote nesting, the restriction buys **nothing** — broad and narrow return the **identical set**. The 17 were the matcher's noise, not the rule's.
-- 🔴 **Two parser bugs had to go first, and both were found by the corpus rather than by review.** A per-line scanner reported **6** hits, every one inside the multi-line awk and Python programs these shell scripts embed — a single-quoted awk program spans many lines and a per-line scanner starts each line in the wrong state. A 7th survived that: an unquoted `<<EOF` body, where `'` and `"` are ordinary characters but a nested `$( … )` restores the normal grammar, so its backtick was literal after all. ⛔ Tuning the rule to exclude that file would have hidden the bug and kept the exception.
-- ✅ **Calibrated over the history that contains the instance, with the producer shipped** (`--calibrate`): **105 commits touching a shell file, 171 shell blobs, 15 fires — behind them exactly 3 real defect sites, all in `demo_two_host.sh`**, the one `.11.29` repaired and the two `.11.32` found. **Zero false positives in the project's whole history**, against the 87%, 93% and 71% fire rates of the three gates this repository has rejected.
-- ✅ **Falsified in both directions**: `--as-of 24c50d7^` → rc=1 naming `demo_two_host.sh:261` and `:309`; `--as-of 24c50d7` → rc=0. Red at the defect, green at its repair, one commit apart.
-- ⛔ **The runtime arm is DECLINED on the leaf's own measurement**: instances 1 and 2 are caught by both candidates, **instance 3 by neither** — it was a `python3 -B -c "…"` typed at a prompt. So the runtime arm adds no coverage over the static rule, while the static rule catches its sites before they run. ⚠️ Trigger recorded: the first instance landing where the static rule cannot read — a Makefile recipe, a CI `run:` block, an inline `-c` string — reopens it.
-- ⭐ **Written in Python deliberately**: the corpus is tracked SHELL files, so a checker written in shell would be inside its own corpus and its fixtures read as real code. Every fixture is also assembled from `chr(96)`/`chr(34)`/`chr(39)` rather than written as a literal. ⛔ And no live-corpus arm asserts the tree is clean — that is `.11.4.2.7.1`'s defect, a control that fails the moment the repository becomes correct.
-
-## 2026-09-21 — The containment inventory is exhausted, and no cap was ever raised to get there (`SIGNOFF-REPAIR.11.4.2`)
-
-`REASONBRAID-DOC-0104`. The lane closes: all four named strands discharged and every one of its 31 descendants `done`.
-
-- ✅ **Strand by strand**: the donor-package review is `.11.4.2.7`; the document/route utility census is `.11.4.2.7.3`; the pressure controls are `ROUTE-CONTROL` at `.11.4.2.6.7`; the lifecycle controls are `.11.4.2.8`; exact-current-state derivation and its verifier are `.11.4.2.4`/`.4.1`; archive retrieval is the ledgers' chain notices; collection bounds are `.11.4.2.9`.
-- ⭐ **THE ACCEPTANCE WAS EXECUTED, NOT ASSERTED, and the clause worth keeping is *does not raise caps to accommodate growth*.** Every version of the registry and of the guard was read: **no declared `ceiling=` has ever increased** across 10 registry versions, and in 6 guard versions the two README caps only ever went **DOWN** — 300 → 60 lines and 16,384 → 2,400 bytes — with the changelog threshold constant at 96,000. Zero raises in the file's whole life.
-- ✅ **Retrieval intact**: `rotate_changelog.py --check-all` rc=0 over the three ledgers' chain notices. ⚠️ `--audit-notices` reports 32 of 49 HISTORICAL notices describing a predecessor that had moved — `.11.4.2.6.8`'s finding, repaired in the renderer and both live footers; the historical notices are in git and cannot be rewritten.
-- 🔴 **One thing had to be repaired before this leaf could close, and it was invisible from the narrative**: `.11.4.2.6` still said `Verification / commit: pending` with **no `- Status:` line at all**, three commits after a commit message announced it *fully closed*. Enumerating every descendant's status found it (DOC-0103).
-- ⛔ **Nothing was routed out to close it.** The one question it could not answer — `TOOLBOX.md`'s unevaluated prose control — is named in `.11.4.2.7.3.2`'s decision record rather than left implied.
-- ✅ Frontier moves to `.11.33`, promoted in place rather than given a second row (`FRONTIER-STATUS` rule 3), with `docs/TASK_TREE.md` updated in the same commit.
-
 The entries before those above were rotated into reachable Git history at the
-**fortieth rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
+**forty-first rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
 stood at the commit named below, which is the object every retired record was
 checked against before this notice was written — is:
 
 ```bash
-git show 028217caddaff7d564d7a4ae952561c5256837de:CHANGELOG.md
+git show 4ab7cf9572d838790353eb79bf5528c28ae8e5f1:CHANGELOG.md
 ```
 
-That snapshot is 91779 bytes and 414 lines, and contains 30 dated
-entries; its Git blob is `d8fb417850bf172d0150b58d84c6a95e8d79004c` and its SHA-256 is
-`78475e1a632066439cfa0638873580a6023439cb7b485e7d7a217abe101a2fda`. It carries the thirty-ninth rotation's
+That snapshot is 62463 bytes and 272 lines, and contains 19 dated
+entries; its Git blob is `d02b6bfb5d82917ec33c91fe6753fff057fe2533` and its SHA-256 is
+`7d59e858a5016a90268df3220c695a89cc77225e86c3420f734f8b5e44f3dd3d`. It carries the fortieth rotation's
 notice in turn, and each earlier notice names the one before it, so the chain
 walks all the way back. `docs/decisions/2026-09-09_changelog-rotation.md` holds
 the first transition's evidence.
 
-⛔ **13 record(s) rotated out, 18 kept, lossless** — every retired heading was retrieved from the
+⛔ **2 record(s) rotated out, 18 kept, lossless** — every retired heading was retrieved from the
 predecessor named above before this notice was written, and every figure in it was re-derived from that object with
 `git rev-parse`, `git cat-file` and SHA-256 rather than typed. ⭐ The cut is DERIVED, not chosen: it retires whole
 records until the ledger has at least 10 commits of runway at the p90 entry size measured over the last

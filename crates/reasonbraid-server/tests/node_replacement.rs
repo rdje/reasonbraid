@@ -25,6 +25,7 @@ mod pg_cleanup;
 use std::net::SocketAddr;
 use std::sync::{Arc, OnceLock};
 
+use reasonbraid_core::fixture::Fixture;
 use reasonbraid_core::{CommandEnvelope, RequestId, PROTOCOL_VERSION};
 use reasonbraid_server::{
     api_router, ca::ensure_server_ca, node_router, CHANNEL_VERSION, PRINCIPAL_HEADER,
@@ -208,25 +209,14 @@ fn from_hex(hex: &str) -> Option<Vec<u8>> {
         .collect()
 }
 
-fn journal_path(name: &str) -> std::path::PathBuf {
-    // The base follows the PROCESS, not the build (§12). `CARGO_TARGET_TMPDIR`
-    // was measured UNSET in this project's runs, so the compile-time fallback
-    // this replaces was the live path, baking one checkout's absolute path
-    // into the binary (SIGNOFF-REPAIR.11.2.1.2.1).
-    let base = reasonbraid_core::repository_root()
-        .expect("the tests run inside the repository")
-        .join("target");
-    let unique = uuid::Uuid::now_v7();
-    let dir = base
-        .join("node-replacement")
-        .join(format!("{name}-{unique}"));
-    std::fs::create_dir_all(dir.parent().expect("the fixture parent")).unwrap();
-    // Exclusive: an existing directory belongs to another fixture or an
-    // earlier run, and must never be adopted.
-    std::fs::DirBuilder::new()
-        .create(&dir)
-        .expect("the fixture directory is new");
-    dir
+/// A fixture directory for one control, created exclusively on the repository's
+/// own volume and REMOVED when the control passes (`SIGNOFF-REPAIR.11.2.1.3.2.5`).
+/// A failing control keeps its fixture, and its WAL, as the diagnostic.
+///
+/// ⚠️ The guard must be BOUND to a local: as a temporary it would be dropped at
+/// the end of its statement, taking the journal out from under the node.
+fn journal_fixture(name: &str) -> Fixture {
+    Fixture::create("node-replacement", name).expect("the fixture directory is new")
 }
 
 /// Enroll a node through the PUBLIC surface (`.1.2.1`).
@@ -402,7 +392,11 @@ async fn the_replacement_ritual_recovers_a_lost_node() {
     // the response is LOST (the stream ends without a terminal), so the attempt
     // lands its HONEST terminal `outcome_unknown` in the node's journal. Then the
     // machine dies and the journal is DESTROYED (the total-machine-loss path).
-    let journal_one = journal_path("drill-lost");
+    let fixture_one = journal_fixture("drill-lost");
+    // ⚠️ The DIRECTORY, not the database file: unlike every other
+    // `journal_path` helper in this workspace, this file's returned the
+    // directory and its call sites append `node.db` themselves.
+    let journal_one = fixture_one.path().to_path_buf();
     {
         let key_der = from_hex(&key_hex).expect("key hex");
         let der = rustls_pki_types::PrivateKeyDer::try_from(key_der).expect("key DER");
@@ -529,7 +523,11 @@ async fn the_replacement_ritual_recovers_a_lost_node() {
 
     // Phase 3: the replacement node opens a FRESH journal and reconciles — the
     // inbox tail replays (cursor 0 → full tail) and the work re-delivers.
-    let journal_two = journal_path("drill-replacement");
+    let fixture_two = journal_fixture("drill-replacement");
+    // ⚠️ The DIRECTORY, not the database file: unlike every other
+    // `journal_path` helper in this workspace, this file's returned the
+    // directory and its call sites append `node.db` themselves.
+    let journal_two = fixture_two.path().to_path_buf();
     {
         let key_der = from_hex(&key_hex2).expect("key hex");
         let der = rustls_pki_types::PrivateKeyDer::try_from(key_der).expect("key DER");

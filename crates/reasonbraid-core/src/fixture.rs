@@ -128,7 +128,19 @@ impl Fixture {
 
     /// Remove the directory, refusing anything that is not what this guard made.
     fn remove(&self) -> io::Result<()> {
-        let metadata = std::fs::symlink_metadata(&self.path)?;
+        let metadata = match std::fs::symlink_metadata(&self.path) {
+            Ok(metadata) => metadata,
+            // ⭐ THE TEST REMOVED IT ITSELF, and that is SUCCESS rather than a
+            // refusal. `node_replacement`'s replacement drill deletes the whole
+            // journal directory on purpose — *the machine burned down* — and the
+            // end state is exactly the one this guard exists to produce. Refusing
+            // here would panic a passing control for having been thorough.
+            // ⛔ Not a hole: the path is this guard's own, so NotFound on it can
+            // only mean the directory this guard created is gone
+            // (`SIGNOFF-REPAIR.11.2.1.3.2.5`).
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(e),
+        };
         if !metadata.is_dir() || metadata.file_type().is_symlink() {
             return Err(io::Error::other(
                 "fixture is no longer a directory; retained",
@@ -279,6 +291,26 @@ mod tests {
              tuple pattern's bindings count left to right — so the guard belongs \
              first in the tuple, where it is dropped last"
         );
+    }
+
+    /// ⭐ A TEST THAT REMOVES ITS OWN FIXTURE PASSES (`SIGNOFF-REPAIR.11.2.1.3.2.5`).
+    /// `node_replacement`'s replacement drill deletes the whole journal directory
+    /// on purpose — *the machine burned down* — and the guard then found nothing
+    /// to remove. The end state is the one the guard wants, so it is success; the
+    /// first version panicked the control for having been thorough.
+    #[test]
+    fn a_fixture_the_test_removed_itself_is_not_a_cleanup_failure() {
+        let fixture = Fixture::create("fixture-guard-controls", "burned-down").unwrap();
+        let path = fixture.path().to_path_buf();
+        std::fs::write(fixture.join("node.db"), b"before the fire").unwrap();
+
+        std::fs::remove_dir_all(&path).expect("the machine burned down");
+        assert!(!path.exists());
+
+        fixture
+            .remove()
+            .expect("an already-absent fixture is success");
+        drop(fixture); // and dropping it does not panic either
     }
 
     /// An explicit `retain()` keeps the fixture even though nothing panicked —

@@ -245,6 +245,42 @@ mod tests {
         std::fs::remove_dir_all(&path).unwrap();
     }
 
+    /// 🔴 THE DROP ORDER THE TUPLE-RETURNING HELPERS REST ON, PROVED RATHER THAN
+    /// REMEMBERED (`SIGNOFF-REPAIR.11.2.1.3.2.4`). A helper that creates a fixture
+    /// AND a longer-lived object built from it must hand the guard back FIRST, so
+    /// that `let (_fixture, node) = …` drops the node before the fixture. If the
+    /// rule were the other way round, every such helper would remove its directory
+    /// while the object still held a file inside it — and on this platform it would
+    /// very likely still pass, because POSIX keeps a deleted file readable through
+    /// an open descriptor. That is a control passing for an unrelated reason, so the
+    /// language rule is asserted here instead of assumed at nineteen call sites.
+    #[test]
+    fn a_tuple_pattern_drops_its_bindings_right_to_left() {
+        use std::sync::{Arc, Mutex};
+
+        struct Recorder(&'static str, Arc<Mutex<Vec<&'static str>>>);
+        impl Drop for Recorder {
+            fn drop(&mut self) {
+                self.1.lock().unwrap().push(self.0);
+            }
+        }
+
+        let order = Arc::new(Mutex::new(Vec::new()));
+        {
+            let (_first, _second) = (
+                Recorder("first", Arc::clone(&order)),
+                Recorder("second", Arc::clone(&order)),
+            );
+        }
+        assert_eq!(
+            *order.lock().unwrap(),
+            vec!["second", "first"],
+            "a let statement drops its bindings in REVERSE declaration order, and a \
+             tuple pattern's bindings count left to right — so the guard belongs \
+             first in the tuple, where it is dropped last"
+        );
+    }
+
     /// An explicit `retain()` keeps the fixture even though nothing panicked —
     /// the escape hatch for a control whose PASS is what produces the evidence.
     #[test]

@@ -3,7 +3,6 @@
 //! FRESH admission decision resets the retry count — the re-dispatch runs
 //! under the new decision, not the dead one.
 
-use std::path::PathBuf;
 use std::time::Duration;
 
 use chrono::Utc;
@@ -11,42 +10,38 @@ use reasonbraid_adapter::{
     AdapterCapabilities, CancellationStrength, FakeAdapter, PolicyInjectionMode, ScriptStep,
     StatusLookupSpec,
 };
+use reasonbraid_core::fixture::Fixture;
 use reasonbraid_core::BudgetDimensions;
 use reasonbraid_node::{CommandInput, Journal, LocalBudget, Node, Worker};
 use serde_json::{json, Value};
 
-fn journal_path(name: &str) -> PathBuf {
-    // The base follows the PROCESS, not the build (§12). `CARGO_TARGET_TMPDIR`
-    // was measured UNSET in this project's runs, so the compile-time fallback
-    // this replaces was the live path, baking one checkout's absolute path
-    // into the binary (SIGNOFF-REPAIR.11.2.1.2.1).
-    let base = reasonbraid_core::repository_root()
-        .expect("the tests run inside the repository")
-        .join("target");
-    let unique = uuid::Uuid::now_v7();
-    let dir = base
-        .join("dead-letter-tests")
-        .join(format!("{name}-{unique}"));
-    std::fs::create_dir_all(dir.parent().expect("the fixture parent")).unwrap();
-    // Exclusive: an existing directory belongs to another fixture or an
-    // earlier run, and must never be adopted.
-    std::fs::DirBuilder::new()
-        .create(&dir)
-        .expect("the fixture directory is new");
-    dir.join("node.db")
+/// A fixture directory for one test, created exclusively on the repository's own
+/// volume and REMOVED when the test passes (`SIGNOFF-REPAIR.11.2.1.3.2.4`). A
+/// failing test keeps its fixture, and everything in it, as the diagnostic.
+fn journal_fixture(name: &str) -> Fixture {
+    Fixture::create("dead-letter-tests", name).expect("the fixture directory is new")
 }
 
-async fn dummy_node(name: &str) -> Node {
+/// A node whose channel base points nowhere — the refusal legs never touch it.
+///
+/// 🔴 The guard comes back FIRST in the tuple and that is load-bearing: a `let`
+/// statement drops its bindings in reverse declaration order, and a tuple
+/// pattern's bindings count left to right, so `let (_fixture, node)` drops the
+/// NODE first and the fixture last. The other order would remove the directory
+/// while the node still held its SQLite file open.
+async fn dummy_node(name: &str) -> (Fixture, Node) {
     let key = rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256).expect("keypair");
-    Node::open(
-        journal_path(name),
+    let fixture = journal_fixture(name);
+    let node = Node::open(
+        fixture.join("node.db"),
         "http://127.0.0.1:1",
         "nod_00000000-0000-7000-8000-000000000001".to_string(),
         vec![0x00, 0x01, 0x02],
         key,
     )
     .await
-    .expect("open node")
+    .expect("open node");
+    (fixture, node)
 }
 
 fn refusing_adapter() -> FakeAdapter {
@@ -128,7 +123,7 @@ async fn seed_command(
 /// report.
 #[tokio::test]
 async fn a_terminal_refusal_reports_the_dead_letter_once() {
-    let node = dummy_node("dead-letter-once").await;
+    let (_fixture, node) = dummy_node("dead-letter-once").await;
     let (_command_id, operation_id) = seed_command(node.journal(), "x", Utc::now(), 7).await;
 
     let worker = Worker::new(
@@ -189,7 +184,7 @@ async fn a_terminal_refusal_reports_the_dead_letter_once() {
 /// decision) — the re-dispatch runs.
 #[tokio::test]
 async fn a_replayed_delivery_refreshes_the_decision_and_redispatches() {
-    let node = dummy_node("dead-letter-replay").await;
+    let (_fixture, node) = dummy_node("dead-letter-replay").await;
     let decided_at = Utc::now() - chrono::Duration::seconds(600);
     let (command_id, operation_id) = seed_command(node.journal(), "y", decided_at, 7).await;
 
@@ -275,7 +270,7 @@ async fn a_replayed_delivery_refreshes_the_decision_and_redispatches() {
 /// is the fail-OPEN direction, which is why it is worth a control of its own.
 #[tokio::test]
 async fn the_retry_bound_still_trips_when_this_clock_runs_behind_the_server() {
-    let node = dummy_node("retry-clock-behind").await;
+    let (_fixture, node) = dummy_node("retry-clock-behind").await;
 
     // This node is 600 s behind: the server's clock reads 600 s AFTER ours.
     let node_now = Utc::now();

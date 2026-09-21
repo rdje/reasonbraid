@@ -5,48 +5,42 @@
 //! `failed_before_dispatch`). These legs never contact a channel: the refusal
 //! happens before any adapter or transport use, so a dummy node works.
 
-use std::path::PathBuf;
 use std::time::Duration;
 
 use chrono::{Duration as ChronoDuration, Utc};
 use reasonbraid_adapter::{AdapterCapabilities, FakeAdapter, ScriptStep, StatusLookupSpec};
+use reasonbraid_core::fixture::Fixture;
 use reasonbraid_core::{BudgetDimensions, CACHED_ALLOW_TTL_SECONDS};
 use reasonbraid_node::{Journal, LocalBudget, Node, Worker, WorkerError};
 use serde_json::{json, Value};
 
-fn journal_path(name: &str) -> PathBuf {
-    // The base follows the PROCESS, not the build (§12). `CARGO_TARGET_TMPDIR`
-    // was measured UNSET in this project's runs, so the compile-time fallback
-    // this replaces was the live path, baking one checkout's absolute path
-    // into the binary (SIGNOFF-REPAIR.11.2.1.2.1).
-    let base = reasonbraid_core::repository_root()
-        .expect("the tests run inside the repository")
-        .join("target");
-    let unique = uuid::Uuid::now_v7();
-    let dir = base
-        .join("cached-decision-tests")
-        .join(format!("{name}-{unique}"));
-    std::fs::create_dir_all(dir.parent().expect("the fixture parent")).unwrap();
-    // Exclusive: an existing directory belongs to another fixture or an
-    // earlier run, and must never be adopted.
-    std::fs::DirBuilder::new()
-        .create(&dir)
-        .expect("the fixture directory is new");
-    dir.join("node.db")
+/// A fixture directory for one test, created exclusively on the repository's own
+/// volume and REMOVED when the test passes (`SIGNOFF-REPAIR.11.2.1.3.2.4`). A
+/// failing test keeps its fixture, and everything in it, as the diagnostic.
+fn journal_fixture(name: &str) -> Fixture {
+    Fixture::create("cached-decision-tests", name).expect("the fixture directory is new")
 }
 
 /// A node whose channel base points nowhere — the refusal legs never touch it.
-async fn dummy_node(name: &str) -> Node {
+///
+/// 🔴 The guard comes back FIRST in the tuple and that is load-bearing: a `let`
+/// statement drops its bindings in reverse declaration order, and a tuple
+/// pattern's bindings count left to right, so `let (_fixture, node)` drops the
+/// NODE first and the fixture last. The other order would remove the directory
+/// while the node still held its SQLite file open.
+async fn dummy_node(name: &str) -> (Fixture, Node) {
     let key = rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256).expect("keypair");
-    Node::open(
-        journal_path(name),
+    let fixture = journal_fixture(name);
+    let node = Node::open(
+        fixture.join("node.db"),
         "http://127.0.0.1:1",
         "nod_00000000-0000-7000-8000-000000000001".to_string(),
         vec![0x00, 0x01, 0x02],
         key,
     )
     .await
-    .expect("open node")
+    .expect("open node");
+    (fixture, node)
 }
 
 fn completing_adapter() -> FakeAdapter {
@@ -136,7 +130,7 @@ async fn latest_status(journal: &Journal, command_id: &str) -> Option<String> {
 
 #[tokio::test]
 async fn an_expired_cached_allow_refuses_the_dispatch() {
-    let node = dummy_node("expired").await;
+    let (_fixture, node) = dummy_node("expired").await;
     node.journal()
         .set_revocation_epoch(7)
         .await
@@ -172,7 +166,7 @@ async fn an_expired_cached_allow_refuses_the_dispatch() {
 
 #[tokio::test]
 async fn an_epoch_bump_invalidates_a_fresh_cached_allow() {
-    let node = dummy_node("epoch-bump").await;
+    let (_fixture, node) = dummy_node("epoch-bump").await;
     // The cached decision was made under epoch 7; the node has since SEEN epoch 8
     // (a revocation happened after admission).
     node.journal()
@@ -207,7 +201,7 @@ async fn an_epoch_bump_invalidates_a_fresh_cached_allow() {
 
 #[tokio::test]
 async fn a_command_without_a_cached_decision_refuses_the_dispatch() {
-    let node = dummy_node("no-decision").await;
+    let (_fixture, node) = dummy_node("no-decision").await;
     node.journal()
         .set_revocation_epoch(7)
         .await
@@ -241,7 +235,7 @@ async fn a_command_without_a_cached_decision_refuses_the_dispatch() {
 
 #[tokio::test]
 async fn a_fresh_epoch_current_cached_allow_dispatches() {
-    let node = dummy_node("fresh").await;
+    let (_fixture, node) = dummy_node("fresh").await;
     node.journal()
         .set_revocation_epoch(7)
         .await
@@ -282,7 +276,7 @@ async fn a_fresh_epoch_current_cached_allow_dispatches() {
 /// decision allows, and the budget gate (unchanged) still refuses the dispatch.
 #[tokio::test]
 async fn the_budget_gate_still_runs_after_the_cached_decision_allows() {
-    let node = dummy_node("budget").await;
+    let (_fixture, node) = dummy_node("budget").await;
     node.journal()
         .set_revocation_epoch(7)
         .await
@@ -377,7 +371,7 @@ fn worker_with_ample_budget(node: &Node) -> Worker<FakeAdapter> {
 /// describe what it actually proves.
 #[tokio::test]
 async fn a_replayed_decision_dispatches_however_old_the_first_delivery_was() {
-    let node = dummy_node("replay-anchor").await;
+    let (_fixture, node) = dummy_node("replay-anchor").await;
     node.journal()
         .set_revocation_epoch(7)
         .await
@@ -429,7 +423,7 @@ async fn a_replayed_decision_dispatches_however_old_the_first_delivery_was() {
 /// node did no work at all, fail-closed, with a reason line whose epochs match.
 #[tokio::test]
 async fn a_node_clock_ahead_of_the_server_still_dispatches() {
-    let node = dummy_node("clock-ahead").await;
+    let (_fixture, node) = dummy_node("clock-ahead").await;
     node.journal()
         .set_revocation_epoch(7)
         .await
@@ -474,7 +468,7 @@ async fn a_node_clock_ahead_of_the_server_still_dispatches() {
 /// zero either.
 #[tokio::test]
 async fn a_node_clock_behind_the_server_gets_exactly_one_window() {
-    let node = dummy_node("clock-behind").await;
+    let (_fixture, node) = dummy_node("clock-behind").await;
     node.journal()
         .set_revocation_epoch(7)
         .await
@@ -516,7 +510,7 @@ async fn a_node_clock_behind_the_server_gets_exactly_one_window() {
 /// blanket allow or a blanket refusal.
 #[tokio::test]
 async fn a_node_clock_behind_the_server_still_dispatches_a_fresh_decision() {
-    let node = dummy_node("clock-behind-fresh").await;
+    let (_fixture, node) = dummy_node("clock-behind-fresh").await;
     node.journal()
         .set_revocation_epoch(7)
         .await

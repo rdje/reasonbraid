@@ -1,5 +1,17 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — The five families the control run caught growing, and the drop order that decides whether the guard is safe (`SIGNOFF-REPAIR.11.2.1.3.2.4`)
+
+`REASONBRAID-REPAIR-0372`. Not a projection: the previous leaf's own six suite runs added 0 fixtures to the family it converted and +8,820 KiB / +57 to five it had not. Those five.
+
+- ⭐ **72,368 KiB across 966 fixtures, from only SIX call sites**: `cached-decision-tests` 33,604 KiB / 244, `dead-letter-tests` 17,908 / 64, `retry-policy-tests` 16,404 / 84, `codex-stubs` 2,232 / **558**, `identity-persistence` 2,220 / 16. None needs a database.
+- ⭐ **A DIFFERENT SHAPE, AND THE SHAPE IS THE WORK.** Here each helper's product is consumed by a longer-lived object — `journal_path` feeds `dummy_node(name) -> Node`, and `stub_binary` went straight into `CodexCliAdapter::with_binary(…)` as a temporary — so a guard created inside the helper would die when the helper returned. The helpers now hand it back: `dummy_node -> (Fixture, Node)`, `stub_binary -> (Fixture, PathBuf)`, `fixture_dir -> Fixture`, across **19** call sites, each binding a NAMED local rather than `let _ =`.
+- 🔴 **THE TUPLE ORDER IS LOAD-BEARING, NOT COSMETIC.** A `let` statement drops its bindings in reverse declaration order and a tuple pattern's bindings count left to right, so the guard goes FIRST to be dropped LAST. The reverse would remove the directory while the node still held its SQLite file open. ⛔ And it would very likely still have passed, because POSIX keeps a deleted file readable through an open descriptor — a control passing for an unrelated reason. ⭐ So the rule is now an executable control: two recorded `Drop`s return `["second", "first"]`, in the crate that owns the guard rather than in a comment at nineteen call sites.
+- ⭐ **MEASURED: Δ0 KiB AND Δ0 FIXTURES ON ALL SIX FAMILIES**, across two full runs of both crates — `journal-tests` 2,375, `cached-decision-tests` 244, `dead-letter-tests` 64, `retry-policy-tests` 84, `codex-stubs` 558, `identity-persistence` 16, every one unchanged. The identical runs added +8,820 KiB / +57 one commit earlier.
+- ⭐ **Retention PRODUCED again in the new tuple shape**: one assertion in `a_terminal_refusal_reports_the_dead_letter_once` neutralized → 1 failed / 2 passed, `dead-letter-tests` **64 → 65** keeping `node.db`, `node.db-shm` and `node.db-wal` — the WAL survives, which is what makes a failed journal test diagnosable. Restored, re-run 3/0, count back to 64.
+- ✅ 166 passed / 0 failed across `reasonbraid-node` and `reasonbraid-core`; clippy `-D warnings` clean for both; fmt clean; gate green. ⚠️ A new family appears — `fixture-guard-controls`, created by the guard's own controls — measuring **0 entries** after a run: the guard proving itself on itself.
+- ⏳ `.11.2.1.3.2.3` owns the remainder: the server's **1,308** (55% of `journal-tests`, 12 sites, needs a live cluster).
+
 ## 2026-09-21 — A passing test now removes its own fixture, and a failing one still keeps it (`SIGNOFF-REPAIR.11.2.1.3.2.2`)
 
 `REASONBRAID-REPAIR-0371`. The mechanism `.11.2.1.3.2` named, built once and proved on the half of the family that needs no database.

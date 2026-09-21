@@ -25,23 +25,18 @@ fn journal_fixture(name: &str) -> Fixture {
     Fixture::create("journal-tests", name).expect("the fixture directory is new")
 }
 
-fn stub_binary(name: &str) -> PathBuf {
-    // The base follows the PROCESS, not the build (§12). `CARGO_TARGET_TMPDIR`
-    // was measured UNSET in this project's runs, so the compile-time fallback
-    // this replaces was the live path, baking one checkout's absolute path
-    // into the binary (SIGNOFF-REPAIR.11.2.1.2.1).
-    let base = reasonbraid_core::repository_root()
-        .expect("the tests run inside the repository")
-        .join("target");
-    let unique = uuid::Uuid::now_v7();
-    let dir = base.join("codex-stubs").join(format!("{name}-{unique}"));
-    std::fs::create_dir_all(dir.parent().expect("the fixture parent")).unwrap();
-    // Exclusive: an existing directory belongs to another fixture or an
-    // earlier run, and must never be adopted.
-    std::fs::DirBuilder::new()
-        .create(&dir)
-        .expect("the fixture directory is new");
-    let path = dir.join("codex");
+/// The stub executable, inside a fixture that removes itself when the test passes
+/// (`SIGNOFF-REPAIR.11.2.1.3.2.4`).
+///
+/// 🔴 The guard comes back FIRST in the tuple and that is load-bearing: a `let`
+/// statement drops its bindings in reverse declaration order, and a tuple
+/// pattern's bindings count left to right, so `let (_stub, binary)` drops the
+/// PATH first and the fixture last. ⚠️ The caller must bind the guard: passing
+/// this straight into `with_binary(…)` would delete the executable before the
+/// adapter ever spawns it.
+fn stub_binary(name: &str) -> (Fixture, PathBuf) {
+    let fixture = Fixture::create("codex-stubs", name).expect("the fixture directory is new");
+    let path = fixture.join("codex");
     let script = r#"#!/bin/sh
 for last in "$@"; do :; done
 case "$last" in
@@ -63,7 +58,7 @@ esac
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
-    path
+    (fixture, path)
 }
 
 fn reservation(tag: &str) -> ReservationReference {
@@ -131,7 +126,8 @@ async fn completion_attaches_the_streamed_provider_handle_and_lands_completed() 
     let fixture = journal_fixture("codex-complete");
     let journal = Journal::open(fixture.join("node.db")).await.unwrap();
     let op = seed_operation(&journal, "complete").await;
-    let adapter = CodexCliAdapter::with_binary(stub_binary("complete"));
+    let (_stub, binary) = stub_binary("complete");
+    let adapter = CodexCliAdapter::with_binary(binary);
 
     let report = execute_attempt(
         &journal,
@@ -166,7 +162,8 @@ async fn lost_response_with_unsupported_lookup_is_outcome_unknown_never_retry() 
     let fixture = journal_fixture("codex-lost");
     let journal = Journal::open(fixture.join("node.db")).await.unwrap();
     let op = seed_operation(&journal, "lost").await;
-    let adapter = CodexCliAdapter::with_binary(stub_binary("lost"));
+    let (_stub, binary) = stub_binary("lost");
+    let adapter = CodexCliAdapter::with_binary(binary);
 
     let err = execute_attempt(
         &journal,

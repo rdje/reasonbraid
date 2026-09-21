@@ -300,8 +300,9 @@ def render_footer(ledger: Ledger, pred: dict, ordinal: int, retired: int, kept: 
                  "walks all the way back. `docs/decisions/2026-09-09_changelog-rotation.md` holds\n"
                  "the first transition's evidence.")
     return f"""{FOOTER_START} into reachable Git history at the
-**{ordinal_word(ordinal)} rotation** (`{leaf}`, which owns this ledger’s rotation). The exact predecessor — every
-byte this file held immediately before the rotation — is:
+**{ordinal_word(ordinal)} rotation** (`{leaf}`, which owns this ledger’s rotation). The exact predecessor — this file as it
+stood at the commit named below, which is the object every retired record was
+checked against before this notice was written — is:
 
 ```bash
 git show {pred['commit']}:{ledger.path}
@@ -531,6 +532,24 @@ def self_test() -> int:
         "NO earlier rotation notice" in first and "thirty-seventh" not in first)
     chk("a later notice stopped naming its predecessor", "thirty-seventh" in later)
 
+    # 13d-bis. THE NOTICE DESCRIBES THE OBJECT IT NAMES, NOT THE WORKING TREE
+    #      (`SIGNOFF-REPAIR.11.4.2.6.8`). It used to call the predecessor "every
+    #      byte this file held immediately before the rotation", and a rotation
+    #      runs on the tree that CROSSED the threshold — so the ledger almost
+    #      always holds that commit's own entry, which the predecessor does not.
+    #      Censused across this project's whole history: of 48 rotations, at
+    #      least 31 wrote that sentence over a ledger carrying an uncommitted
+    #      entry of their own, between 1,931 and 8,019 bytes of it.
+    #      ⛔ The anchor STAYS at HEAD — a working-tree state has no address a
+    #      reader can `git show` — so the repair is the sentence, and the
+    #      replacement is true in the clean case and the dirty one alike.
+    chk("the notice still claims the working tree's bytes",
+        "immediately before the rotation" not in first)
+    chk("the notice does not say which object it names",
+        "stood at the commit named below" in first)
+    chk("the notice does not say why that object is the right one",
+        "every retired record was" in first and "checked against" in first)
+
     # 13e. THE ROTATED BODY ENDS IN EXACTLY ONE NEWLINE, both shapes. The first
     #      bootstrapped rotation appended a notice that ends the file, leaving no
     #      final newline, and FILE-TERMINATION refused the commit — while a
@@ -588,6 +607,63 @@ def self_test() -> int:
     return 0
 
 
+def audit_notices() -> int:
+    """How often was a rotation notice written over a ledger that had moved?
+
+    ⚠️ `SIGNOFF-REPAIR.11.4.2.6.8`'s census, shipped as an arm because the numbers
+    it produced are published and a published number owes a producer
+    (`docs/knowledge/a-restated-number-needs-a-producer.md`).
+
+    A rotation is detected the way this file detects one everywhere else — a
+    HEADING DISAPPEARING, never a falling count — and the question asked of each
+    is whether the SAME commit also added a record of its own. If it did, the
+    ledger at rotation time held bytes the named predecessor does not, because
+    `COMMIT.md` puts the entry that crosses the threshold in the commit that
+    rotates.
+
+    ⛔ THIS IS A LOWER BOUND AND SAYS SO. It can only see a working tree that
+    added a whole record; one that edited an existing record, or touched the file
+    without crossing a heading boundary, is invisible to it and counted clean.
+    """
+    total = dirty = 0
+    for name, ledger in sorted(LEDGERS.items()):
+        revs = git("log", "--reverse", "--format=%H %h", "--", ledger.path)[1].splitlines()
+        prev = None
+        rotations = d = 0
+        sizes: list[int] = []
+        for line in revs:
+            sha, short = line.split()
+            rc, text = git("show", f"{sha}:{ledger.path}")
+            if rc != 0:
+                prev = None
+                continue
+            if prev is not None:
+                before, after = set(HEADING.findall(prev)), set(HEADING.findall(text))
+                if before - after:
+                    rotations += 1
+                    added = after - before
+                    if added:
+                        d += 1
+                        for h in added:
+                            i = text.index(h)
+                            j = text.find("\n## ", i + 1)
+                            sizes.append(len(text[i:(j if j != -1 else len(text))].encode()))
+                        print(f"  {ledger.path} {short}: {len(added)} own record(s) "
+                              f"absent from the predecessor it names")
+            prev = text
+        total += rotations
+        dirty += d
+        print(f"{ledger.path}: {rotations} rotation(s), {d} written over a ledger holding "
+              f"the rotating commit's own record")
+        if sizes:
+            print(f"    that record is {min(sizes)}-{max(sizes)} bytes the predecessor lacks")
+    print()
+    print(f"AT LEAST {dirty} of {total} rotation notices describe a ledger that had moved "
+          f"since the commit they name. Lower bound: a working tree that edited an existing "
+          f"record rather than adding one is invisible here and counted clean.")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     if "--self-test" in argv:
         return self_test()
@@ -608,6 +684,8 @@ def main(argv: list[str]) -> int:
             print(f"unknown ledger {name!r} — known: {', '.join(sorted(LEDGERS))}", file=sys.stderr)
             return 2
         ledger = LEDGERS[name]
+    if "--audit-notices" in argv:
+        return audit_notices()
     if "--check-all" in argv:
         return max((check_one(l) for l in LEDGERS.values()), default=0)
     if "--check" in argv or not argv:

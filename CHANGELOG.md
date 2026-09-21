@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-21 — The rotation notice now describes the object it names, and 31 of 48 said otherwise (`SIGNOFF-REPAIR.11.4.2.6.8`)
+
+`REASONBRAID-DOC-0097`. A published sentence that was untrue whenever the ledger had moved — which is the normal case.
+
+- 🔴 **The notice called its predecessor *every byte this file held immediately before the rotation***, and a rotation runs on the tree that CROSSED the threshold, so the ledger holds that commit's own entry and the named object does not.
+- ⭐ **Censused before the wording was chosen** (`.11.6`): `--audit-notices` reports **at least 31 of 48** rotation notices describing a ledger that had moved — `CHANGELOG.md` 29/46, `DEV_NOTES.md` 2/2, `LIVE_STATUS.md` 0/0, whose transition was a SEAL with a hand-written notice that was already correct. Shipped as an arm rather than a figure, because a published number owes a producer.
+- ⚠️ **A LOWER BOUND, and it says so in its own output**: it sees a moved ledger only when the rotating commit added a WHOLE record, so the 17 remaining are *not measured dirty* rather than *measured clean*.
+- 🔴 **It was not discovered here — it was DECLARED and left.** `.11.4.2.6.3`'s acceptance already carried *"an honest limit on the notice's wording"*, with no owner. A defect stated in the leaf that ships it is `SIGNOFF-REPAIR.11.13`'s finding exactly.
+- ✅ **The repair is the sentence and the ANCHOR DOES NOT MOVE** — a state never committed has no address a reader can `git show`, and the retrieval command is the notice's whole purpose. It now says *this file as it stood at the commit named below, which is the object every retired record was checked against before this notice was written*, which is true in the clean and the dirty case alike and tells the reader WHY that object is the right one.
+- ⛔ **Nothing was ever at risk of being lost, and separating that from the defect is the point**: `--apply` refuses when any retired heading is absent from the predecessor, and those two arms are untouched and pass.
+- ✅ Falsified in situ — the old wording put back, `--self-test` rc=1 with **3 controls red by name**, rc=0 restored, `cmp -s` byte-identical. 38 controls, was 35. Both LIVE footers corrected alongside the renderer; no threshold, ledger or retired record moved.
+
 ## 2026-09-21 — A declared control is now evaluated, and the row that was false for months is refused by name (`SIGNOFF-REPAIR.11.4.2.6.7`)
 
 `REASONBRAID-REPAIR-0357`. The last strand of `.11.4.2.6`: a routed-destination row could state a pressure control that nothing performed, and one did.
@@ -376,8 +388,9 @@
 - **No regression:** 4 suites, **146 tests, 0 failed**; `--lib` 133 passed; clippy `-D warnings` rc=0; `make gate` green; `make book` rc=0.
 
 The entries before those above were rotated into reachable Git history at the
-**thirty-seventh rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — every
-byte this file held immediately before the rotation — is:
+**thirty-seventh rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
+stood at the commit named below, which is the object every retired record was
+checked against before this notice was written — is:
 
 ```bash
 git show 26f90ac9316244d41d3cb204f5b7d8f0cbe36654:CHANGELOG.md

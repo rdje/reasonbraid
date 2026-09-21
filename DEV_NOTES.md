@@ -525,8 +525,9 @@ prepend-only file ever acquires positional consumers it becomes a knowledge note
 the count is one.
 
 The entries before those above were rotated into reachable Git history at the
-**second rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — every
-byte this file held immediately before the rotation — is:
+**second rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
+stood at the commit named below, which is the object every retired record was
+checked against before this notice was written — is:
 
 ```bash
 git show 918f446079a0c8e616fd3b4074d2c6bf46b50f36:DEV_NOTES.md

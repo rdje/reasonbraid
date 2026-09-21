@@ -401,4 +401,32 @@ if ! python3 -B scripts/census_route_controls.py --check >/dev/null 2>&1; then
     exit 1
 fi
 
+# Every shipped surface carries a per-member JUDGEMENT, and the judgement is
+# still about the facts it was made from (`SIGNOFF-REPAIR.11.4.6.2`).
+#
+# ⛔ The population is derived from the producers — every `.route(` outside a
+# `#[cfg(test)]` block, and `cargo metadata --no-deps` for the binaries, because
+# only 4 of the 10 carry a `[[bin]]` stanza. A member nothing judged FAILS.
+#
+# ⭐ WHY A TABLE RATHER THAN PROSE: `docs/knowledge/a-sample-is-not-a-traversal.md`
+# — a statement about every member does not fit in a sentence; carry it keyed to
+# each member and refuse when a member is unjudged, when a judgement outlives its
+# member, or when a member's INPUTS moved since it was judged. The third is the
+# one usually missing and the one that makes a stale judgement look current.
+#
+# ⭐ AND THE COARSE SIGNAL IS WRONG IN BOTH DIRECTIONS, which is the argument for
+# adjudicating rather than counting: asking *does any chapter mention this family*
+# calls 21 of 30 covered where only 14 have every route documented, and it reads
+# `/` as a bare mention while `web-ui.md` is a whole chapter about it.
+#
+# ⛔ A `gap` row must name an owning leaf (`CLAUDE.md` §15: a finding nobody owns
+# is a complaint), so the table cannot decay into an unheld backlog.
+#
+# ⚠️ Priced before registering (`SIGNOFF-REPAIR.11.5`): 0.16 s over three runs
+# against a 30.37 s enforcer, about 0.5%. The `cargo metadata` call is 0.024 s.
+if ! python3 -B scripts/census_surface_judgement.py --check >/dev/null 2>&1; then
+    python3 -B scripts/census_surface_judgement.py --check >&2
+    exit 1
+fi
+
 exit 0

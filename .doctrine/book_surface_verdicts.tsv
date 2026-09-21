@@ -1,0 +1,81 @@
+# ReasonBraid book-surface adjudication — scripts/census_surface_judgement.py
+#
+# One row per SHIPPED SURFACE, adjudicated against the book (SIGNOFF-REPAIR.11.4.6.2).
+#
+#     <kind><TAB><member><TAB><verdict><TAB><witness><TAB><owner><TAB><reason>
+#
+# kinds    : route-family | route | binary
+# verdicts : covered | internal | gap
+#
+# ⛔ THE POPULATION IS DERIVED, NEVER TYPED. Route families and unfamilied routes
+# come from every `.route(` outside a #[cfg(test)] block in the server's src/;
+# binaries come from `cargo metadata --no-deps`, because only 4 of the 10 carry a
+# [[bin]] stanza. A member this file does not judge FAILS the gate.
+#
+# ⛔ THE WITNESS IS THE EVIDENCE, NOT THE VERDICT, and the guard re-checks it:
+#   - route-family / route : `<total routes>:<route keys the book does not name
+#     beside an HTTP method>` — RECOMPUTED every run. A route added, removed,
+#     documented or undocumented since the judgement detaches the row.
+#   - binary : `<chapter>::<verbatim substring>` — the sentence somebody actually
+#     read. A binary has no /v1/ path to match and `rb` is two letters, so a
+#     mention test cannot carry this judgement. A rewritten sentence detaches it.
+#
+# ⭐ THE REFUSAL IS THE FEATURE. A detached witness means a judgement is OWED.
+# Re-read the surface; do NOT paste the computed witness over the old row, which
+# converts a stale verdict into a fresh-looking one.
+#
+# ⛔ A `gap` MUST NAME AN OWNING LEAF (CLAUDE.md §15: a finding nobody owns is a
+# complaint), and `gap` and `internal` must both carry a reason.
+#
+# ⚠️ `covered` means the book names EVERY route of the member beside a method.
+# That is a proxy: a contract line is not proof the description is accurate or
+# complete — SIGNOFF-REPAIR.11.8's standing limit, unchanged.
+#
+# ⚠️ THE VERDICT IS NOT READ OFF `census_book_coverage.py`. That instrument asks
+# *does any chapter mention this family* and calls 21 of 30 covered; asked per
+# ROUTE only 14 of 30 are. It also under-reports: `/` is mechanically a bare
+# mention and web-ui.md is a whole chapter about it. Both corrections are here.
+#
+route-family	assessments	covered	1:-	-	every route carries a contract line
+route-family	claims	covered	1:-	-	every route carries a contract line
+route-family	deployment-targets	covered	1:-	-	every route carries a contract line
+route-family	derivations	covered	1:-	-	every route carries a contract line
+route-family	directory	covered	2:-	-	site-authority.md carries match and presence
+route-family	enrollments	covered	1:-	-	every route carries a contract line
+route-family	policy-approvals	covered	1:-	-	every route carries a contract line
+route-family	policy-corrections	covered	1:-	-	every route carries a contract line
+route-family	policy-publications	covered	4:-	-	cli.md and authority.md carry the four publication verbs
+route-family	profiles	covered	6:-	-	profiles.md; its /card line is an ALIGNED contract line and read as a bare mention until REPAIR-0378
+route-family	resolvers	covered	1:-	-	every route carries a contract line
+route-family	resources	covered	3:-	-	every route carries a contract line
+route-family	snapshots	covered	7:-	-	deployment.md carries all seven, item and collection separately
+route-family	workflow-profiles	covered	1:-	-	every route carries a contract line
+route-family	admin	gap	17:/v1/admin/boundaries/{}/revoke,/v1/admin/breakers/reset,/v1/admin/grants,/v1/admin/grants/{}/revoke,/v1/admin/incarnations,/v1/admin/runs,/v1/admin/usage	SIGNOFF-REPAIR.11.4.6.6	7 of 17 undocumented and they are OPERATOR verbs — the three revocations, the breaker reset, and the incarnation/run/usage inspections. The coarse signal calls this family covered because six chapters name /v1/admin
+route-family	audit	gap	1:/v1/audit/receipts	SIGNOFF-REPAIR.11.4.6.5	the audit receipt surface is named by no chapter at all; it is a governance read a caller must be able to find
+route-family	calls	gap	4:/v1/calls,/v1/calls/{}/close,/v1/calls/{}/respond	SIGNOFF-REPAIR.11.4.6.7	3 of 4 undocumented including the COLLECTION. SIGNOFF-REPAIR.11.8.1 re-derived by hand that authority.md's line is a contract for the ITEM route, so the coarse signal credits this family to a line about something else
+route-family	deployments	gap	2:/v1/deployments,/v1/deployments/{}/{}/receipt	SIGNOFF-REPAIR.11.4.6.5	named by no chapter; the deployment receipt is the evidence a publication reached a target
+route-family	evaluations	gap	7:/v1/evaluations/calibrations,/v1/evaluations/corpora,/v1/evaluations/gates,/v1/evaluations/gates/{}/evaluations,/v1/evaluations/runs,/v1/evaluations/trials,/v1/evaluations/trials/{}/results	SIGNOFF-REPAIR.11.4.6.4	the whole evaluation harness — 7 routes, 0 documented, named by no chapter. The largest single-subject gap in the surface
+route-family	federation-agreements	gap	3:/v1/federation-agreements/accept,/v1/federation-agreements/revoke	SIGNOFF-REPAIR.11.4.6.6	the collection is documented and both state-changing verbs are not; accepting and revoking a federation agreement are exactly the acts a peer operator needs written down
+route-family	nodes	gap	14:/v1/nodes/enroll-tokens,/v1/nodes/inbox/prune,/v1/nodes/quarantine,/v1/nodes/replay,/v1/nodes/revoke	SIGNOFF-REPAIR.11.4.6.6	9 of 14 documented; the 5 missing are the node lifecycle verbs an operator uses under fault — quarantine, replay, revoke, prune and token issue
+route-family	policies	gap	3:/v1/policies/{}/{}/impact	SIGNOFF-REPAIR.11.4.6.3	the bundle and resolve are documented; the impact read belongs with the policy lifecycle chapter
+route-family	policy-decisions	gap	1:/v1/policy-decisions	SIGNOFF-REPAIR.11.4.6.3	one of the six policy-lifecycle families named by no chapter
+route-family	policy-drift	gap	1:/v1/policy-drift	SIGNOFF-REPAIR.11.4.6.3	one of the six policy-lifecycle families named by no chapter
+route-family	policy-outcomes	gap	1:/v1/policy-outcomes	SIGNOFF-REPAIR.11.4.6.3	one of the six policy-lifecycle families named by no chapter
+route-family	policy-projections	gap	1:/v1/policy-projections	SIGNOFF-REPAIR.11.4.6.3	one of the six policy-lifecycle families named by no chapter
+route-family	policy-proposals	gap	1:/v1/policy-proposals	SIGNOFF-REPAIR.11.4.6.3	one of the six policy-lifecycle families named by no chapter
+route-family	policy-reviews	gap	3:/v1/policy-reviews,/v1/policy-reviews/schedule,/v1/policy-reviews/{}/done	SIGNOFF-REPAIR.11.4.6.3	the sixth policy-lifecycle family and the largest of them: schedule, list and complete a review
+route-family	routing	gap	4:/v1/routing/resolve,/v1/routing/rules	SIGNOFF-REPAIR.11.4.6.6	recommendations and resolutions are documented; the rules a site operator writes and the resolve verb that applies them are not
+route-family	threads	gap	7:/v1/threads/auto	SIGNOFF-REPAIR.11.4.6.7	6 of 7 documented; automatic thread initiation is a distinct entry point from POST /v1/threads and is named by no chapter
+route	/	covered	1:/	-	⭐ THE MACHINE UNDER-REPORTS THIS ONE: mechanically a bare mention, while docs/book/src/web-ui.md is an entire chapter about the read-only console rb-server serves at /. The judgement corrects the signal rather than repeating it
+route	/app.js	internal	1:/app.js	-	an asset the console page loads, not a surface a caller programs against. SIGNOFF-REPAIR.11.8 measured that a rule requiring every route in the book would wrongly flag the console's static assets
+route	/style.css	internal	1:/style.css	-	an asset the console page loads, not a surface a caller programs against; same measurement as /app.js
+binary	rb	covered	cli.md::Phase 0 ships a command-line surface for the vertical slice: `rb` (the	-	the CLI has its own chapter, plus cli-state.md and cli-bootstrap-state.md beneath it
+binary	rb-server	covered	deployment.md::| `rb-server` | the control plane — API + node channel + the embedded console at `/` (one listener, one binary) |	-	role row in deployment.md, started in cli.md, its console in web-ui.md
+binary	rb-site	covered	site-authority.md::python3 -B scripts/project_env.py target/debug/rb-site --help	-	site-authority.md builds it, runs it and shows rb-site audit list
+binary	rb-bench	covered	benchmark.md::target/debug/rb-bench --agent scripted	-	benchmark.md shows both agent modes with their invocation
+binary	rb-mcp	covered	mcp.md::## Connecting a client: `rb-mcp` over stdio	-	mcp.md carries the stdio invocation and a client configuration block
+binary	rb-node	covered	node-channel.md::rb-node --enroll-token … --node-secret …	-	node-channel.md gives the enrolment invocation; two-host-demo.md runs it on a real host
+binary	rb-journal	covered	node-journal.md::$ rb-journal inspect node.db	-	node-journal.md shows inspect and pending against a real journal file
+binary	reasonbraid-browse	covered	deployment.md::python3 -B scripts/project_env.py target/debug/reasonbraid-browse <<'JSON'	-	deployment.md's browser-invocation section gives a direct invocation, the private storage it creates and its named refusals — operator-relevant because it needs a working directory inside the checkout
+binary	reasonbraid-extract	internal	deployment.md::| `reasonbraid-extract` | resource extraction worker |	-	a worker the SERVER spawns (crates/reasonbraid-server/src/extraction.rs), one request in / one response out / exit — its own header calls the process the quarantine. No operator invokes it, so the role row is the right amount. Contrast reasonbraid-browse, the same shape but with operator-relevant storage behaviour
+binary	rb-release-manifest	gap	deployment.md::| `rb-release-manifest` | release manifest tooling |	SIGNOFF-REPAIR.11.4.6.8	⚠️ THE WEAK BINARY SIGNAL HID A REAL GAP. census_book_coverage.py reports 0 of 10 binaries unmentioned and warns that the test is a bare-name match; this one's ENTIRE book presence is that single table cell. It is an operator-facing clap CLI — keygen, generate, pubkey, resign, verify — and ADR-027's pubkey verb exists so a third party can verify a release WITHOUT the signing key, which is unusable while undocumented

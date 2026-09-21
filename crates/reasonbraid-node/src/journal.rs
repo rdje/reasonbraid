@@ -1400,24 +1400,16 @@ impl Journal {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use reasonbraid_core::fixture::Fixture;
 
-    /// A unique journal path under the repo's `target/` (same volume as the repo, per
-    /// the data-locality policy; `target/` is gitignored and cleaned with `cargo clean`).
-    /// The root is derived at RUNTIME (§12), so moving the checkout moves the
-    /// fixtures with it (`SIGNOFF-REPAIR.11.2.1.2.1`).
-    fn test_path(name: &str) -> PathBuf {
-        let unique = uuid::Uuid::now_v7();
-        let dir = reasonbraid_core::repository_root()
-            .expect("the tests run inside the repository")
-            .join("target/journal-tests")
-            .join(format!("{name}-{unique}"));
-        std::fs::create_dir_all(dir.parent().expect("the fixture parent")).unwrap();
-        // Exclusive: an existing directory belongs to another fixture or an
-        // earlier run, and must never be adopted.
-        std::fs::DirBuilder::new()
-            .create(&dir)
-            .expect("the fixture directory is new");
-        dir.join("node.db")
+    /// A fixture directory for one test, on the repository's own volume, created
+    /// exclusively and REMOVED when the test passes (`SIGNOFF-REPAIR.11.2.1.3.2.2`).
+    ///
+    /// ⚠️ The returned guard must be BOUND to a local: as a temporary it would be
+    /// dropped at the end of its statement, taking the journal file with it. Every
+    /// call site below binds it, and the journal path is `fixture.join("node.db")`.
+    fn test_fixture(name: &str) -> Fixture {
+        Fixture::create("journal-tests", name).expect("the fixture directory is new")
     }
 
     fn now() -> DateTime<Utc> {
@@ -1463,7 +1455,8 @@ mod tests {
     /// connection and the meta row carries the profile the read-only CLI reports.
     #[tokio::test]
     async fn open_applies_and_records_the_durability_profile() {
-        let journal = Journal::open(test_path("profile")).await.unwrap();
+        let fixture = test_fixture("profile");
+        let journal = Journal::open(fixture.join("node.db")).await.unwrap();
         let health = journal.health().await.unwrap();
         assert_eq!(health.journal_mode, "wal");
         assert_eq!(health.synchronous, "FULL");
@@ -1477,7 +1470,8 @@ mod tests {
     /// `already_known` on the replay.
     #[tokio::test]
     async fn record_command_is_idempotent_by_command_id() {
-        let journal = Journal::open(test_path("cmd")).await.unwrap();
+        let fixture = test_fixture("cmd");
+        let journal = Journal::open(fixture.join("node.db")).await.unwrap();
         let payload = serde_json::json!({ "operation": "contribute" });
         let cmd = command("cmd_x", "c7", &payload);
         let first = journal.record_command(&cmd, now()).await.unwrap();
@@ -1492,7 +1486,8 @@ mod tests {
     /// keyed 1:1 on the command id (KICKOFF WP3 acceptance).
     #[tokio::test]
     async fn ensure_operation_creates_exactly_once() {
-        let journal = Journal::open(test_path("op")).await.unwrap();
+        let fixture = test_fixture("op");
+        let journal = Journal::open(fixture.join("node.db")).await.unwrap();
         let payload = serde_json::json!({ "operation": "contribute" });
         journal
             .record_command(&command("cmd_y", "c9", &payload), now())
@@ -1523,7 +1518,8 @@ mod tests {
     /// machine does not allow.
     #[tokio::test]
     async fn attempt_lifecycle_writes_the_boundary_ledger() {
-        let journal = Journal::open(test_path("lifecycle")).await.unwrap();
+        let fixture = test_fixture("lifecycle");
+        let journal = Journal::open(fixture.join("node.db")).await.unwrap();
         let (attempt_id, _op) = seed_attempt(&journal, "life").await;
         let t0 = now();
 
@@ -1568,7 +1564,8 @@ mod tests {
     /// is recovered as `outcome_unknown` — never retried silently, never guessed.
     #[tokio::test]
     async fn crash_after_dispatch_before_result_recovers_to_outcome_unknown() {
-        let path = test_path("crash-dispatch");
+        let fixture = test_fixture("crash-dispatch");
+        let path = fixture.join("node.db");
         let (attempt_id, _op) = {
             let journal = Journal::open(&path).await.unwrap();
             let ids = seed_attempt(&journal, "kpd").await;
@@ -1604,7 +1601,8 @@ mod tests {
     /// never crossed, so redelivery cannot duplicate a provider effect.
     #[tokio::test]
     async fn crash_before_dispatch_is_safe_to_redeliver() {
-        let path = test_path("crash-prepared");
+        let fixture = test_fixture("crash-prepared");
+        let path = fixture.join("node.db");
         let (attempt_id, _op) = {
             let journal = Journal::open(&path).await.unwrap();
             seed_attempt(&journal, "kpp").await
@@ -1625,7 +1623,8 @@ mod tests {
     /// A crash AFTER a result was recorded leaves the terminal state untouched.
     #[tokio::test]
     async fn crash_after_result_is_untouched_by_recover() {
-        let path = test_path("crash-completed");
+        let fixture = test_fixture("crash-completed");
+        let path = fixture.join("node.db");
         let (attempt_id, _op) = {
             let journal = Journal::open(&path).await.unwrap();
             let ids = seed_attempt(&journal, "kpc").await;
@@ -1658,7 +1657,8 @@ mod tests {
     /// proof, nothing but adjudication can move it.
     #[tokio::test]
     async fn prove_result_lands_ambiguous_on_proven_terminal_states() {
-        let journal = Journal::open(test_path("prove")).await.unwrap();
+        let fixture = test_fixture("prove");
+        let journal = Journal::open(fixture.join("node.db")).await.unwrap();
 
         // Proved success.
         let (a1, _) = seed_attempt(&journal, "prv1").await;
@@ -1719,7 +1719,8 @@ mod tests {
     /// An authorized adjudication ends ambiguity: `outcome_unknown → reconciled`.
     #[tokio::test]
     async fn reconcile_lands_ambiguous_on_reconciled() {
-        let journal = Journal::open(test_path("reconcile")).await.unwrap();
+        let fixture = test_fixture("reconcile");
+        let journal = Journal::open(fixture.join("node.db")).await.unwrap();
         let (attempt_id, _) = seed_attempt(&journal, "rec").await;
         journal
             .record_dispatch(&attempt_id, None, now())
@@ -1752,7 +1753,8 @@ mod tests {
     /// adapter-call seam cannot lose the boundary fact.
     #[tokio::test]
     async fn boundary_record_is_durable_and_visible_before_the_adapter_runs() {
-        let path = test_path("boundary");
+        let fixture = test_fixture("boundary");
+        let path = fixture.join("node.db");
         let journal = Journal::open(&path).await.unwrap();
         let (attempt_id, _op) = seed_attempt(&journal, "bnd").await;
 
@@ -1775,7 +1777,8 @@ mod tests {
     /// the ack survives redelivery and the event leaves the pending view exactly once.
     #[tokio::test]
     async fn outgoing_events_and_acknowledgement() {
-        let journal = Journal::open(test_path("events")).await.unwrap();
+        let fixture = test_fixture("events");
+        let journal = Journal::open(fixture.join("node.db")).await.unwrap();
         let (_attempt_id, op) = seed_attempt(&journal, "evt").await;
 
         let payload = serde_json::json!({ "event_type": "contribution.ready" });
@@ -1820,7 +1823,8 @@ mod tests {
     /// `failed_before_dispatch` when the boundary was never crossed.
     #[tokio::test]
     async fn deterministic_failures_are_proven_not_ambiguous() {
-        let journal = Journal::open(test_path("failures")).await.unwrap();
+        let fixture = test_fixture("failures");
+        let journal = Journal::open(fixture.join("node.db")).await.unwrap();
 
         let (a1, _) = seed_attempt(&journal, "fbd").await;
         journal
@@ -1855,16 +1859,8 @@ mod tests {
     /// is not a journal, and the read-only handle refuses a file with no meta.
     #[tokio::test]
     async fn garbage_and_missing_files_fail_cleanly() {
-        let dir = reasonbraid_core::repository_root()
-            .expect("the tests run inside the repository")
-            .join("target/journal-tests")
-            .join(format!("garbage-{}", uuid::Uuid::now_v7()));
-        std::fs::create_dir_all(dir.parent().expect("the fixture parent")).unwrap();
-        // Exclusive: an existing directory belongs to another fixture or an
-        // earlier run, and must never be adopted.
-        std::fs::DirBuilder::new()
-            .create(&dir)
-            .expect("the fixture directory is new");
+        let fixture = test_fixture("garbage");
+        let dir = fixture.path();
 
         let garbage = dir.join("garbage.db");
         std::fs::write(&garbage, b"this is not a sqlite database").unwrap();
@@ -1885,7 +1881,8 @@ mod tests {
     /// and an overwrite stays idempotent (the handshake reports the LATEST value).
     #[tokio::test]
     async fn acknowledgement_cursor_round_trips() {
-        let journal = Journal::open(test_path("cursor")).await.unwrap();
+        let fixture = test_fixture("cursor");
+        let journal = Journal::open(fixture.join("node.db")).await.unwrap();
         assert_eq!(journal.last_acked_cursor().await.unwrap(), 0);
         journal.set_last_acked_cursor(7).await.unwrap();
         assert_eq!(journal.last_acked_cursor().await.unwrap(), 7);
@@ -1897,7 +1894,8 @@ mod tests {
     /// local operation IDs" the reconnect handshake reports.
     #[tokio::test]
     async fn pending_operations_are_those_without_a_terminal_attempt() {
-        let journal = Journal::open(test_path("pending-ops")).await.unwrap();
+        let fixture = test_fixture("pending-ops");
+        let journal = Journal::open(fixture.join("node.db")).await.unwrap();
         // op1: no attempt at all → pending.
         let (_attempt_id, op1) = {
             let (attempt_id, op) = seed_attempt(&journal, "p1").await;
@@ -1942,7 +1940,8 @@ mod tests {
     /// lost is marked acknowledged ONLY when both ids match — never an overwrite.
     #[tokio::test]
     async fn known_event_acknowledgement_matches_both_ids() {
-        let journal = Journal::open(test_path("known-event")).await.unwrap();
+        let fixture = test_fixture("known-event");
+        let journal = Journal::open(fixture.join("node.db")).await.unwrap();
         let (_attempt_id, op) = seed_attempt(&journal, "ke").await;
         let payload = json_for_test();
         journal
@@ -1978,7 +1977,8 @@ mod tests {
     /// their original ids and payloads.
     #[tokio::test]
     async fn pending_events_carry_their_payloads() {
-        let journal = Journal::open(test_path("event-payload")).await.unwrap();
+        let fixture = test_fixture("event-payload");
+        let journal = Journal::open(fixture.join("node.db")).await.unwrap();
         let (_attempt_id, op) = seed_attempt(&journal, "ep").await;
         let payload = json_for_test();
         journal

@@ -17,28 +17,21 @@ use reasonbraid_adapter::{
     CancellationStrength, DispatchAck, FakeAdapter, InvokeOutcome, NormalizedUsage,
     PolicyInjectionMode, RunRequest, StatusLookupOutcome, UsageConfidence,
 };
+use reasonbraid_core::fixture::Fixture;
 use reasonbraid_core::{BudgetDimensions, ReservationReference};
 use reasonbraid_node::{execute_attempt, CommandInput, Journal, LocalBudget, SupervisorError};
 use serde_json::{json, Value};
 
 /// A unique journal path under the repo's build dir (same volume as the repo).
-fn journal_path(name: &str) -> PathBuf {
-    // The base follows the PROCESS, not the build (§12). `CARGO_TARGET_TMPDIR`
-    // was measured UNSET in this project's runs, so the compile-time fallback
-    // this replaces was the live path, baking one checkout's absolute path
-    // into the binary (SIGNOFF-REPAIR.11.2.1.2.1).
-    let base = reasonbraid_core::repository_root()
-        .expect("the tests run inside the repository")
-        .join("target");
-    let unique = uuid::Uuid::now_v7();
-    let dir = base.join("journal-tests").join(format!("{name}-{unique}"));
-    std::fs::create_dir_all(dir.parent().expect("the fixture parent")).unwrap();
-    // Exclusive: an existing directory belongs to another fixture or an
-    // earlier run, and must never be adopted.
-    std::fs::DirBuilder::new()
-        .create(&dir)
-        .expect("the fixture directory is new");
-    dir.join("node.db")
+/// A fixture directory for one test, created exclusively on the repository's own
+/// volume and REMOVED when the test passes (`SIGNOFF-REPAIR.11.2.1.3.2.2`). A
+/// failing test keeps its fixture, and everything in it, as the diagnostic.
+///
+/// ⚠️ The guard must be BOUND to a local: as a temporary it would be dropped at
+/// the end of its statement, taking the journal file with it. Every call site
+/// below binds it and reads the journal as `fixture.join("node.db")`.
+fn journal_fixture(name: &str) -> Fixture {
+    Fixture::create("journal-tests", name).expect("the fixture directory is new")
 }
 
 fn reservation(tag: &str) -> ReservationReference {
@@ -123,9 +116,8 @@ async fn fixture_corpus_drives_each_auto_outcome_to_its_expected_terminal() {
     );
 
     for (index, spec) in auto.iter().enumerate() {
-        let journal = Journal::open(journal_path(&format!("corpus-{index}-{}", spec.name)))
-            .await
-            .unwrap();
+        let fixture = journal_fixture(&format!("corpus-{index}-{}", spec.name));
+        let journal = Journal::open(fixture.join("node.db")).await.unwrap();
         let op = seed_operation(&journal, &spec.name).await;
         let adapter = FakeAdapter::from_spec(spec.clone());
         let expected = spec.expected_terminal.as_deref().unwrap();
@@ -181,7 +173,8 @@ async fn fixture_corpus_drives_each_auto_outcome_to_its_expected_terminal() {
 /// recommendation — what to do is the caller's decision.
 #[tokio::test]
 async fn lost_response_without_lookup_is_outcome_unknown_and_never_recommends_retry() {
-    let journal = Journal::open(journal_path("lost-no-lookup")).await.unwrap();
+    let fixture = journal_fixture("lost-no-lookup");
+    let journal = Journal::open(fixture.join("node.db")).await.unwrap();
     let op = seed_operation(&journal, "lost").await;
     let adapter = fixture_adapter("lose_response_no_lookup");
 
@@ -213,7 +206,8 @@ async fn lost_response_without_lookup_is_outcome_unknown_and_never_recommends_re
 /// `completed`, with the provider request handle attached to the attempt.
 #[tokio::test]
 async fn lost_response_with_lookup_is_proven_completed_with_the_proof_handle() {
-    let journal = Journal::open(journal_path("lost-lookup")).await.unwrap();
+    let fixture = journal_fixture("lost-lookup");
+    let journal = Journal::open(fixture.join("node.db")).await.unwrap();
     let op = seed_operation(&journal, "provable").await;
     let adapter = fixture_adapter("lose_response_with_lookup");
 
@@ -247,7 +241,8 @@ async fn lost_response_with_lookup_is_proven_completed_with_the_proof_handle() {
 /// result is unknowable — `cancelled_known` stays out of Phase 0).
 #[tokio::test]
 async fn hang_until_confirmed_cancel_leaves_outcome_unknown() {
-    let journal = Journal::open(journal_path("hang")).await.unwrap();
+    let fixture = journal_fixture("hang");
+    let journal = Journal::open(fixture.join("node.db")).await.unwrap();
     let op = seed_operation(&journal, "hang").await;
     let adapter = Arc::new(fixture_adapter("hang_forever"));
 
@@ -299,7 +294,8 @@ async fn hang_until_confirmed_cancel_leaves_outcome_unknown() {
 /// supervisor's drive path is unaffected.
 #[tokio::test]
 async fn ignore_cancellation_still_completes() {
-    let journal = Journal::open(journal_path("ignore")).await.unwrap();
+    let fixture = journal_fixture("ignore");
+    let journal = Journal::open(fixture.join("node.db")).await.unwrap();
     let op = seed_operation(&journal, "ignore").await;
     let adapter = fixture_adapter("ignore_cancellation");
 
@@ -320,7 +316,8 @@ async fn ignore_cancellation_still_completes() {
 /// adapter boundary never parses domain meaning out of provider output.
 #[tokio::test]
 async fn streaming_chunks_pass_through_verbatim_including_malformed_ones() {
-    let journal = Journal::open(journal_path("malformed")).await.unwrap();
+    let fixture = journal_fixture("malformed");
+    let journal = Journal::open(fixture.join("node.db")).await.unwrap();
     let op = seed_operation(&journal, "malformed").await;
     let adapter = fixture_adapter("malformed_output");
 
@@ -344,7 +341,8 @@ async fn streaming_chunks_pass_through_verbatim_including_malformed_ones() {
 /// `Estimated` confidence and its unmetered dimensions stay `None` (never zero).
 #[tokio::test]
 async fn usage_receipts_are_normalized_with_honest_confidence() {
-    let journal = Journal::open(journal_path("usage")).await.unwrap();
+    let fixture = journal_fixture("usage");
+    let journal = Journal::open(fixture.join("node.db")).await.unwrap();
     let op = seed_operation(&journal, "usage").await;
     let adapter = fixture_adapter("usage_receipt");
 
@@ -370,9 +368,8 @@ async fn usage_receipts_are_normalized_with_honest_confidence() {
 /// durably `dispatched` — the ack must never be mistaken for a result.
 #[tokio::test]
 async fn dispatch_acknowledgement_is_distinct_from_completion_in_the_journal() {
-    let journal = Journal::open(journal_path("ack-vs-complete"))
-        .await
-        .unwrap();
+    let fixture = journal_fixture("ack-vs-complete");
+    let journal = Journal::open(fixture.join("node.db")).await.unwrap();
     let op = seed_operation(&journal, "ack").await;
     let adapter = Arc::new(SignalingAdapter::new());
 
@@ -501,5 +498,3 @@ impl AttemptStream for SignalHandle {
         })
     }
 }
-
-use std::path::PathBuf;

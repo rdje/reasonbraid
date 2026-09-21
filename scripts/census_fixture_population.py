@@ -6,14 +6,14 @@ produce it (`SIGNOFF-REPAIR.11.2.1.3.2.1`).
 numbers and both are wrong:
 
   - *221,496 KiB across thirteen families* — the families are **26**, of which 24
-    exist, holding **351,000 KiB across 3,978 entries** at `c26a720`. Six families
-    carrying 129,464 KiB were never counted, and every one of them is a TWO-STEP
+    exist, holding **351,000 KiB across 3,979 fixtures** at `c26a720`. Six families
+    carrying 129,504 KiB were never counted, and every one of them is a TWO-STEP
     join (`.join("target")` in one statement, the family name in another) — the
     shape a hand-written list cannot see and `census_fixture_citations.py`
     already derives.
-  - *roughly 40 call sites in `journal.rs` alone* — it is **17**, and **69**
-    across the nine files that produce that family. An estimate overstated one
-    file by 2.4x while understating the family by 4x.
+  - *roughly 40 call sites in `journal.rs` alone* — it is **17**, and **62**
+    across the ten functions in nine files that produce that family. An estimate
+    overstated one file by 2.4x while understating the family by 3.6x.
 
 ⛔ AND THE FIRST WAS RE-DERIVED AS *UNCHANGED*. `.11.2.1.3.1.1` re-measured
 221,496 KiB and reported it holding. It does hold — of those thirteen
@@ -62,11 +62,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-# ⛔ IMPORTED, NOT RE-IMPLEMENTED. These three patterns ARE the definition of a
-# fixture family in this repository, and the two-step one is there because its
-# absence once made an instrument miss a family the thing it replaced had found.
-# A copy here would drift from that definition silently.
+# ⛔ IMPORTED, NOT RE-IMPLEMENTED. These patterns ARE the definition of a fixture
+# family in this repository. The two-step one is there because its absence once
+# made an instrument miss a family the thing it replaced had found; the guard one
+# is there because `SIGNOFF-REPAIR.11.2.1.3.2.2` moved fifty call sites' `target/`
+# join into `reasonbraid_core::fixture` in a single commit. A copy here would
+# drift from that definition silently — and would have had to learn the second
+# shape twice.
 from census_fixture_citations import (  # noqa: E402
+    FAMILY_GUARD,
     FAMILY_PUSHED,
     FAMILY_SOURCE,
     FAMILY_TWO_STEP,
@@ -111,7 +115,7 @@ def enclosing(text: str, offset: int) -> tuple[str, bool] | None:
 def producers(text: str) -> dict[str, list[dict]]:
     """Family name -> the producing functions in this one file."""
     found: dict[str, dict[str, dict]] = {}
-    for pattern in (FAMILY_SOURCE, FAMILY_PUSHED, FAMILY_TWO_STEP):
+    for pattern in (FAMILY_SOURCE, FAMILY_PUSHED, FAMILY_TWO_STEP, FAMILY_GUARD):
         for match in pattern.finditer(text):
             family = match.group(1)
             site = enclosing(text, match.start())
@@ -280,6 +284,19 @@ fn two() { let a = widget_path("c"); drop(a); }
 
 #[test]
 fn three() { let r = pushed_root(); drop(r); }
+
+fn guarded(name: &str) -> Fixture {
+    Fixture::create("guarded-controls", name).expect("the fixture directory is new")
+}
+
+#[test]
+fn four() { let f = guarded("a"); drop(f); }
+
+#[test]
+fn five() { let f = guarded("b"); drop(f); }
+
+#[test]
+fn six() { let f = guarded("c"); drop(f); }
 '''
 
 
@@ -288,8 +305,8 @@ def self_test() -> int:
     checks: list[tuple[str, object, object]] = []
 
     checks.append(("every producer shape is seen", sorted(found),
-                   ["gizmo-tests", "pushed-controls", "two-step-controls",
-                    "widget-controls"]))
+                   ["gizmo-tests", "guarded-controls", "pushed-controls",
+                    "two-step-controls", "widget-controls"]))
 
     flat = {family: sites[0] for family, sites in found.items() if len(sites) == 1}
     checks.append(("each family has exactly one producing function",
@@ -309,6 +326,12 @@ def self_test() -> int:
                    flat["widget-controls"]["inline_test"], False))
     checks.append(("the enclosing function is the one holding the literal",
                    flat["gizmo-tests"]["function"], "gizmo_path"))
+    # ⭐ The shape a hand-kept copy of these patterns would have missed: a family
+    # named to the shared guard carries no `target/` join at all.
+    checks.append(("a family named to the SHARED GUARD is found",
+                   flat["guarded-controls"]["function"], "guarded"))
+    checks.append(("a guard helper's scope is its callers too",
+                   flat["guarded-controls"]["call_sites"], 3))
 
     # The two units must be able to disagree, or printing both proves nothing.
     measured = disk(Path(__file__).resolve().parent.parent / "scripts")
@@ -323,15 +346,16 @@ def self_test() -> int:
                   file=sys.stderr)
             return 1
 
-    print("fixture-population census self-test: 4 families derived FROM THE PRODUCER "
+    print("fixture-population census self-test: 5 families derived FROM THE PRODUCER "
           "via the shared patterns (a direct join, a compile-time root, a pushed "
-          "array literal and a TWO-STEP join — the shape the hand-written list that "
+          "array literal, a TWO-STEP join — the shape the hand-written list that "
           "this instrument replaces could not see, and the shape of all six families "
-          "it was missing), each mapped to the function that holds the literal; a "
-          "helper's scope is its 2 and 1 CALLERS while an inline producer inside a "
-          "test is 1, read from the test ATTRIBUTE rather than inferred from a zero "
-          "count; and disk usage is proved to be allocated blocks rather than "
-          "st_size, which is why both units are printed")
+          "it was missing — and a family named to the SHARED GUARD, which carries no "
+          "`target/` join at all), each mapped to the function that holds the "
+          "literal; a helper's scope is its 3, 2 and 1 CALLERS while an inline "
+          "producer inside a test is 1, read from the test ATTRIBUTE rather than "
+          "inferred from a zero count; and disk usage is proved to be allocated "
+          "blocks rather than st_size, which is why both units are printed")
     return 0
 
 

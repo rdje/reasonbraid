@@ -63,6 +63,14 @@ FAMILY_PUSHED = re.compile(r'\[\s*"target"\s*,\s*"([A-Za-z0-9_][A-Za-z0-9_.-]*)"
 # replaces caught is not ready to replace it.
 FAMILY_TWO_STEP = re.compile(
     r'\.join\(\s*"target"\s*\)(?:.|\n){0,800}?\.join\(\s*"([A-Za-z0-9_][A-Za-z0-9_.-]*)"')
+# ⭐ A family named to the SHARED GUARD rather than joined at the call site:
+# `Fixture::create("journal-tests", name)`. `SIGNOFF-REPAIR.11.2.1.3.2.2` moved
+# the `target/` join into `reasonbraid_core::fixture`, so fifty call sites stopped
+# carrying a joinable literal in one commit — and this census would have reported
+# the family as gone while 2,375 of its fixtures sat on disk. An instrument that
+# derives from the producer is correct only while it knows every shape the
+# producer has, and the producer just grew one.
+FAMILY_GUARD = re.compile(r'Fixture::create\(\s*"([A-Za-z0-9_][A-Za-z0-9_.-]*)"')
 # A reference in prose, with whatever path follows the family name.
 def reference(families: list[str]) -> re.Pattern[str]:
     alt = "|".join(re.escape(name) for name in families)
@@ -92,6 +100,7 @@ def families_of(root: pathlib.Path, at: str | None) -> list[str]:
         names.update(FAMILY_SOURCE.findall(text))
         names.update(FAMILY_PUSHED.findall(text))
         names.update(FAMILY_TWO_STEP.findall(text))
+        names.update(FAMILY_GUARD.findall(text))
     return sorted(names)
 
 
@@ -151,6 +160,7 @@ SELF_TEST_RUST = '''
     for component in ["target", "pushed-controls"] { root.push(component); }
     let base = reasonbraid_core::repository_root().unwrap().join("target");
     let parent = base.join("two-step-controls");
+    let fixture = Fixture::create("guarded-controls", name).unwrap();
 '''
 SELF_TEST_MD = [
     "the family alone: target/widget-controls holds the fixtures",
@@ -165,8 +175,10 @@ SELF_TEST_MD = [
 def self_test() -> int:
     families = sorted(set(FAMILY_SOURCE.findall(SELF_TEST_RUST))
                       | set(FAMILY_PUSHED.findall(SELF_TEST_RUST))
-                      | set(FAMILY_TWO_STEP.findall(SELF_TEST_RUST)))
-    expected = ["gizmo-tests", "pushed-controls", "two-step-controls", "widget-controls"]
+                      | set(FAMILY_TWO_STEP.findall(SELF_TEST_RUST))
+                      | set(FAMILY_GUARD.findall(SELF_TEST_RUST)))
+    expected = ["gizmo-tests", "guarded-controls", "pushed-controls",
+                "two-step-controls", "widget-controls"]
     if families != expected:
         print(f"SELF-TEST FAILED: families derived from the producer = {families}, "
               f"expected {expected}", file=sys.stderr)
@@ -202,11 +214,12 @@ def self_test() -> int:
               file=sys.stderr)
         return 1
 
-    print("fixture-citation census self-test: 4 families derived FROM THE PRODUCER "
+    print("fixture-citation census self-test: 5 families derived FROM THE PRODUCER "
           "(one joined directly, one via a compile-time root, one pushed from an "
-          "array literal, and one joined in TWO STEPS — the shape whose absence made "
+          "array literal, one joined in TWO STEPS — the shape whose absence made "
           "this instrument's first version miss a family the hand-written census had "
-          "found), 6 reference lines, 7 "
+          "found — and one named to the SHARED GUARD, which is how fifty call sites "
+          "stopped carrying a joinable literal in a single commit), 6 reference lines, 7 "
           "occurrences — so the two-family line is proved to count once as a line "
           "and twice as an occurrence, which is the unit confusion this instrument "
           "exists to end — and 2 individuals, a prefix and a placeholder correctly "

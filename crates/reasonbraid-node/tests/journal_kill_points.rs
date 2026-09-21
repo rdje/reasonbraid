@@ -11,9 +11,8 @@
 //! `safe_to_redeliver`; and operators can see all of it without opening SQLite by hand
 //! (that last leg is `tests/journal_cli.rs`).
 
-use std::path::PathBuf;
-
 use chrono::{DateTime, Utc};
+use reasonbraid_core::fixture::Fixture;
 use reasonbraid_node::{CommandInput, Journal, ProvenStatus};
 use serde_json::{json, Value};
 
@@ -23,23 +22,15 @@ use serde_json::{json, Value};
 /// provided to integration tests*; measured three ways, it is UNSET in this
 /// project's runs, so the fallback it named as the exception was the only path
 /// ever taken (`SIGNOFF-REPAIR.11.2.1.2.1`).
-fn journal_path(name: &str) -> PathBuf {
-    // The base follows the PROCESS, not the build (§12). `CARGO_TARGET_TMPDIR`
-    // was measured UNSET in this project's runs, so the compile-time fallback
-    // this replaces was the live path, baking one checkout's absolute path
-    // into the binary (SIGNOFF-REPAIR.11.2.1.2.1).
-    let base = reasonbraid_core::repository_root()
-        .expect("the tests run inside the repository")
-        .join("target");
-    let unique = uuid::Uuid::now_v7();
-    let dir = base.join("journal-tests").join(format!("{name}-{unique}"));
-    std::fs::create_dir_all(dir.parent().expect("the fixture parent")).unwrap();
-    // Exclusive: an existing directory belongs to another fixture or an
-    // earlier run, and must never be adopted.
-    std::fs::DirBuilder::new()
-        .create(&dir)
-        .expect("the fixture directory is new");
-    dir.join("node.db")
+/// A fixture directory for one test, created exclusively on the repository's own
+/// volume and REMOVED when the test passes (`SIGNOFF-REPAIR.11.2.1.3.2.2`). A
+/// failing test keeps its fixture, and everything in it, as the diagnostic.
+///
+/// ⚠️ The guard must be BOUND to a local: as a temporary it would be dropped at
+/// the end of its statement, taking the journal file with it. Every call site
+/// below binds it and reads the journal as `fixture.join("node.db")`.
+fn journal_fixture(name: &str) -> Fixture {
+    Fixture::create("journal-tests", name).expect("the fixture directory is new")
 }
 
 fn now() -> DateTime<Utc> {
@@ -80,7 +71,8 @@ async fn seed_command(journal: &Journal, tag: &str) -> String {
 /// simply receive the command again.
 #[tokio::test]
 async fn kp1_crash_before_command_record_persists_nothing() {
-    let path = journal_path("kp1");
+    let fixture = journal_fixture("kp1");
+    let path = fixture.join("node.db");
     {
         let _journal = Journal::open(&path).await.unwrap();
     } // crash before any write
@@ -102,7 +94,8 @@ async fn kp1_crash_before_command_record_persists_nothing() {
 /// durable; the node derives the operation (exactly once) after restart.
 #[tokio::test]
 async fn kp2_crash_between_command_and_operation() {
-    let path = journal_path("kp2");
+    let fixture = journal_fixture("kp2");
+    let path = fixture.join("node.db");
     let (cmd_id, _) = {
         let journal = Journal::open(&path).await.unwrap();
         let cmd_id = "cmd_kp2".to_string();
@@ -131,7 +124,8 @@ async fn kp2_crash_between_command_and_operation() {
 /// so redelivery cannot duplicate a provider effect).
 #[tokio::test]
 async fn kp3_crash_after_prepare_before_dispatch() {
-    let path = journal_path("kp3");
+    let fixture = journal_fixture("kp3");
+    let path = fixture.join("node.db");
     let (attempt_id, _op) = {
         let journal = Journal::open(&path).await.unwrap();
         let op = seed_command(&journal, "kp3").await;
@@ -165,7 +159,8 @@ async fn kp3_crash_after_prepare_before_dispatch() {
 /// `outcome_unknown` — the honest answer is ambiguity, not a silent retry.
 #[tokio::test]
 async fn kp4_crash_after_dispatch_before_adapter_call() {
-    let path = journal_path("kp4");
+    let fixture = journal_fixture("kp4");
+    let path = fixture.join("node.db");
     let attempt_id = {
         let journal = Journal::open(&path).await.unwrap();
         let op = seed_command(&journal, "kp4").await;
@@ -193,7 +188,8 @@ async fn kp4_crash_after_dispatch_before_adapter_call() {
 /// lookup, so the attempt lands on `completed` instead of staying ambiguous.
 #[tokio::test]
 async fn kp5_crash_before_result_record_then_adapter_proves_it() {
-    let path = journal_path("kp5");
+    let fixture = journal_fixture("kp5");
+    let path = fixture.join("node.db");
     let attempt_id = {
         let journal = Journal::open(&path).await.unwrap();
         let op = seed_command(&journal, "kp5").await;
@@ -250,7 +246,8 @@ async fn kp5_crash_before_result_record_then_adapter_proves_it() {
 /// no later recovery can re-open it.
 #[tokio::test]
 async fn kp6_crash_after_result_record_is_terminal() {
-    let path = journal_path("kp6");
+    let fixture = journal_fixture("kp6");
+    let path = fixture.join("node.db");
     let attempt_id = {
         let journal = Journal::open(&path).await.unwrap();
         let op = seed_command(&journal, "kp6").await;
@@ -292,7 +289,8 @@ async fn kp6_crash_after_result_record_is_terminal() {
 /// attempt stays ambiguous exactly once, with one boundary ledger row per move).
 #[tokio::test]
 async fn kp7_crash_after_outcome_unknown_is_stable() {
-    let path = journal_path("kp7");
+    let fixture = journal_fixture("kp7");
+    let path = fixture.join("node.db");
     let attempt_id = {
         let journal = Journal::open(&path).await.unwrap();
         let op = seed_command(&journal, "kp7").await;
@@ -324,7 +322,8 @@ async fn kp7_crash_after_outcome_unknown_is_stable() {
 /// server cursor travels with the ack — reconnect evidence for `.3.2`).
 #[tokio::test]
 async fn kp8_crash_between_event_emission_and_ack() {
-    let path = journal_path("kp8");
+    let fixture = journal_fixture("kp8");
+    let path = fixture.join("node.db");
     let (event_id, _op) = {
         let journal = Journal::open(&path).await.unwrap();
         let op = seed_command(&journal, "kp8").await;
@@ -356,7 +355,8 @@ async fn kp8_crash_between_event_emission_and_ack() {
 /// to the pending view.
 #[tokio::test]
 async fn kp9_crash_after_ack_is_terminal() {
-    let path = journal_path("kp9");
+    let fixture = journal_fixture("kp9");
+    let path = fixture.join("node.db");
     let event_id = {
         let journal = Journal::open(&path).await.unwrap();
         let op = seed_command(&journal, "kp9").await;
@@ -388,7 +388,8 @@ async fn kp9_crash_after_ack_is_terminal() {
 /// the attempt silently retried.
 #[tokio::test]
 async fn end_to_end_crash_recovery_never_silently_retries() {
-    let path = journal_path("e2e");
+    let fixture = journal_fixture("e2e");
+    let path = fixture.join("node.db");
     let attempt_id = {
         let journal = Journal::open(&path).await.unwrap();
         let op = seed_command(&journal, "e2e").await;

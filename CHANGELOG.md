@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-21 — A passing test now removes its own fixture, and a failing one still keeps it (`SIGNOFF-REPAIR.11.2.1.3.2.2`)
+
+`REASONBRAID-REPAIR-0371`. The mechanism `.11.2.1.3.2` named, built once and proved on the half of the family that needs no database.
+
+- ⭐ **THE GUARD.** `reasonbraid_core::fixture::Fixture` sits beside `repository_root()` — the predicate §12 requires — behind a `test-support` feature, so it reaches every suite and ships in no release build. Exclusive 0700 creation, same-device and non-symlink assertions, and a `Drop` that retains on `std::thread::panicking()`, retains on an explicit `retain()`, and otherwise re-checks `(dev, ino)` before `remove_dir_all` and panics if removal is refused. ⛔ A copy per suite was refused: two copies of a removal rule is how one stops matching the other.
+- ⭐ **ALL 50 `reasonbraid-node` CALL SITES CONVERTED**, across 8 files. The slice boundary is a crate boundary and it is DERIVED: attributing all 2,375 fixtures by longest declared name prefix gives **1,308 server + 1,067 node = 2,375 exactly**, and the server's `node_channel.rs` needs a live PostgreSQL. ⚠️ A per-NAME sum gives 2,392 — two files share a prefix and one name is a `format!` — and was not published.
+- ⭐ **BOTH HALVES PRODUCED IN THE REAL SUITE, NOT ASSERTED.** One assertion in `kp1_crash_before_command_record_persists_nothing` neutralized → **1 failed, 9 passed**, stderr carrying `fixture retained (test failed): …/kp1-01a0c4b0-…`. Per name: `kp1` **16 → 17** with its `node.db` intact; `kp2`–`kp9` and `e2e` each stayed at **16**. Restored, re-run **10 passed / 0 failed**.
+- ⭐ **MEASURED BEFORE AND AFTER, WITH A CONTROL.** Across roughly six suite runs: `journal-tests` **2,375 → 2,375, +0 KiB**, where the same runs used to add up to 50 each time. The five families NOT yet converted grew from those very same runs — `cached-decision-tests` +27, `retry-policy-tests` +12, `dead-letter-tests` +9, `codex-stubs` +6, `identity-persistence` +3, **+8,820 KiB / +57 fixtures**. Same runs, converted family flat, unconverted families growing.
+- 🔴 **THE REFACTOR NEARLY BLINDED THE INSTRUMENT THAT MEASURES IT.** Moving the `target/` join into the guard removed the shape the census derives families from, at fifty sites in one commit: `journal-tests` dropped from **62** producing call sites to **12**, and had the last twelve been converted too it would have reported the family as GONE while 2,375 fixtures sat on disk. The shared pattern set learned `Fixture::create("<family>", …)` in this same commit, with a self-test case; both censuses' self-tests rise 4 families → 5, and the count is **62** again.
+- ⚠️ Strict lint caught what `cargo test` had only warned about: five `PathBuf` imports left unused by the new return type. ⚠️ The population instrument's own docstring was carrying the previous leaf's superseded draft figures and is corrected to 3,979 / 129,504 / 62.
+- ⛔ No product code path changed — the guard is `#[cfg(any(test, feature = "test-support"))]` — no assertion relaxed, no failure evidence destroyed, and `census_retained_fixtures.py`'s reduce-never-delete contract for the browser and pg populations is untouched.
+- ⏳ `.11.2.1.3.2.3` owns the remainder: the server's **1,308** (55% of the family) and the five families the control run proved still grow.
+- ⭐ Promoted: [`deriving-from-the-producer-goes-blind-when-the-producer-moves`](docs/knowledge/deriving-from-the-producer-goes-blind-when-the-producer-moves.md).
+
 ## 2026-09-21 — The population was thirteen families and it is twenty-six (`SIGNOFF-REPAIR.11.2.1.3.2.1`)
 
 `REASONBRAID-REPAIR-0370`. `.11.2.1.3.2` opened with two typed numbers and the first thing bounding its scope did was refute both.

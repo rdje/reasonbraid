@@ -16,10 +16,9 @@
 //! (`--restricted --tools ''` — content-only). A generous reservation + local budget
 //! gate the dispatch (`.5.2`).
 
-use std::path::PathBuf;
-
 use chrono::Utc;
 use reasonbraid_adapter::{Adapter, ClaudeCliAdapter, RunRequest, StatusLookupOutcome};
+use reasonbraid_core::fixture::Fixture;
 use reasonbraid_core::{BudgetDimensions, ReservationReference};
 use reasonbraid_node::{execute_attempt, CommandInput, Journal, LocalBudget};
 use serde_json::json;
@@ -47,25 +46,12 @@ fn generous_local() -> LocalBudget {
     })
 }
 
-fn live_journal_path() -> PathBuf {
-    // The base follows the PROCESS, not the build (§12). `CARGO_TARGET_TMPDIR`
-    // was measured UNSET in this project's runs, so the compile-time fallback
-    // this replaces was the live path, baking one checkout's absolute path
-    // into the binary (SIGNOFF-REPAIR.11.2.1.2.1).
-    let base = reasonbraid_core::repository_root()
-        .expect("the tests run inside the repository")
-        .join("target");
-    let unique = uuid::Uuid::now_v7();
-    let dir = base
-        .join("journal-tests")
-        .join(format!("claude-live-{unique}"));
-    std::fs::create_dir_all(dir.parent().expect("the fixture parent")).unwrap();
-    // Exclusive: an existing directory belongs to another fixture or an
-    // earlier run, and must never be adopted.
-    std::fs::DirBuilder::new()
-        .create(&dir)
-        .expect("the fixture directory is new");
-    dir.join("node.db")
+/// A fixture directory for this live control, removed when it passes and kept —
+/// with the provider's real transcript in it — when it fails
+/// (`SIGNOFF-REPAIR.11.2.1.3.2.2`). ⚠️ The guard must be BOUND to a local; as a
+/// temporary it would be dropped at the end of its statement.
+fn live_journal_fixture() -> Fixture {
+    Fixture::create("journal-tests", "claude-live").expect("the fixture directory is new")
 }
 
 #[tokio::test]
@@ -76,7 +62,8 @@ async fn live_claude_dispatch_completes_with_usage_cost_and_an_honest_unsupporte
         return;
     }
 
-    let journal = Journal::open(live_journal_path()).await.unwrap();
+    let fixture = live_journal_fixture();
+    let journal = Journal::open(fixture.join("node.db")).await.unwrap();
     let command_id = "cmd_live_claude";
     let payload = json!({ "operation": "contribute" });
     journal

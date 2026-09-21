@@ -33,11 +33,24 @@
 //! [`KnownReasonCode`] is the stable §9.8 registry, [`ReasonCode`] preserves unknown
 //! codes, and [`DomainError`] is the typed, machine-actionable error. See [`error`] and
 //! `docs/decisions/2026-09-06_reason-codes.md`.
+//!
+//! # Test fixtures
+//!
+//! [`fixture::Fixture`] is a generated fixture directory that removes itself when
+//! its test PASSES and retains itself — with everything in it — when the test is
+//! unwinding from a panic. It lives here because it needs [`repository_root`], and
+//! it is behind the `test-support` feature so it reaches every suite and ships in
+//! no release build (`SIGNOFF-REPAIR.11.2.1.3.2.2`).
 
 mod authority;
 mod budget;
 mod envelope;
 mod error;
+// Test-only: the fixture guard is compiled for this crate's own unit tests and
+// for any crate that asks for `test-support` from its dev-dependencies. It is
+// absent from every release build, which is the point of the feature.
+#[cfg(any(test, feature = "test-support"))]
+pub mod fixture;
 mod id;
 mod paths;
 mod retry;

@@ -5,7 +5,6 @@
 //! cross both server and node boundaries" node leg; the server leg is
 //! `crates/reasonbraid-server/tests/budget.rs`.
 
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
@@ -15,27 +14,20 @@ use reasonbraid_adapter::{
     CancellationStrength, DispatchAck, FakeAdapter, InvokeOutcome, NormalizedUsage,
     PolicyInjectionMode, RunRequest, StatusLookupOutcome, UsageConfidence,
 };
+use reasonbraid_core::fixture::Fixture;
 use reasonbraid_core::{BudgetDimensions, ReservationReference};
 use reasonbraid_node::{execute_attempt, CommandInput, Journal, LocalBudget};
 use serde_json::{json, Value};
 
-fn journal_path(name: &str) -> PathBuf {
-    // The base follows the PROCESS, not the build (§12). `CARGO_TARGET_TMPDIR`
-    // was measured UNSET in this project's runs, so the compile-time fallback
-    // this replaces was the live path, baking one checkout's absolute path
-    // into the binary (SIGNOFF-REPAIR.11.2.1.2.1).
-    let base = reasonbraid_core::repository_root()
-        .expect("the tests run inside the repository")
-        .join("target");
-    let unique = uuid::Uuid::now_v7();
-    let dir = base.join("journal-tests").join(format!("{name}-{unique}"));
-    std::fs::create_dir_all(dir.parent().expect("the fixture parent")).unwrap();
-    // Exclusive: an existing directory belongs to another fixture or an
-    // earlier run, and must never be adopted.
-    std::fs::DirBuilder::new()
-        .create(&dir)
-        .expect("the fixture directory is new");
-    dir.join("node.db")
+/// A fixture directory for one test, created exclusively on the repository's own
+/// volume and REMOVED when the test passes (`SIGNOFF-REPAIR.11.2.1.3.2.2`). A
+/// failing test keeps its fixture, and everything in it, as the diagnostic.
+///
+/// ⚠️ The guard must be BOUND to a local: as a temporary it would be dropped at
+/// the end of its statement, taking the journal file with it. Every call site
+/// below binds it and reads the journal as `fixture.join("node.db")`.
+fn journal_fixture(name: &str) -> Fixture {
+    Fixture::create("journal-tests", name).expect("the fixture directory is new")
 }
 
 fn run_request() -> RunRequest {
@@ -183,7 +175,8 @@ impl AttemptStream for InstantHandle {
 /// `failed_before_dispatch` (audited).
 #[tokio::test]
 async fn a_reservation_covering_no_dispatch_is_refused_before_the_boundary() {
-    let journal = Journal::open(journal_path("budget-no-res")).await.unwrap();
+    let fixture = journal_fixture("budget-no-res");
+    let journal = Journal::open(fixture.join("node.db")).await.unwrap();
     let op = seed_operation(&journal, "nores").await;
     let (adapter, invocations) = CountingAdapter::new();
 
@@ -231,7 +224,8 @@ async fn a_reservation_covering_no_dispatch_is_refused_before_the_boundary() {
 /// dispatches and completes.
 #[tokio::test]
 async fn a_reservation_whose_hold_has_lapsed_is_refused_before_the_boundary() {
-    let journal = Journal::open(journal_path("budget-lapsed")).await.unwrap();
+    let fixture = journal_fixture("budget-lapsed");
+    let journal = Journal::open(fixture.join("node.db")).await.unwrap();
     let (adapter, invocations) = CountingAdapter::new();
 
     let lapsed = seed_operation(&journal, "lapsed").await;
@@ -287,7 +281,8 @@ async fn a_reservation_whose_hold_has_lapsed_is_refused_before_the_boundary() {
 /// THE second node-boundary denial: local headroom exhausted — refused, not dispatched.
 #[tokio::test]
 async fn exhausted_local_headroom_refuses_the_dispatch() {
-    let journal = Journal::open(journal_path("budget-local")).await.unwrap();
+    let fixture = journal_fixture("budget-local");
+    let journal = Journal::open(fixture.join("node.db")).await.unwrap();
     let op = seed_operation(&journal, "local").await;
     let (adapter, invocations) = CountingAdapter::new();
 
@@ -321,7 +316,8 @@ async fn exhausted_local_headroom_refuses_the_dispatch() {
 /// the real usage (calls + tokens), not the reservation's hold.
 #[tokio::test]
 async fn a_completed_attempt_settles_actual_usage_locally() {
-    let journal = Journal::open(journal_path("budget-settle")).await.unwrap();
+    let fixture = journal_fixture("budget-settle");
+    let journal = Journal::open(fixture.join("node.db")).await.unwrap();
     let op = seed_operation(&journal, "settle").await;
     let fake = FakeAdapter::from_spec(
         reasonbraid_adapter::fixtures::corpus()
@@ -358,7 +354,8 @@ async fn a_completed_attempt_settles_actual_usage_locally() {
 /// potentially consumed, and an ambiguous attempt may have consumed.
 #[tokio::test]
 async fn an_indeterminate_attempt_keeps_its_hold() {
-    let journal = Journal::open(journal_path("budget-hold")).await.unwrap();
+    let fixture = journal_fixture("budget-hold");
+    let journal = Journal::open(fixture.join("node.db")).await.unwrap();
     let op = seed_operation(&journal, "hold").await;
     let fake = FakeAdapter::from_spec(
         reasonbraid_adapter::fixtures::corpus()

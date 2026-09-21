@@ -9,28 +9,21 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use chrono::{DateTime, Utc};
+use reasonbraid_core::fixture::Fixture;
 use reasonbraid_node::{CommandInput, Journal};
 use serde_json::{json, Value};
 
 const BIN: &str = env!("CARGO_BIN_EXE_rb-journal");
 
-fn journal_path(name: &str) -> PathBuf {
-    // The base follows the PROCESS, not the build (§12). `CARGO_TARGET_TMPDIR`
-    // was measured UNSET in this project's runs, so the compile-time fallback
-    // this replaces was the live path, baking one checkout's absolute path
-    // into the binary (SIGNOFF-REPAIR.11.2.1.2.1).
-    let base = reasonbraid_core::repository_root()
-        .expect("the tests run inside the repository")
-        .join("target");
-    let unique = uuid::Uuid::now_v7();
-    let dir = base.join("journal-tests").join(format!("{name}-{unique}"));
-    std::fs::create_dir_all(dir.parent().expect("the fixture parent")).unwrap();
-    // Exclusive: an existing directory belongs to another fixture or an
-    // earlier run, and must never be adopted.
-    std::fs::DirBuilder::new()
-        .create(&dir)
-        .expect("the fixture directory is new");
-    dir.join("node.db")
+/// A fixture directory for one test, created exclusively on the repository's own
+/// volume and REMOVED when the test passes (`SIGNOFF-REPAIR.11.2.1.3.2.2`). A
+/// failing test keeps its fixture, and everything in it, as the diagnostic.
+///
+/// ⚠️ The guard must be BOUND to a local: as a temporary it would be dropped at
+/// the end of its statement, taking the journal file with it. Every call site
+/// below binds it and reads the journal as `fixture.join("node.db")`.
+fn journal_fixture(name: &str) -> Fixture {
+    Fixture::create("journal-tests", name).expect("the fixture directory is new")
 }
 
 fn now() -> DateTime<Utc> {
@@ -109,7 +102,8 @@ async fn seed_rich_journal(path: &PathBuf) {
 /// the operator sees the journal's real settings without touching SQLite.
 #[tokio::test]
 async fn inspect_reports_profile_and_counts() {
-    let path = journal_path("cli-inspect");
+    let fixture = journal_fixture("cli-inspect");
+    let path = fixture.join("node.db");
     seed_rich_journal(&path).await;
 
     let out = Command::new(BIN)
@@ -148,7 +142,8 @@ async fn inspect_reports_profile_and_counts() {
 /// and carries the same facts.
 #[tokio::test]
 async fn pending_lists_inflight_attempts_and_unacked_events() {
-    let path = journal_path("cli-pending");
+    let fixture = journal_fixture("cli-pending");
+    let path = fixture.join("node.db");
     seed_rich_journal(&path).await;
 
     let out = Command::new(BIN)
@@ -182,7 +177,8 @@ async fn pending_lists_inflight_attempts_and_unacked_events() {
 /// history — the evidence an operator needs to adjudicate or trigger a status lookup.
 #[tokio::test]
 async fn ambiguous_lists_with_boundary_history() {
-    let path = journal_path("cli-ambiguous");
+    let fixture = journal_fixture("cli-ambiguous");
+    let path = fixture.join("node.db");
     seed_rich_journal(&path).await;
 
     let out = Command::new(BIN)
@@ -219,7 +215,8 @@ async fn ambiguous_lists_with_boundary_history() {
 /// damage the journal by looking at it.
 #[tokio::test]
 async fn inspections_never_mutate_the_journal_file() {
-    let path = journal_path("cli-readonly");
+    let fixture = journal_fixture("cli-readonly");
+    let path = fixture.join("node.db");
     seed_rich_journal(&path).await;
 
     let before = std::fs::read(&path).unwrap();
@@ -246,7 +243,8 @@ async fn inspections_never_mutate_the_journal_file() {
 /// gives the reader the committed state without disturbing the writer.
 #[tokio::test]
 async fn cli_runs_beside_a_live_writer() {
-    let path = journal_path("cli-live");
+    let fixture = journal_fixture("cli-live");
+    let path = fixture.join("node.db");
     let journal = Journal::open(&path).await.unwrap();
     seed_rich_journal(&path).await;
     // journal (the "node") stays open for the whole CLI run below.
@@ -274,23 +272,8 @@ async fn cli_runs_beside_a_live_writer() {
 /// stderr — never a crash or a hang.
 #[tokio::test]
 async fn missing_and_garbage_files_fail_cleanly() {
-    // The base follows the PROCESS, not the build (§12). `CARGO_TARGET_TMPDIR`
-    // was measured UNSET in this project's runs, so the compile-time fallback
-    // this replaces was the live path, baking one checkout's absolute path
-    // into the binary (SIGNOFF-REPAIR.11.2.1.2.1).
-    let dir = reasonbraid_core::repository_root()
-        .expect("the tests run inside the repository")
-        .join("target");
-    let unique = uuid::Uuid::now_v7();
-    let dir = dir
-        .join("journal-tests")
-        .join(format!("cli-errors-{unique}"));
-    std::fs::create_dir_all(dir.parent().expect("the fixture parent")).unwrap();
-    // Exclusive: an existing directory belongs to another fixture or an
-    // earlier run, and must never be adopted.
-    std::fs::DirBuilder::new()
-        .create(&dir)
-        .expect("the fixture directory is new");
+    let fixture = journal_fixture("cli-errors");
+    let dir = fixture.path();
 
     let missing = dir.join("absent.db");
     let out = Command::new(BIN)

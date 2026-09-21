@@ -9,27 +9,20 @@ use std::path::PathBuf;
 
 use chrono::Utc;
 use reasonbraid_adapter::{Adapter, CodexCliAdapter, RunRequest, StatusLookupOutcome};
+use reasonbraid_core::fixture::Fixture;
 use reasonbraid_core::{BudgetDimensions, ReservationReference};
 use reasonbraid_node::{execute_attempt, CommandInput, Journal, LocalBudget, SupervisorError};
 use serde_json::json;
 
-fn journal_path(name: &str) -> PathBuf {
-    // The base follows the PROCESS, not the build (§12). `CARGO_TARGET_TMPDIR`
-    // was measured UNSET in this project's runs, so the compile-time fallback
-    // this replaces was the live path, baking one checkout's absolute path
-    // into the binary (SIGNOFF-REPAIR.11.2.1.2.1).
-    let base = reasonbraid_core::repository_root()
-        .expect("the tests run inside the repository")
-        .join("target");
-    let unique = uuid::Uuid::now_v7();
-    let dir = base.join("journal-tests").join(format!("{name}-{unique}"));
-    std::fs::create_dir_all(dir.parent().expect("the fixture parent")).unwrap();
-    // Exclusive: an existing directory belongs to another fixture or an
-    // earlier run, and must never be adopted.
-    std::fs::DirBuilder::new()
-        .create(&dir)
-        .expect("the fixture directory is new");
-    dir.join("node.db")
+/// A fixture directory for one test, created exclusively on the repository's own
+/// volume and REMOVED when the test passes (`SIGNOFF-REPAIR.11.2.1.3.2.2`). A
+/// failing test keeps its fixture, and everything in it, as the diagnostic.
+///
+/// ⚠️ The guard must be BOUND to a local: as a temporary it would be dropped at
+/// the end of its statement, taking the journal file with it. Every call site
+/// below binds it and reads the journal as `fixture.join("node.db")`.
+fn journal_fixture(name: &str) -> Fixture {
+    Fixture::create("journal-tests", name).expect("the fixture directory is new")
 }
 
 fn stub_binary(name: &str) -> PathBuf {
@@ -135,7 +128,8 @@ async fn seed_operation(journal: &Journal, tag: &str) -> String {
 /// Codex `thread.started` id), and the attempt lands `completed` with exact usage.
 #[tokio::test]
 async fn completion_attaches_the_streamed_provider_handle_and_lands_completed() {
-    let journal = Journal::open(journal_path("codex-complete")).await.unwrap();
+    let fixture = journal_fixture("codex-complete");
+    let journal = Journal::open(fixture.join("node.db")).await.unwrap();
     let op = seed_operation(&journal, "complete").await;
     let adapter = CodexCliAdapter::with_binary(stub_binary("complete"));
 
@@ -169,7 +163,8 @@ async fn completion_attaches_the_streamed_provider_handle_and_lands_completed() 
 /// recommendation — while the provider handle from the stream is still attached.
 #[tokio::test]
 async fn lost_response_with_unsupported_lookup_is_outcome_unknown_never_retry() {
-    let journal = Journal::open(journal_path("codex-lost")).await.unwrap();
+    let fixture = journal_fixture("codex-lost");
+    let journal = Journal::open(fixture.join("node.db")).await.unwrap();
     let op = seed_operation(&journal, "lost").await;
     let adapter = CodexCliAdapter::with_binary(stub_binary("lost"));
 

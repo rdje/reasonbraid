@@ -9,6 +9,12 @@ license.workspace = true
 [lints]
 workspace = true
 
+[features]
+# The fixture guard (`src/fixture.rs`). Suites enable it from their
+# `[dev-dependencies]`, so it compiles for test builds and for nothing else;
+# this crate's own unit tests reach it through `cfg(test)` without the feature.
+test-support = []
+
 [dependencies]
 # Authority validity windows (PHASE-0.5.1): boundary/grant valid_from/expires_at and
 # decision timestamps. Same minimal feature set as the other crates.

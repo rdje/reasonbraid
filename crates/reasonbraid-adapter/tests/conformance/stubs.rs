@@ -41,8 +41,13 @@ struct Stubs {
 // ⭐ And the design is right as it stands: these two stubs are written once per
 // test BINARY precisely so that every test in it shares them, which means there
 // is no moment at which *this test passed* is even a question about them.
-// Giving this family cleanup needs a different mechanism — a process-exit hook,
-// or per-test stubs — and that is a decision, not a retrofit.
+// ⛔ AND THE OBVIOUS RETROFIT IS REFUSED, not merely unchosen: per-test stubs
+// would let each hold a guard, and would put concurrent writes back beside
+// concurrent spawns — reintroducing the ETXTBSY race documented above, which
+// the remote runner has already caught once. Trading a defect a gate has
+// caught for 272 KiB of disk is not a repair.
+// Decided, with the trigger that would revisit it:
+// docs/decisions/2026-09-21_one-fixture-family-keeps-no-cleanup-and-the-reason-is-a-race.md
 static STUBS: OnceLock<Stubs> = OnceLock::new();
 
 fn stubs() -> &'static Stubs {

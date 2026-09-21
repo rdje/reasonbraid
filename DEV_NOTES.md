@@ -1,5 +1,16 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — Consumed cleanup is delivered, and three parents close on verified acceptance (`SIGNOFF-REPAIR.11.2.1.3.2`, `.11.2.1.3`, `.11.2.1`)
+
+`REASONBRAID-DOC-0110`. Seven leaves (`REPAIR-0370`–`0376`) gave every fixture family in tracked Rust that accumulates a producer-owned cleanup rule. These close the lane.
+
+- ⭐ **EVERY CLAUSE WAS ANSWERED BY A COMMAND, NOT FROM MEMORY** — because the defect `REPAIR-0364` found, and `.11.2.1.3.1` then repeated in the same batch that recorded it, is closing a leaf against unmet acceptance. `.11.2.1.3.2`: both states produced by three controls plus two real-suite falsifications; the family **2,375 → 2,375** with **PEAK 2,376** under full-rate sampling; `git diff --diff-filter=D --name-only c26a720..HEAD` returns **nothing**; `git log … -- scripts/census_retained_fixtures.py` returns **0 commits** and `browser-lifetime-controls` is **21 → 21**.
+- ⭐ `.11.2.1.3` closes on all four of its own clauses, and its first — *measure the citations before removing anything* — was satisfied with room to spare, because in the end **nothing was removed at all**. `.11.2.1` closes on its fifth clause, `explicit consumed cleanup`, four commits after the other four were met.
+- 🔴 **THE BATCH'S LARGEST FINDING WAS ABOUT ITS OWN INSTRUMENT.** The fixture census had been reporting **15.9% of the bytes**: it derived families from tracked Rust while the largest generated directories here are created by **Python**. The real population is **2,264,752 KiB / 4,334 fixtures in 35 of 37 families**, and `target/pg-tests` alone was 3.64x everything it believed in.
+- ⛔ **ONE NAMED EXCEPTION, OWNED RATHER THAN PARKED**: `conformance-stubs` keeps no cleanup. Its two executable stubs live in `static STUBS: OnceLock<Stubs>`, and a `static` is never dropped — but the lock is not a convenience: it closes an `ETXTBSY` race the remote runner already caught, where a `fork` inherits another thread's open write descriptor. The retrofit that would let each stub hold a guard puts concurrent writes back beside concurrent spawns and reintroduces it. Trading a defect a gate has caught for **272 KiB** is not a repair. [Decided, with the alternatives refused and the trigger that would revisit it.](docs/decisions/2026-09-21_one-fixture-family-keeps-no-cleanup-and-the-reason-is-a-race.md)
+- 🔴 **Three gates refused this closure before it could commit and all three were mine.** `TASK-STATUS` caught `.11.2.1` carrying **two** `- Status:` lines with the older still saying `pending` — exactly the failure it exists for; `FRONTIER-STATUS` refused row 1 naming a finished leaf; `INDEX-FRONTIER` refused the index naming a frontier its tree no longer did.
+- ⏳ The frontier moves to `.11.4.6`: the six MCP tools are a shipped user-visible surface with no book chapter.
+
 ## 2026-09-21 — The long tail, and the one producer a `Drop` guard structurally cannot reach (`SIGNOFF-REPAIR.11.2.1.3.2.6`)
 
 `REASONBRAID-REPAIR-0376`. What remained in tracked Rust that accumulates: `r2-join-controls` 52 fixtures, `conformance-stubs` 34, `release-tool-controls` 6.

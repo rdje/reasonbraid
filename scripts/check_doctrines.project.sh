@@ -422,8 +422,12 @@ fi
 # ⛔ A `gap` row must name an owning leaf (`CLAUDE.md` §15: a finding nobody owns
 # is a complaint), so the table cannot decay into an unheld backlog.
 #
-# ⚠️ Priced before registering (`SIGNOFF-REPAIR.11.5`): 0.16 s over three runs
-# against a 30.37 s enforcer, about 0.5%. The `cargo metadata` call is 0.024 s.
+# ⚠️ Priced before registering (`SIGNOFF-REPAIR.11.5`): 0.27-0.35 s over three
+# runs against a ~30 s enforcer, about 1%. The `cargo metadata` call is 0.024 s.
+# ⚠️ First published as 0.16 s and re-measured by `.11.26.2`; that reading was
+# taken on a quieter machine, and the re-measurement ran with another project's
+# release build resident. The decision is unchanged at either figure, which is
+# why the range is published rather than the friendlier number.
 if ! python3 -B scripts/census_surface_judgement.py --check >/dev/null 2>&1; then
     python3 -B scripts/census_surface_judgement.py --check >&2
     exit 1

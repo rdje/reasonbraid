@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-21 — One tree is 70% of the task collection, and rotating it is refuted by its own 4,092 references (`SIGNOFF-REPAIR.11.4.2.9`)
+
+`REASONBRAID-DOC-0102`. The last unexecuted words of `.11.4.2`'s scope — *archive retrieval and collection bounds*.
+
+- 🔴 **`docs/tasks/` is 5,642,809 bytes over 72 files and `SIGNOFF-REPAIR.md` alone is 3,964,829 of them — 70.3%**, which is **2.4× the combined size of every other governed collection**. The next largest tree is 194,929 bytes, a factor of 20 below it.
+- ⛔ **ROTATION IS REFUTED BY MEASUREMENT, and that is the finding rather than the sizes.** That one file carries **4,092 internal leaf references** — 67% of the 6,129 across all eleven trees — so a closed leaf is not a retired record but an address 4,092 sentences resolve against. `RELATIVE-LEAF-REF` tracks 2 dangling references today; retiring closed leaves would create them by the thousand.
+- ⭐ **The opposite of the measurement that authorized the ledgers' rotation.** `.11.4.2.6.1` recorded of `DEV_NOTES.md`: *no consumer cites an individual record*. Two collections that accumulate, are large and are governed by the same registry, with **opposite retrieval models** — applying the ledger remedy on the resemblance would have been the mirror error this lane keeps finding. Promoted → `docs/knowledge/two-collections-that-look-alike-can-have-opposite-retrieval.md`.
+- ⭐ **The declared control was already the right one**, and this leaf's job was to check it rather than replace it: *trees close when exhausted*. The bound is the tree's LIFECYCLE, not its bytes, and nothing in that sentence is false.
+- ✅ **Cost measured, not assumed**: the ten enforcer checks that scan `docs/tasks/` cost **2.04 s** together against a ~47 s enforcer — **4.3%**. A 3.96 MB file costs two seconds a commit.
+- ⛔ **No ceiling, no rotation, no split**, each refused by name: a ceiling's remedy IS retirement, so a ceiling on a collection that cannot retire has only one compliant response — delete something irreplaceable; and a split would grow the bounded index (*one row per tree*) to shrink an unbounded file.
+- ⛔ No registry row changed, no threshold moved, no file split, no code touched.
+
 ## 2026-09-21 — The lifecycle field is a taxonomy, not a contract, and one of its classifications was mine and wrong (`SIGNOFF-REPAIR.11.4.2.8`)
 
 `REASONBRAID-REPAIR-0361`. The last named strand of `.11.4.2` — *lifecycle and pressure controls* — whose pressure half shipped at `.11.4.2.6.7`.

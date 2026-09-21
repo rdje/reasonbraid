@@ -1,5 +1,38 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — I was one command away from rotating the wrong thing
+
+The last strand of the containment lane is "collection bounds", and the largest
+collection in this repository is the task trees: 5.6 MB, of which one file is
+3.96 MB. Everything about that file says rotate it. It accumulates. It is
+governed by the same registry as the ledgers that were rotated three weeks ago.
+It is twenty times larger than the next tree and two and a half times larger than
+every other governed collection put together. The remedy was sitting right there,
+already built, already proved lossless on two other files.
+
+The measurement that stopped it took one command. The ledger rotation was
+authorised at .11.4.2.6.1 by a specific property, written down at the time: no
+consumer cites an individual record. That is what makes retiring a record into
+git history lossless rather than destructive — nothing was pointing at where it
+used to be. So the question for this file is not "is it big" but "does anything
+cite an individual leaf", and there is already a tracked instrument that counts
+exactly that. It reports 4,092 internal references inside this one tree, 67% of
+all such references in the project.
+
+So the two collections are the same shape and have opposite retrieval models, and
+the resemblance is not superficial — they accumulate for the same reasons, they
+are written in the same sessions, they reach the same discomfort at the same
+size. Nothing visible in either file distinguishes them. The discriminator lives
+in what else in the project points into them, which is a property of the corpus.
+
+The general form is in docs/knowledge/. What I want recorded here is the near
+miss, because the reasoning that nearly did it was not sloppy: it was
+"this is like the thing I fixed, and the fix worked". That is a good heuristic
+and it is exactly how a remedy gets applied to a case whose properties it does
+not depend on. The repair to the heuristic is small — name the property the
+remedy depends on, then measure it here — and it cost one command against an
+afternoon of undoing.
+
 ## 2026-09-21 — Three controls, two of them wrong, and that was the productive part
 
 Shipping the anchor took an hour. Getting the controls to measure the anchor

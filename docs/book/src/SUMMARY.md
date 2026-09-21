@@ -15,6 +15,7 @@
 - [Agent profiles and portable cards](profiles.md)
 - [Site authority](site-authority.md)
 - [The policy lifecycle](policy-lifecycle.md)
+- [The evaluation harness](evaluation-harness.md)
 - [Budgets](budget.md)
 - [The CLI](cli.md)
   - [CLI local state and recovery](cli-state.md)

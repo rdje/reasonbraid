@@ -1,5 +1,18 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — The evaluation harness gains its chapter, and the chapter's job was refusing to vouch for it (`SIGNOFF-REPAIR.11.4.6.4`)
+
+`REASONBRAID-DOC-0113`. Seven routes, none documented — the only family in the surface where no route carried a contract line.
+
+- ✅ **`docs/book/src/evaluation-harness.md`**: all seven routes beside their methods with both verbs, the corpus / run / trial / calibration / gate shapes with worked examples and responses, the seeded `splitmix64` assignment the client never supplies, and the strictness the gate WRITE path enforces. The route census moves **71 described / 2 mentioned / 31 absent → 78 / 2 / 24**: exactly the seven.
+- ⭐ **THE HARD PART WAS NOT DESCRIBING THE HARNESS — IT WAS REFUSING TO VOUCH FOR IT.** Four defects already owned by `.8.2` are stated in the chapter, each with its clause, rather than left in a task tree the director does not read.
+- 🔴 **A GATE THAT MEASURED NOTHING REPORTS `pass`.** `evaluate_gate` skips any baseline case the submitted scores do not mention — *the caller owns the coverage* — so `{}` compares nothing, finds no failure and returns `passed: true`; measured scores are under no `[0, 1]` bound either. ⭐ The contrast sits inside one file: `record_gate` **refuses** an empty baseline, a non-numeric score and one outside `[0, 1]`. The chapter therefore says *do not treat a green gate as evidence until it is repaired* (`.8.2` clause 3).
+- 🔴 **THE HARNESS IS DEPLOYMENT-WIDE, NOT TENANT-SCOPED.** Every route admits any enrolled principal and passes no principal onward, and **none of the seven `evaluation_*` tables carries a `tenant_id` column** — so one caller reads and writes every other caller's records. ⚠️ Measured rather than inferred, and `.8.2` clause 1 also records why the obvious fix is unavailable: no `GrantAction` and no `TargetSelector` can name a corpus or a gate.
+- 🔴 The other two, also stated in the chapter: the assignment's `draw as usize` **truncates to 32 bits** where the comment beside it promises cross-platform stability (clause 2), and six write paths plus three read paths turn any database error into *already exists* / *not registered*, so **an outage is indistinguishable from a duplicate** (clause 4).
+- ⛔ **NO NEW LEAF, and that is the correct outcome rather than a shortcut.** All four are `.8.2`'s clauses 1–4 verbatim, recorded 2026-09-19 with `evaluation_trial_results` named as the seventh table a per-file count misses. A fifth leaf would be a second copy of an owned backlog; §15 requires a finding to be OWNED, and these are. The contribution here is that they now sit in the surface the director reviews, beside the routes they belong to.
+- ⚠️ **G5's position heads the limits section**: Met as a **subtraction gate with the quality-lift claim withdrawn**. Nothing in the chapter demonstrates that deliberation improves an answer — the harness records measurements, it does not establish that the thing measured got better.
+- **The adjudication now reads 31 covered · 3 internal · 9 gap**, held by four leaves.
+
 ## 2026-09-21 — The policy lifecycle gains its chapter, and the new gate caught a defect in itself (`SIGNOFF-REPAIR.11.4.6.3`)
 
 `REASONBRAID-DOC-0112`. The first chapter the surface adjudication demanded, and the first real use of the gate that demanded it.

@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-21 — I closed a leaf without meeting two of its own acceptance criteria (`SIGNOFF-REPAIR.11.31.1.1`)
+
+`REASONBRAID-REPAIR-0364`. The director's *ensure your findings reflect reality* — a different question from the previous round's *do the numbers still hold*. The numbers held. Two sentences did not describe anything.
+
+- 🔴 **A UNIVERSAL CLAIM MADE FROM A SAMPLE.** `.11.31.1` published *"All 24 caller-supplied sites were followed BY HAND — every one passes `database_now_in_tx` or `tx.database_now()`"*. **Eight functions were followed and generalised to twenty-four sites.** It is false: `api.rs:7113` calls `budget::create_reservation_in_tx(…, Utc::now())`, with `issue_lease`, `renew_lease`, `record_event_in_tx`, `check_in_tx`, `open_call`, `submit` and `submit_external` in the same position.
+- 🔴 **AND THE LEAF'S OWN ACCEPTANCE SAID SO.** Two criteria were unmet — *the adjudication must be carried as DATA and guarded* (I published prose) and *no classification is asserted without the code path that supports it* (24 from 8). A leaf is done when its acceptance is met, not when its author is satisfied.
+- ✅ **THE CRITERION IS NOW MET**: `ADJUDICATION` carries **43 sites over 42 keys**, each with the `(origin, escape)` computed when it was judged and the reason — contained 29, database_clock 6, normalized 4, value_granularity 2, input_echo 1, triage_false_positive 1 — and `--check` refuses the three ways such a table rots: **unadjudicated**, **phantom**, and **moved** (a site whose inputs changed since the reason was reached). Falsified three ways in situ, red by name, restored byte-identically.
+- ⭐ **THE CONCLUSION SURVIVES ON BETTER GROUND.** Provenance matters only where a value ESCAPES; 19 of the 24 are contained, so the argument never needed their callers. The 5 that escape were each verified individually — four to the database clock, and one shown to be a **false positive of my own escape triage**.
+- ⭐ **That false positive is the useful finding: the triage's unsoundness is now DEMONSTRATED, not declared.** `create_reservation_in_tx`'s `created_at` is the DENIED branch — no `RETURNING`, returning `Err` with no instant — while the `Ok(Reservation …)` the triage matched is the ACTIVE branch built from `RETURNING`, under `.11.30`'s own repair. A cross-branch match in one function, on the one subsystem where the original defect lived. Recorded at the triage and carried as the verdict `triage_false_positive`.
+- 🔴 **The same overreach appeared a second time in the decision record** — *"thirty of the forty-three sites are safe because somebody used `database_now_in_tx`"*; the guarded counts say **six**. Corrected without weakening the point: six rely on the convention, and every one is a site whose value a caller sees.
+- ✅ **Three claims verified against the RUNNING SYSTEM**, which re-derivation could not show: `core.hooksPath` is `.githooks` and `pre-commit` runs the enforcer, so every commit in this batch was genuinely gated; `check_self_tests.sh --census` discovers all three new instruments among its 56; `.11.30`'s repair is real at the site.
+- ⛔ **No verdict about the 43 changed, and none was wrong.** What changed is the evidence, which was partly generalised rather than gathered. Promoted → `docs/knowledge/a-sample-is-not-a-traversal.md`.
+
 ## 2026-09-21 — Seven findings held, three had drifted, and one described its author rather than the gate (`SIGNOFF-REPAIR.11.33.1`)
 
 `REASONBRAID-REPAIR-0363`. The director's *ensure the findings still hold*, re-derived by routes that did not produce the originals.

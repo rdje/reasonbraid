@@ -21,7 +21,14 @@ Re-derive, never read from here:
 ```bash
 python3 -B scripts/census_bound_instants.py
 python3 -B scripts/census_bound_instants.py --candidates
+python3 -B scripts/census_bound_instants.py --check   # the guarded adjudication
 ```
+
+⛔ Every per-site verdict below is carried as DATA in `census_bound_instants.ADJUDICATION`
+and guarded, not asserted here: `--check` refuses an unjudged site, a judgement
+about a site that no longer exists, and a site whose `(origin, escape)` has
+moved since the judgement was made. `SIGNOFF-REPAIR.11.31.1` published these as
+prose, which is how a claim about 24 sites came to be written from 8 code paths.
 
 ## The answer: none of them, and the empty cell is the reason
 
@@ -50,12 +57,25 @@ the dangerous one is empty:
 - **`normalized` (4).** `site_authority::Scope::checked()` rounds through
   `from_timestamp_micros` before anything is bound — the mitigation this hazard
   already had, working.
-- **`caller_supplied` (24).** Followed by hand to every call site: each one
-  passes `database_now_in_tx(&mut tx)` or `tx.database_now()`. The five that also
-  reach a return — `record_selection_in_tx`, `create_reservation_in_tx`,
-  `write_profile_in_tx` (through `attest_capability_in_tx`), and the two
-  `*_command_in_one_transaction` paths — resolve to the database clock at every
-  caller.
+- **`caller_supplied` (24).** 🔴 **CORRECTED BY `SIGNOFF-REPAIR.11.31.1.1`.**
+  This record first said every one of the twenty-four passes
+  `database_now_in_tx(&mut tx)` or `tx.database_now()`. That was written from
+  eight functions and is **false**: `api.rs:7113` calls
+  `budget::create_reservation_in_tx(…, Utc::now())`, and `issue_lease`,
+  `renew_lease`, `record_event_in_tx`, `check_in_tx`, `open_call`, `submit` and
+  `submit_external` are in the same position.
+
+  ⭐ **The argument never needed that claim, and is stronger without it.**
+  Provenance only matters for a site whose value ESCAPES. **Nineteen of the
+  twenty-four are contained**, so their caller's clock is irrelevant. Of the five
+  that escape: `record_selection_in_tx`, `write_profile_in_tx` ×2 (through
+  `attest_capability_in_tx`) and both `*_command_in_one_transaction` paths were
+  each verified individually to the database clock; and
+  `create_reservation_in_tx` is a **false positive of the escape triage** — the
+  bound value is the denied branch, which returns `Err` carrying no instant,
+  while the `Ok(Reservation …)` the triage matched is the active branch built
+  from `RETURNING` under `.11.30`'s own repair. So `Utc::now()` does reach that
+  site and still cannot escape it.
 - **`rust_clock` (7).** All contained. `acknowledge_in_tx` receives `Utc::now()`
   and fills seven columns nothing reads back; `recruitment::open_call`'s `now`
   is written and never returned (its `RETURNING` clause takes `call_id` alone);
@@ -90,10 +110,20 @@ is the calibration a rule proposed today would not have.
 
 ## ⭐ The convention, which is the thing that was missing
 
-Thirty of the forty-three sites are safe because somebody used
-`database_now_in_tx`, and **nothing said that was why**. Its own doc comment
-explains a different property — that `clock_timestamp()` samples after the
-guard and idempotency waits, where `now()` would cache BEGIN time — and no
+🔴 **CORRECTED BY `SIGNOFF-REPAIR.11.31.1.1`, which is the same overreach one
+paragraph down.** This said *thirty of the forty-three sites are safe because
+somebody used `database_now_in_tx`*. The guarded adjudication now puts the
+numbers beyond argument: **contained 29, database_clock 6, normalized 4,
+value_granularity 2, input_echo 1, triage_false_positive 1** — so six sites, not
+thirty, are safe *because of the convention*, and twenty-nine are safe because
+nothing reads them back.
+
+⭐ **That does not weaken the point; it relocates it.** Six sites rely on the
+convention TODAY, and every one of them is a site whose value a caller sees —
+which is precisely where getting it wrong costs something, and precisely what
+`.11.30` cost. **Nothing said that was why.** `database_now_in_tx`'s own doc
+comment explains a different property — that `clock_timestamp()` samples after
+the guard and idempotency waits, where `now()` would cache BEGIN time — and no
 design document mentioned it at all.
 
 > **An instant that will be stored, and whose value a caller may see, is sampled

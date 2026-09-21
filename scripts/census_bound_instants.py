@@ -45,6 +45,7 @@ The three verdicts, per (statement, timestamp column):
                    here.
 
     python3 -B scripts/census_bound_instants.py
+    python3 -B scripts/census_bound_instants.py --check
     python3 -B scripts/census_bound_instants.py --candidates
     python3 -B scripts/census_bound_instants.py --self-test
 
@@ -380,6 +381,17 @@ def escape_triage(text: str, pos: int, bound: str) -> tuple[str, str]:
     It exists to ORDER the hand adjudication, and the adjudication is what
     decides. Publishing its output as the answer would be the error
     `docs/knowledge/a-census-is-as-wide-as-its-key.md` describes.
+
+    🔴 AND ITS UNSOUNDNESS IS NOW MEASURED RATHER THAN DECLARED
+    (`SIGNOFF-REPAIR.11.31.1.1`). `budget::create_reservation_in_tx` writes
+    `budget_reservations.created_at` in its DENIED branch — a statement with no
+    `RETURNING`, followed by `Err(BudgetError::Unavailable)` carrying no instant
+    — and this function reports it as `reaches_return`, because the same
+    function's ACTIVE branch ends in `Ok(Reservation { … })`. A match across two
+    branches is exactly the case a one-function text scan cannot separate, and
+    it produced a false positive on the one subsystem where the original defect
+    lived. ⛔ The adjudication carries the verdict `triage_false_positive` for
+    that site so the disagreement is recorded, not smoothed over.
     """
     name, start, end = enclosing_fn(text, pos)
     if not bound:
@@ -465,6 +477,229 @@ def scan_file(text: str, types: dict[tuple[str, str], str] | None = None) -> lis
                              provenance(text, m.start(), col.bound or ""))
             found.append(col)
     return found
+
+
+# ── the adjudication: a hand judgement over code paths, carried as data ───────
+#
+# ⛔ PROSE WAS NOT ENOUGH, and `SIGNOFF-REPAIR.11.31.1.1` is why. `.11.31.1`
+# required this to be "carried as DATA and guarded, the way
+# `census_route_controls.ADJUDICATION` is", and published sentences instead —
+# which is how a claim about 24 sites came to be written from 8 code paths with
+# nothing to notice. Each entry records the (origin, escape) the census computed
+# WHEN the judgement was made, so a site whose inputs change refuses rather than
+# keeping a verdict reached about different facts
+# (`docs/knowledge/an-adjudication-is-keyed-to-the-words-it-judged.md`).
+#
+# ⚠️ THE KEY IS (file, function, table.column) AND TWO SITES CAN SHARE ONE.
+# `snapshots::submit` writes `evidence_snapshots.retrieved_at` from two
+# statements, so 43 sites map to 42 keys. `adjudication_drift` checks EVERY
+# site against its key's recorded pair, so if the two ever diverge the census
+# refuses instead of quietly judging one by the other's reading.
+#
+# Verdicts:
+#   contained             — written, never read back; the caller's clock is
+#                           irrelevant because nothing compares two copies.
+#   database_clock        — escapes, but the value was read from the database.
+#   normalized            — escapes, but was rounded to microseconds first.
+#   value_granularity     — escapes, but cannot carry sub-microsecond precision.
+#   input_echo            — escapes as an echo of the caller's own request.
+#   triage_false_positive — the escape triage says it escapes and it does not.
+VERDICTS = ("contained", "database_clock", "normalized", "value_granularity",
+            "input_echo", "triage_false_positive")
+
+ADJUDICATION: dict[tuple[str, str, str], tuple[str, str, str, str]] = {
+    ("reasonbraid-server/src/api.rs",
+     "apply_node_result_in_tx", "node_inbox.quarantined_at"):
+        ("rust_clock", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/authority.rs",
+     "insert_boundary_in_tx", "enrollment_boundaries.expires_at"):
+        ("caller_supplied", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/authority.rs",
+     "insert_boundary_in_tx", "enrollment_boundaries.valid_from"):
+        ("caller_supplied", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/authority.rs",
+     "insert_grant_row", "authority_grants.expires_at"):
+        ("caller_supplied", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/authority.rs",
+     "insert_grant_row", "authority_grants.valid_from"):
+        ("caller_supplied", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/authority.rs",
+     "record_selection_in_tx", "authorization_records.decided_at"):
+        ("caller_supplied", "reaches_return", "database_clock",
+         "both callers bind `at` from transaction::database_now_in_tx, which is SELECT clock_timestamp()"),
+    ("reasonbraid-server/src/authority/effects.rs",
+     "record_administrative_effect_in_tx", "administrative_effects.effected_at"):
+        ("caller_supplied", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/authority/federation_admin.rs",
+     "accept_direction_in_one_transaction", "federation_agreements.accepted_at"):
+        ("database_clock", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/authority/node_admin.rs",
+     "issue_enrollment_token_in_one_transaction", "node_enrollment_tokens.superseded_at"):
+        ("database_clock", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/authority/node_admin.rs",
+     "quarantine_command_in_one_transaction", "node_inbox.quarantined_at"):
+        ("database_clock", "reaches_return", "database_clock",
+         "`at` is tx.database_now() in the same transaction"),
+    ("reasonbraid-server/src/authority/node_admin.rs",
+     "replay_command_in_one_transaction", "node_inbox.decided_at"):
+        ("database_clock", "reaches_return", "database_clock",
+         "`at` is tx.database_now() in the same transaction"),
+    ("reasonbraid-server/src/budget.rs",
+     "check_spend_breaker_in_tx", "spend_breakers.tripped_at"):
+        ("caller_supplied", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/budget.rs",
+     "create_reservation_in_tx", "budget_reservations.created_at"):
+        ("caller_supplied", "reaches_return", "triage_false_positive",
+         "the bound value is the DENIED branch, which executes and returns Err(BudgetError::Unavailable) carrying no instant; the Ok(Reservation) the triage matched belongs to the ACTIVE branch, built from RETURNING reservation_id, expires_at, created_at per SIGNOFF-REPAIR.11.30. api.rs:7113 does pass Utc::now() here and it still cannot escape"),
+    ("reasonbraid-server/src/budget.rs",
+     "overrun_of", "budget_reservations.settled_at"):
+        ("other", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/budget.rs",
+     "release_reservation", "budget_reservations.settled_at"):
+        ("caller_supplied", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/corrections.rs",
+     "record_correction", "policy_corrections.expires_at"):
+        ("other", "reaches_return", "input_echo",
+         "the response echoes input.expires_at, the caller's own request field, rather than asserting what the row holds"),
+    ("reasonbraid-server/src/node_channel.rs",
+     "enqueue_in_tx", "node_inbox.decided_at"):
+        ("caller_supplied", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/node_channel.rs",
+     "enroll", "incarnations.valid_from"):
+        ("rust_clock", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/node_channel.rs",
+     "enroll", "incarnations.valid_to"):
+        ("rust_clock", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/node_channel.rs",
+     "enroll", "node_certificates.expires_at"):
+        ("other", "reaches_return", "value_granularity",
+         "leaf.not_after is built in ca.rs as from_timestamp(unix_timestamp(), 0) — whole seconds, nanosecond component literally zero"),
+    ("reasonbraid-server/src/node_channel.rs",
+     "enroll", "node_certificates.issued_at"):
+        ("rust_clock", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/node_channel.rs",
+     "enroll", "node_enrollment_tokens.used_at"):
+        ("rust_clock", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/node_channel.rs",
+     "issue_lease", "node_leases.issued_at"):
+        ("caller_supplied", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/node_channel.rs",
+     "issue_lease", "node_leases.last_seen_at"):
+        ("caller_supplied", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/node_channel.rs",
+     "record_event_in_tx", "node_events.received_at"):
+        ("caller_supplied", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/node_channel.rs",
+     "renew_lease", "node_leases.last_seen_at"):
+        ("caller_supplied", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/node_channel.rs",
+     "rotate", "node_certificates.expires_at"):
+        ("other", "reaches_return", "value_granularity",
+         "leaf.not_after is built in ca.rs as from_timestamp(unix_timestamp(), 0) — whole seconds, nanosecond component literally zero"),
+    ("reasonbraid-server/src/node_channel.rs",
+     "rotate", "node_certificates.issued_at"):
+        ("rust_clock", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/profiles.rs",
+     "write_profile_in_tx", "agent_profiles.updated_at"):
+        ("caller_supplied", "reaches_return", "database_clock",
+         "all three callers bind `at` from database_now_in_tx or tx.database_now(); attest_capability_in_tx inherits it from profile_admin.rs"),
+    ("reasonbraid-server/src/profiles.rs",
+     "write_profile_in_tx", "profile_versions.written_at"):
+        ("caller_supplied", "reaches_return", "database_clock",
+         "all three callers bind `at` from database_now_in_tx or tx.database_now(); attest_capability_in_tx inherits it from profile_admin.rs"),
+    ("reasonbraid-server/src/quota.rs",
+     "check_in_tx", "quota_events.at"):
+        ("caller_supplied", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/recruitment.rs",
+     "open_call", "recruitment_calls.advertises_at"):
+        ("rust_clock", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/recruitment.rs",
+     "open_call", "recruitment_calls.expires_at"):
+        ("caller_supplied", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/recruitment.rs",
+     "open_call", "recruitment_calls.join_deadline"):
+        ("caller_supplied", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/site_authority/mod.rs",
+     "audit", "public.site_audit.decided_at"):
+        ("caller_supplied", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/site_authority/operator.rs",
+     "issue_boundary", "public.site_boundaries.expires_at"):
+        ("normalized", "reaches_return", "normalized",
+         "scope.checked() rounds through from_timestamp_micros before any bind"),
+    ("reasonbraid-server/src/site_authority/operator.rs",
+     "issue_boundary", "public.site_boundaries.valid_from"):
+        ("normalized", "reaches_return", "normalized",
+         "scope.checked() rounds through from_timestamp_micros before any bind"),
+    ("reasonbraid-server/src/site_authority/operator.rs",
+     "issue_grant", "public.site_grants.expires_at"):
+        ("normalized", "reaches_return", "normalized",
+         "scope.checked() rounds through from_timestamp_micros before any bind"),
+    ("reasonbraid-server/src/site_authority/operator.rs",
+     "issue_grant", "public.site_grants.valid_from"):
+        ("normalized", "reaches_return", "normalized",
+         "scope.checked() rounds through from_timestamp_micros before any bind"),
+    ("reasonbraid-server/src/snapshots.rs",
+     "submit", "evidence_snapshots.fresh_until"):
+        ("caller_supplied", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/snapshots.rs",
+     "submit", "evidence_snapshots.retrieved_at"):
+        ("caller_supplied", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    ("reasonbraid-server/src/snapshots.rs",
+     "submit_external", "evidence_snapshots.retrieved_at"):
+        ("caller_supplied", "contained", "contained",
+         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+}
+
+
+def adjudication_drift(sites: list[tuple[tuple[str, str, str], str, str]],
+                       table: dict[tuple[str, str, str], tuple[str, str, str, str]],
+                       ) -> tuple[list[str], list[str], list[str]]:
+    """(unclassified, phantom, moved) — the three ways a hand table rots.
+
+    `unclassified` a site the census reports and nobody judged;
+    `phantom`      a judgement about a site the census no longer reports;
+    `moved`        a site whose (origin, escape) differs from what was judged,
+                   so the recorded reason was reached about other facts.
+    """
+    keys = {k for k, _o, _e in sites}
+    unclassified = sorted(f"{k[0]}::{k[1]}::{k[2]}" for k in keys if k not in table)
+    phantom = sorted(f"{k[0]}::{k[1]}::{k[2]}" for k in table if k not in keys)
+    moved = []
+    for key, origin, escape in sites:
+        entry = table.get(key)
+        if entry and (entry[0], entry[1]) != (origin, escape):
+            moved.append(f"{key[0]}::{key[1]}::{key[2]} judged as "
+                         f"({entry[0]}, {entry[1]}) but the census now computes "
+                         f"({origin}, {escape})")
+    return unclassified, phantom, sorted(moved)
 
 
 def repo_root() -> Path:
@@ -567,6 +802,23 @@ def self_test() -> int:
     check("bind chain is parenthesis-balanced",
           [c.bound for c in scan_file(code)], ["f(y, z)"])
 
+    # the drift guard's three failure modes, each pinned in both directions
+    k1 = ("f.rs", "fn_a", "t.c")
+    k2 = ("f.rs", "fn_b", "t.d")
+    tab = {k1: ("caller_supplied", "contained", "contained", "why")}
+    check("drift: agreeing table is clean",
+          adjudication_drift([(k1, "caller_supplied", "contained")], tab), ([], [], []))
+    check("drift: an unjudged site is caught",
+          adjudication_drift([(k1, "caller_supplied", "contained"),
+                              (k2, "rust_clock", "contained")], tab)[0],
+          ["f.rs::fn_b::t.d"])
+    check("drift: a judgement with no site is caught",
+          adjudication_drift([], tab)[1], ["f.rs::fn_a::t.c"])
+    check("drift: a site whose inputs moved is caught",
+          len(adjudication_drift([(k1, "rust_clock", "reaches_return")], tab)[2]), 1)
+    check("drift: every shipped verdict is in the vocabulary",
+          sorted({v[2] for v in ADJUDICATION.values()} - set(VERDICTS)), [])
+
     if fails:
         print(f"BOUND-INSTANTS: {fails} of {ran} self-test control(s) failed", file=sys.stderr)
         return 1
@@ -575,15 +827,65 @@ def self_test() -> int:
     return 0
 
 
+def collect(root: Path) -> list[tuple[tuple[str, str, str], str, str]]:
+    """Every `bound_unread` site, keyed the way the adjudication is."""
+    types = schema_types([m.read_text(errors="replace")
+                          for m in sorted((root / "migrations").glob("*.sql"))])
+    out = []
+    for rel in corpus(root):
+        for c in scan_file((root / rel).read_text(errors="replace"), types):
+            if c.verdict == "bound_unread":
+                out.append(((rel.split("crates/")[-1], c.fn, f"{c.table}.{c.name}"),
+                            c.origin, c.escape))
+    return out
+
+
+def check(root: Path) -> int:
+    """Refuse when the hand adjudication and the census have come apart."""
+    sites = collect(root)
+    unclassified, phantom, moved = adjudication_drift(sites, ADJUDICATION)
+    bad_verdict = sorted(f"{k[0]}::{k[2]} -> {v[2]}" for k, v in ADJUDICATION.items()
+                         if v[2] not in VERDICTS)
+    fails = 0
+    for label, items, why in (
+        ("unadjudicated", unclassified,
+         "the census reports this site and nobody judged it"),
+        ("phantom", phantom,
+         "a judgement about a site the census no longer reports"),
+        ("moved", moved,
+         "the reason was reached about facts that have since changed"),
+        ("unknown verdict", bad_verdict,
+         f"a verdict outside {', '.join(VERDICTS)}"),
+    ):
+        for item in items:
+            print(f"BOUND-INSTANTS: {label} — {item}\n    ({why})", file=sys.stderr)
+            fails += 1
+    if fails:
+        print(f"BOUND-INSTANTS: {fails} adjudication breach(es).", file=sys.stderr)
+        return 1
+    by_verdict: dict[str, int] = {}
+    for key, _o, _e in sites:
+        by_verdict[ADJUDICATION[key][2]] = by_verdict.get(ADJUDICATION[key][2], 0) + 1
+    print(f"BOUND-INSTANTS: OK — {len(sites)} sites over {len(ADJUDICATION)} keys, "
+          f"every one adjudicated: "
+          + ", ".join(f"{k} {v}" for k, v in sorted(by_verdict.items())))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--self-test", action="store_true")
+    ap.add_argument("--check", action="store_true",
+                    help="refuse when the hand adjudication and the census have "
+                         "come apart (unadjudicated, phantom, or moved sites)")
     ap.add_argument("--candidates", action="store_true",
                     help="list only the bound-and-unread columns, with the Rust "
                          "expression each one binds")
     args = ap.parse_args()
     if args.self_test:
         return self_test()
+    if args.check:
+        return check(repo_root())
 
     root = repo_root()
     files = corpus(root)

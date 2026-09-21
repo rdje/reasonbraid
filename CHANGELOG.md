@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-21 — The book-coverage population, pinned — and a sibling had already closed the finding (`SIGNOFF-REPAIR.11.4.6.1`)
+
+`REASONBRAID-DOC-0111`. `.11.4.6` set the honest bar itself — *measure the gap before calling it a gap* — and measuring it first refuted its own headline.
+
+- 🔴 **THE MCP CHAPTER EXISTS, AND A SIBLING LEAF PUT IT THERE.** `.11.4.6` says `SUMMARY.md` *has no chapter for them*; `docs/book/src/mcp.md` has existed since `2c537dd REASONBRAID-REPAIR-0294` (`SIGNOFF-REPAIR.6.5`) — **7,539 bytes**, all six tools in two tables with the admission each performs and its HTTP twin, the enrolment binding, the per-principal quota and a *what a client sees when it is refused* section, with `mcp-listen.md` beside it. ⭐ So this leaf's second acceptance clause was **already met**, and the shape is `.11.2.1.1`'s exactly: a sibling repairs the thing while the parent goes on stating it.
+- 🔴 **BOTH ITS FIGURES MOVED, BECAUSE BOTH WERE PUBLISHED UNPINNED** — *29 route families* is **30**, *15 content chapters* is **22** `SUMMARY.md` entries, 18 of them content once the four meta pages are set aside. The `.11.33.1` class again.
+- ⭐ **And its command is narrower than its subject, which the answer survived by luck.** It reads `api.rs` alone; **five** files under the server's `src/` register routes and **three** declare a `/v1/` family. Deriving over all five returns the same 30 — `node_channel.rs`'s `/v1/nodes/*` belong to a family `api.rs` already declares — so the narrow command was right by construction of the corpus rather than of the command. The instrument reads all five.
+- ⛔ **And the HTTP routes are not the whole surface**: `cargo metadata --no-deps` reports **10 shipped binaries**, of which only **4** carry a `[[bin]]` stanza — a manifest grep sees those four. A census scoped to route families would have missed all ten.
+- ⭐ **THE POPULATION REFRAMES THE BACKLOG: 9 of 30 route families are mentioned by NO chapter, and SEVEN OF THE NINE ARE `policy-*`** — `policy-decisions`, `policy-drift`, `policy-outcomes`, `policy-projections`, `policy-proposals`, `policy-reviews`, plus `audit`, `deployments` and `evaluations`. The gap is one subject, the policy lifecycle, rather than fourteen scattered surfaces.
+- ⚠️ **The two signals are not equally strong and the weaker one is the cheerful number.** *0 of 10 binaries unmentioned* rests on matching a bare name, and `rb` is two letters; the instrument states that in its own report, so it reads as *no binary is obviously absent* and never as *every binary is documented*.
+- 🔴 **The instrument's own report was falsified twice before anything was published**: it printed *from 3 router file(s)* while five register routes — the count answered a different question from its label — and the binary signal was going to ship flat. ⭐ Its load-bearing self-test case is the prefix collision: `/v1/policies` must not match `/v1/policy-drift`, or eleven policy families would have been reported covered by one sentence.
+- ⛔ No chapter written here. Whether any of the nine is owed one is a judgement per member, and a judgement belongs in a table keyed to each member: `.11.4.6.2`.
+
 ## 2026-09-21 — Consumed cleanup is delivered, and three parents close on verified acceptance (`SIGNOFF-REPAIR.11.2.1.3.2`, `.11.2.1.3`, `.11.2.1`)
 
 `REASONBRAID-DOC-0110`. Seven leaves (`REPAIR-0370`–`0376`) gave every fixture family in tracked Rust that accumulates a producer-owned cleanup rule. These close the lane.

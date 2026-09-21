@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import ci_browser as browser
 import project_env
 import run_pg_tests as owner
+import stall_snapshot
 
 
 class BrowserSetupTests(unittest.TestCase):
@@ -101,7 +102,7 @@ class BrowserSetupTests(unittest.TestCase):
                 "'chrome_log':os.environ.get('CHROME_LOG_FILE'),'args':sys.argv[1:]}));"
                 + ("time.sleep(60);" if sleep else "") + f"sys.exit({exit_code})", "argument with spaces"]
 
-    def _record_child_timing(self, begin, outcome):
+    def _record_child_timing(self, begin, outcome, snapshots=None):
         # SIGNOFF-REPAIR.11.26 — the three tests that exceed the 15 s bound do so
         # about twice in seventeen SUITE runs, so the distribution can only be
         # built by running the suite many times and keeping every child's own
@@ -116,6 +117,10 @@ class BrowserSetupTests(unittest.TestCase):
         elapsed_ms = round((time.monotonic() - begin) * 1000)
         record = {"test": self.id().rsplit(".", 1)[-1], "outcome": outcome,
                   "elapsed_ms": elapsed_ms}
+        # SIGNOFF-REPAIR.11.26.1 — the process tree, the paging RATE and the
+        # deepest descendant's stack, taken while the child was still stuck.
+        if snapshots:
+            record["stall_snapshots"] = snapshots
         try:
             workspaces = sorted((self.root / "target/ci-browser").iterdir())
             if workspaces:
@@ -130,18 +135,41 @@ class BrowserSetupTests(unittest.TestCase):
         with io.open(path, "a", encoding="utf-8") as log:
             log.write(json.dumps(record) + "\n")
 
+    CHILD_TIMEOUT = 15
+    # SIGNOFF-REPAIR.11.26.1 — fire the snapshot BEFORE the deadline, not at it.
+    # `run_pg_tests.run_command` kills the process group in its `finally`, so by
+    # the time `TimeoutExpired` reaches this method the child is already gone and
+    # there is nothing left to sample. Three seconds of margin is enough for a
+    # `ps` walk and a 2 s `sample` while the child is still stuck.
+    SNAPSHOT_AT = 12
+
     def run_child(self, script, *args):
         # A hard kill of the launcher strands its independently owned downloader.
         # Use its signal handler to consume child shutdown before the outer wait
         # finishes, including when a fixture never reaches its first instruction.
         begin = time.monotonic()
+        child_pid = []
+        timer, snapshots = stall_snapshot.watchdog(
+            lambda: child_pid[0] if child_pid else None,
+            project_env.ROOT / "target/stall-snapshots",
+            self.SNAPSHOT_AT, label=self.id().rsplit(".", 1)[-1])
+        # ⛔ Inert unless the timing log is on, so an ordinary suite run spawns no
+        # diagnostic subprocess and is byte-for-byte what it was.
+        armed = bool(os.environ.get("RB_CHILD_TIMING_LOG"))
+        if armed:
+            timer.start()
         try:
             completed = owner.run_command([sys.executable, "-B", str(script), *args],
-                                          self.env, capture=True, timeout=15)
+                                          self.env, capture=True,
+                                          timeout=self.CHILD_TIMEOUT,
+                                          started=child_pid.append)
         except BaseException:
-            self._record_child_timing(begin, "raised")
+            timer.cancel()
+            self._record_child_timing(begin, "raised", snapshots)
             raise
-        self._record_child_timing(begin, "ok")
+        finally:
+            timer.cancel()
+        self._record_child_timing(begin, "ok", snapshots)
         result = subprocess.CompletedProcess(completed.args, completed.returncode,
                                              completed.stdout, completed.stdout)
         workspaces = list((self.root / "target/ci-browser").iterdir())

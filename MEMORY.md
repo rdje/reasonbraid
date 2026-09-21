@@ -2,9 +2,9 @@
 
 ## Current state (OVERWRITE this block each update — do not append)
 
-- next_action: `SIGNOFF-REPAIR.11.2.7` — 🔴 one of `COMMIT.md`'s four pre-push gates answers differently about the same bytes: the script unittest suite reported `failures=1, errors=2` and then **17 ERROR + 2 FAIL** minutes later, with `git status --porcelain -- scripts/` empty between them. ⚠️ `.11.26` is the same defect family and cites this leaf as the root. This one matters now: it is a PRE-PUSH gate and the branch is many commits ahead of the remote.
-- active_work_unit: `SIGNOFF-REPAIR` → frontier leaf: `.11.2.7` (`pending`). ✅ `.11.4.6` is CLOSED with all eight children done; `.11.4` stays `active` because `.11.4.3` is still open.
-- latest_commit: `REASONBRAID-DOC-0117`.
+- next_action: `SIGNOFF-REPAIR.11.26` — **wait for the next occurrence with the instrument now in place**, then read it. ⛔ Do NOT try a fourth lever: three were produced deliberately and none reproduced it, and two explanations are already withdrawn under measurement. ⭐ Run the suite as `COMMIT.md`'s pre-push block does, with `RB_CHILD_TIMING_LOG` set — `scripts/stall_snapshot.py` then records the process TREE, a paging RATE and a `sample` of the deepest descendant, **with the sampler's own elapsed time**, which is itself the discriminator: fast sampler + hung fresh child supports first-run evaluation, a hung sampler refutes it.
+- active_work_unit: `SIGNOFF-REPAIR` → frontier leaf: `.11.26` (`pending`); its child `.11.26.1` is `done`. ⚠️ `.11.2.7` is the SAME defect and consolidates its ownership into `.11.26`; they are not worked in parallel and close together or not at all. ✅ `.11.4.6` is CLOSED with all eight children done; `.11.4` stays `active` because `.11.4.3` is still open.
+- latest_commit: `REASONBRAID-REPAIR-0380`.
 - in_flight_uncommitted: none.
 - blockers: `SIGNOFF-REPAIR.13`.
 - ⚠️ Standing note from `.11.4.6.2`/`.3`: the surface adjudication is **40 covered · 3 internal · 0 GAP** over **43 members**, and every `/v1/` product route is documented. ⛔ `SURFACE-JUDGEMENT` now refuses a commit that adds a surface nobody has judged, so this does not decay silently; re-derive with `python3 -B scripts/census_surface_judgement.py` — and the coarse mention test in `census_book_coverage.py` is wrong in BOTH directions, calling 21 of 30 families covered where only 14 are, while reading `/` as a bare mention when `web-ui.md` is a whole chapter about it. ⛔ Never judge a surface from that census; the ledger is `.doctrine/book_surface_verdicts.tsv` and the gate is `SURFACE-JUDGEMENT`.

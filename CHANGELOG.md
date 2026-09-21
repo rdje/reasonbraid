@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-21 — Every individually-cited fixture is already gone, and three records say otherwise (`SIGNOFF-REPAIR.11.2.1.3.1`)
+
+`REASONBRAID-DOC-0108`. The clause `.11.4.2.9` made non-optional: measure the citations before removing anything.
+
+- ⭐ **THE MEASUREMENT, and it answers in the opposite direction to the ledgers.** Tracked Markdown carries **57 references into the thirteen fixture families**. Most name a FAMILY — but **six name an INDIVIDUAL entry beneath one**, which is exactly the citation `.11.4.2.9` refused to break when it found 4,092 references into the tree it was about to retire.
+- 🔴 **All six are ABSENT**: `target/publisher-tests/pub-83115`, `target/conformance-stubs/lose-14317-1/claude`, `target/browser-production-controls/baseline-d1y3whgw`, `target/bench/codex-run/report.json`, `target/browser-lifetime-controls/inventory.json` and `…/candidate.log`. Three of their four families are EMPTY. `target/` is gitignored and regenerated, so a citation into it dangles **by construction**.
+- ✅ **So cleanup is SAFE, measured rather than hoped**: nothing live is cited, everything cited is already lost. The clause is discharged in the direction that unblocks the mechanism (`.11.2.1.3.2`).
+- 🔴 **The measurement then found a defect nobody was looking for: three records assert PRESENT-TENSE retention of bytes that are gone.** `ci-checkpoint-census.md:98` — *"are retained as ambiguous/evidence-bearing residue"*; `publisher-fixtures.md:49` — *"is preserved"*; `SIGNOFF-REPAIR.md:8476` — *"Baseline runtime evidence: target/…"*. Plus `.11.2`'s own follow-up, *"Raw target/browser-production-controls and its tracked … evidence remain intact"*, where only the TRACKED half does.
+- 🔴 **And one cites a durable record that was NEVER COMMITTED.** `publisher-fixtures.md:49` says *"historical-residue.json records nineteen files with sizes/hashes before final comparison"*. `git log --all --diff-filter=A -- '*historical-residue*'` returns **nothing**: it has never been added to this repository, so those nineteen files with their sizes and hashes are recorded **nowhere**.
+- ⭐ **One record got it right, and its form is the rule.** `docs/evidence/2026-09-07_benchmark-codex-run.md:7` writes *"(regenerated artifacts, not tracked — the scripted self-test and this record are the durable evidence)"* — it names the artifact AND says where durability actually lives.
+- ⛔ **The ARRANGEMENT was never wrong; the sentences were.** A raw fixture under `target/` plus a tracked summary under `docs/tasks/artifacts/` is the right shape, and all three summaries checked are present. Nothing in the prose distinguished the ephemeral half from the durable one.
+- ✅ Four sites corrected with their superseded wording kept. ⛔ No evidence file deleted, none rewritten to make a sentence true, and **no fixture removed** — this leaf establishes that removal loses nothing cited; it does not perform one.
+
 ## 2026-09-21 — The rule becomes a gate, and the gate's own calibration found three false negatives in it (`SIGNOFF-REPAIR.11.2.1.2.3`)
 
 `REASONBRAID-REPAIR-0369`. The gate decision `.11.2.1.2` required, with the population it rests on.

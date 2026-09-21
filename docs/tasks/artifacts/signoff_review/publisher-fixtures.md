@@ -47,7 +47,7 @@ that outer owner cleans its own data after all assertions. They never clean real
 failed or historical evidence merely because its test ended.
 
 Historical target/publisher-tests/pub-83115 is preserved. historical-residue.json
-records nineteen files with sizes/hashes before final comparison. Production
+records nineteen files with sizes/hashes before final comparison. ⛔ **CORRECTED 2026-09-21 (`SIGNOFF-REPAIR.11.2.1.3.1`): NEITHER survives, and the second never existed.** `target/publisher-tests` is empty — `target/` is gitignored and regenerated — and `historical-residue.json` was **never added to the repository**, so the nineteen files with their sizes and hashes are recorded nowhere. The superseded wording is left above per `TOOLBOX.md`; the durable evidence is this record and nothing beneath it. Production
 publisher code, dependencies and publication semantics are unchanged. Broader
 publication atomicity and fixture/tool lifecycle review retain their existing
 repair owners; this bounded prerequisite closes only its tested fixture contract.

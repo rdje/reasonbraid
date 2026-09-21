@@ -1,5 +1,44 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — The rule was fine; the matcher was the problem
+
+The leaf I picked up said: install `.11.32`'s narrow rule as a gate. The narrow
+rule is "an output-emitting command whose double-quoted argument carries an
+unescaped backtick", and it exists because the obvious broad rule — any unescaped
+backtick inside a double-quoted string — returned 19 hits of which 17 were false.
+That is a sensible-looking piece of engineering: measure, find the noise, narrow
+until the noise is gone.
+
+It is also the wrong repair, and the leaf's own pre-work measurement was already
+pointing at why: a regex fitted to the narrow sentence returns 13 hits, not 2,
+because the false positives are backticks inside single quotes nested inside a
+command substitution, and no amount of narrowing the *command* changes what
+quote you are inside. The deliverable was never the sentence. It was a parser.
+
+Once there is a state machine that tracks quote nesting, the broad rule returns
+zero on today's corpus and exactly the real defects at the commit that carried
+them — and the narrow rule returns the same set. The restriction bought nothing.
+It had been compensating for the matcher, and it would have shipped a gate that
+missed a backtick in an assignment or a heredoc for no reason anyone could have
+reconstructed later.
+
+Two bugs in my own parser were found the same way, by the corpus rather than by
+reading. Scanning line by line reported six hits, all inside the multi-line awk
+and Python programs these shell scripts embed: a single-quoted awk program spans
+many lines, so each line starts in the wrong state. Carrying state across lines
+left one survivor, in a `<<EOF` heredoc, where `'` and `"` are ordinary
+characters at the top level but a nested `$( )` restores the normal grammar. The
+tempting fix at that point is an exception for the file. The correct one is to
+model the heredoc body as its own context, which is four lines and removes the
+class.
+
+The general lesson is the inverse of one this project already has written down: a
+control can pass for an unrelated reason, and a control can also be narrowed for
+an unrelated reason. When a rule has to be narrowed to escape false positives, it
+is worth asking whether the false positives belong to the rule or to the thing
+reading it — because if they belong to the reader, the narrowing is permanent,
+invisible, and costs coverage nobody will ever re-measure.
+
 ## 2026-09-21 — I was one command away from rotating the wrong thing
 
 The last strand of the containment lane is "collection bounds", and the largest

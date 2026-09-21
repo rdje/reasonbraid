@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-21 — The backtick rule becomes a gate, and the narrowing it inherited was compensating for a parser (`SIGNOFF-REPAIR.11.33`)
+
+`REASONBRAID-REPAIR-0362`. The class this project had repaired by hand three times now has a check.
+
+- ✅ **`BACKTICK-SUBSTITUTION` ships** — `scripts/check_backtick_substitution.py`, registered in the enforcer, mirrored in `DOCTRINE_ENFORCEMENT.md`, carried by the scaffold's NEUTRAL list, **18 self-test controls**, **0.10 s**. The enforcer now runs 25 checks and stays green.
+- ⭐ **The rule shipped is BROADER than the sentence it inherited, and that is a measurement.** `.11.32` narrowed to *an output-emitting command whose double-quoted argument carries an unescaped backtick* because the obvious matcher returned 19 hits of which 17 were false. Re-measured with a parser that tracks quote nesting, the restriction buys **nothing** — broad and narrow return the **identical set**. The 17 were the matcher's noise, not the rule's.
+- 🔴 **Two parser bugs had to go first, and both were found by the corpus rather than by review.** A per-line scanner reported **6** hits, every one inside the multi-line awk and Python programs these shell scripts embed — a single-quoted awk program spans many lines and a per-line scanner starts each line in the wrong state. A 7th survived that: an unquoted `<<EOF` body, where `'` and `"` are ordinary characters but a nested `$( … )` restores the normal grammar, so its backtick was literal after all. ⛔ Tuning the rule to exclude that file would have hidden the bug and kept the exception.
+- ✅ **Calibrated over the history that contains the instance, with the producer shipped** (`--calibrate`): **105 commits touching a shell file, 171 shell blobs, 15 fires — behind them exactly 3 real defect sites, all in `demo_two_host.sh`**, the one `.11.29` repaired and the two `.11.32` found. **Zero false positives in the project's whole history**, against the 87%, 93% and 71% fire rates of the three gates this repository has rejected.
+- ✅ **Falsified in both directions**: `--as-of 24c50d7^` → rc=1 naming `demo_two_host.sh:261` and `:309`; `--as-of 24c50d7` → rc=0. Red at the defect, green at its repair, one commit apart.
+- ⛔ **The runtime arm is DECLINED on the leaf's own measurement**: instances 1 and 2 are caught by both candidates, **instance 3 by neither** — it was a `python3 -B -c "…"` typed at a prompt. So the runtime arm adds no coverage over the static rule, while the static rule catches its sites before they run. ⚠️ Trigger recorded: the first instance landing where the static rule cannot read — a Makefile recipe, a CI `run:` block, an inline `-c` string — reopens it.
+- ⭐ **Written in Python deliberately**: the corpus is tracked SHELL files, so a checker written in shell would be inside its own corpus and its fixtures read as real code. Every fixture is also assembled from `chr(96)`/`chr(34)`/`chr(39)` rather than written as a literal. ⛔ And no live-corpus arm asserts the tree is clean — that is `.11.4.2.7.1`'s defect, a control that fails the moment the repository becomes correct.
+
 ## 2026-09-21 — The containment inventory is exhausted, and no cap was ever raised to get there (`SIGNOFF-REPAIR.11.4.2`)
 
 `REASONBRAID-DOC-0104`. The lane closes: all four named strands discharged and every one of its 31 descendants `done`.

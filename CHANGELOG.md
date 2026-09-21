@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-21 — The lifecycle field is a taxonomy, not a contract, and one of its classifications was mine and wrong (`SIGNOFF-REPAIR.11.4.2.8`)
+
+`REASONBRAID-REPAIR-0361`. The last named strand of `.11.4.2` — *lifecycle and pressure controls* — whose pressure half shipped at `.11.4.2.6.7`.
+
+- 🔴 **The registry's SECOND field is a lifecycle class from a seven-word vocabulary, and the only code that touched it PRINTED it.** `check_readme_stability.sh` validated it for non-emptiness alone, exactly as it validated the control sentence before `ROUTE-CONTROL` existed, so a row could declare a class no vocabulary contains and every gate stayed green.
+- ⭐ **MEASURED: a declared class does not predict a mechanism.** Of the six classes in use, only the three with **two rows or fewer** share an assertion kind across their rows; `reader_navigation` (15), `author_overflow` (9) and `hot_live` (5) share **none**. So the field is a reader's taxonomy and the registry now says so — what holds a destination's growth is the FIFTH field.
+- 🔴 **The census found one misclassification and it was mine, three commits old.** `docs/evidence/` was classed `append_only_history`, which in this registry means a FILE whose records rotate into git (`CHANGELOG.md`, `DEV_NOTES.md`, each declaring ceiling + LEDGER-RUNWAY + growth). It is a DIRECTORY whose bound is an index — `docs/adr/`'s shape. ✅ Corrected, and the correction shows in the measurement: `append_only_history` went from sharing nothing to sharing all three kinds, and consistent classes 2 → 3.
+- ⚠️ **`external_service` has no instance** — 34 rows over 6 of the 7 words. Kept as a reserved word and named in the header as untested rather than established; deleting it would be a decision about the future taken on an absence.
+- ✅ **One rule ships, the cheapest true one: a class must be a word the registry's own header defines.** Not a new mechanism — `ROUTE-CONTROL` already refuses an unknown assertion KIND for the same reason. Zero current violations; its value is preventing the next typo, said plainly so a green run is not mistaken for a caught defect.
+- ⭐ **The vocabulary is DERIVED from the registry's own header**, because that header is the sentence a row's author reads. 🔴 **And the first parser guessed the continuation rule** — it continued onto any comment line containing a pipe, which works on today's header only because its second line happens to have some. A fixture whose continuation carried one bare word caught it; the marker is now the trailing pipe, which is the actual grammar.
+- ✅ **Falsified twice by injection, each restored byte-identically.** A `hot_live` → `hot-live` typo gives rc=1 naming the row, the bad word and the vocabulary. Removing `frozen_legacy` from the HEADER ALONE makes `KICKOFF.md` refuse — the arm that proves the vocabulary is read from the registry rather than the code.
+- ⛔ No class was changed to make a measurement look better; the three classes that share nothing are left as they are, because sharing nothing is not a defect. 42 self-test controls (was 35).
+
 ## 2026-09-21 — A doctrine document is deliberately unbounded, because the ledgers' threshold cannot be borrowed (`SIGNOFF-REPAIR.11.4.2.7.3.2`)
 
 `REASONBRAID-DOC-0101`. The class question the previous leaf refused to answer with an invented number.

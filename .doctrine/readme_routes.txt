@@ -4,6 +4,25 @@
 # classes: reader_navigation | author_overflow | hot_live | generated_index |
 #          append_only_history | frozen_legacy | external_service
 #
+# A trailing `|` continues the vocabulary onto the next comment line; the list
+# ends at the first line without one. ROUTE-CONTROL derives the vocabulary from
+# these lines and REFUSES a row whose class is not in it -- until
+# SIGNOFF-REPAIR.11.4.2.8 the field was validated for non-emptiness alone, so a
+# typo was a silent reclassification.
+#
+# ⚠️ `external_service` has NO INSTANCE and is measured, not assumed: 34 rows
+# over 6 of these 7 words (.11.4.2.8). It is kept as a reserved word rather than
+# deleted, and named here as untested rather than established, so the next author
+# knows no destination has ever exercised it.
+#
+# ⛔ THE CLASS IS A READER'S TAXONOMY AND DOES NOT BIND A MECHANISM, and that is
+# a measurement rather than a design statement: of the six classes in use, only
+# the three with two rows or fewer share an assertion kind across their rows, and
+# the three largest -- reader_navigation (15), author_overflow (9), hot_live (5)
+# -- share none. What a destination's growth is actually held by is the FIFTH
+# field, which ROUTE-CONTROL evaluates. Re-derive, never read from here:
+# `python3 -B scripts/census_route_controls.py --classes`.
+#
 # The FIFTH field is optional and machine-readable: space-separated kind=operand
 # terms, evaluated every commit by ROUTE-CONTROL (census_route_controls.py).
 # kinds: ceiling=<bytes> | doctrine=<ID> | growth=<shape> | index_entry=<index>
@@ -59,7 +78,7 @@ DOCTRINE_ENFORCEMENT.md|reader_navigation|the four-layer enforcement map and the
 .doctrine/|reader_navigation|project-declared seams that adapt the neutral spine checks without editing them; each file is read by the check that declares it and `.doctrine/README.md` documents the set. Growth is one file per new seam, never prose|repo-local (scaffold)
 docs/knowledge/|author_overflow|the retrievable lesson layer and a MANDATED routing destination: LESSON-PROMOTION requires a new dated `DEV_NOTES.md` lesson to land here or be explicitly declined, and the KNOWLEDGE-MAP doctrine derives `KNOWLEDGE_MAP.md` from these sources and checks it in sync. One note per file, superseded rather than mutated|repo-local|doctrine=LESSON-PROMOTION doctrine=KNOWLEDGE-MAP index_entry=KNOWLEDGE_MAP.md
 docs/runbooks/|author_overflow|one incident runbook per file, each an operator procedure for a named incident class; the collection grows only when a new class is identified, never as an overflow destination for prose|repo-local
-docs/evidence/|append_only_history|one evidence bundle per file plus a `docs/evidence/INDEX.md` entry; a bundle records what a run produced at a moment and is never rewritten, so the collection is append-only by construction|repo-local|index_entry=docs/evidence/INDEX.md
+docs/evidence/|author_overflow|one evidence bundle per file plus a `docs/evidence/INDEX.md` entry; a bundle records what a run produced at a moment and is never rewritten, so records are ADDED and never mutated -- the same shape as the ADR and decision collections. ⛔ It was classed append_only_history when it was added at SIGNOFF-REPAIR.11.4.2.7.3.1 and that conflated an append-only COLLECTION, whose bound is an index, with an append-only FILE, whose bound is a rotation threshold; .11.4.2.8 measured the difference and corrected it|repo-local|index_entry=docs/evidence/INDEX.md
 spec/|author_overflow|the specification set, indexed by `spec/README.md`; specifications mature beside working code (ROADMAP §1) and each document is revised deliberately under its own task-tree leaf|repo-local|index_entry=spec/README.md
 docs/TASK_TREE_README.md|reader_navigation|the task-tree setup guide `docs/TASK_TREE.md` names; it defines the tree file shape and the relative-reference convention, and changes ride task-tree leaves rather than append pressure|repo-local
 docs/ci.md|reader_navigation|the CI and supply-chain surface documentation (`PHASE-0.0.7`): it describes the workflows that exist and draws the line between a skeleton and a release claim. It documents mechanisms, never an overflow destination|repo-local

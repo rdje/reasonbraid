@@ -50,6 +50,7 @@ a term the row declares that no reading supports (so a term cannot be invented).
     python3 -B scripts/census_route_controls.py                    # the census
     python3 -B scripts/census_route_controls.py --check            # ROUTE-CONTROL
     python3 -B scripts/census_route_controls.py --check --as-of REV
+    python3 -B scripts/census_route_controls.py --classes
     python3 -B scripts/census_route_controls.py --extraction-control
     python3 -B scripts/census_route_controls.py --shapes
     python3 -B scripts/census_route_controls.py --self-test
@@ -492,6 +493,78 @@ EVALUATORS = {
 HISTORICAL_KINDS = ("growth",)
 
 
+def parse_classes(registry_text: str) -> list[str]:
+    """The lifecycle vocabulary, DERIVED from the registry's own header comment.
+
+    ⛔ NOT A LIST IN THIS FILE. The header states the vocabulary — `# classes: a |
+    b |` continued over a second comment line — and it is the contract a row's
+    author reads. A second copy in Python would be one edit away from disagreeing
+    with the sentence that taught the author the word, which is the drift
+    `SCAFFOLD-COVERAGE` exists because of.
+
+    ⚠️ The continuation is part of the grammar, not an accident of wrapping: a
+    parser that read only the `classes:` line would silently lose the three words
+    on the line beneath and start refusing rows that use them.
+    """
+    names: list[str] = []
+    collecting = False
+    for line in registry_text.splitlines():
+        if not line.startswith("#"):
+            break
+        body = line.lstrip("#").strip()
+        if not collecting:
+            if not body.startswith("classes:"):
+                continue
+            collecting = True
+            body = body[len("classes:"):].strip()
+        # ⭐ THE TRAILING PIPE IS THE CONTINUATION MARKER, and the first version of
+        # this parser guessed instead — it continued onto any comment line that
+        # happened to contain a pipe, which works on today's header only because
+        # its second line has some. A fixture whose continuation carried a single
+        # bare word caught it before the number shipped.
+        more = body.endswith("|")
+        for token in body.split("|"):
+            token = token.strip()
+            if token:
+                names.append(token)
+        if not more:
+            break
+    return names
+
+
+def class_verdict(klass: str, vocabulary: list[str]) -> str:
+    """`ok` when the declared lifecycle is a word the registry's header defines.
+
+    ⛔ The registry validated this field for NON-EMPTINESS alone until
+    `SIGNOFF-REPAIR.11.4.2.8`, exactly as it validated the control sentence
+    before `.11.4.2.6.7`. A typo in a class name was a silent reclassification.
+    """
+    return "ok" if klass in vocabulary else "unknown"
+
+
+def class_consistency(rows: list[RouteRow]) -> dict[str, dict]:
+    """Per class: its rows, and the assertion kinds they declare.
+
+    ⛔ THIS ANSWERS A QUESTION, IT DOES NOT ENFORCE ONE. Whether a class OUGHT to
+    imply a mechanism is decided on this measurement (`.11.6`), not assumed by
+    the shape of the table.
+    """
+    out: dict[str, dict] = {}
+    for row in rows:
+        entry = out.setdefault(row.klass, {"paths": [], "kinds": [], "narrative": 0})
+        kinds = sorted({k for k, _ in parse_assertions(row.assertions)[0]})
+        entry["paths"].append(row.path)
+        entry["kinds"].append(kinds)
+        if not kinds:
+            entry["narrative"] += 1
+    for entry in out.values():
+        shared = set(entry["kinds"][0]) if entry["kinds"] else set()
+        for kinds in entry["kinds"][1:]:
+            shared &= set(kinds)
+        entry["shared"] = sorted(shared)
+    return out
+
+
 def parse_assertions(field: str) -> tuple[list[tuple[str, str]], list[str]]:
     """The fifth field → ([(kind, operand)], [malformed terms]).
 
@@ -616,6 +689,44 @@ def census(root: Path) -> int:
     return 0
 
 
+def classes_census(root: Path) -> int:
+    """Does a declared LIFECYCLE predict anything about its destination?
+
+    The pressure field got this treatment at `.11.4.2.6.7.1` before a scheme was
+    designed for it. This is the same question one field to the left, and the
+    answer is a measurement.
+    """
+    registry_text = (root / REGISTRY).read_text()
+    vocabulary = parse_classes(registry_text)
+    rows = load_rows(root)
+    cc = class_consistency(rows)
+    unused = [c for c in vocabulary if c not in cc]
+
+    print(f"=== the lifecycle field — {len(rows)} rows over a {len(vocabulary)}-word "
+          f"vocabulary derived from the registry's own header ===\n")
+    consistent = 0
+    for klass in sorted(cc, key=lambda k: -len(cc[k]["paths"])):
+        entry = cc[klass]
+        shared = entry["shared"]
+        if shared:
+            consistent += 1
+        print(f"{klass:<22} rows={len(entry['paths']):<3} narrative={entry['narrative']:<3} "
+              f"shared kinds={', '.join(shared) if shared else '⛔ none'}")
+        for path, kinds in sorted(zip(entry["paths"], entry["kinds"])):
+            print(f"    {path:<32} {', '.join(kinds) or '-narrative-'}")
+        print()
+
+    print(f"classes in use                     : {len(cc)} of {len(vocabulary)}")
+    print(f"  whose rows share an assertion kind: {consistent}")
+    for klass in unused:
+        print(f"  ⚠️ declared and never used        : {klass}")
+    print()
+    print("  ⛔ A CLASS THAT SHARES NOTHING IS NOT THEREBY WRONG. This measures whether")
+    print("     the field PREDICTS a mechanism, which is the question that decides")
+    print("     whether it should bind one. It is not a defect count.")
+    return 0
+
+
 def extraction_control(root: Path) -> int:
     """Score the naive reading against the adjudication.
 
@@ -682,6 +793,20 @@ def check(root: Path, rev: str = "HEAD") -> int:
     fails = guard_adjudication(rows)
     historical = rev != "HEAD"
     evaluated = skipped = 0
+
+    # The lifecycle field, refused on the same terms as a malformed assertion
+    # term: a word the registry's own header does not define is not a
+    # classification, it is a typo nobody adjudicated (`.11.4.2.8`).
+    vocabulary = parse_classes((root / REGISTRY).read_text())
+    if not vocabulary:
+        print(f"ROUTE-CONTROL: REFUSED — {REGISTRY} declares no class vocabulary in its "
+              f"header, so no row's lifecycle can be judged.", file=sys.stderr)
+        return 2
+    for row in rows:
+        if class_verdict(row.klass, vocabulary) != "ok":
+            print(f"ROUTE-CONTROL: {row.path} declares the lifecycle {row.klass!r}, which is "
+                  f"not one of {', '.join(vocabulary)}.", file=sys.stderr)
+            fails += 1
 
     for row in rows:
         declared, malformed = parse_assertions(row.assertions)
@@ -872,6 +997,33 @@ def self_test() -> int:
           adjudication_drift(list(ADJUDICATION), [r.path for r in real]), ([], []))
     check("shipped: every clause is still verbatim", unquoted_clauses(real, ADJUDICATION), [])
 
+    # 21-26. The lifecycle field (`SIGNOFF-REPAIR.11.4.2.8`).
+    header = ("# format: path|class|control|owner|assertions\n"
+              "# classes: alpha | beta |\n"
+              "#          gamma\n"
+              "# more prose that is not the vocabulary\n"
+              "alpha.md|alpha|c|o|\n")
+    # ⛔ The continuation line is the arm that matters: a parser reading only the
+    #    `classes:` line loses `gamma` and starts refusing rows that use it.
+    check("classes: vocabulary spans the continuation line",
+          parse_classes(header), ["alpha", "beta", "gamma"])
+    check("classes: no header, no vocabulary", parse_classes("a.md|x|y|z|\n"), [])
+    check("classes: a declared word is ok", class_verdict("beta", ["alpha", "beta"]), "ok")
+    check("classes: an undeclared word is not",
+          class_verdict("Beta", ["alpha", "beta"]), "unknown")
+    rows_fx = [RouteRow("a", "k", "c", "o", "doctrine=D index_entry=I"),
+               RouteRow("b", "k", "c", "o", "doctrine=D"),
+               RouteRow("c", "j", "c", "o", "")]
+    cc = class_consistency(rows_fx)
+    check("classes: shared kinds are the intersection", cc["k"]["shared"], ["doctrine"])
+    check("classes: a narrative row is counted", cc["j"]["narrative"], 1)
+
+    # 27. The real registry's own vocabulary is non-empty and covers every row —
+    # the live-corpus arm, which a fixture cannot stand in for.
+    real_voc = parse_classes((root / REGISTRY).read_text())
+    check("shipped: every row's class is in the derived vocabulary",
+          sorted({r.klass for r in real if r.klass not in real_voc}), [])
+
     if failures:
         for line in failures:
             print(f"census_route_controls --self-test FAILED: {line}", file=sys.stderr)
@@ -885,6 +1037,9 @@ def main() -> int:
     ap.add_argument("--self-test", action="store_true")
     ap.add_argument("--extraction-control", action="store_true",
                     help="score the naive prose reading against the adjudication")
+    ap.add_argument("--classes", action="store_true",
+                    help="census the LIFECYCLE field: does a declared class predict a "
+                         "mechanism? (SIGNOFF-REPAIR.11.4.2.8)")
     ap.add_argument("--shapes", action="store_true",
                     help="growth shape per routed file (context, not a claim)")
     ap.add_argument("--check", action="store_true",
@@ -897,6 +1052,8 @@ def main() -> int:
     root = repo_root()
     if args.check:
         return check(root, args.as_of)
+    if args.classes:
+        return classes_census(root)
     if args.extraction_control:
         return extraction_control(root)
     if args.shapes:

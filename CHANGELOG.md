@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-21 — An overwrite-only pointer cannot accumulate, so the 81% that did was a second role (`SIGNOFF-REPAIR.11.4.2.7.1`)
+
+`REASONBRAID-REPAIR-0358`. The director refuted the previous commit's diagnosis in one sentence, and the measurement agreed with the director.
+
+- 🔴 **The question that broke it open:** *"`MEMORY.md` is overwrite not append, so why is it hitting its limit so often — makes no sense to me."* It cannot, if the contract holds. `scripts/census_memory_warnings.py` measured why: **26 standing warnings, 5,184 of 6,412 bytes — 81% of the file** — against a resume pointer that was the other 19%. The file sat at **exactly its 7,168-byte cap twice**, and at 7,167 three more times.
+- ⛔ **So the remedy was NOT the health target `.11.4.2.7` proposed.** `MEMORY_ARCHITECTURE.md` §6 already names this symptom — *"the Current state block accumulating under a heading that says to overwrite it"* — and prescribes eviction: *"information is in the wrong layer; move it down to B or C."* A threshold whose correct response is to delete what made it fire institutionalises the bloat.
+- ⭐ **Same defect as `LIVE_STATUS.md` one lane over**: two information roles in one document. That was a snapshot that had become a ledger; this is a pointer that had become a warnings board. The lens was established in this very lane and never turned on this file.
+- ✅ **`MEMORY.md` is a pointer again: 6,412 → 425 bytes, 26 lines → 9, 26 standing warnings → 0, headroom 756 → 6,743.** No cap raised; it sits at **6%** of its byte cap. ⚠️ Three cuts, the last two the director's: *it answers the question 'What's next?', that's it* removed the how-to-resume block, and *remove stuff that is not used to describe the next action* removed the contract sentence I had left at the top — a paragraph about what does not belong in the file is itself something that does not belong in it. What remains is the five pointer fields.
+- ✅ **Zero facts lost, proved per warning.** 17 were instrument-anchored to a leaf; all **9 UNCITED** were hand-classified against the durable layers and every one is recorded there. ⛔ The census's own output forbids assuming this: an uncited item is a population to classify, and one once turned out to be an environment fact existing nowhere else.
+- ⚠️ **The `README.md` half of the previous finding is WITHDRAWN on the measurement**: 12 versions in the project's life, **never once refused**, and its two largest growths were status narrative that a later commit already replaced with a one-line pointer, shrinking the file. Pairing the two as one pressure case was an error.
+- ⛔ No new gate — a ratchet calibrated against a population discharged to zero in the same commit is calibrated against one point (`.11.6`). The guard is the file's own contract sentence plus the instrument. Promoted → `docs/knowledge/an-overwrite-only-file-cannot-accumulate.md`.
+- 🔴 **The eviction BROKE a gate, and the gate was wrong: it required the defect to be present.** `census_memory_warnings.py`'s live-corpus self-test arm asserted *the real `MEMORY.md` yields warnings* — written when 26 were normal — so it failed the moment the file became correct (`.11.27`'s shape). Repaired in this commit because it refuses a correct one. ✅ Falsified: breaking `collect_warnings` in situ reddens **four fixture arms by name**, so removing the live requirement lost no coverage.
+- ⚠️ **A third correction, on the reporting rather than the repository: `README.md` was never touched.** It is byte-identical to `HEAD`, **zero of this session's five commits contain it**, and it last changed on 2026-09-15. The impression came from a report that named it beside `MEMORY.md` as a pressure case. The standing instruction it prompted — the landing page is quasi-static, the pointer answers one question — is now `docs/decisions/2026-09-21_the-landing-page-is-quasi-static-and-the-pointer-answers-one-question.md`, with a no-growth ratchet DECLINED on the measurement (it would have fired on 6 of 11 changes).
+
 ## 2026-09-21 — The containment contract is adopted and met, and the donor's document is declined on the donor's own stop condition (`SIGNOFF-REPAIR.11.4.2.7`)
 
 `REASONBRAID-DOC-0098`. The donor-package review `.11.4.1` deferred on 2026-09-09, executed against what this repository has since built.
@@ -205,228 +219,25 @@
 - ⚠️ **`.11.4.2.4`'s figures are pinned to `1fb5a94` one commit after publication** — `645` was already `646` the same day. The defect counts did not move and nothing is withdrawn; it is the fifth instance of *true when taken, published unpinned*.
 - ⚠️ **The census and the gate are NOT independent**: different rules, shared parser — `docs/CLAIM_VERIFICATION.md` §1's *the classifier was shared*, named here rather than discovered later. No product code, schema or test touched.
 
-## 2026-09-20 — The pointer's derivable fields, measured over 645 versions — and the generator declined on the number (`SIGNOFF-REPAIR.11.4.2.4`)
-
-`REASONBRAID-REPAIR-0348`. `MEMORY_ARCHITECTURE.md` §6 prefers a *derived* resume pointer over a hand-written one. Nothing had ever measured whether the hand-written one actually drifts.
-
-- ⛔ **THE DENOMINATOR IS THE FINDING.** A field reading `derive on read with git log -1 --oneline` carries no value and cannot be wrong, so a rate over all 645 versions is not a rate. Taken over the versions that CARRIED a value: `latest_commit` **7 wrong of 162** (4.3%), the frontier leaf **10 of 385** (2.6%), the ahead-of-origin count **152 of 173** transitions (88%).
-- 🔴 **`latest_commit` spent 482 of its 645 versions already derived-on-read — and all seven defects sit in the 162-version carried minority.** The corpus had run §6's experiment before the leaf asked the question.
-- 🔴 **The sharpest single instance: a hand-written hash that names nothing.** At `69b6374` the pointer read ``latest_commit: `ba6e77e` — "REASONBRAID-DOC-0037 …"``. `git cat-file -t ba6e77e` → `fatal: Not a valid object name`. The quoted subject was right; `git log --grep` puts DOC-0037 at `c8020be`, that very commit's parent.
-- ⛔ **The generator is DECLINED, on the numbers.** The 88% field is the one the pointer has *already stopped carrying* — today it states the derivation command instead — so the repair that worked cost no instrument. The residual risk lands on `next_action`, a judgement line a regenerator destroys, and on **222 of 645** curated-prose bullets: `SIGNOFF-REPAIR.11.4.5.3`'s shape, and the ratio does not invert once the denominator is right.
-- ⚠️ **The disagreement is SYMMETRIC, which is what settled it.** In **5 of the 10** frontier mismatches the tree's own row 1 was the stale copy — a parent leaf had just been decomposed and the pointer named the first child. A generator sourcing the pointer from row 1 would have written the wrong value in half the instances rather than preventing one.
-- ⭐ What is owed instead is a **check**, not a writer, and its calibration is finished: 17 hand-classified instances over the whole history. Owned by `SIGNOFF-REPAIR.11.4.2.4.1`, opened with the calibration attached rather than routed and parked.
-- 🔴 **The instrument was wrong three times first, and every wrong number is kept.** **227** bad SHAs where the history has **2** (a `review baseline` read as a latest-commit claim; repaired by ORDER after measuring 217-of-217 derive-hint-first, 0 counter-examples); **34** manufactured frontier disagreements from literal shorthand concatenation under a tree whose name ends in a number (`PHASE-1` absorbing the leaf path's first segment); and a SHA quoted inside a bullet's prose outranking the id that opens it, scoring one claim **601 commits** stale. A fourth correction moved no number and is recorded anyway.
-- ⚠️ **Falsified by a second route.** Re-asked as a run-length question — a different blind spot — the ahead-count verdict holds and enlarges: **`310` held unchanged across 83 pointer versions spanning 95 real commits**. The leaf predicted its own instance as *"stale 133 for ten commits"*; measured, **8 versions / 7 commits** — right in kind, wrong in size, recorded rather than quietly matched.
-- ⛔ **The published rates carry their reach.** 2.6% is over the **385** versions naming a frontier leaf in a readable shape; the other **222** are era-1 progress prose and this census makes no claim about them. `status disagrees: 0` is over **158**, not 423.
-- New tracked instrument `scripts/census_memory_pointer_drift.py` (23-control `--self-test` whose count is derived, not typed; row in `TOOLBOX.md`; inside the SELF-TEST gate's discovered population). No product code, schema or test touched; `make gate` green (22 checks).
-
-## 2026-09-20 — Promote the instrument-reach lesson, and correct the six-instances-one-shape claim that deferred it (`SIGNOFF-REPAIR.13.4.6.3`)
-
-`REASONBRAID-DOC-0089`. The director delegated the promotion call; taking it required correcting the sentence that had deferred it.
-
-- 🔴 **I reported *six of these are one shape* and then held the lesson for a second instance.** Those two claims cannot both be right, and neither was. Re-classified by MECHANISM rather than by feel, the six are **two** shapes.
-- ⛔ **Four are a stale SCOPE** — `46`, `207`, the 12-vs-8 table census, and the ratio in a knowledge note. The instrument was correct; the commit it was correct at went unstated. Already covered by `a-metric-scoped-to-one-record-ages-silently`; **no promotion owed, and claiming one would have duplicated a note.**
-- ⭐ **Three are an instrument's REACH** — the census printing *not documented: 0* over a matcher that could not see the tenth code; the frontier gate exiting 0 over a table it had not parsed; `git grep -c` counting LINES under the label *occurrences*. **Five** once this pass's own two are counted. Three independently measured instances in one session, each with a named mechanism and a repair, is not a candidate awaiting a second.
-- ✅ **Promoted: `docs/knowledge/an-instruments-zero-describes-its-reach.md`.** ⛔ Not a duplicate, and the two nearest notes were read before writing rather than after: `an-instruments-first-population-describes-its-parser` is the sibling and the **easier** half — there the instrument finds too much and the majority class is inspectable — while a zero leaves no population to inspect at all. `an-absence-claim-is-a-census-over-the-corpus` is a *human's* absence claim; this is that claim delegated to a tool whose reach nobody examined.
-- ⭐ The note's *how to apply* is three forms of one move — **make the instrument prove its reach in the same run** — and each is something this session actually did: a positive control driven rather than written, an empty parse graded as a breach, and re-derivation by a route with a different failure mode (the compiler naming four call sites where no grep could).
-- ⚠️ **The sub-claim stays held at one instance**: *the claim least likely to be checked is the one you have already decided to reject* has exactly one. Promoting it beside a five-instance rule would be the over-generalisation this correction exists to fix.
-
-## 2026-09-20 — The frozen roadmap and the code held two copies of one list and nothing related them (`SIGNOFF-REPAIR.11.7.1.1`)
-
-`REASONBRAID-REPAIR-0347`. The director delegated `.11.7.1`'s freeze call; the measurement it forced is the finding.
-
-- 🔴 **§9.8 and `KnownReasonCode` had never been compared.** `DOC-0086` and the census that produced every number in it call the Rust enum *the §9.8 registry* — an assumed equality with a paragraph in a FROZEN document. Parsed from both: **20 and 20, symmetric difference empty in both directions.** They agreed by care, and nothing would have noticed if they stopped.
-- **The gap-claim census**: `git grep -ln ROADMAP.md -- scripts .githooks` returns 5 files; exactly one also mentions the enum, and it names the roadmap only in a docstring — `read_text` is called on `error.rs` and the book page, never on `ROADMAP.md`.
-- ⛔ **DECIDED: §9.8 is not edited.** There is no erratum, so there is no licence: the roadmap sends *proposed architecture additions* to a parking lot unless they correct a security defect, a factual error or a Phase 0 blocker. §9.8 states the registry accurately and the product has grown past it, which is the ordinary relation between a specification and a build. Ten codes are additions, and v0.5.0 is the director's to declare.
-- ✅ **What WAS repairable is repaired**: a **REASON-CODE-PARITY** arm asserts the two copies agree, and runs FIRST — if that equality has broken, every other number the census prints is about a different list than the one it names. ⭐ The fifth instance of a class this repository already gates four times (`INDEX-FRONTIER`, `FRONTIER-STATUS`, `SCAFFOLD-COVERAGE`, `KNOWLEDGE-MAP`).
-- ⛔ **Generating §9.8 from the enum was refused**: that makes a frozen specification a build artefact. The gate asserts equality and leaves both sides hand-written, which is what a freeze wants.
-- ⭐ **Falsified in three directions on the REAL documents**, each restored byte-identical: a name added to §9.8 (exit 1, named), a name added to the enum (exit 1, named), and the heading renamed so the parse collapses (exit 1 — an empty parse is a breach, `.13.4.6.2`'s lesson applied one commit after learning it).
-- ⭐ **The positive control was DRIVEN, not merely written**: neutralizing the parser so it can never match takes `--self-test` to exit 1 with *§9.8 parsed 0 codes from the REAL ROADMAP.md*. Without it, every parity case is satisfied by a parser that returns nothing for the real document.
-- ⚠️ This takes **no** position on which codes §9.8 should gain. The recommendation stands as evidence; the gate constrains the copies to agree, never to have particular content.
-
-## 2026-09-20 — A blank line silently disabled every frontier rule, and my first formulation of the fix refused five correct trees (`SIGNOFF-REPAIR.13.4.6.2`)
-
-`REASONBRAID-REPAIR-0346`. Found by `.13.4.6`'s verification pass, which drove it rather than reasoning about it.
-
-- 🔴 **One blank line after the frontier table's delimiter row and `check_frontier_status.py` exits 0** over a table it parsed as zero rows. A blank line ends a GFM table, `frontier_rows` correctly stops, and rules 1–3 then have nothing to object to. ⚠️ Not hypothetical: `SIGNOFF-REPAIR.11.19` shipped exactly this, and the calibration measured its cost — **10** commits where the parser saw zero rows, which is why one leaf's duplicate shape counts 24 through the gate and **34** through a direct grep.
-- 🔴 **My first formulation was wrong, and running it is what said so.** *The heading is present and no rows parsed* is the obvious reading, and it refused **5 of the 16** tracked trees: `PHASE-0` writes a completed tree's `| — | — | — |` dash row, which carries no backticked leaf id, and `PHASE-1` replaces the table with prose. ⛔ `.11.6` — no rule before its population — violated in the leaf that cites it, and caught within a minute because the rule was run before it was believed.
-- ✅ **Narrowed to the mechanism**: a blank line with pipe lines on **both** sides, inside the frontier section. Unambiguous, cannot fire on either legal shape, and exactly what GFM reacts to.
-- ⛔ **Both wrongly-refused shapes are now self-test cases asserted SILENT**, copied from the real corpus rather than invented — if either fires, rule 4 has reverted.
-- ⭐ **The guard moves from luck to design.** Until now the only thing that noticed a severed table was a neighbouring instrument's real-file probe, written for another reason. It is kept as a second belt: it asks a different question (*does the parser still find rows*) and would catch a parser that broke some other way.
-- Verified: the `.11.19` shape restored into the live table gives **exit 1** naming the line; restored byte-identically, **exit 0**. Self-test now 16 cases.
-
-## 2026-09-20 — The census could only see one of the two ways a wire code is emitted (`SIGNOFF-REPAIR.13.4.6.1`)
-
-`REASONBRAID-REPAIR-0345`. Found by `.13.4.6`'s verification pass, which re-derived the emitted set by a second route.
-
-- 🔴 **`undeclared_region` is a shipping wire code that was documented nowhere, while the gate said the book was complete.** It is returned as a real `400` from `api.rs::site_registry_response` on the site-registry pairing route and is asserted by two suites — and `grep -c undeclared_region docs/book/src/errors.md` returned **0** while `REASON-CODE-DOC` printed *"… not documented in the book: 0"*.
-- ⛔ **The cause is one regex.** `_CODE_LITERAL` was `code:\s*"…"` — a Rust STRUCT FIELD. This code goes out through `json!({"code": "undeclared_region"})`, a QUOTED JSON KEY, which that pattern cannot match. A gate that reports full coverage over a set it cannot see completely is worse than no gate, because it is believed.
-- ✅ **Both forms are read now**, spelled out rather than collapsed into `"?code"?`, which would also match `code` inside a longer identifier. The gate went **exit 1** naming the code, then **exit 0** once `errors.md` gained the row: emitted 18 → 19, unregistered 9 → 10, undocumented 0 → 1 → 0, truthfully.
-- ⭐ **The load-bearing self-test case is the positive control**: the OLD pattern must NOT find the JSON form, so the new arm is demonstrably what does the work. Two more assert the widening does not match `reason_code:` or `"status_code":`. 31 controls pass, up from 26.
-- ⛔ **`DOC-0086` is amended, not rewritten.** Its title still says *nine* — the number names the population at writing, and every move is a recorded correction rather than a silent edit. It gains a correction banner, a §B2 verdict for the tenth code (**add as published**), and the observation that matters more than the verdict: **a recommendation is only as complete as the census under it, and *the census printed a zero* is not evidence of coverage.**
-
-## 2026-09-20 — Eighteen claims re-derived: fourteen hold, four were true when taken, and the pass found two defects of its own (`SIGNOFF-REPAIR.13.4.6`)
-
-`REASONBRAID-DOC-0088`. The director's *ensure the findings hold*, a sixth time, over this session's eleven commits. Every claim re-derived by a route that did **not** produce it.
-
-- ✅ **HOLDS.** All four publication verbs bound and typed — re-derived from the ROUTER table, then by the **compiler**: renaming `held_publication_grant`'s definition produced `E0425` at exactly **4** call sites. The approval-laundering mechanism, read structurally at `8a3e120^` and at HEAD. `not_found` 23 / `scope_hidden` 3, re-counted by occurrence rather than by line. Registry 20 and 11-never-emitted, parsed straight from the enum. `GrantAction` 10 → 15, `ADMIN_ACTIONS` 9 → 14. policy 26 / authority 22, agreeing with 26 static `#[tokio::test]` attributes.
-- 🔴 **MOVED 1 — three errors in one sentence, published as a census.** `REPAIR-0339` said *four of the EIGHT policy-lifecycle tables … and the correspondence is EXACT*. The family is **12** tables — the eight were chosen, not counted; **`policy_drift_corrections` is not a table**, it is migration `0044`'s FILE name and the column is on `policy_corrections`; and the correspondence was **not** exact, because `policy_publications` already checked a grant with no column — bound two commits earlier by my own `.9.2.1.2.1`.
-- ⭐ **Why it survived is the lesson**: that bullet is the case *against* the decision, which the next bullet refutes on a measurement that does hold. **An argument I had already decided to reject got less scrutiny than the one I was resting on.**
-- 🔴 **MOVED 2 — the publishing commit is what staled it.** *46 typed extractors* is exact at `8a3e120`; at `7a4cbf4`, the commit that published it, typing three verbs made it **49**.
-- 🔴 **MOVED 3 — a figure inherited and never re-derived**, in a commit whose subject was rigour: *207 `GrantAction::` references across 19 files* is correct at `6332cde` as a LINE count, 208 where I re-quoted it, and **261 across 23 files** at HEAD.
-- 🔴 **MOVED 4 — a line count published as an occurrence count**: 733 lines, **948** occurrences.
-- 🔴 **DEFECT FOUND — a shipping wire code the census cannot see.** `_CODE_LITERAL` matches `code: "…"`, a Rust field; `undeclared_region` is emitted via `json!({"code": "…"})` from the site-registry pairing route, is asserted by two tests, and appears **nowhere** in `errors.md` — while the census prints *"not documented in the book: 0"*. `DOC-0086`'s population is **10**, not 9. → `.13.4.6.1`.
-- 🔴 **DEFECT FOUND — a blank line silently disables every `FRONTIER-STATUS` rule.** Driven: one blank line after the delimiter row and the gate exits **0** over an unparsed table. The enforcer catches it only through a neighbouring instrument's self-test. It also explains a number in `REPAIR-0344`'s own calibration — 24 through the gate, **34** through a direct grep. → `.13.4.6.2`.
-- ⚠️ **One of this pass's own probes was wrong and is recorded**: counting site routes I subtracted a definition the pattern never matched and reported 8; the correct count is **9**, unchanged at all three commits. Caught because it disagreed with the first route.
-- **Corrected at every live site**: `migrations/0081`'s comment (shipped code), the tree, `docs/TASK_TREE.md`, `LIVE_STATUS.md` (three sites) and the knowledge note. The dated ledgers stay as written.
-
-## 2026-09-20 — One unfinished leaf may not hold two frontier rows, and I produced two of the four instances myself (`SIGNOFF-REPAIR.11.22.1`)
-
-`REASONBRAID-REPAIR-0344`. Ships as **rule 3 of `FRONTIER-STATUS`**, calibrated over the whole history before it was proposed.
-
-- 🔴 **The mechanism, observed four times rather than inferred**: closing a leaf vacates row 1, the next leaf is PROMOTED to it, and nobody checks whether it already had a row further down. **Two of the four happened in this leaf's own session** — `a46a0fc` (`.11.7.1` at rows 1 and 4) and `20def51` (`.11.22.1` at rows 1 and 5) — and both passed `make gate`, because two `pending` rows for a `pending` leaf both AGREE with it.
-- ⭐ **And the gate caught a FIFTH on its first working day, in this leaf's own closing edit.** Promoting `.11.4.2` to the vacated row 1 while it held row 6 was refused by name. The four earlier instances shipped; this one did not.
-- ✅ **A further arm of `FRONTIER-STATUS`, not a gate of its own** — the three rules read one table, and a second gate would be a second parser of it. The calibration instrument IMPORTS the rule rather than restating it.
-- ⭐ **Calibrated over the WHOLE history** (`.11.6`): **38 of 672** commits touching a tracked tree would have been blocked, across **12 distinct leaves**, with `.11.14.3.10` carrying the shape for **24 consecutive commits**. Seven classified by hand, all seven real, **no false positive found**.
-- 🔴 **The leaf's own census understated the shape.** It recorded *exactly one leaf across all 15 trees* — true as a snapshot, and over history it is 12 leaves and 38 commits. **A snapshot of a transient defect measures how often it is repaired, not how often it occurs.**
-- ⛔ **A duplicate row is NOT a defect in general** — `.11.22`'s census counted 13 leaves carrying 2 to 4 rows each, because an opening row beside a later `done` row is the normal pattern. Rule 3 counts only rows that both still claim to be work, and both legal shapes are asserted silent in the self-test.
-- ⭐ **The RED was the live instance in the tracked file**, not a fabricated fixture. The falsification then restored `.11.14.3.10`'s real historical pair: **exit status 1**, one rule-3 message beside two rule-1 ones, file restored byte-identical. The real instance is kept permanently in the self-test.
-- ⚠️ **The first reading of that exit status was wrong and is recorded**: the gate was piped through `head -4`, so `$?` was `head`'s and printed `rc=0` for a run that had failed.
-- ✅ **The caption is replaced by the check, not by a better sentence.** It used to assert the duplicate pair had been removed — true when written, stale within days. A commit that makes the new line false is now refused.
-- ⚠️ An instrument self-correction: the census first reported *70 tracked trees*. `docs/tasks/*.md` is a git pathspec and git's `*` crosses `/`, so it had swept 54 evidence documents — the recursive-glob overstatement `.11.24.1.6.1` recorded, in a second instrument. The honest population is 16, and the scoped re-run returns the same 38 commits.
-
-## 2026-09-20 — Recommend the nine unregistered reason codes one by one, and the eleven with no producer are the larger half of the answer (`SIGNOFF-REPAIR.11.7.1`)
-
-`REASONBRAID-DOC-0086`. Evidence for a v0.5.0 decision. No code changed and `ROADMAP.md` is untouched.
-
-- **The population, re-derived at closure** rather than read off the leaf's own sentences: registry **20**, emitted **18**, emitted-and-unregistered **9**. Exactly as the leaf's bullets predicted, `locator_digest_conflict` has left and `publication_repository_unconfigured` has arrived.
-- 🔴 **The measurement that reframed the question is not the one the leaf was opened to take: ELEVEN of the twenty registered codes have NO PRODUCER** — including `rate_limited`, `budget_unavailable` and `provider_outcome_unknown`, each arguably what one of the nine is a rename of. The registry and the emitted set differ in **both** directions, so *which of the nine to add* is the wrong shape of question on its own.
-- 🔴 **The leaf's own security flag is REFUTED.** It warned that `not_found` and `unknown_node` overlap `scope_hidden`'s existence-non-leak intent. Measured at every site, they do not leak: `api.rs` says *"Missing and foreign are ONE answer, so a caller learns nothing about another tenant's nodes"*, and `node_channel.rs` *"A node in ANOTHER tenant answers `unknown_node`, exactly as a node that does not exist"*. A vocabulary duplication, not a §9.8 breach.
-- ⭐ **The product voted 23 producers to 3** for two codes that mean the same thing on the wire — the evidence for which way a reconciliation should go, and a fact no amount of reading the two definitions would have produced.
-- 🔴 **`unknown_node`'s published justification is refuted by its own code**: the book says a client can tell *re-enrol* from *wrong id*, and a foreign node answers identically to an absent one. Keep the code, replace the reason.
-- ✅ **4 add as published · 3 reconcile first · 1 GENERALISE** — `publication_repository_unconfigured` is the second instance of an open family, and a registry that grows one code per surface is a list rather than a vocabulary.
-- ⭐ **The quota / rate / breaker / budget distinction is stated and all four kept.** Collapsing them is refused: a caller told only `rate_limited` cannot tell *slow down* from *your allowance is spent for the month*, and only one of those is fixed by waiting.
-- 🔴 **A second instance of `SIGNOFF-REPAIR.11.22.1`'s defect occurred in this commit's own editing, by the exact mechanism that leaf describes** — promoting a leaf to frontier row 1 without checking it already had row 4, leaving two `pending` rows for one unfinished leaf. `FRONTIER-STATUS` was green throughout, because both rows agreed; it spoke only once the leaf closed and they disagreed. Recorded at `.11.22.1` as calibration evidence, and the row removed.
-
-## 2026-09-20 — Holding is not covering, and now the five administrative surfaces ask (`SIGNOFF-REPAIR.9.3.4.2`)
-
-`REASONBRAID-REPAIR-0343`. The `.9.3.4` lane closes: `.1` made the narrowing expressible, this makes it binding.
-
-- 🔴 **Driven, not argued.** With the caller's grant set to `["thread_contribute"]` — a real registered action, not a nonsense string — `POST /v1/policy-publications/cv-pub-a/failed` returned **200** with `"state":"failed"`, and the response carried the very `owning_authority` that authorized nothing of the kind. The caller HELD the grant; the grant reached nowhere near the verb.
-- ⛔ Not an omission in `.9.3.1`: until `.9.3.4.1` there was ONE administrative action, so there was no third question to ask.
-- ✅ **Both predicates return the row's `actions` and decide with `reasonbraid_core::action_covered`.** ⛔ The subsumption rule is **not** restated in SQL — `actions @> '["tenant_admin"]'::jsonb` would have been shorter and would have made one rule two definitions, drifting the moment either moved.
-- ⛔ **A grant whose `actions` will not parse covers NOTHING**, matching `boundary_from_row`, which returns `None` on the same failure. One wire name from a newer build makes the whole grant inert here — fail-closed in the right direction, and stated in the code.
-- ⛔ **`policy::resolve` is the ONE site entitled to ask about liveness alone.** It asks of every LOADED policy's owner whether that authority still stands: no caller, no verb, nothing to cover. Registering a policy version gains coverage but **not** held-ness — that stays `SIGNOFF-REPAIR.9.1`'s.
-- ⭐ **Arm 3 exercises the stored-boundary disposition END TO END.** `.9.3.4.1` argued the subsumption over a hand-built boundary; this drives a grant carrying literally `["tenant_admin"]` — the shape every pre-change row has — through all five HTTP surfaces. Without it, adding the vocabulary would have silently revoked five verbs from every enrolled tenant.
-- ⭐ **One knob**: all three arms change exactly one column and nothing else, so a difference in outcome can only be the coverage check.
-- ⚠️ **The suite taught me why each arm needs fresh ids.** An approval advances its proposal `decided → approved`, so arm 3's approval hit *"proposal is at stage `approved`"* — a STAGE refusal that would have read as a coverage refusal.
-- ⚠️ **The first neutralization was not a falsification and is recorded as such**: it broke the build, so the suite never ran. `MEMORY.md`'s *a build needs an exit status* caught it; `cargo build` rc=0 was checked before believing the second.
-- ⚠️ **Residual published, not closed**: a grant is narrowed by VERB and stays tenant-wide by OBJECT, because no selector can name a publication.
-- **No regression:** 7 suites, **192 tests, 0 failed**; `--lib` 134 passed; whole-workspace clippy `-D warnings` rc=0 (the predicates' signatures changed, so the compiler is the census of their callers); gate green; book rc=0.
-
-## 2026-09-20 — The administrative action set extends, and `tenant_admin` subsuming it is what keeps every stored boundary working (`SIGNOFF-REPAIR.9.3.4.1`)
-
-`REASONBRAID-REPAIR-0342`. `.9.3.4`'s decision (DOC-0020) executed, with the disposition it left open.
-
-- 🔴 **`tenant_admin` was ONE action covering every administrative surface**, so a grant issued to record a policy correction equally permitted registering a deployment target and publishing. Five members now name one surface each — `policy_version_register`, `policy_proposal_approve`, `policy_publication_write`, `policy_correction_record`, `deployment_target_register` — enumerated from the six sites rather than invented (`.11.6`).
-- ⛔ **Not six.** Splitting `stage` from the three publication transitions was considered and refused: `.9.2.1.2.2` measured that staging decides content, which justified BINDING the verb, and no operator need for delegating one without the other has been measured. A later leaf can split a name; it cannot unpublish one.
-- ⭐ **THE STORED-BOUNDARY DISPOSITION IS A CHECKER RULE, NOT A MIGRATION.** `permitted_actions` is a JSONB array of wire names, so no row written before a name existed can contain it, and adding an action would otherwise stop the verb working for every enrolled tenant. `tenant_admin` was by construction the superset of exactly these verbs, so reading it as covering them grants nothing it did not already grant — and **no stored boundary or grant is rewritten.**
-- ⛔ Both alternatives refused with reasons: *migrating the rows* would rewrite a boundary the enrolled target was shown, and mandates too; *admitting the new actions only for later boundaries* is the breakage restated as policy and splits tenants into two classes for ever.
-- ⛔ **The subsumption runs ONE WAY.** No narrow verb covers another or `tenant_admin`, and `tenant_admin` does not reach the thread actions — an administrator is not a contributor by construction.
-- ⭐ **ONE `action_covered` for BOTH ladders** — the boundary checker and the server's evaluator. Leaving one an exact-match `contains` would make a single stored `tenant_admin` mean two different things in two authorization ladders.
-- ⭐ **Every control is written in the WIRE spelling**, not the Rust variant. The wire name is what the migration stores, so the controls compiled against the unrepaired code and their red was `policy_version_register is not in the authority registry` — a behaviour, not a compile error. The stored-boundary leg deserializes the exact nine-name array a pre-change tenant holds, and asserts first that it does *not* contain the new name.
-- ⚠️ One control is a GUARD, not a red-first leg, and is named as such: `tenant_admin_does_not_subsume_the_thread_actions` passes before the change, because before it there was no subsumption at all.
-- ⚠️ **The default set assertion was `len() == 9`** — a length any five additions satisfy. It is the exact 14-name array now, plus `thread_create_auto` asserted absent and a role's default asserted to carry none of the five.
-- ⚠️ **Expressible, not yet enforced**, and the book says so: no surface asks whether a held grant COVERS the verb. That is `.9.3.4.2`.
-- **No regression:** 7 suites, **191 tests, 0 failed**; `--lib` 56 core + 134 server; **whole-workspace** `clippy --all-targets --all-features -D warnings` rc=0 (the compiler is the blast-radius oracle for 207 `GrantAction::` references across 19 files, and forced open exactly one match); gate green; book rc=0.
-
-## 2026-09-20 — The three publication transitions are typed, and the convention I called a deviation was the convention (`SIGNOFF-REPAIR.9.2.1.2.3`)
-
-`REASONBRAID-REPAIR-0341`. The leaf's own premise refuted by its own census, and the divergence it found was one I had shipped.
-
-- 🔴 **The leaf opened on *a typed handler refuses off-contract*. It does not.** `422 at the strict wire boundary` is this project's convention: **46** typed extractors against **9** site routes, asserted BY NAME in four suites — `command_api` checks the body `contains("unknown field")`, `profiles` writes *"An unknown field is the typed 422"* two lines above *"A malformed digest is the typed 400"*, and `SIGNOFF-REPAIR.4.2.2` DEPENDS on a missing credential field being refused there rather than at the ladder.
-- ⛔ **`api::site_request` is a self-documenting exception** — *"Do not echo malformed caller input or driver diagnostics"* on an operator surface. Reading its own comment would have ended the question before a repair was written against it.
-- 🔴 **So the divergence was mine.** `.9.2.1.2.2` modelled `owning_authority` as `Option` and graded its absence by hand "so all four verbs answer one question with one refusal" — choosing the refusal the convention does not use at that boundary. Reverted here: the field is required again, the error variant is gone, and the control asserts `422` with a comment saying why it moved.
-- ✅ **The real finding underneath survived**: the three transitions took `Json<serde_json::Value>`, so an unknown field was **silently ignored** on all three — exactly what §9.1 and this repository's own forged-field control refuse. They are typed now, `deny_unknown_fields` on each.
-- ⛔ **`git_object_ids` is `Vec<String>`**: the handler used to do `.as_array()` then `filter_map(|v| v.as_str())`, so a non-string entry VANISHED before `.9.2.1.3`'s existence check ever saw it. A caller could shorten the list it was about to be checked on.
-- ✅ `held_publication_authority` is deleted — it existed only to fish a field out of an untyped body, and all four verbs now hold the grant id already.
-- ⭐ **The falsification's own refusal is the proof**: without `deny_unknown_fields`, the forged request reaches the handler and answers `503 publication_repository_unconfigured` — carried all the way through, not merely tolerated.
-- ⚠️ The suite found a fixture that had been sending nonsense: one body drove BOTH verbs while carrying `git_object_ids`, which `publish` does not take. Ignored for the life of that control; refused now.
-- ⭐ **Promoted**: `docs/knowledge/a-convention-is-what-the-corpus-asserts-not-what-one-surface-does.md`.
-- **No regression:** 6 suites including `node_channel` (the suite that asserts the convention), **198 tests, 0 failed**; `--lib` 133 passed; clippy `-D warnings` rc=0; gate green; book rc=0.
-
-## 2026-09-20 — A publication carries the policy its proposal was approved for (`SIGNOFF-REPAIR.9.2.1.3.2`)
-
-`REASONBRAID-REPAIR-0340`. The measurement that decided `.9.2.1.2.2`, repaired.
-
-- 🔴 **An approval for one policy could publish another's compiled bytes, and it was reproduced live.** Two registered policies, a projection each, an approved proposal for one of them — staging it against the OTHER projection returned **200**, `state: staged`. Both projections belong to the same tenant, so tenancy cannot be what separates them.
-- 🔴 The cause is a missing join: `stage` matched the decision and the approval to `proposal_id`, and checked the projection — **the one reference that carries the bytes** — with `projection_id = $1 AND tenant_id = $2`. `publish` writes those bytes.
-- ⭐ ADR-020 §15.7 step (1) already asked for it: *"verify the decision, the approvals, the authority proof, and the IMMUTABLE INPUTS."*
-- ✅ **The rule is containment, not identity**, and the residual is published rather than hidden: a projection resolves a SET for a target layer and legitimately carries policies the proposal did not name. What is refused is a set that does not carry the proposal's policy at all.
-- ⛔ **The set is recorded in a column, from the RESOLUTION, never parsed from the rendered bytes** — `render_lock` renders lock rows rather than clauses, and the compiler drops every unrepresentable clause before rendering, so a policy that resolved and cannot ride this target leaves no trace in the text. A parse would answer a neighbouring question, differently per target.
-- ⛔ **An unrecorded set FAILS CLOSED, in its own error variant**, because *unrecorded* is not *absent* and an operator must tell them apart. `publications::owned_by`'s disposition, applied. No backfill: re-resolving now would record a set the artefact was not built from.
-- ⭐ **The fail-closed arm caught a fixture the same run it shipped** — a sibling control's directly-seeded projection had no resolved set and went red on it. That is a live witness for the disposition beyond its own control.
-- ⛔ The projection verb stays **unbound**, answered explicitly rather than left open: the laundering path is closed at the join instead of at the door. A trigger is recorded.
-- ⭐ **Falsified in situ**: `if false && !resolved.iter().any(…)` fails leg A by name, printing the laundering. Restored byte-identical.
-- **No regression:** 5 suites, **156 tests, 0 failed**; `--lib` 133 passed; clippy `-D warnings` rc=0; gate green; book rc=0.
-
-## 2026-09-20 — The staging verb decides what an approval publishes, so it names an authority (`SIGNOFF-REPAIR.9.2.1.2.2`)
-
-`REASONBRAID-REPAIR-0339`. The last of the four publication verbs on enrolment alone.
-
-- ⛔ **The argument for leaving it alone was strong, and it was refuted by a measurement rather than by preference.** Censused: four of the eight policy-lifecycle tables carry an authority reference — `policy_versions` (0038), `policy_approvals` (0040), `deployment_targets` (0043), `policy_drift_corrections` (0044) — and they are EXACTLY the four surfaces that check a grant. Under that reading the chain's authority-bearing acts are the approval and the publication transitions, and staging is bookkeeping between them.
-- 🔴 **That reading requires staging to be unable to choose what gets published, and it can.** `stage` never reads the proposal's `policy_id` or `policy_version`, and its projection predicate is existence plus tenant — so the stager pairs an approval with any projection in the tenant, and `publish` writes that projection's bytes. Staging decides CONTENT.
-- ⛔ Two more facts, each a command: the aggregate was **half-bound** (three of four verbs since `.9.2.1.2.1`), and staging is **unbounded** — the only uniqueness is the caller-chosen `publication_id`, so one approval yields unlimited publications.
-- ✅ `migrations/0081` adds the **nullable** `owning_authority`; historical rows stay NULL, which is `migrations/0073`'s disposition for an unattributable lifecycle row. A backfill would invent an author.
-- ✅ **Four verbs, one predicate.** `held_publication_grant` is the decision split out of `held_publication_authority` — split rather than copied, because the three transitions read the field out of an untyped body and the typed staging input already has it.
-- 🔴 **The four would have given TWO different refusals.** A typed `Json<T>` handler rejects a missing field as a bare `422` with a plain-text body, while its siblings answer `400 {code, message}`. Graded by hand here; the class is owned at `.9.2.1.2.3`.
-- ⭐ **Falsified in situ**: replacing the check with `let _ = owning_authority;` fails leg B by name, with the response carrying bob's grant. `api.rs` restored byte-identical.
-- ⚠️ **What this does NOT fix**, said in the book too: it restricts who may pair an approval with a projection; it does not make the pairing correct. `.9.2.1.3.2` owns that.
-- **No regression:** 5 suites including `migration_upgrade`, **155 tests, 0 failed**; `--lib` 133 passed; clippy `-D warnings` rc=0; gate green; book rc=0.
-
-## 2026-09-20 — The manifest digest is the server's, and the stored value finally has a reader (`SIGNOFF-REPAIR.9.2.1.3.1`)
-
-`REASONBRAID-REPAIR-0338`. Found while measuring what the staging verb validates for `.9.2.1.2.2`.
-
-- 🔴 **`stage` took `manifest_digest` from the request, checked only its SHAPE, and wrote it into the row.** Outside `publications.rs` nothing in the workspace read it — `git grep -n "manifest_digest"` over crates, book, scripts, migrations and deploy returns one migration line and test fixtures.
-- 🔴 **`publish` composed its OWN manifest and never consulted the stored digest.** So the field a governance record presents as its manifest digest was whatever the caller typed, and the bytes actually published were hashed from something else.
-- 🔴 **ADR-020 §15.7 already decided it, and the code did the opposite**: *"compile the canonical bundle + the publication manifest in a clean worker … hash … the manifest … in ONE transaction store the `publication_staged` row, the manifest digest"*. The digest is the server's product of steps (2)–(3), not an input to step (4).
-- ⭐ **This is `.9.2.1.3` one column over** — that leaf found `git_object_ids` *recorded without being looked for* and closed scoped to that column. The same sentence was true of `manifest_digest`.
-- ✅ **The decision, with the two rejected readings named.** The column means SHA-256 of the publication manifest; the server derives it; a supplied value survives as an **assertion** checked against the derivation — the shape `expected_effective` already has on the publish verb. *Define it as the projection digest* would make the name false; *refuse any supplied digest* would discard a client's ability to state what it expects.
-- ✅ **One `publications::manifest` definition for both verbs**, so the digest stored at staging and the bytes published later cannot describe different things. `publish` now refuses when they disagree, before the publisher is called.
-- ⭐ **Falsified in situ twice, and the second pass found a defect in the control itself.** Neutralizing the staging derivation left the staging leg GREEN, because it asserted the RESPONSE while the response still carried the derived value. The leg now reads the COLUMN back with SQL and goes red by name. Both files restored byte-identical (`cmp -s`).
-- ⚠️ **A wire-contract change to a shipped verb.** `manifest_digest` used to be required. The suite measured the blast radius rather than a grep predicting it: **seven fixture bodies across six further tests** were all sending the projection digest. Re-seeded by dropping the field, not relaxed.
-- ⚠️ Limit stated: ADR-020's hermetic manifest worker is still unshipped. What this binds is the digest to the manifest *this system publishes*.
-- **No regression:** 4 suites, **146 tests, 0 failed**; `--lib` 133 passed; clippy `-D warnings` rc=0; `make gate` green; `make book` rc=0.
-
 The entries before those above were rotated into reachable Git history at the
-**thirty-seventh rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
+**thirty-eighth rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
 stood at the commit named below, which is the object every retired record was
 checked against before this notice was written — is:
 
 ```bash
-git show 26f90ac9316244d41d3cb204f5b7d8f0cbe36654:CHANGELOG.md
+git show c1069d08236f87030ff890395db0080f85325946:CHANGELOG.md
 ```
 
-That snapshot is 95704 bytes and 453 lines, and contains 32 dated
-entries; its Git blob is `b6617636bb209dd60c6dde0b89ee6824c3ba6cc1` and its SHA-256 is
-`77e2f3d35209a85e2449eb3b249bd2bf1214dec8915d912ea7454499534e3927`. It carries the thirty-sixth rotation's
+That snapshot is 88743 bytes and 432 lines, and contains 31 dated
+entries; its Git blob is `7afc1089c1c573c5797f543568f1d3ad408eb4ea` and its SHA-256 is
+`8b94b649e8f0f952d857536f8902d2280d04bf79853a564c799bd3a41ff2d8ac`. It carries the thirty-seventh rotation's
 notice in turn, and each earlier notice names the one before it, so the chain
 walks all the way back. `docs/decisions/2026-09-09_changelog-rotation.md` holds
 the first transition's evidence.
 
-⛔ **17 record(s) rotated out, 15 kept, lossless** — every retired heading was retrieved from the
+⛔ **14 record(s) rotated out, 18 kept, lossless** — every retired heading was retrieved from the
 predecessor named above before this notice was written, and every figure in it was re-derived from that object with
 `git rev-parse`, `git cat-file` and SHA-256 rather than typed. ⭐ The cut is DERIVED, not chosen: it retires whole
 records until the ledger has at least 10 commits of runway at the p90 entry size measured over the last
 60 non-rotation commits — because two rotations that stopped at the threshold instead left 344 and 296 bytes and
 the first forced another rotation on the very next commit (`SIGNOFF-REPAIR.11.4.1.6`).
-
-Use `git log --follow -- CHANGELOG.md` for earlier versions. Keep the reachable
-Git history when cloning or handing off; a shallow checkout may need the named
-commit before retrieval. **A missing object is a retrieval failure, never
-evidence that history was empty.**
-
-Historical success statements describe the recorded revisions and assertions.
-Current qualification is in `LIVE_STATUS.md` and the mdBook's qualification review;
-open repairs remain tracked in `docs/tasks/SIGNOFF-REPAIR.md`.

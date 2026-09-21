@@ -495,9 +495,20 @@ trailing prose
         keys = template_keys((ROOT / ARCHITECTURE).read_text())
         if not state_bullets(memory):
             failures.append("live-corpus: the real MEMORY.md's Current state block has no bullets")
-        elif not collect_warnings(memory, keys):
-            failures.append("live-corpus: the real MEMORY.md yields no warnings at all — "
-                            "the segmenter or the block reader has stopped matching")
+        # ⛔ THIS ARM USED TO REQUIRE THE LIVE FILE TO YIELD WARNINGS, AND THAT
+        #    MADE IT FAIL WHEN THE FILE BECAME CORRECT (`SIGNOFF-REPAIR.11.4.2.7.1`).
+        #    It was written when 26 standing warnings were the normal state, so it
+        #    pinned the DEFECT'S PRESENCE as ground truth — the shape `.11.27`
+        #    refused for a different instrument. Zero is now the target: the
+        #    eviction that produced it took the file from 6,412 bytes to 1,682.
+        #
+        #    What the arm was really guarding — a segmenter that silently stopped
+        #    matching — is positively controlled where a positive control belongs,
+        #    on a FIXTURE that cannot go clean: `MEM` above asserts an unkeyed
+        #    bullet is counted, a block total of 2, and the negative direction
+        #    that a marker-less bullet contributes nothing. What only the live
+        #    corpus can answer is whether this census can still READ the real
+        #    file, and that is the check left standing.
     except SystemExit as exc:
         failures.append(f"live-corpus: the real corpus is unreadable to this census ({exc})")
 

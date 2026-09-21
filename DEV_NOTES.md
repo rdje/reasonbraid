@@ -1,5 +1,104 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — Three corrections from one question, and none of them were the code
+
+The director asked why `MEMORY.md` keeps hitting its cap when it is overwrite-only.
+The answer was that 81% of it was standing warnings and only 19% was the pointer, so
+the thing hitting the cap was never the thing the contract describes. That is written
+up in its own note. What is worth recording separately is that the question produced
+three corrections in a row, and two of them were about what I had written rather than
+about the repository.
+
+The first was the diagnosis. I had measured a real symptom, classified it as "this
+surface lacks an early-warning threshold", and opened a leaf to add one — on a file
+whose own architecture document names that exact symptom and prescribes eviction. A
+threshold there would have been a warning whose correct response is to delete what
+made it fire.
+
+The second was the eviction breaking a gate, which was the useful half. The census's
+live-corpus self-test arm asserted that the real `MEMORY.md` yields warnings. That was
+written when 26 of them were the normal state, so the arm encoded the defect's
+presence as ground truth and failed the instant the file became correct. It is the
+same shape as the collation control that passed on this host and failed on the runner:
+a control anchored to today rather than to its rule. The fixture arms already control
+the segmenter in both directions — breaking `collect_warnings` reddens four of them by
+name — so the live arm was never the positive control it looked like. It now checks
+only the thing only it can check: that the census can still read the real file.
+
+The third correction was not about code at all. The director asked why I kept
+modifying `README.md`. I had not touched it — it is byte-identical to `HEAD`, absent
+from all five of this session's commits, and last changed six days earlier by someone
+else's work. What I had done was write it into a report, beside `MEMORY.md`, as a
+surface that "refuses at the cap with no earlier signal". That sentence is true about
+the mechanism and false as a picture: twelve versions in the project's entire life,
+never once refused, and its two largest growths already corrected back into a pointer
+by the routing rule doing its job.
+
+So I built a finding out of one real instance and one sentence that made it sound like
+a pattern, and the second half survived three rounds of my own review because it was
+never checked — it was inferred from the fact that both files have caps. A shared
+mechanism is not a shared symptom. The check costs one `git log`.
+
+There is a pattern across the three: in each case the measurement existed, was cheap,
+and I wrote the conclusion first. The census was already tracked and already reported
+81%. The fixture arms were already in the file. The README history was eleven lines of
+`git log`. None of these needed new tooling; they needed the sentence to come second.
+
+⛔ promotion: the structural half is promoted as
+`docs/knowledge/an-overwrite-only-file-cannot-accumulate.md`. The reporting half is
+recorded in the decision that carries the director's instruction, because it is a
+correction to this project's record rather than a transferable method — and
+`a-restated-number-needs-a-producer` already covers the general form.
+
+## 2026-09-21 — The file that could not grow, and did
+
+The director read my finding and asked one question: `MEMORY.md` is overwrite-only,
+so why is it hitting its limit so often — that makes no sense.
+
+It does not make sense. That is the whole content of the question, and it is the part
+I had skipped. I had measured that the cap was being hit, classified it as "this
+surface lacks an early-warning threshold", and opened a leaf to add one. Every step
+after the first was reasonable. The first step was to accept a contradiction and
+build on top of it.
+
+The census I already had answers it in one line: 26 standing warnings, 5,184 of 6,412
+bytes, 81% of the file. The resume pointer — the five fields the architecture names —
+was 19%. So the file was not growing as a pointer. It was growing as a warnings board
+that happened to live in the same file as a pointer, and the cap was being hit by the
+board.
+
+`MEMORY_ARCHITECTURE.md` §6 names this symptom in its own words — "the Current state
+block accumulating, under a heading that says to overwrite it" — and prescribes
+eviction, not a threshold. I had read that section. I quoted the neighbouring
+paragraph about line caps and byte caps in two different commits this session. I did
+not apply it to the file it is about.
+
+And it is the same defect this lane repaired four commits ago. `LIVE_STATUS.md` was a
+status snapshot that had become a correction log; splitting the two roles took it from
+620,448 bytes to 13,995. `MEMORY.md` is a pointer that had become a warnings board.
+Identical shape, one lane apart, and I turned the lens on one file and not the other.
+
+The health target I proposed would have been worse than doing nothing. Its correct
+response, every time it fired, would have been "delete the thing that made me fire" —
+a warning that makes the bloat survivable is a warning that makes it permanent. The
+test I now think is right: name the remedy before setting the threshold. If the remedy
+is a command, a threshold fits. If the remedy is a judgement about where content
+belongs, the content belongs elsewhere and the threshold is a distraction.
+
+The eviction itself was the easy half, and the only part that needed care was proving
+nothing was lost. The census refuses to let that be assumed — its own output says an
+uncited warning is a population to classify rather than a count of things safe to
+delete, because one of them once turned out to be an environment fact that existed in
+this file and nowhere else. Seventeen were instrument-anchored. I hand-classified the
+other nine against the durable layers; all nine were recorded. 6,412 bytes to 1,682.
+
+I also withdrew half my own finding. I had paired `README.md` with `MEMORY.md` as two
+surfaces under cap pressure. `README.md` has twelve versions in the project's entire
+life and has never once been refused. Its two largest growths were project status
+narrative, and a later commit had already replaced those with a one-line pointer and
+shrunk the file — the routing rule doing exactly its job. There was no second pressure
+case. There was one, and a sentence I had written to make it sound like a pattern.
+
 ## 2026-09-21 — Three drafts of one sentence, each refuted by its own command
 
 The donor-package review was supposed to be the easy slice: audit twelve deliverables,

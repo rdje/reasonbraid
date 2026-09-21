@@ -1,26 +1,9 @@
-# MEMORY — resume pointer (layer A; overwrite-only, keep ≤ ~50 lines)
-
-## How to resume
-
-- Read `MEMORY_ARCHITECTURE.md` (the memory system) and `README.md` (the project).
-- Work is tracked in task-trees under `docs/tasks/`; follow `COMMIT.md`.
-- Durable facts/decisions live in `docs/decisions/` (+ its `INDEX.md`).
-- Transferable methods: `TOOLBOX.md` and `docs/knowledge/` — consult, do not re-derive.
+# MEMORY — resume pointer (layer A; overwrite-only)
 
 ## Current state (OVERWRITE this block each update — do not append)
-- latest_commit: `REASONBRAID-DOC-0098`: ✅ **THE LIVE-DOCUMENT CONTAINMENT CONTRACT IS ADOPTED AND MET; the donor's root document is DECLINED on the donor's own stop condition** (*two sources claiming canonical authority*). The guide's behavioural COMPLETION TEST was evaluated clause by clause and holds. 🔴 **One deliverable unmet: a HEALTH TARGET as well as a ceiling** — only the ledgers have both, and `MEMORY.md`'s cap has been crossed **seven times** (`.11.4.2.7.1`). `docs/decisions/2026-09-21_the-containment-contract-is-adopted-the-donor-document-is-not.md`.
-- active_work_unit: `SIGNOFF-REPAIR` → frontier leaf: `.11.4.2` (`pending`). ⚠️ **DERIVE the push distance, never read it here: `git rev-list --count origin/main..HEAD`.**
-- next_action: `.11.4.2.7.1` (a bounded surface has a ceiling and no health target; ⛔ census FIRST and the remedy is the harder half — a ledger rotates, `MEMORY.md` does not), then `.11.4.2`'s lifecycle controls, `.11.33`, `.11.31`, `.11.8`, `.11.2.1`. ⛔ `.11.4.2.6` and the donor-package review are CLOSED.
-- ⚠️ **TWO INSTRUMENT METHODS IN `TOOLBOX.md`, both from this session's six instrument failures**: *a falsification verdict needs a NAME, and a build needs an EXIT STATUS* (`.11.24.1.3.1`); *a probe whose conclusion is an ABSENCE owes a positive control in the same run* (`.11.25.1.1`). This line names them and stops.
-- ⚠️ **`run_pg_tests.py` BREAKS AT THE FIRST FAILING SUITE**, so every suite after it is UNMEASURED and the output does not say so — a falsification run over several suites must put the suite under test first, or run them separately (`.11.24.1.1.1.1`).
-- ⭐ **A PREDICATE NO PRODUCIBLE INPUT CAN ISOLATE IS DOCUMENTED, NOT FAKED RED** (`.13.4.3.1`) — a sharpening of `a-control-that-passes-for-an-unrelated-reason`, held here until a second instance earns it a note.
-- ⛔ **A BUILD, NOT A REPAIR, HAS NO RED, so its target must be QUOTED FROM ITS SOURCE IN A COMMIT OF ITS OWN BEFORE THE CODE** (REPAIR-0292) — otherwise it is satisfied by whatever gets written.
-- ⛔ **A CONTROL MUST PROVE THE RIGHT THING IS PRESENT, not merely that the wrong number is absent** (`.6.2.1`, `.6.2.2`, `.6.2.4`). ⛔ **WHEN A CLAIM IS ABOUT REACHABILITY, THE BUILD IS A BETTER WITNESS THAN A SEARCH** (`.13.4.1`). ⛔ **A DEFECT HAS A MECHANISM AND A REACH; THE REACH IS A SEPARATE MEASUREMENT** (`.6.2.3.1`, promotion pending a second instance). ⛔ A published number owes a producer: `a-metric-scoped-to-one-record-ages-silently`.
-- ⛔ **RLS ALONE IS NOT A GATE HERE, and `.6.1.5.1.1` proved it rather than inferring it** — the dev/test profile connects as SUPERUSER, which bypasses RLS even under `FORCE ROW LEVEL SECURITY`. Always pair `rls::with_tenant_claim` with an explicit `tenant_id` predicate.
-- ⭐ **THE SITE-GLOBAL ADJUDICATION IS DOC-0066** (`the-policy-registry-is-a-shared-control-surface`), whose Fact 1 is *a column-less table is not necessarily an ownerless one*; its residue is now **0**. ⛔ Its figures are DERIVED, never carried: `scripts/census_shared_registry_writes.py --check`.
-- in_flight_uncommitted: none — tree clean, no background job owned by this repo (`bash scripts/check_no_background_jobs.sh`). ⭐ **A GREEN DOCTRINE GATE IS NOT EVIDENCE A SUITE RUNS** (`.7.1.2.2.1`): twenty suites were dead for a migration's worth of commits while `make gate` was green. ⛔ **BUILDS HERE ARE A HOST PROBLEM, not a tree-size one.** ⛔ `cargo clean` must NOT be used here — it takes cited evidence out of `target/`.
-- ⛔ **THIS FILE IS A POINTER. A lesson lives in `docs/knowledge/`; this block names it and stops.** Restating one here is the `SIGNOFF-REPAIR.11.16` defect one layer up (`.11.20`). Run `python3 -B scripts/census_memory_warnings.py` before evicting anything, and classify every `UNCITED` item by hand against the durable layer — that class is where a FACT, not a pointer, gets lost (`.11.20.1`, `.11.20.3`).
-- ⭐ **THE LESSONS ARE A LAYER, NOT A LIST — enumerating them here is the defect bullet above names.** The notes live in `docs/knowledge/`, indexed by the derived `KNOWLEDGE_MAP.md`; methods in `TOOLBOX.md`. ⛔ **COUNT them, never read a count here** (`ls docs/knowledge/*.md | wc -l`) — this line said **45** while the directory held 47, a mirror nothing derived, which is `.11.16` inside the pointer that forbids it. The two most often needed: `a-control-that-passes-for-an-unrelated-reason` and `calibrate-over-the-history-that-contains-the-instance`.
-- blockers: register `SIGNOFF-REPAIR.13` + `docs/book/src/blockers.md`. Column is `Owed here?`. ⛔ **B1, B2, B3 are `yes (deferred)` — director instruction 2026-09-18: Internet exposure is NOT high priority, the LAN must fully work first** (`docs/decisions/2026-09-18_lan-completeness-precedes-internet-exposure.md`). Work is still owed here and `.14` still owns it; it does NOT ride the frontier. ⭐ **The LAN bar is DEFINED: G0–G5 genuinely met + G7 earned on the LAN, G6 out of scope.** ✅ **C2 is CLOSED** (`.11.4.7`); ✅ G4's one un-discharged strand is DISCHARGED (`.7.3.6.5`) — ⛔ NOT a claim that G4 is Met. **B4 `no`** (name clearance). **C1 `no`**. ⛔ Deferral changes priority, never claims: Phase 7 G6/G7 stays NOT MET and `.14`'s prohibition stands.
-- ⭐ **DIRECTION, accepted and UNSCHEDULED (2026-09-19): a System One classifier (Jev) is an ENHANCEMENT, not a repair** — the greenlight was conditional on proving it fixes a defect, and the sole candidate was measured and refuted. `docs/decisions/2026-09-19_system-one-classifiers-are-an-enhancement-not-a-repair.md`. No leaf.
-- ⚠️ standing corpus rule from `.13.4`: **a correction is not complete until the LIVE-DOCUMENT corpus that restates it has been censused.** Live documents = `README.md`, `LIVE_STATUS.md`, `MEMORY.md`, `docs/book/src/*.md`, plus the `docs/knowledge/` note `.13.4.1` found; the dated ledgers are history and stay.
+
+- next_action: `SIGNOFF-REPAIR.11.4.2` — the lifecycle controls; then `.11.33`, `.11.31`, `.11.8`, `.11.2.1`.
+- active_work_unit: `SIGNOFF-REPAIR` → frontier leaf: `.11.4.2` (`pending`).
+- latest_commit: `REASONBRAID-REPAIR-0358`.
+- in_flight_uncommitted: none.
+- blockers: `SIGNOFF-REPAIR.13`.

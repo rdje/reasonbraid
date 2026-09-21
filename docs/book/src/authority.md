@@ -387,16 +387,19 @@ the parent below the grant removes eligibility. No delegation enters this path.
 
 These eight named GET routes use the exception:
 
-| Route under `/v1/admin/` | Own-tenant inspection |
+Each takes the tenant explicitly as `?tenant_id=…`, and the caller must hold
+tenant administration over that tenant.
+
+| Route | Own-tenant inspection |
 | --- | --- |
-| `nodes/presence` | Known nodes and derived presence |
-| `grants` | Grant inventory and status |
-| `boundaries` | Enrollment boundaries and status |
-| `incarnations` | Recorded role incarnations |
-| `runs` | Recorded runs |
-| `breakers` | Spend-breaker state |
-| `usage` | Usage ledger summary |
-| `authorization-records/{record_id}` | One known authorization record in this tenant |
+| `GET /v1/admin/nodes/presence` | Known nodes and derived presence |
+| `GET /v1/admin/grants` | Grant inventory and status |
+| `GET /v1/admin/boundaries` | Enrollment boundaries and status |
+| `GET /v1/admin/incarnations` | Recorded role incarnations — the §8.1 facts each enrolled role node declared |
+| `GET /v1/admin/runs` | Recorded runs — each links its attempt to the incarnation that ran it |
+| `GET /v1/admin/breakers` | Spend-breaker state |
+| `GET /v1/admin/usage` | Usage ledger summary — reserved, settled, overrun per dimension, the denials with their reasons, and the per-thread breakdown |
+| `GET /v1/admin/authorization-records/{record_id}` | One known authorization record in this tenant |
 
 Each takes `?tenant_id=ten_…`; the seven original routes retain their response
 shapes, and the new exact lookup is described below. For example,
@@ -526,6 +529,11 @@ explicit `registry_inspect` action; tenant-scoped inspection retains its own pol
 
 ### Grant and boundary revocation
 
+```text
+POST /v1/admin/grants/{grant_id}/revoke          revoke one grant
+POST /v1/admin/boundaries/{boundary_id}/revoke   revoke one enrollment boundary
+```
+
 Both revocation services now bind the target id to the authorized tenant inside
 PostgreSQL before changing status. A missing or foreign target returns HTTP 404.
 The matching target is locked until status and the tenant's revocation epoch commit
@@ -597,6 +605,12 @@ mutation holds.
 
 ### Arming and resetting a spend breaker
 
+```text
+POST /v1/admin/breakers          arm the latch
+GET  /v1/admin/breakers          the current state
+POST /v1/admin/breakers/reset    release the latch
+```
+
 The [spend circuit breaker](budget.md) is a per-tenant latch, and its two
 administrative verbs were the weakest administrative path in the server. Each
 admitted the caller in its own transaction under a *shared* guard, and then ran
@@ -650,6 +664,10 @@ reason, so neither records one — `submitted_reason` is `null`, and adding a re
 requirement to either would be a wire change to be documented and tested as one.
 
 ### Issuing a node enrollment token
+
+```text
+POST /v1/nodes/enroll-tokens    issue a one-time enrollment token
+```
 
 An operator issues a one-time token bound to a tenant, an expected node id, a
 host claim, a nonce and an expiry; the node consumes it once at
@@ -818,6 +836,10 @@ owns that.
 
 ### Revoking a node's certificates
 
+```text
+POST /v1/nodes/revoke    revoke a node's active workload certificates
+```
+
 Revoking a node marks its active workload certificates revoked and advances the
 tenant's revocation epoch, so the handshake ladder refuses the certificates at the
 next crossing and every cached node-side admission decision is invalidated.
@@ -857,6 +879,13 @@ presence, the lease that is not cut — is unchanged and documented in
 [the node channel](node-channel.md).
 
 ### Administering a node's inbox
+
+```text
+POST /v1/nodes/quarantine     mark one command so it is never re-delivered
+POST /v1/nodes/replay         reverse a quarantine and re-sequence to the tail
+POST /v1/nodes/inbox/prune    delete finished rows older than a window
+GET  /v1/nodes/inbox          inspect the inbox
+```
 
 Three operator verbs act on one node's durable inbox: **quarantine** marks one
 command so it is never re-delivered, **replay** reverses that quarantine and
@@ -1312,8 +1341,13 @@ row, and the agreement is EFFECTIVE only when both are `accepted` and both carry
 the capability in question. A one-sided proposal widens nothing, and a revoked
 direction falls back to the network pseudonym.
 
-The three verbs — `POST /v1/federation-agreements`, `…/accept` and `…/revoke` —
-each run ONE transaction under the LOCAL tenant's **exclusive** authority guard
+```text
+POST /v1/federation-agreements           propose a direction, or change its terms
+POST /v1/federation-agreements/accept    accept a proposed direction
+POST /v1/federation-agreements/revoke    revoke a live direction
+```
+
+The three verbs each run ONE transaction under the LOCAL tenant's **exclusive** authority guard
 (`SIGNOFF-REPAIR.3.3.4.12`), holding the admission, the direction mutation, the
 acceptance's cross-domain receipt and the final effect record together. Before
 this, each admitted through a shared-guard transaction that had already

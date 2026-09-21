@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-21 — Scoped to write sixteen routes up, and fourteen were already explained (`SIGNOFF-REPAIR.11.4.6.6`)
+
+`REASONBRAID-DOC-0115`. The leaf the adjudication sized at sixteen undocumented operator routes, which turned out to be an addressing failure rather than an explanation one.
+
+- 🔴 **FOURTEEN OF THE SIXTEEN ALREADY HAD A SECTION.** `authority.md` has had one for every family of them — *Grant and boundary revocation*, *Arming and resetting a spend breaker*, *Issuing a node enrollment token*, *Revoking a node's certificates*, *Administering a node's inbox*, *Administering a federation direction* — each describing the verb in full and **none writing its path beside a method**. The own-tenant inspection table listed eight admin routes as bare SUFFIXES (`grants`, `usage`) under a `Route under /v1/admin/` header, and the federation section elided two of three verbs as `…/accept` and `…/revoke`.
+- ⭐ **SO THE REPAIR WAS SEVEN CONTRACT BLOCKS, NOT SIXTEEN SECTIONS.** The census moved **81 described → 95** on notation alone, exactly the fourteen. Only `routing` needed prose: `GET /v1/routing/rules` and `POST /v1/routing/resolve` had no section anywhere and now sit beside the routing journals in `site-authority.md`, with the seven closed case classes and the **phantom-arm** refusal that fires when a rule points at an unregistered workflow profile.
+- ⛔ **AND THE CENSUS WAS NOT OVER-REPORTING — the error would have been in its READER.** Those fourteen routes were genuinely unfindable: a reader searching the book for `/v1/admin/usage` got nothing, and so did every tool. A coverage instrument matches an ADDRESS, so it reports *the book does not name this*; taking that for *the book does not explain this* is what sizes the work wrongly.
+- ⭐ **The counterfactual is what makes the finding load-bearing**: sixteen fresh sections would have left **two divergent descriptions of each verb, only one of them maintained** — worse than the gap it set out to close. That is why the repair is a catalogue card, not a second copy of the book.
+- ⭐ Also corrected while spelling the paths: the eight-route table now states the admission it always had — each takes `?tenant_id=…` explicitly and the caller must hold tenant administration over that tenant — and `incarnations`, `runs` and `usage` gained a line saying what they actually return.
+- ✅ **Promotion TAKEN**: `docs/knowledge/a-coverage-gap-names-what-is-missing-not-what-is-absent.md`. The existing notes cover the instrument side (`a-census-is-as-wide-as-its-key`) and the opposite direction (`writing-the-documentation-is-a-verification-pass`); neither covers the reader of a coverage report, and the rule — search the corpus for the CONCEPT before treating a flagged address as unwritten — is the cheap half.
+- **Census 81 / 2 / 21 → 97 / 1 / 6. The adjudication now reads 37 covered · 3 internal · 3 gap**, held by two leaves: `.11.4.6.7` (`calls`, `threads`) and `.11.4.6.8` (`rb-release-manifest`).
+
 ## 2026-09-21 — The governance receipts, and the two families went to different chapters (`SIGNOFF-REPAIR.11.4.6.5`)
 
 `REASONBRAID-DOC-0114`. Three routes over two families that no chapter named — between them, the two surfaces that answer *what actually happened*.

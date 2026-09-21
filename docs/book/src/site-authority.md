@@ -559,6 +559,43 @@ that settled the policy library required it and the workflow registry to be
 decided consistently or for the difference to be stated; they are consistent, and
 this paragraph is the record of it.
 
+### The rule table and the deterministic resolution
+
+Routing is a **deterministic table lookup**, not a model decision. A case class
+resolves to exactly one arm through one rule, and the resolution is journalled.
+
+```text
+GET  /v1/routing/rules      the deterministic rule table
+POST /v1/routing/resolve    resolve one case class to its arm
+```
+
+Both admit any enrolled principal.
+
+The seven case classes are a closed vocabulary: `simple`, `factual`,
+`uncertain`, `design_policy`, `governed`, `correlated` and `diminishing`. A
+class outside it is refused.
+
+```bash
+curl -s -X POST localhost:4310/v1/routing/resolve \
+  -H 'x-reasonbraid-principal: hpr_0192…' \
+  -H 'content-type: application/json' \
+  -d '{"case_class": "governed"}'
+```
+
+```json
+{"case_class": "governed", "arm": "wf_governed_review", "rule_id": "rul_0192…"}
+```
+
+⭐ **A rule may not point at an arm that does not exist.** After finding the
+rule, the resolution checks that its arm is a registered workflow profile and
+refuses with a *phantom arm* error if it is not — so a rule table that has
+drifted away from the profile registry fails loudly at the lookup rather than
+routing a case into nothing.
+
+Every successful resolution is recorded in the routing journal described below;
+the lookup itself reads the rule table and the profile registry only, never the
+journals.
+
 ### The routing journals: bound to their own tenant
 
 `GET /v1/routing/resolutions` and `GET /v1/routing/recommendations` used to

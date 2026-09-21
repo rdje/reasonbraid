@@ -50,13 +50,13 @@ route-family	resolvers	covered	1:-	-	every route carries a contract line
 route-family	resources	covered	3:-	-	every route carries a contract line
 route-family	snapshots	covered	7:-	-	deployment.md carries all seven, item and collection separately
 route-family	workflow-profiles	covered	1:-	-	every route carries a contract line
-route-family	admin	gap	17:/v1/admin/boundaries/{}/revoke,/v1/admin/breakers/reset,/v1/admin/grants,/v1/admin/grants/{}/revoke,/v1/admin/incarnations,/v1/admin/runs,/v1/admin/usage	SIGNOFF-REPAIR.11.4.6.6	7 of 17 undocumented and they are OPERATOR verbs — the three revocations, the breaker reset, and the incarnation/run/usage inspections. The coarse signal calls this family covered because six chapters name /v1/admin
+route-family	admin	covered	17:-	-	authority.md: the eight own-tenant inspection GETs now carry FULL paths instead of bare suffixes, and the revocation and spend-breaker sections carry contract lines for their verbs
 route-family	audit	covered	1:-	-	authority.md: the tenant_admin-gated cross-domain receipt read, with the response shape and the oldest-first ordering, beside the federation acceptance that writes one
 route-family	calls	gap	4:/v1/calls,/v1/calls/{}/close,/v1/calls/{}/respond	SIGNOFF-REPAIR.11.4.6.7	3 of 4 undocumented including the COLLECTION. SIGNOFF-REPAIR.11.8.1 re-derived by hand that authority.md's line is a contract for the ITEM route, so the coarse signal credits this family to a line about something else
 route-family	deployments	covered	2:-	-	policy-lifecycle.md: the assignment with its canary wave and desired pair, the receipt attestation with its four observed states, and the desired/observed pair drift is computed from
 route-family	evaluations	covered	7:-	-	evaluation-harness.md: all seven beside their methods, the corpus/run/trial/calibration/gate shapes, and the four SIGNOFF-REPAIR.8.2 limits stated rather than implied - the deployment-wide admission, the 32-bit assignment truncation, the unmeasured gate reporting pass, and a storage fault reported as a duplicate
-route-family	federation-agreements	gap	3:/v1/federation-agreements/accept,/v1/federation-agreements/revoke	SIGNOFF-REPAIR.11.4.6.6	the collection is documented and both state-changing verbs are not; accepting and revoking a federation agreement are exactly the acts a peer operator needs written down
-route-family	nodes	gap	14:/v1/nodes/enroll-tokens,/v1/nodes/inbox/prune,/v1/nodes/quarantine,/v1/nodes/replay,/v1/nodes/revoke	SIGNOFF-REPAIR.11.4.6.6	9 of 14 documented; the 5 missing are the node lifecycle verbs an operator uses under fault — quarantine, replay, revoke, prune and token issue
+route-family	federation-agreements	covered	3:-	-	authority.md: the three verbs' paths are now SPELLED rather than elided as `.../accept` and `.../revoke`
+route-family	nodes	covered	14:-	-	authority.md: the enrolment-token, certificate-revocation and inbox sections each gained a contract block; node-channel.md carries the channel routes
 route-family	policies	covered	3:-	-	policy-lifecycle.md carries the impact map; the bundle and resolve are in authority.md and cli.md
 route-family	policy-decisions	covered	1:-	-	policy-lifecycle.md: the draft -> decided transition, the frozen electorate and the empty-electorate refusal
 route-family	policy-drift	covered	1:-	-	policy-lifecycle.md: the categorized desired/observed pair and the six-category vocabulary
@@ -64,7 +64,7 @@ route-family	policy-outcomes	covered	1:-	-	policy-lifecycle.md: the six outcome 
 route-family	policy-projections	covered	1:-	-	policy-lifecycle.md: the rendered artifact, its digest, its declared unrepresentables and the pre-0082 fail-closed note
 route-family	policy-proposals	covered	1:-	-	policy-lifecycle.md: the draft stage, the policy-version and thread references
 route-family	policy-reviews	covered	3:-	-	policy-lifecycle.md: the idempotent schedule verb, the seven triggers and the due -> done transition
-route-family	routing	gap	4:/v1/routing/resolve,/v1/routing/rules	SIGNOFF-REPAIR.11.4.6.6	recommendations and resolutions are documented; the rules a site operator writes and the resolve verb that applies them are not
+route-family	routing	covered	4:-	-	site-authority.md: the rule table and the deterministic resolve with the seven closed case classes and the phantom-arm refusal, beside the routing journals
 route-family	threads	gap	7:/v1/threads/auto	SIGNOFF-REPAIR.11.4.6.7	6 of 7 documented; automatic thread initiation is a distinct entry point from POST /v1/threads and is named by no chapter
 route	/	covered	1:/	-	⭐ THE MACHINE UNDER-REPORTS THIS ONE: mechanically a bare mention, while docs/book/src/web-ui.md is an entire chapter about the read-only console rb-server serves at /. The judgement corrects the signal rather than repeating it
 route	/app.js	internal	1:/app.js	-	an asset the console page loads, not a surface a caller programs against. SIGNOFF-REPAIR.11.8 measured that a rule requiring every route in the book would wrongly flag the console's static assets

@@ -9,8 +9,16 @@ a corpus stated in a docstring rather than derived — and therefore published
 and `target/pg-tests` alone (1,309,464 KiB) is **3.64x** the whole population it
 was reporting. Replacing a hand-written list with a derivation over the wrong
 corpus is not better than the list: it is the same error wearing an instrument's
-authority, so the number now looks re-derivable. The real population at
-`028217c` is **2,264,752 KiB across 4,334 fixtures in 35 of 37 families**.
+authority, so the number now looks re-derivable.
+
+⛔ AND THAT CORRECTION WAS ITSELF 88.4% OF THE REAL FIGURE
+(`SIGNOFF-REPAIR.11.2.1.3.2.1.2`). Rust + Python was not the corpus either — a
+SHELL script writes `target/demo`, 106,000 KiB of it — and beneath that sits a
+class no corpus can reach at all: an ORPHAN, a directory whose producer has been
+deleted, of which `target/claude-stubs` holds **270**. So this census now answers
+BOTH questions: what WILL accumulate, derived from the producers over three
+corpora, and what HAS, by walking `target/` and reconciling. The two totals add
+to the byte, and `du -sk` agrees with the sum.
 
 ⭐ WHY THIS EXISTS AS A TRACKED INSTRUMENT. `.11.2.1.3.2` opened with two typed
 numbers and both are wrong:
@@ -84,6 +92,7 @@ from census_fixture_citations import (  # noqa: E402
     CORPORA,
     INSTRUMENT,
     families_of,
+    is_cargo_owned,
 )
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -184,6 +193,35 @@ def revision(root: Path) -> dict:
             "dirty": bool(git("status", "--porcelain"))}
 
 
+def orphans(root: Path, families: list[str]) -> list[dict]:
+    """Directories under `target/` that NO derived family claims.
+
+    ⭐ THIS IS THE ONLY ROUTE THAT CAN FIND ONE, and it is why this function
+    exists (`SIGNOFF-REPAIR.11.2.1.3.2.1.2`). Deriving from producers answers
+    *what will accumulate*; walking the filesystem answers *what HAS
+    accumulated*. A directory whose producer has since been deleted is invisible
+    to every producer-derived route by construction — no amount of widening the
+    corpus reaches it.
+
+    ⛔ The instance that proved it: `target/claude-stubs`, **270 directories**
+    named in the fractional-second scheme `REASONBRAID-REPAIR-0085` removed, and
+    `git grep -l claude-stubs` returns 0. The corpus-widening repair one leaf
+    earlier could never have found it.
+    """
+    known = set(families)
+    found = []
+    base = root / "target"
+    if not base.is_dir():
+        return found
+    for path in sorted(base.iterdir()):
+        if not path.is_dir() or path.name.startswith("."):
+            continue
+        if path.name in known or is_cargo_owned(root, path.name):
+            continue
+        found.append({"name": path.name, **disk(path)})
+    return sorted(found, key=lambda row: -row["disk_bytes"])
+
+
 def census(root: Path) -> dict:
     families = families_of(root, None)
     sources: dict[str, dict[str, list[dict]]] = {name: {} for name in families}
@@ -216,7 +254,8 @@ def census(root: Path) -> dict:
                                         for sites in files.values() for site in sites),
         })
     report.sort(key=lambda row: (-row["disk_bytes"], row["family"]))
-    return {"revision": revision(root), "families": report}
+    return {"revision": revision(root), "families": report,
+            "orphans": orphans(root, families)}
 
 
 def report(root: Path, as_json: bool) -> int:
@@ -271,6 +310,20 @@ def report(root: Path, as_json: bool) -> int:
                 kind = "inline test" if site["inline_test"] else "helper"
                 print(f"      {site['call_sites']:>3}  {kind:<11}  "
                       f"{relative}::{site['function']}")
+
+    stray = result["orphans"]
+    used = sum(row["disk_bytes"] for row in stray)
+    entries = sum(row["top_level_entries"] for row in stray)
+    print(f"\n  ORPHANS — directories under target/ that NO producer claims: {len(stray)}"
+          f"  ({used // 1024:,} KiB, {entries:,} entries)")
+    print("    ⭐ Only this route can find one. Deriving from producers answers what WILL\n"
+          "       accumulate; walking the filesystem answers what HAS. A directory whose\n"
+          "       producer was deleted is invisible to every producer-derived route.")
+    for row in stray:
+        print(f"    {row['disk_bytes'] // 1024:>10,} KiB  {row['top_level_entries']:>5} entries  "
+              f"{row['name']}")
+    if not stray:
+        print("    (none — every directory under target/ is claimed by a producer or by cargo)")
 
     print("\n  ⛔ A large family is not by itself a defect. Exclusive creation "
           "(SIGNOFF-REPAIR.11.2.1.1)\n     means a fixture is never reused, so growth "
@@ -393,6 +446,16 @@ def self_test() -> int:
                    measured["disk_bytes"] >= measured["apparent_bytes"], True))
     checks.append(("a directory's own entry is not counted as one of its entries",
                    measured["all_entries"] >= measured["top_level_entries"], True))
+
+    # ⭐ The orphan walk, run against the REAL tree: every family it derives must
+    # be excluded from its own orphan list, or the two halves would double-count.
+    root = Path(__file__).resolve().parent.parent
+    derived = families_of(root, None)
+    stray = {row["name"] for row in orphans(root, derived)}
+    checks.append(("no derived family is reported as an orphan",
+                   sorted(stray & set(derived)), []))
+    checks.append(("cargo's build cache is never an orphan",
+                   bool(stray & {"debug", "release", "doc", "package"}), False))
 
     for name, got, want in checks:
         if got != want:

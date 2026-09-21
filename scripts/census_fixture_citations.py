@@ -99,10 +99,37 @@ FAMILY_PYTHON = re.compile(
 # Running the Rust patterns over `.py` would invent three families out of the
 # censuses' own text, which is the self-reference failure `check_self_tests.sh`
 # recursed on and this family of instruments has already hit once, on a doc comment.
+# ⭐ THE SHELL PRODUCER, a THIRD corpus — and its absence is why
+# `SIGNOFF-REPAIR.11.2.1.3.2.1.2` exists. `.11.2.1.3.2.1.1` widened this census
+# from Rust to Rust+Python and published the result as *the population*;
+# `scripts/demo_two_host.sh:91` writes `$ROOT/target/demo/$RUN_ID` — 106,000 KiB
+# of it — and shell was still unread. Widening a corpus by one language and
+# calling it complete is the same defect one turn later.
+FAMILY_SHELL = re.compile(
+    r'(?:\$\{?(?:ROOT|REPO|root|repo)\}?"?/|(?<![\w./])")target/([A-Za-z0-9_][A-Za-z0-9_.-]*)')
+
 CORPORA = {
     "*.rs": (FAMILY_SOURCE, FAMILY_PUSHED, FAMILY_TWO_STEP, FAMILY_GUARD),
     "*.py": (FAMILY_PYTHON,),
+    "*.sh": (FAMILY_SHELL,),
 }
+
+# ⛔ CARGO'S OWN DIRECTORIES ARE NOT FIXTURE FAMILIES, and the boundary is drawn
+# from CARGO'S published layout rather than from a list of ours. The shell
+# corpus is what forced this to be explicit: scripts legitimately reference
+# `$ROOT/target/debug/rb-server`, so a pattern matching `target/<name>` sees
+# `debug` — and `target/debug` is 64 GiB of build cache. Without this the census
+# reported 148,813,880 KiB.
+#
+# ⭐ The first half is DERIVED and needs no name at all: a cargo profile
+# directory contains `.fingerprint`. The second half names the three fixed
+# directories the Cargo Book's target-directory layout defines, which is another
+# tool's contract rather than an inventory of this project's producers.
+CARGO_LAYOUT = ("doc", "package", "tmp")
+
+
+def is_cargo_owned(root: pathlib.Path, name: str) -> bool:
+    return name in CARGO_LAYOUT or (root / "target" / name / ".fingerprint").is_dir()
 
 # ⛔ AN INSTRUMENT IS NOT A PRODUCER, and this file is the proof: adding the
 # Python corpus made the census read ITSELF and report `python-tests` and
@@ -149,7 +176,7 @@ def families_of(root: pathlib.Path, at: str | None) -> list[str]:
                 continue  # an instrument's corpus is not a producer's code
             for pattern in patterns:
                 names.update(pattern.findall(text))
-    return sorted(names)
+    return sorted(n for n in names if not is_cargo_owned(root, n))
 
 
 def census(root: pathlib.Path, at: str | None) -> dict:
@@ -228,6 +255,13 @@ SELF_TEST_PYTHON = '''
     read_only = ROOT / "target" / "debug" / "some-binary"
 '''
 
+SELF_TEST_SHELL = '''
+WORK="$ROOT/target/shell-demo/$RUN_ID"
+OTHER="${REPO}/target/shell-braced/case"
+mkdir -p "$WORK"
+BIN="$ROOT/target/debug/rb-server"
+'''
+
 
 def self_test() -> int:
     families = sorted(set(FAMILY_SOURCE.findall(SELF_TEST_RUST))
@@ -250,6 +284,15 @@ def self_test() -> int:
     # ⛔ THE SELF-REFERENCE DEFENCE, asserted rather than trusted: this module's
     # own Rust corpus is Python source, and the Rust patterns must never be run
     # over it. If they were, this file would invent its own self-test families.
+    shell = sorted(set(FAMILY_SHELL.findall(SELF_TEST_SHELL)))
+    if shell != ["debug", "shell-braced", "shell-demo"]:
+        print(f"SELF-TEST FAILED: the shell producer derives {shell}, expected "
+              f"['debug', 'shell-braced', 'shell-demo'] — a root-anchored path, a "
+              f"braced one, and `debug` proving this pattern does NOT judge what "
+              f"cargo owns (the filesystem reconciliation does that)",
+              file=sys.stderr)
+        return 1
+
     leaked = set()
     for pattern in CORPORA["*.rs"]:
         leaked.update(pattern.findall(SELF_TEST_PYTHON))

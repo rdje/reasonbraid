@@ -25,14 +25,21 @@ Is the population right now?
 
 *Measured instance:* a census derived fixture families from `.join("target/…")`
 literals in tracked **Rust**. That derivation was correct and caught six families
-a hand list had missed. It reported **359,820 KiB**. The real figure was
-**2,264,752 KiB** — it was publishing **15.9% of the bytes**, because the largest
-generated directories in the repository are created by **Python**, and a single
-one of them was **3.64×** the entire population the census believed in.
+a hand list had missed. It reported **359,820 KiB**. The figure it was corrected
+to was **2,264,752 KiB** — it had been publishing **15.9% of the bytes**, because
+the largest generated directories in the repository are created by **Python**,
+and a single one of them was **3.64×** the entire population the census believed
+in.
 
 Nothing in the instrument was wrong. The sentence *the families are read out of
 the literals in tracked Rust* was in its own docstring, stated plainly, and was
 the defect.
+
+⚠️ **And the corrected figure was 88.4% of the real one.** Rust + Python was not
+the corpus either: a **shell** script wrote 106,000 KiB the census still could
+not see. Widening a corpus by one language and publishing the result as complete
+is this same error, one turn later, by the same author — which is why the section
+below exists.
 
 ## ⭐ Why this is worse than the list it replaced
 
@@ -62,6 +69,30 @@ the same parent, and it needed no deny-list: a family is something a producer
 **creates**, and nothing creates `target/debug` — the scripts only read paths
 beneath it. A rule built on creation does not have to enumerate what somebody
 else owns.
+
+## ⛔ And one class of member NO corpus can reach: the orphan
+
+Widening the corpus is bounded work, and it ends. There is a second population it
+never touches, and it took a third correction to see it.
+
+> **A producer-derived census cannot see a directory whose producer has been
+> deleted.** The code that made it is gone; there is nothing left to derive from.
+
+*Measured instance:* `target/claude-stubs` — **270 directories**, named in a
+scheme a repair had removed months earlier, and `git grep` attributes them to
+nothing at all. No amount of adding languages to the corpus would have found
+them, because the thing to find them from does not exist.
+
+**So a census that answers *what will accumulate* needs a second half that
+answers *what HAS*, and only walking the container can answer it.** The two
+routes are not redundant: one is the code's opinion of the filesystem, the other
+is the filesystem's opinion of the code, and the gap between them is exactly
+where the orphans are. Run both, and reconcile them to the byte.
+
+⚠️ Reconciling forces you to say what somebody ELSE owns, and that boundary
+should be derived too: here a cargo build directory is identified by containing
+`.fingerprint`, and only the three fixed names in cargo's own published layout
+are written down — another tool's contract, not an inventory of yours.
 
 ## ⚠️ Widening the corpus wakes the self-reference trap
 

@@ -17,8 +17,14 @@ directory when the test passes and keeps it — with everything in it — when t
 test fails. Across seven leaves that reached every family in tracked Rust that
 accumulates, except one.
 
-`target/conformance-stubs` holds **34 entries / 272 KiB**. Its producer writes two
-executable shell stubs inside `static STUBS: OnceLock<Stubs>`.
+`target/conformance-stubs` holds **34 entries / 272 KiB** at `b724086`. Its
+producer writes two executable shell stubs inside `static STUBS: OnceLock<Stubs>`.
+
+⭐ And the figure is pinned because it MOVES, which is the point: re-measured at
+`50a9712`, after one session's verification runs, it is **37 entries / 296 KiB**.
+That is the accepted cost behaving exactly as this record says it will — one
+directory per test binary per run — and it is why the revisit trigger below is a
+threshold reported by an instrument rather than a number anybody remembers.
 
 Two facts decide this record, and the second is the one that matters:
 

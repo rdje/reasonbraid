@@ -1,5 +1,18 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — The governance receipts, and the two families went to different chapters (`SIGNOFF-REPAIR.11.4.6.5`)
+
+`REASONBRAID-DOC-0114`. Three routes over two families that no chapter named — between them, the two surfaces that answer *what actually happened*.
+
+- ✅ **Two sections in two existing chapters, not a new chapter by default.** The route census moves **78 described / 2 mentioned / 24 absent → 81 / 2 / 21**: exactly the three.
+- ⭐ **`/v1/audit/receipts` → `authority.md`, because that chapter already writes one.** Its federation section says the acceptance carries *the cross-domain receipt in the same commit* — the trail was described from the WRITE side and had no read at all. The new section gives the read, a worked request and response, and the oldest-first ordering.
+- 🔴 **AND ITS ADMISSION IS NOT THE ONE A READER WOULD ASSUME.** Every lifecycle route documented so far admits on enrolment via `reader_tenant`; `list_cross_domain_receipts` instead calls `authorize_tenant_admin(&state.pool, &principal, q.tenant_id)` and takes the tenant from the QUERY. Writing *enrolled principal* there — the safe-looking generalisation from the neighbouring chapter — would have **understated the admission on a governance read**. Checked against the handler, not carried over.
+- ⭐ **`/v1/deployments` → `policy-lifecycle.md`, because the pair it stores is what the next section already needed.** An assignment puts an **effective** publication on a target in a canary wave with the DESIRED pair; the receipt attests the OBSERVED digest and its state (`pending`, `applied`, `waived`, `rejected`); and drift — one section below — is exactly the comparison of those two. The stage diagram gains the `deployment → receipt` hop it had been missing, so the chapter's own picture now reaches drift by the route the data takes.
+- ⚠️ **Stated rather than implied: a receipt is the target's CLAIM, not the deployment's verification.** The server stores the digest the caller reported and re-reads nothing. The record makes a disagreement visible; it does not adjudicate it.
+- ⛔ An assignment refuses a publication that is **not effective**, so a target is never pointed at something the deployment has not put into force.
+- 🔎 **Observed while placing the section, and ROUTED rather than fixed: `federation-agreements` is notation, not absence.** `authority.md` already describes both verbs `.11.4.6.6` owns — *the three verbs — `POST /v1/federation-agreements`, `…/accept` and `…/revoke`* — but with **elided paths**, so neither the census nor a reader searching by path can find them. The repair there is to spell two paths, not to write new prose, and the gap is cheaper than the route count suggests. Routed into `.11.4.6.6`; not fixed here, because that leaf owns it.
+- **The adjudication now reads 33 covered · 3 internal · 7 gap.**
+
 ## 2026-09-21 — The evaluation harness gains its chapter, and the chapter's job was refusing to vouch for it (`SIGNOFF-REPAIR.11.4.6.4`)
 
 `REASONBRAID-DOC-0113`. Seven routes, none documented — the only family in the surface where no route carried a contract line.

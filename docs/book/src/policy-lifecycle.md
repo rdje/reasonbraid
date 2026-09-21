@@ -17,6 +17,14 @@ grants publication requires.
 ```text
   proposal ──▶ decision ──▶ approval ──▶ projection ──▶ publication
                                                             │
+                                                            ▼
+                                                       deployment
+                                                    (target + wave)
+                                                            │
+                                                            ▼
+                                                        receipt
+                                                 (the observed digest)
+                                                            │
                           ┌─────────────────────────────────┤
                           ▼                                 ▼
                         drift                            outcomes
@@ -37,6 +45,9 @@ POST   /v1/policy-decisions                        record a decision (draft → 
 GET    /v1/policy-decisions                        the decisions
 POST   /v1/policy-projections                      project a resolved set for a target
 GET    /v1/policy-projections                      the projections
+POST   /v1/deployments                             assign a publication to a target
+GET    /v1/deployments                             the assignments, desired vs observed
+POST   /v1/deployments/{target_id}/{publication_id}/receipt   attest the observed digest
 POST   /v1/policy-drift                            record one drift observation
 GET    /v1/policy-drift                            the drift observations
 POST   /v1/policy-outcomes                         record one outcome
@@ -198,6 +209,73 @@ proposal was approved for.
 ⚠️ `resolved_policies` may be absent on rows written before `migrations/0082`.
 Absent means *the set was never recorded* — it does **not** mean the set was
 empty — and staging fails closed on it, naming which of the two it is.
+
+## Deployment and receipts
+
+A publication does not reach a target by itself. `POST /v1/deployments` assigns
+one publication to one target in a **canary wave**, recording the *desired* pair
+— the ref and its digest:
+
+```bash
+curl -s -X POST localhost:4310/v1/deployments \
+  -H 'x-reasonbraid-principal: hpr_0192…' \
+  -H 'content-type: application/json' \
+  -d '{
+        "target_id": "gateway-v2",
+        "publication_id": "pub_0192…",
+        "wave": 1,
+        "desired_ref": "refs/heads/main",
+        "desired_digest": "sha256:…"
+      }'
+```
+
+The target must be registered — `/v1/deployment-targets`, in
+[Authority](authority.md) — the
+publication must exist, and — the one that matters — **the publication must be
+effective**. Assigning one that is not is refused; a target is never pointed at
+something the deployment has not put into force.
+
+The target then reports back. `POST
+/v1/deployments/{target_id}/{publication_id}/receipt` is the **attestation**: the
+digest the target says it is actually running, and the state it reached.
+
+```bash
+curl -s -X POST "localhost:4310/v1/deployments/gateway-v2/pub_0192…/receipt" \
+  -H 'x-reasonbraid-principal: hpr_0192…' \
+  -H 'content-type: application/json' \
+  -d '{"observed_digest": "sha256:…", "observed_state": "applied"}'
+```
+
+`observed_state` is one of `pending`, `applied`, `waived` or `rejected`; anything
+else is refused with the vocabulary. A receipt for an assignment that was never
+made is refused, as is a malformed digest.
+
+`GET /v1/deployments` returns the assignments with **both halves side by side**:
+
+```json
+[
+  {
+    "target_id": "gateway-v2",
+    "publication_id": "pub_0192…",
+    "wave": 1,
+    "desired_ref": "refs/heads/main",
+    "desired_digest": "sha256:aaa…",
+    "observed_digest": "sha256:bbb…",
+    "observed_state": "applied"
+  }
+]
+```
+
+⭐ **That pair is what drift is computed from.** A row whose `observed_digest`
+differs from its `desired_digest` — or whose `observed_digest` is still `null`
+because no target has reported — is exactly the situation the next section
+records, and `unauthorized_modification` and `pending_rollout` are the two
+categories for those two shapes.
+
+⛔ **A receipt is the target's claim, not the deployment's verification.** The
+server stores the digest the caller reported; nothing here re-reads the target to
+confirm it. The receipt makes the disagreement *visible* and recordable — it does
+not adjudicate it.
 
 ## Drift
 

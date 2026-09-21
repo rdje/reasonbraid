@@ -1268,6 +1268,43 @@ already hold a covering grant and already be a participant, so it gains no reach
 only the audit naming the subject alongside it. Chains, and the depth bound that
 would come with them, are a later phase.
 
+### Reading the cross-domain receipt trail
+
+`GET /v1/audit/receipts?tenant_id=…` returns the tenant's cross-domain receipts:
+the local record of every interaction that crossed into another tenant's domain.
+Accepting a federation direction writes one in the same commit as the
+acceptance, which is what makes the trail complete rather than best-effort.
+
+⛔ **This read is `tenant_admin`-gated**, not merely enrolment-gated. It takes the
+tenant explicitly as `tenant_id` and the caller must hold tenant administration
+over *that* tenant — it is the read carve-out's surface, and it is read-only.
+
+```bash
+curl -s "localhost:4310/v1/audit/receipts?tenant_id=ten_0192…" \
+  -H 'x-reasonbraid-principal: hpr_0192…'
+```
+
+```json
+{
+  "tenant_id": "ten_0192…",
+  "receipts": [
+    {
+      "receipt_id": "rcp_0192…",
+      "tenant_id": "ten_0192…",
+      "remote_tenant_id": "ten_0193…",
+      "kind": "federation_acceptance",
+      "remote_ref": "fda_0192…",
+      "local_ref": "fda_0192…",
+      "created_at": "2026-09-21T10:14:02Z"
+    }
+  ]
+}
+```
+
+Receipts are returned oldest first, by `created_at`, and the query is bound to
+the named tenant — a receipt is a **local** row naming a remote reference, so
+this returns what this deployment recorded, never the counterparty's own trail.
+
 ### Administering a federation direction
 
 A federation agreement is **both-sides**: each tenant records its own direction

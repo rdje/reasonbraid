@@ -119,6 +119,25 @@ PARAM = re.compile(r"\{[^}]*\}")
 # `GET /v1/snapshots/{}` and the collection is credited to its item's line.
 EDGE_RIGHT = r"(?![\w/{-])"
 
+# ⛔ A METHOD AND ITS PATH ARE SEPARATED BY HORIZONTAL WHITESPACE, NOT BY ONE
+# SPACE. This was a literal `" "` until `SIGNOFF-REPAIR.11.8.2`, and the book
+# writes contract lines in ALIGNED blocks:
+#
+#     GET    /v1/profiles/{role_id}/card              mint the portable card
+#
+# Four spaces is not one, so that line — a method beside its path, which is this
+# instrument's OWN definition of `described` — was classified `mentioned`, the
+# class reserved for a path appearing without a method. The direction is
+# UNDER-reporting documentation, which is the direction that inflates a
+# published gap, and it is `.11.8.1`'s false-`absent` defect one whitespace lane
+# over. It survived that leaf's five-sided falsification because every arm there
+# wrote its method and path with a single space.
+#
+# ⚠️ Horizontal whitespace only. `\s` would cross a newline and let a method at
+# the end of one line describe a path at the start of the next, which is not a
+# contract line but two unrelated sentences.
+SEPARATOR = r"[ \t]+"
+
 # ⛔ THERE IS DELIBERATELY NO LEFT EDGE, and the reason is measured rather than
 # assumed. One would guard a shorter route matching inside a longer one — but
 # `tail_collisions` below reports that hazard at ZERO over this surface, and a
@@ -182,7 +201,8 @@ def classify(routes: list[str], book: str) -> dict[str, list[str]]:
         if not route_key(route):
             absent.append(route)
             continue
-        if any(re.search(f"{re.escape(m)} {key}{EDGE_RIGHT}", book) for m in METHODS):
+        if any(re.search(f"{re.escape(m)}{SEPARATOR}{key}{EDGE_RIGHT}", book)
+               for m in METHODS):
             described.append(route)
         elif re.search(f"{key}{EDGE_RIGHT}", book):
             mentioned.append(route)
@@ -261,6 +281,27 @@ def self_test() -> int:
     if got["described"] != ["/v1/things/{thing_id}/children"]:
         failures.append(f"a mid-path parameter did not match the book's spelling: {got}")
 
+    # ── A METHOD AND ITS PATH ARE SEPARATED BY HORIZONTAL WHITESPACE ──
+    # `SIGNOFF-REPAIR.11.8.2`. The book writes contract lines in ALIGNED blocks,
+    # and a literal single space classified `GET    /v1/profiles/{role_id}/card`
+    # as a bare `mentioned` — the class for a path with NO method beside it.
+    # RED under a mutant restoring `f"{method} {key}"`.
+    aligned = "GET    /v1/aligned/{id}/card              mint the portable card"
+    got = classify(["/v1/aligned/{role_id}/card"], aligned)
+    if got["described"] != ["/v1/aligned/{role_id}/card"]:
+        failures.append(
+            f"AN ALIGNED CONTRACT LINE WAS NOT COUNTED AS DESCRIBED: {got}"
+        )
+    # And the other direction, which is what keeps the widening honest: the
+    # separator must not cross a NEWLINE, or a method ending one sentence would
+    # describe a path beginning the next.
+    across = "the verb is POST\n/v1/aligned/next is a different subject"
+    got = classify(["/v1/aligned/next"], across)
+    if got["mentioned"] != ["/v1/aligned/next"]:
+        failures.append(
+            f"a method on the PREVIOUS LINE described a path it does not name: {got}"
+        )
+
     # ── The collision check that stands in for the absent left edge ──
     if tail_collisions(["/v1/things", "/v1/other"]):
         failures.append("tail_collisions reported a collision between unrelated routes")
@@ -283,7 +324,10 @@ def self_test() -> int:
         "described/mentioned/absent each separated, a collection and its item "
         "kept apart in BOTH directions, and a mid-path parameter matched against "
         "the book's own spelling, tail collisions reported in both directions, "
-        "and a route behind a variable prefix still seen"
+        "and a route behind a variable prefix still seen; and a method is "
+        "separated from its path by horizontal whitespace, so an ALIGNED "
+        "contract line is proved to be `described` while a method on the "
+        "PREVIOUS LINE is proved not to describe the path below it"
     )
     return 0
 

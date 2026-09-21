@@ -1,5 +1,16 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — The census demanded one space, and an aligned contract line read as a passing mention (`SIGNOFF-REPAIR.11.8.2`)
+
+`REASONBRAID-REPAIR-0378`. `.11.4.6.2` was about to key a per-member judgement to this instrument's output and checked the evidence first, which is what found this.
+
+- 🔴 **THE DEFECT, one character class.** `classify()` asked whether the book contains `f"{method} {key}"` — a literal **single space**. `docs/book/src/profiles.md:29` carries `GET` followed by **four** spaces and `/v1/profiles/{role_id}/card`, a contract line in an ALIGNED route block, so the route was classified **`mentioned`** — the class reserved for *a path appearing without a method*.
+- ⛔ **The direction is UNDER-reporting documentation**, which is the direction that INFLATES a published gap. It is `.11.8.1`'s false-`absent` defect one whitespace lane over, and it **survived that leaf's five-sided falsification** because every arm there wrote its method and path with a single space: the control had never been shown the shape that breaks it.
+- ⚠️ **Why only ONE route today, and why that is not a reason to leave it.** The other five routes in the same aligned block classify `described` anyway, because each is ALSO written with a single space in `authority.md`. `/v1/profiles/{}/card` is the only one whose evidence is the aligned block alone — so the blast radius is 1 of 104 now and grows silently with every aligned route table the book gains.
+- ✅ **CORRECTED, apples-to-apples.** Today: **104 routes — 62 described, 2 mentioned, 40 absent** (was 61 / 3 / 40). At `.11.8.1`'s own commit `eaa41fb`: **50 / 2 / 52** against its published **49 / 3 / 52**.
+- ⭐ **The historical harness was validated before it was trusted.** It reads the tree at a commit through `git ls-tree`/`git show` rather than a worktree, and with the separator UNCHANGED it reproduces `49 / 3 / 52` exactly — so the delta after the swap is the separator's and nothing else's. A re-measurement that cannot first reproduce the number it is correcting is not a correction.
+- ⛔ **NOT claimed: the `absent` column does not move, at either commit.** This defect never manufactured a false gap — it demoted a documented route to a weaker class — so `.11.8`'s measured-backlog conclusion and the `52`/`40` figures stand untouched.
+
 ## 2026-09-21 — The findings, graded: one did not hold, and it is the batch's own headline (`SIGNOFF-REPAIR.11.2.1.3.2.1.2`)
 
 `REASONBRAID-REPAIR-0377`. The director's *ensure your findings still hold*, applied to every figure this batch published, each re-derived by a route structurally different from the one that produced it.

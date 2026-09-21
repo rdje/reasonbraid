@@ -126,6 +126,26 @@ A resume reads A + one unit of B + a few C records — never a monolith.
 
 `MEMORY.md` becomes **only** layer A. Hard rules:
 
+- ⛔ **IT ANSWERS ONE QUESTION — *what is next?* — AND NOTHING ELSE.** Everything in the
+  file exists to describe the next action, task, slice or lane. A standing warning, a
+  lesson, a measurement, an environment fact or a blocker's detail does not, whatever its
+  merit, and belongs in the layer that owns it.
+
+  ⛔ **It shall not grow.** The cap is there to be far away, not to be approached: the
+  file should sit at a small fraction of it, permanently. **If it grows, that is the
+  signal that something is being written into it that does not belong** — not a signal
+  that the cap is tight. Raising the cap is available if a genuinely larger *next action*
+  ever needs it, and is not the answer to accumulation.
+
+  ⚠️ Measured instance, in the project this architecture was written for: the pointer sat
+  at **6,412 bytes of a 7,168-byte cap, of which 26 standing warnings were 5,184 — 81%** —
+  and had touched the cap exactly twice. The pointer proper was the other 19%. Evicting
+  the warnings, none of which held a fact that was not already in layer B or C, took it to
+  **425 bytes**. Nothing about the cap changed.
+
+  *Authority: director instruction 2026-09-21; provenance and the full measurement in
+  `docs/decisions/2026-09-21_the-landing-page-is-quasi-static-and-the-pointer-answers-one-question.md`.*
+
 - **Size cap — a LINE cap *and* a BYTE cap.** Keep it to roughly one screen (≤ ~50 lines)
   **and** to a few KB. If it exceeds either, information is in the wrong layer; move it
   down to B or C. *(Both caps are mechanically enforced — §9.)*

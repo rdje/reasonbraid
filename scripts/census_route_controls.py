@@ -152,6 +152,13 @@ ADJUDICATION: dict[str, tuple[Claim, ...]] = {
     "KICKOFF.md": (
         Claim("identity", "anchored at 457d3a7", "457d3a7"),
     ),
+    # ⚠️ The document that GOVERNS the resume pointer, and it had no row at all
+    # until `.11.4.2.7.2` — the routing closure is anchored at what `README.md`
+    # links, and the landing page does not link it. Same anchoring blind spot
+    # that left `DEV_NOTES.md` ungoverned until `.11.4.2.5`.
+    "MEMORY_ARCHITECTURE.md": (
+        Claim("doctrine", "the MEMORY-ARCH doctrine enforces what it defines", "MEMORY-ARCH"),
+    ),
     "CLAUDE.md": (
         Claim("doctrine", "MEMORY-ARCH doctrine verifies the pointer", "MEMORY-ARCH"),
     ),
@@ -632,7 +639,13 @@ def check(root: Path, rev: str = "HEAD") -> int:
                   f"kind=operand with a kind in {', '.join(KINDS)}.", file=sys.stderr)
             fails += 1
 
-        missing, invented = declaration_drift(adjudicated_terms(ADJUDICATION[row.path]), declared)
+        # ⛔ `.get`, NOT `[...]`. The guard above already REFUSED an unclassified
+        #    row by name — and then this line raised `KeyError` on the same row,
+        #    so the first real use of this gate printed a correct refusal followed
+        #    by a traceback (`SIGNOFF-REPAIR.11.4.2.7.2`). An instrument must
+        #    explain its own failure rather than crash after diagnosing it.
+        missing, invented = declaration_drift(
+            adjudicated_terms(ADJUDICATION.get(row.path, ())), declared)
         for kind, operand in missing:
             print(f"ROUTE-CONTROL: {row.path} — its control states {kind}={operand} and the row "
                   f"does not declare it. A term may not be dropped to make this gate green.",

@@ -20,16 +20,23 @@ answers: may I add a line to README.md; what is README.md for; what belongs in M
 > and overwrite shall happen, not append. … It is used to answer the question:
 > 'What's next?', that's it."*
 
-## What this settles
+## ⛔ Where the rule lives — this record is provenance, not authority
 
-**`README.md` is a ramp-up document and is quasi-static.** It says what the
-project is, what to read, and which commands to run. It is not a status page, not
-a changelog, not a catalogue. Adding to it is the exception that needs a reason,
-not the default.
+Each of these files already has a governing document, and this record does **not**
+restate their rules. It carries the instruction, its date, and the measurements
+that occasioned it; the normative text was written into the documents that own it:
 
-**`MEMORY.md` answers one question — what is next — and nothing else.** A standing
-warning, a lesson, a measurement, a blocker's detail or an environment fact
-written there is in the wrong layer, whatever its merit.
+| File | Its governing document | What was added there |
+| --- | --- | --- |
+| `MEMORY.md` | `MEMORY_ARCHITECTURE.md` §6 | the one-question rule and *it shall not grow*, beside the existing *overwrite, don't append* and *no history* |
+| `README.md` | `README_POLICY.md` | nothing — *quasi-static, amended rarely and only for the ramp-up sequence* is the intent its existing caps and routing hint already serve |
+
+⚠️ **This separation is the point, and it was got wrong first.** The initial version
+of this record stated *"`MEMORY.md` answers one question and nothing else"* as a
+normative rule of its own — a second claimant to authority `MEMORY_ARCHITECTURE.md`
+§6 already held. That is the stop condition `SIGNOFF-REPAIR.11.4.2.7` had invoked
+one commit earlier to decline the donor's root doctrine, applied by the same author
+in the next commit. Corrected at `SIGNOFF-REPAIR.11.4.2.7.2`.
 
 ## The record, measured rather than characterised
 
@@ -49,7 +56,7 @@ were wrong; they are corrected here with the commands that settle them.
   is the pattern to repeat.
 
 `MEMORY.md` was the real instance: **26 standing warnings weighing 81% of the
-file**, sitting on its cap twice. It is now 951 bytes, 13% of the same cap, with
+file**, sitting on its cap twice. It is now **425 bytes, 6% of the same cap**, with
 zero warnings — `python3 -B scripts/census_memory_warnings.py` reports it.
 
 ## ⛔ No no-growth ratchet on the landing page, and the decline is measured
@@ -69,15 +76,10 @@ above is the intent that guard serves; the guard is not replaced by it.
 
 ## How to apply it
 
-Before adding a line to `README.md`, ask what the reader is ramping up to do. If
-the answer is *know the current status*, it belongs in `LIVE_STATUS.md`; *know
-what is being worked on*, `docs/tasks/`; *know why a choice was made*,
-`docs/decisions/`; *use a feature*, `docs/book/`. The guard prints this list when
-it refuses, and it applies before the cap is reached, not at it.
-
-Before adding a line to `MEMORY.md`, ask whether it answers *what is next*. If it
-does not, it belongs in the layer that owns it, and the pointer may name that
-layer in a few words.
+Read the governing document, not this record: `MEMORY_ARCHITECTURE.md` §6 for the
+resume pointer, `README_POLICY.md` for the landing page. Both state the test and
+the routing. `README-STABILITY` prints the routing list when it refuses, and it
+applies before a cap is reached rather than at it.
 
 ## Related
 

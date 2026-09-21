@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-21 — The rule moves to the document that governs it, and the row that governs that document crashed the gate (`SIGNOFF-REPAIR.11.4.2.7.2`)
+
+`REASONBRAID-DOC-0099`. A director correction — *`MEMORY_ARCHITECTURE.md` is the document that governs what `MEMORY.md` is* — and two defects behind it.
+
+- 🔴 **A SECOND AUTHORITY, created one commit after refusing one.** The previous commit's decision record stated *"the resume pointer answers one question and nothing else"* as a rule of its own, beside a `MEMORY_ARCHITECTURE.md` §6 that already governs exactly that. `.11.4.2.7` had declined the donor's root doctrine on precisely this ground — *two sources plausibly claim canonical authority for the same information* — and the same author did it in the next commit.
+- ✅ **One normative home, one provenance record.** §6 gains the one-question rule and *it shall not grow*: *"if it grows, that is the signal that something is being written into it that does not belong, not a signal that the cap is tight"*, with the 81% → 425-byte measurement as its worked instance. The record is reduced to the quoted instruction, its date, the measurements, and a table naming which document owns which rule.
+- 🔴 **And the governing document had NO REGISTRY ROW** — `grep -c '^MEMORY_ARCHITECTURE.md|' .doctrine/readme_routes.txt` → 0, while `CLAUDE.md`, `AGENTS.md`, `COMMIT.md` and `TOOLBOX.md` each have one. It now declares `doctrine=MEMORY-ARCH`; `ROUTE-CONTROL` reports **23 assertions across 21 rows**.
+- 🔴 **Adding it made that gate CRASH on its first real use.** `--check` printed the correct refusal and then raised `KeyError` on the same row, because the loop indexed the adjudication after the guard had reported it missing. An instrument must explain its own failure, not crash after diagnosing it. ✅ Falsified: an unclassified probe row now gives **rc=1 with a named refusal and no traceback**.
+- ⭐ **The closure leg then refused the row's first draft, correctly**: its control named the two files the policy is ABOUT, and the transitive leg reads a path inside a control as a destination that must itself be governed. They are subjects, not destinations — reworded rather than given rows they do not need.
+- ⚠️ **The blind spot is named on its second instance and opened as `.11.4.2.7.3`**: the closure is anchored at the landing page's link graph, so a document the landing page does not link never enters it. `DEV_NOTES.md` was ungoverned for the life of the project for the same reason. ⛔ The remedy is a second anchor, never a link added to the landing page.
+
 ## 2026-09-21 — An overwrite-only pointer cannot accumulate, so the 81% that did was a second role (`SIGNOFF-REPAIR.11.4.2.7.1`)
 
 `REASONBRAID-REPAIR-0358`. The director refuted the previous commit's diagnosis in one sentence, and the measurement agreed with the director.

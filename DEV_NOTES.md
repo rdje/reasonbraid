@@ -1,5 +1,51 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — Two authorities for one rule, one commit after refusing exactly that
+
+The director pointed out that `MEMORY_ARCHITECTURE.md` governs what `MEMORY.md` is.
+It does, and checking my own work against that sentence found two things.
+
+The first is the one worth recording. One commit earlier I had declined to copy a
+donor project's root doctrine into this repository, and the reason I gave — quoting
+the donor's own stop condition — was that two sources would then plausibly claim
+canonical authority for the same information. In the very next commit I wrote a
+decision record stating "the resume pointer answers one question and nothing else"
+as a normative rule, beside a section 6 that already says overwrite don't append, no
+history, and if it exceeds either cap the information is in the wrong layer.
+
+So I applied a principle to an external document and not to my own writing, inside
+the same hour. The pattern is not that the principle was wrong; it is that I checked
+the donor against it because the donor was the subject of the decision, and never
+turned the same question on the artefact I was producing while deciding.
+
+The repair is the ordinary one here: the rule goes in the document that owns it, and
+the decision record keeps what a decision record is for — who instructed, when, and
+what was measured. A table in the record now names which document owns which rule,
+so the next reader sees the separation rather than having to infer it.
+
+The second was smaller but has a sharper edge. `MEMORY_ARCHITECTURE.md` had no row in
+the routed-destination registry. Its spine peers all have one. It defines the layer-A
+contract that three other governed files are measured against, and nothing declared
+its lifecycle, owner or verifier. Adding the row took thirty seconds; the interesting
+part is why it was missing, and it is the same reason `DEV_NOTES.md` was missing for
+the life of the project — the closure is anchored at what the landing page links, and
+neither file is linked from there. Two instances of one blind spot, both found by a
+human reading rather than by the instrument. That is now its own leaf, with the
+constraint that the fix is a second anchor and never a link added to the landing page.
+
+And the new row made the gate I shipped two commits ago crash. It printed exactly the
+right refusal — this row has no adjudication — and then raised a KeyError on that same
+row, because the loop indexed the adjudication table after the guard had already
+reported it missing. The first time that gate met the case it exists for, it
+diagnosed it correctly and then fell over. Its self-test never reached the path,
+because the coverage arms exercise the pure verdict and not the loop that runs after
+it. A clean refusal is now falsified directly.
+
+⛔ promotion: declined. The crash is an instance of
+`an-instrument-must-explain-its-own-failure`; the two-authorities error is an instance
+of the stop condition already recorded at `.11.4.2.7`; and the closure blind spot is a
+leaf rather than a lesson until its census says what shape it really has.
+
 ## 2026-09-21 — Three corrections from one question, and none of them were the code
 
 The director asked why `MEMORY.md` keeps hitting its cap when it is overwrite-only.

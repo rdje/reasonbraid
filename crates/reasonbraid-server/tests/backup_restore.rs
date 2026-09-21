@@ -9,7 +9,6 @@
 #[path = "support/mod.rs"]
 mod pg_test_support;
 
-use std::path::PathBuf;
 use std::process::Command;
 use std::sync::OnceLock;
 
@@ -110,8 +109,9 @@ async fn a_backup_restores_into_an_isolated_database() {
     // runs shared it, and a clock supplied the only uniqueness in the file
     // name.
     let run = uuid::Uuid::now_v7().simple().to_string();
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/backup-restore-controls")
+    let dir = reasonbraid_core::repository_root()
+        .expect("the tests run inside the repository")
+        .join("target/backup-restore-controls")
         .join(format!("exercise-{run}"));
     std::fs::create_dir_all(dir.parent().expect("the control parent")).expect("backup parent");
     std::fs::DirBuilder::new()

@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-21 — The server's eleven, and a correction to the number two commits ago (`SIGNOFF-REPAIR.11.2.1.2.2.1`)
+
+`REASONBRAID-REPAIR-0367`. The first half of the decomposition; the second is `.11.2.1.2.2.2`.
+
+- ✅ **`reasonbraid-server` contributes ZERO storage bases now** — its last 3 ambient `CARGO_TARGET_TMPDIR` readers and all 5 compile-time scratch bases anchored on `reasonbraid_core::repository_root()`. ⭐ Two of the six files already proved locality properly: `publisher.rs` walks `["target","publisher-tests"]` creating each component 0700 and asserting `symlink_metadata` and a matching device. **Only the anchor was ever wrong**, so every one of those assertions is byte-for-byte unchanged.
+- 🔴 **THE REAL FINDING IS A CORRECTION TO THIS BATCH'S OWN PREVIOUS COMMIT, AND THE DEFECT WAS IN MY INSTRUMENT.** `REPAIR-0366` published the population as **47 scratch / 12 source**. It is **46 / 13**. The census read a fixed six-line window, but a Rust TAIL expression carries no `;` — so `rb-bench`'s `default_corpus_dir`, which reads the tracked `bench/v1` corpus, absorbed the `target` literal from `default_out_dir` four lines below and was classified as scratch.
+- ⭐ **Re-derived rather than recomputed**: the repaired census was run against `21b44c2` in a throwaway git worktree, returning `59 expressions, 17 ambient + 29 compile scratch, 13 SOURCE, 0 unresolved`. The superseded 47/12 is left standing beside the correction at every site.
+- 🔴 **A SECOND parser defect, and it is the `SELF-TEST` family exactly**: the census flagged `crates/reasonbraid-core/src/paths.rs:3` — the helper's own doc comment, which quotes `env!("CARGO_MANIFEST_DIR")` in order to explain why not to use it. An instrument that cannot tell documentation of a rule from a breach of it will always flag the file that states the rule best.
+- ⛔ **Both were caught by the instrument's own `0 unresolved` requirement, not by review.** The `paths.rs` hit arrived as `UNRESOLVED: 1`, and chasing it is what exposed the window defect. A census permitted to report an unclassified remainder would have hidden both.
+- ✅ 89 tests, 0 failed: `41` node_channel, `2` node_replacement, `12` node_work, `26` policy, `1` backup_restore on a disposable cluster that stopped and removed itself, plus `7` publisher. 🔴 Strict lint refused the first version — `backup_restore.rs`'s `PathBuf` import became unused when its only consumer was the base replaced.
+- ⛔ No product code; all six files are test fixtures and no assertion changed.
+- promotion: declined — *repair the instrument before publishing its number* is `TOOLBOX.md`, already exercised in this batch at `.11.2.1.1`; *a gate cannot see its own documentation* is the `SELF-TEST` doctrine's founding shape, recorded at `.11.2.2`.
+
 ## 2026-09-21 — The branch every reader took to be the exception was the only one ever taken (`SIGNOFF-REPAIR.11.2.1.2.1`)
 
 `REASONBRAID-REPAIR-0366`. The parent's remaining clause: *audit ambient `CARGO_TARGET_TMPDIR` and compile-time root fallbacks*.

@@ -240,8 +240,12 @@ const DIGEST: &str = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 /// deleted: each still asserts the same transition, and now asserts it
 /// honestly. Returns the root to configure and the ids to declare.
 fn seeded_publication_repository(name: &str) -> (std::path::PathBuf, Vec<String>) {
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/policy-publish-tests")
+    // The root follows the PROCESS, not the build (§12): a compile-time
+    // CARGO_MANIFEST_DIR names the checkout this binary was BUILT in
+    // (SIGNOFF-REPAIR.11.2.1.2.2.1).
+    let root = reasonbraid_core::repository_root()
+        .expect("the tests run inside the repository")
+        .join("target/policy-publish-tests")
         .join(name);
     let _ = std::fs::remove_dir_all(&root);
     let repo_dir = root.join("live");
@@ -2219,8 +2223,10 @@ async fn the_publish_verb_drives_the_git_half() {
     // `.9.2.1.1`: the server declares WHERE publications may be written, and
     // the request names a location inside it. This control is re-pointed at a
     // configured root rather than deleted — it still asserts the Git half.
-    let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/policy-publish-tests");
+    // Derived at RUNTIME (§12) (SIGNOFF-REPAIR.11.2.1.2.2.1).
+    let repo_root = reasonbraid_core::repository_root()
+        .expect("the tests run inside the repository")
+        .join("target/policy-publish-tests");
     let repo_dir = repo_root.join("live");
     let not_a_repository = repo_root.join("not-a-repository");
     let _ = std::fs::remove_dir_all(&repo_root);
@@ -2570,8 +2576,10 @@ async fn the_publish_verb_stays_inside_the_configured_repository_root() {
     let _guard = guard().await;
     let Some(pool) = pool().await else { return };
 
-    let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/policy-publish-tests/containment");
+    // Derived at RUNTIME (§12) (SIGNOFF-REPAIR.11.2.1.2.2.1).
+    let fixture = reasonbraid_core::repository_root()
+        .expect("the tests run inside the repository")
+        .join("target/policy-publish-tests/containment");
     let root = fixture.join("root");
     let outside = fixture.join("outside");
     let _ = std::fs::remove_dir_all(&fixture);

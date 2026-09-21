@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-21 — A comment describing the entry format was read as an entry, and a gate believed it (`SIGNOFF-REPAIR.11.4.2.7.3.2.1`)
+
+`REASONBRAID-REPAIR-0360`. Found while checking the producer of a number before publishing it.
+
+- 🔴 **`scripts/check_doctrines.sh` prints `24 checks` from its own `${#DOCTRINES[@]}`; the shared `parse_doctrine_registry` returned **25**.** The extra entry was `('ID', 'relative/path/to/check.sh')`, lifted out of the enforcer's own format comment — *Each entry: `"ID|what it proves|relative/path/to/check.sh"`*. A description of the format read as an instance of it.
+- 🔴 **It reached a GATE, not just a printed number.** `ROUTE-CONTROL`'s `eval_doctrine` resolves a declared control through that parser, so a registry row declaring `doctrine=ID` would have been ACCEPTED — *"ID is registered, run by relative/path/to/check.sh"* — by the gate whose whole purpose is refusing a control nothing enforces.
+- ✅ **One predicate, at the enforcer's own semantics: a comment line is not an entry.** ⛔ Not a filter on the id `ID`, which would fix the instance and leave the class.
+- ✅ **25 → 24, matching `${#DOCTRINES[@]}`**; `doctrine=ID` now refused by name while `MEMORY-ARCH` still resolves to its check.
+- ⭐ **The old self-test could not have caught it: its fixture was two array entries and no comment.** The new one carries the enforcer's own format comment and an indented one, plus a second arm pinning that a trailing comment on a real entry still parses — third instance of `a-self-test-cannot-be-tidier-than-the-real-input`.
+- ✅ Falsified in situ: the pre-fix body reddens the new arm **by name** and prints both false entries it recovers; restored byte-identically (`cmp -s`).
+- ⚠️ **Not claimed: that any row ever declared `doctrine=ID`.** None does, and the 31 evaluated assertions are unchanged — a latent acceptance the gate would have granted, not a false verdict it did grant.
+
 ## 2026-09-21 — The closure gets a second anchor, and the thirteen destinations nobody had ever been asked to govern (`SIGNOFF-REPAIR.11.4.2.7.3.1`)
 
 `REASONBRAID-REPAIR-0359`. The repair the previous commit measured and deliberately did not ship.

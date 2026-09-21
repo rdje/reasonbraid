@@ -116,10 +116,23 @@ def parse_doctrine_registry(shell_text: str) -> list[tuple[str, str]]:
     conditional `DOCTRINES+=(…)` appends. ⛔ The second form is the one a
     plain grep missed during `DOC-0090`'s verification pass, which is why it
     is matched explicitly here rather than by scanning for quoted lines.
+
+    🔴 COMMENT LINES ARE SKIPPED, AND UNTIL `.11.4.2.7.3.2.1` THEY WERE NOT.
+    The enforcer documents its own format in a comment — *Each entry:
+    "ID|what it proves|relative/path/to/check.sh"* — and this function read that
+    DESCRIPTION as an INSTANCE, returning a 25th doctrine called `ID` against the
+    enforcer's own `${#DOCTRINES[@]}` of 24. ⛔ It was not merely a wrong count:
+    `census_route_controls.eval_doctrine` resolves a registry row's declared
+    control through here, so a row declaring `doctrine=ID` was ACCEPTED as
+    registered and enforced — a gate built to refuse controls nothing enforces,
+    confirming one that cannot exist.
     """
     found: list[tuple[str, str]] = []
-    for m in re.finditer(r'"([A-Z][A-Z0-9-]*)\|[^"]*\|([^"|]+)"', shell_text):
-        found.append((m.group(1), m.group(2).strip()))
+    for line in shell_text.splitlines():
+        if line.lstrip().startswith("#"):
+            continue
+        for m in re.finditer(r'"([A-Z][A-Z0-9-]*)\|[^"]*\|([^"|]+)"', line):
+            found.append((m.group(1), m.group(2).strip()))
     return found
 
 
@@ -338,11 +351,19 @@ def self_test() -> int:
           ["README.md", "MEMORY.md", "DEV_NOTES.md"])
     check("live docs absent → empty", parse_live_docs("no array here\n"), [])
 
-    check("doctrine registry both forms",
+    # ⛔ THE FIXTURE CARRIES A COMMENT DESCRIBING THE FORMAT, because the real
+    # file does and the tidier fixture is exactly why this went unseen
+    # (`docs/knowledge/a-self-test-cannot-be-tidier-than-the-real-input.md`).
+    check("doctrine registry both forms, comment not an entry",
           parse_doctrine_registry(
+              '# Universal registry. Each entry: "ID|what it proves|relative/path/to/check.sh"\n'
               'DOCTRINES=(\n  "A-ID|what it proves|scripts/a.sh"\n)\n'
+              '  # an indented comment: "C-ID|described|scripts/c.sh"\n'
               'DOCTRINES+=("B-ID|proves b|scripts/b.sh")\n'),
           [("A-ID", "scripts/a.sh"), ("B-ID", "scripts/b.sh")])
+    check("doctrine registry: a trailing comment on a real entry still parses",
+          parse_doctrine_registry('  "D-ID|proves d|scripts/d.sh"  # note\n'),
+          [("D-ID", "scripts/d.sh")])
 
     # shape: the three outcomes, each pinned in both directions.
     check("never lost a byte", shape_verdict(100, 0, 100, 100), "append_only")

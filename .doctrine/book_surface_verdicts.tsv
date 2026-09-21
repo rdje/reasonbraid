@@ -57,13 +57,13 @@ route-family	deployments	gap	2:/v1/deployments,/v1/deployments/{}/{}/receipt	SIG
 route-family	evaluations	gap	7:/v1/evaluations/calibrations,/v1/evaluations/corpora,/v1/evaluations/gates,/v1/evaluations/gates/{}/evaluations,/v1/evaluations/runs,/v1/evaluations/trials,/v1/evaluations/trials/{}/results	SIGNOFF-REPAIR.11.4.6.4	the whole evaluation harness — 7 routes, 0 documented, named by no chapter. The largest single-subject gap in the surface
 route-family	federation-agreements	gap	3:/v1/federation-agreements/accept,/v1/federation-agreements/revoke	SIGNOFF-REPAIR.11.4.6.6	the collection is documented and both state-changing verbs are not; accepting and revoking a federation agreement are exactly the acts a peer operator needs written down
 route-family	nodes	gap	14:/v1/nodes/enroll-tokens,/v1/nodes/inbox/prune,/v1/nodes/quarantine,/v1/nodes/replay,/v1/nodes/revoke	SIGNOFF-REPAIR.11.4.6.6	9 of 14 documented; the 5 missing are the node lifecycle verbs an operator uses under fault — quarantine, replay, revoke, prune and token issue
-route-family	policies	gap	3:/v1/policies/{}/{}/impact	SIGNOFF-REPAIR.11.4.6.3	the bundle and resolve are documented; the impact read belongs with the policy lifecycle chapter
-route-family	policy-decisions	gap	1:/v1/policy-decisions	SIGNOFF-REPAIR.11.4.6.3	one of the six policy-lifecycle families named by no chapter
-route-family	policy-drift	gap	1:/v1/policy-drift	SIGNOFF-REPAIR.11.4.6.3	one of the six policy-lifecycle families named by no chapter
-route-family	policy-outcomes	gap	1:/v1/policy-outcomes	SIGNOFF-REPAIR.11.4.6.3	one of the six policy-lifecycle families named by no chapter
-route-family	policy-projections	gap	1:/v1/policy-projections	SIGNOFF-REPAIR.11.4.6.3	one of the six policy-lifecycle families named by no chapter
-route-family	policy-proposals	gap	1:/v1/policy-proposals	SIGNOFF-REPAIR.11.4.6.3	one of the six policy-lifecycle families named by no chapter
-route-family	policy-reviews	gap	3:/v1/policy-reviews,/v1/policy-reviews/schedule,/v1/policy-reviews/{}/done	SIGNOFF-REPAIR.11.4.6.3	the sixth policy-lifecycle family and the largest of them: schedule, list and complete a review
+route-family	policies	covered	3:-	-	policy-lifecycle.md carries the impact map; the bundle and resolve are in authority.md and cli.md
+route-family	policy-decisions	covered	1:-	-	policy-lifecycle.md: the draft -> decided transition, the frozen electorate and the empty-electorate refusal
+route-family	policy-drift	covered	1:-	-	policy-lifecycle.md: the categorized desired/observed pair and the six-category vocabulary
+route-family	policy-outcomes	covered	1:-	-	policy-lifecycle.md: the six outcome kinds and the optional review trigger
+route-family	policy-projections	covered	1:-	-	policy-lifecycle.md: the rendered artifact, its digest, its declared unrepresentables and the pre-0082 fail-closed note
+route-family	policy-proposals	covered	1:-	-	policy-lifecycle.md: the draft stage, the policy-version and thread references
+route-family	policy-reviews	covered	3:-	-	policy-lifecycle.md: the idempotent schedule verb, the seven triggers and the due -> done transition
 route-family	routing	gap	4:/v1/routing/resolve,/v1/routing/rules	SIGNOFF-REPAIR.11.4.6.6	recommendations and resolutions are documented; the rules a site operator writes and the resolve verb that applies them are not
 route-family	threads	gap	7:/v1/threads/auto	SIGNOFF-REPAIR.11.4.6.7	6 of 7 documented; automatic thread initiation is a distinct entry point from POST /v1/threads and is named by no chapter
 route	/	covered	1:/	-	⭐ THE MACHINE UNDER-REPORTS THIS ONE: mechanically a bare mention, while docs/book/src/web-ui.md is an entire chapter about the read-only console rb-server serves at /. The judgement corrects the signal rather than repeating it

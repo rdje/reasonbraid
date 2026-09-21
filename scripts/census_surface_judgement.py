@@ -163,8 +163,16 @@ def route_witnesses() -> dict[tuple[str, str], str]:
         text = (ROOT / relative).read_text(encoding="utf-8", errors="replace")
         routes.extend(rd.product_routes(text))
     routes = sorted(set(routes))
-    book = "\n".join(p.read_text(encoding="utf-8", errors="replace")
-                     for p in sorted(BOOK_SRC.glob("*.md")))
+    # ⛔ TRACKED files, never a filesystem glob, and the difference is not
+    # cosmetic. `census_route_documentation.py` reads `git ls-files`, so a glob
+    # here would judge against a corpus its own classifier cannot see — and an
+    # UNTRACKED draft chapter would count as documentation, flipping a `gap` to
+    # `covered` on a file a fresh clone does not have. Caught while writing the
+    # first chapter this table demanded (`SIGNOFF-REPAIR.11.4.6.3`): seven rows
+    # went green against a chapter that was not yet in the index. `git ls-files`
+    # includes the index, which is the right corpus for a pre-commit gate.
+    book = "\n".join((ROOT / relative).read_text(encoding="utf-8", errors="replace")
+                     for relative in git("ls-files", "--", "docs/book/src/*.md").split())
     described = set(rd.classify(routes, book)["described"])
 
     grouped: dict[tuple[str, str], list[str]] = {}
@@ -213,8 +221,16 @@ def quote_holds(row: dict[str, str], book_src: Path | None = None) -> str | None
     if "::" not in witness:
         return "witness is not `<chapter>::<verbatim quote>`"
     chapter, quote = witness.split("::", 1)
-    path = (book_src or BOOK_SRC) / chapter
-    if not path.is_file():
+    root = book_src or BOOK_SRC
+    path = root / chapter
+    # Same corpus rule as `route_witnesses`: a chapter that is not tracked is
+    # not in the book. `book_src` is the self-test's own directory, which is
+    # deliberately outside git, so the tracked test applies only to the real one.
+    if root == BOOK_SRC:
+        tracked = set(git("ls-files", "--", "docs/book/src/*.md").split())
+        if f"docs/book/src/{chapter}" not in tracked:
+            return f"the chapter it cites is not tracked: {chapter}"
+    elif not path.is_file():
         return f"the chapter it cites is gone: {chapter}"
     if quote not in path.read_text(encoding="utf-8", errors="replace"):
         return f"the quoted sentence is no longer in {chapter} verbatim"

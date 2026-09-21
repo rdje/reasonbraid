@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-21 — The precision hazard has a population, and a gate on it would fire on all forty-three (`SIGNOFF-REPAIR.11.31`)
+
+`REASONBRAID-DOC-0105`. The census the leaf ordered before any gate.
+
+- ⭐ **69 timestamp write sites across 127 product Rust files, every one classified and none left over**: `db_generated` **16** · `read_back` **3** · **`bound_unread` 43** · `other_store` 7 · `unresolved` **0** · `unknown_column` **0**. `scripts/census_bound_instants.py`, 19 self-test controls.
+- ⭐ **The mapping is exact rather than heuristic**, which is what makes the 43 worth adjudicating: sqlx binds positionally, so the census resolves `column → $N → the Nth .bind(…)` and prints the Rust expression each column receives. A census that only noticed *this statement mentions a time column and also binds things* would report a correct `now()` site and a defective one identically.
+- ⭐ **The column type is DERIVED from the schema, not guessed from the name — a correction to this census's own first version.** A name pattern called `issued_by <- &intent.actor`, `issued_under <- &record_id` and `from_region <- from.as_str()` timestamp columns: **4 of 44 candidates that are TEXT**. The 82 migrations declare every column's type and are tracked here, so the authority was available. Reading it declares **110 timestamp columns** and the four vanish.
+- 🔴 **Three parser defects were found by the corpus, each presenting itself as a finding about the code**: a multi-clause `ALTER TABLE` was read only to its first `ADD COLUMN` (so two `TIMESTAMPTZ` columns were invisible); a greedy `VALUES (…)` swallowed `ON CONFLICT (event_id) DO NOTHING`; and `re.match(text, pos)` with a `\A` anchor ignores `pos`, so the bind chain returned nothing. ⛔ Each repaired in the parser, none worked around with an exception for the file that exposed it.
+- ⭐ **The node's SQLite journal is classified as a different store**, derived from the driver the file uses rather than its crate name — the hazard is PostgreSQL `TIMESTAMPTZ` truncation, so another store is another question rather than a gap in this one.
+- ⛔ **A gate on the candidate class is already refuted by the census**: it fires on **43 of 43**, the shape this repository has rejected three times (87%, 93%, 71%). Mechanizability turns entirely on the ESCAPE question — *does the Rust value also reach a caller or get compared against the stored column?* — which `.11.31.1` owes.
+- ⚠️ **Not claimed: that the 43 contain a second defect.** None has been adjudicated; `bound_unread` is a candidate and the instrument says so in its own output.
+
 ## 2026-09-21 — The backtick rule becomes a gate, and the narrowing it inherited was compensating for a parser (`SIGNOFF-REPAIR.11.33`)
 
 `REASONBRAID-REPAIR-0362`. The class this project had repaired by hand three times now has a check.

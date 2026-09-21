@@ -23,9 +23,13 @@ use serde_json::{json, Value};
 
 /// A unique journal path under the repo's build dir (same volume as the repo).
 fn journal_path(name: &str) -> PathBuf {
-    let base = std::env::var_os("CARGO_TARGET_TMPDIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target"));
+    // The base follows the PROCESS, not the build (§12). `CARGO_TARGET_TMPDIR`
+    // was measured UNSET in this project's runs, so the compile-time fallback
+    // this replaces was the live path, baking one checkout's absolute path
+    // into the binary (SIGNOFF-REPAIR.11.2.1.2.1).
+    let base = reasonbraid_core::repository_root()
+        .expect("the tests run inside the repository")
+        .join("target");
     let unique = uuid::Uuid::now_v7();
     let dir = base.join("journal-tests").join(format!("{name}-{unique}"));
     std::fs::create_dir_all(dir.parent().expect("the fixture parent")).unwrap();

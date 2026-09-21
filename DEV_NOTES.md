@@ -1,5 +1,17 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — The fallback was the only path, and it resolves at compile time (`SIGNOFF-REPAIR.11.2.1.2.1`)
+
+`REASONBRAID-REPAIR-0366`.
+
+- 🔴 **`CARGO_TARGET_TMPDIR` is UNSET here**, measured three ways — a cargo target-runner probe, the same with `CARGO_BUILD_BUILD_DIR` removed, and runner-free from `target/tmp` being empty since 2026-09-07 while today's integration run wrote to the fallback at 16:13. So the branch written as the exception at 17 sites was the only one ever taken, and a source comment asserted the opposite as fact.
+- 🔴 **`env!("CARGO_MANIFEST_DIR")` resolves at COMPILE time**, so the checkout's absolute path is baked into the artifact — §12's *the repo root can be moved, even onto a different filesystem*. Confirmed with `strings`, not inferred: the pre-repair `journal_cli` binary carries `'../../target'=1  CARGO_TARGET_TMPDIR=2  abs-crate-path=1`, and `file!()` in a sibling binary is relative, so those strings are storage bases rather than debug information.
+- 🔴 **The opening leaf's population was wrong and it was mine**: 47, not 17. The seventeen were only the ambient readers.
+- ⭐ **The 12 SOURCE uses are why the rule is about the ARGUMENT, not the call.** A compile-time manifest dir is CORRECT for a golden, a corpus or the migrations, because those travel with the crate. A pattern matching the macro would condemn twelve correct sites and teach bypass.
+- ✅ Three predicates for one question became one: `reasonbraid_core::repository_root`, with `project_storage::repository_root()` delegating. The rebuilt binary measures 0, 0 and 0.
+- 🔴 The doctrine gate refused the first version for naming two children before they existed. Both exist now.
+- promotion: declined — §12's *derive the root at runtime* is already the director's standing policy and is already stated in `project_storage.rs`'s own header, which is the comment this leaf moved rather than invented.
+
 ## 2026-09-21 — A name proposed ownership that only creation can prove (`SIGNOFF-REPAIR.11.2.1.1`)
 
 `REASONBRAID-REPAIR-0365`. The parent's *per-family bounded children*, with the census run first.

@@ -16,9 +16,13 @@ use reasonbraid_node::{CommandInput, Journal, LocalBudget, Node, Worker};
 use serde_json::{json, Value};
 
 fn journal_path(name: &str) -> PathBuf {
-    let base = std::env::var_os("CARGO_TARGET_TMPDIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target"));
+    // The base follows the PROCESS, not the build (§12). `CARGO_TARGET_TMPDIR`
+    // was measured UNSET in this project's runs, so the compile-time fallback
+    // this replaces was the live path, baking one checkout's absolute path
+    // into the binary (SIGNOFF-REPAIR.11.2.1.2.1).
+    let base = reasonbraid_core::repository_root()
+        .expect("the tests run inside the repository")
+        .join("target");
     let unique = uuid::Uuid::now_v7();
     let dir = base
         .join("dead-letter-tests")

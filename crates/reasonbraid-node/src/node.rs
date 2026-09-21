@@ -370,11 +370,13 @@ mod rotated_identity_survives_restart {
     /// A fixture directory on the repository's own volume (§13), named by
     /// exclusive creation rather than by a clock.
     fn fixture_dir(name: &str) -> std::path::PathBuf {
-        let base = std::env::var_os("CARGO_TARGET_TMPDIR")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| {
-                std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target")
-            });
+        // The base follows the PROCESS, not the build (§12). `CARGO_TARGET_TMPDIR`
+        // was measured UNSET in this project's runs, so the compile-time fallback
+        // this replaces was the live path, baking one checkout's absolute path
+        // into the binary (SIGNOFF-REPAIR.11.2.1.2.1).
+        let base = reasonbraid_core::repository_root()
+            .expect("the tests run inside the repository")
+            .join("target");
         let dir = base
             .join("identity-persistence")
             .join(format!("{name}-{}", uuid::Uuid::now_v7()));

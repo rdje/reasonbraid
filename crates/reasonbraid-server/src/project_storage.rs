@@ -24,21 +24,13 @@ pub(crate) const MAX_CANDIDATES: usize = 64;
 /// Nothing persists an absolute path, so moving the checkout changes these
 /// locations without an edit.
 ///
-/// The test is deliberately stricter than a `Cargo.toml` + `migrations` pair:
-/// `crates/reasonbraid-node` satisfies that pair, so a process whose working
-/// directory sat there would stop at the crate and place private storage
-/// inside it. `rust-toolchain.toml` exists only at the real root.
+/// The predicate — and the reason it is stricter than a `Cargo.toml` +
+/// `migrations` pair — now lives in `reasonbraid_core::repository_root`, which
+/// is where every crate can reach it. This stays as the name the server's own
+/// storage has always called, and delegates rather than keeping a second copy
+/// of a predicate nothing derived (`SIGNOFF-REPAIR.11.2.1.2.1`).
 pub fn repository_root() -> io::Result<PathBuf> {
-    let current = std::env::current_dir()?;
-    current
-        .ancestors()
-        .find(|path| {
-            path.join("Cargo.toml").is_file()
-                && path.join("migrations").is_dir()
-                && path.join("rust-toolchain.toml").is_file()
-        })
-        .map(Path::to_path_buf)
-        .ok_or_else(|| io::Error::other("run this from within the repository"))
+    reasonbraid_core::repository_root()
 }
 
 /// `<root>/.project-data/<area>`, created 0700. The parents are checked

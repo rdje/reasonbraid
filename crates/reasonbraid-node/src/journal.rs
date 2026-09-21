@@ -1403,10 +1403,13 @@ mod tests {
 
     /// A unique journal path under the repo's `target/` (same volume as the repo, per
     /// the data-locality policy; `target/` is gitignored and cleaned with `cargo clean`).
+    /// The root is derived at RUNTIME (§12), so moving the checkout moves the
+    /// fixtures with it (`SIGNOFF-REPAIR.11.2.1.2.1`).
     fn test_path(name: &str) -> PathBuf {
         let unique = uuid::Uuid::now_v7();
-        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../target/journal-tests")
+        let dir = reasonbraid_core::repository_root()
+            .expect("the tests run inside the repository")
+            .join("target/journal-tests")
             .join(format!("{name}-{unique}"));
         std::fs::create_dir_all(dir.parent().expect("the fixture parent")).unwrap();
         // Exclusive: an existing directory belongs to another fixture or an
@@ -1852,8 +1855,9 @@ mod tests {
     /// is not a journal, and the read-only handle refuses a file with no meta.
     #[tokio::test]
     async fn garbage_and_missing_files_fail_cleanly() {
-        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../target/journal-tests")
+        let dir = reasonbraid_core::repository_root()
+            .expect("the tests run inside the repository")
+            .join("target/journal-tests")
             .join(format!("garbage-{}", uuid::Uuid::now_v7()));
         std::fs::create_dir_all(dir.parent().expect("the fixture parent")).unwrap();
         // Exclusive: an existing directory belongs to another fixture or an

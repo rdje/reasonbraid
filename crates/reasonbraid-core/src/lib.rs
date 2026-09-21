@@ -39,6 +39,7 @@ mod budget;
 mod envelope;
 mod error;
 mod id;
+mod paths;
 mod retry;
 mod state;
 
@@ -65,6 +66,7 @@ pub use id::{
     ProviderAttempt, ProviderAttemptId, Request, RequestId, Run, RunId, Tenant, TenantId, Thread,
     ThreadId,
 };
+pub use paths::repository_root;
 pub use retry::{retry_decision, RetryVerdict, MAX_DISPATCH_ATTEMPTS};
 pub use state::{
     ParticipationState, ParticipationTransition, ProviderAttemptState, ProviderAttemptTransition,

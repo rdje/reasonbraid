@@ -1,5 +1,44 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — Three controls, two of them wrong, and that was the productive part
+
+Shipping the anchor took an hour. Getting the controls to measure the anchor
+rather than something adjacent took the rest, and every one of the three defects
+was found by a control failing rather than by reading the code.
+
+The falsification arm went first. It applies today's rule to a past tree and asks
+whether the instances that were found by hand would have been refused. Written
+naively, it required both instances to be refused at every revision it was
+pointed at — so it reported a failure at the second commit, where the first
+instance already had a row added a lane earlier and not refusing it is the rule
+behaving correctly. The arm was measuring the calendar. Each instance is now
+scored at its own commit, and the other is printed as context with its real
+state, which is also more useful to read.
+
+The second was worse because it was silent until the change landed. The closure
+verification surveyed HEAD to build its prediction and then perturbed the
+CHECKOUT to take its measurement. Those are the same tree right up until you are
+in the middle of changing the gate, at which point the arm confidently reports
+that the gate disagrees with a closure that no longer exists. The fix is one
+word, and the reason it matters is that the gate judges the checkout: a census
+whose only answer is HEAD is answering a different question from the check it is
+about.
+
+The third is not a defect so much as a design question the run forced. The arm
+that demonstrates the original finding — a row outside the closure can be deleted
+without the gate noticing — has no subject once the anchor makes every row
+reachable. Deleting it would lose the demonstration; leaving it to fail would be
+a control that goes red when the defect is fixed, which this lane repaired an
+instance of three commits ago. It now reports "no subject: that is the repair"
+and names the mode where the demonstration still lives.
+
+Separately, one measurement corrected a sentence I wrote yesterday. Reporting
+that the enforcement doctrine document is bounded by nothing is true, and the
+emphasis implied the unboundedness was the anomaly. Probing its three spine peers
+took four minutes and returned the same verdict for all of them, two of which
+have had rows for months. The missing row was the defect; the missing bound is a
+property of the class, and it now has a leaf instead of an implication.
+
 ## 2026-09-21 — A rule declined on a count nobody took
 
 The leaf that opened this census had already written the conclusion into its own

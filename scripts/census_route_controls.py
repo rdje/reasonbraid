@@ -230,6 +230,57 @@ ADJUDICATION: dict[str, tuple[Claim, ...]] = {
     "knowledge-map/": (
         Claim("doctrine", "KNOWLEDGE-MAP doctrine checks sync", "KNOWLEDGE-MAP"),
     ),
+    # ── the second anchor's rows (`SIGNOFF-REPAIR.11.4.2.7.3.1`) ──────────────
+    # Thirteen destinations that had no row for the life of the project, because
+    # all three original anchors start at what `README.md` reaches. They are
+    # adjudicated here on the same terms as every row above: a clause quoted
+    # verbatim where the sentence makes a decidable claim, and an empty tuple
+    # where it does not. ⛔ Six of the thirteen are NARRATIVE, and that is a
+    # positive classification — writing a claim to fill the field is the defect
+    # this double-entry exists to catch.
+    "MEMORY.md": (
+        Claim("doctrine", "the MEMORY-ARCH doctrine enforces the line and byte caps",
+              "MEMORY-ARCH"),
+    ),
+    # ⚠️ ADJUDICATED NARRATIVE, AND THE SENTENCE SAYS WHY RATHER THAN STAYING
+    # SILENT. Its control is an ADMISSION — nothing bounds this file's size —
+    # which is not a claim a machine can evaluate, and the measurement behind it
+    # is that its three spine peers are unbounded too. Declaring a ceiling to
+    # give the field something to hold would be a threshold nobody derived
+    # (`.11.6`), so the question is owned by a leaf instead.
+    "DOCTRINE_ENFORCEMENT.md": (),
+    ".doctrine/": (),
+    "docs/knowledge/": (
+        Claim("doctrine",
+              "LESSON-PROMOTION requires a new dated `DEV_NOTES.md` lesson to land here",
+              "LESSON-PROMOTION"),
+        Claim("doctrine",
+              "the KNOWLEDGE-MAP doctrine derives `KNOWLEDGE_MAP.md` from these sources",
+              "KNOWLEDGE-MAP"),
+        Claim("index_entry",
+              "derives `KNOWLEDGE_MAP.md` from these sources and checks it in sync",
+              "KNOWLEDGE_MAP.md"),
+    ),
+    "docs/runbooks/": (),
+    "docs/evidence/": (
+        Claim("index_entry",
+              "one evidence bundle per file plus a `docs/evidence/INDEX.md` entry",
+              "docs/evidence/INDEX.md"),
+    ),
+    "spec/": (
+        Claim("index_entry", "indexed by `spec/README.md`", "spec/README.md"),
+    ),
+    "docs/TASK_TREE_README.md": (),
+    "docs/ci.md": (),
+    "docs/compatibility-matrix.md": (
+        Claim("doctrine", "which the PROJECT-SPECIFIC doctrine runs every commit",
+              "PROJECT-SPECIFIC"),
+    ),
+    "docs/risks.md": (),
+    "docs/parking-lot.md": (),
+    "deploy/": (
+        Claim("build_target", "the binaries `make release` produces", "release"),
+    ),
 }
 
 

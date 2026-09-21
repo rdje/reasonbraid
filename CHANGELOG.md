@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-21 — The closure gets a second anchor, and the thirteen destinations nobody had ever been asked to govern (`SIGNOFF-REPAIR.11.4.2.7.3.1`)
+
+`REASONBRAID-REPAIR-0359`. The repair the previous commit measured and deliberately did not ship.
+
+- ✅ **Every tracked Markdown document must now end at a governed row, and the instrument that found the defect measures the repair**: rows the closure can never name **3 → 0**, undeclared documents **90 → 0**, closure tokens 21 → 437, proposing 433 of 434. The one remaining document is `README.md`, reported as `excluded_subject` rather than as a gap.
+- ⭐ **Anchor C on a routing fact, not the arithmetic.** `LESSON-PROMOTION` REQUIRES a new dated `DEV_NOTES.md` lesson to be promoted into `docs/knowledge/` — a gate moving pressure into a collection with no lifecycle, owner or ceiling, every time a lesson lands. That is precisely what the closure exists to forbid.
+- ✅ **Thirteen rows, six of them adjudicated NARRATIVE — a positive classification, not an omission.** `ROUTE-CONTROL` evaluates **31 declared assertions across 34 rows** (was 23 across 21), all holding; every index claim was checked against the real index (9 of 9, 4 of 4, 50 of 50) before it was written.
+- 🔴 **The previous commit's emphasis on `DOCTRINE_ENFORCEMENT.md` is corrected rather than left standing.** It is unbounded — and so are `TOOLBOX.md`, `COMMIT.md` and `MEMORY_ARCHITECTURE.md`, all three of which HAVE rows. **Four of four spine documents accept 200,000 bytes with a green enforcer**, so the defect that leaf found was the missing ROW; the missing BOUND is a property of the class, opened as `.11.4.2.7.3.2` rather than answered with an invented threshold.
+- ⭐ **The transitive leg refused my own first draft, correctly**: a control sentence naming the enforcing script demanded a governed row for the SCRIPT. It is a mechanism, not a destination — the path moved to the assertion field, which that leg does not read, and the row says so.
+- ✅ **Falsified by putting the shipped rule back against the trees that hid the instances.** `--anchor-check` applies the working tree's anchor to a past revision's file list AND that revision's registry: at `386aa64^` it refuses 88 destinations including `DEV_NOTES.md` by name; at `8aadac3`, 89 including `MEMORY_ARCHITECTURE.md`.
+- 🔴 **Two defects in my own controls, both caught by the controls.** The falsification arm first required both instances to be refused at EVERY revision, so it failed where one had already been routed — scoring the calendar rather than the rule. And `--verify-closure` surveyed `HEAD` while probing the CHECKOUT, so prediction and measurement came from different trees; both it and `--probe-bounds` now survey the working tree, which is what the gate judges.
+- ⭐ **Arm B retires itself and says so instead of refusing** — with every row reachable there is no row outside the closure to delete, and that absence is the repair. A control that failed when the defect was fixed would be `.11.27`'s shape again.
+- ⛔ Cost measured: the guard goes **0.06 s → 0.23 s** over three runs each, +0.36 % of a ~47 s enforcer. No cap, threshold or ceiling raised; `README.md` untouched and excluded by derivation rather than by a name written into the census.
+
 ## 2026-09-21 — The closure is anchored at one link graph, and the rule it declined costs fourteen rows (`SIGNOFF-REPAIR.11.4.2.7.3`)
 
 `REASONBRAID-DOC-0100`. The census the previous commit opened on its second measured instance, and it found a third of each.

@@ -99,12 +99,23 @@ INSTANCES = (
 DEFINITION_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\(\)")
 
 # The shell functions that MAKE the closure, in the guard's own source.
+# `extract_routes` is the shared filter the anchors pipe through, not an anchor.
+HELPER_FUNCTIONS = ("extract_routes",)
 ANCHOR_FUNCTIONS = (
-    "extract_routes",
     "routes_from_readme",
     "routes_from_hint",
     "routes_from_controls",
+    "routes_from_tracked_markdown",
 )
+
+# ⛔ ONE ANCHOR CANNOT BE RUN AS-IS AT A PAST REVISION, and substituting it is
+# the honest repair rather than a silent one. `routes_from_tracked_markdown`
+# lists the WORKING INDEX (`git ls-files`), which answers for the checkout and
+# not for `--as-of`'s revision — so a historical run would have mixed today's
+# file list into an old tree's closure. The census supplies that leg from its own
+# revision-aware `tracked_markdown`, and `--verify-closure` proves the two agree
+# at `HEAD`, where both questions have the same answer.
+LISTING_ANCHOR = "routes_from_tracked_markdown"
 
 
 def repo_root() -> Path:
@@ -148,6 +159,19 @@ def function_span(shell_text: str, name: str) -> str | None:
     return None
 
 
+def landing_name(guard_text: str) -> str:
+    """The guard's `TARGET` — the one document its second anchor excludes.
+
+    ⛔ DERIVED, NEVER NAMED HERE. The landing page is excluded because it is the
+    guard's SUBJECT and its ceiling is the guard's own line and byte caps; a
+    registry row would be a second authority for one cap. A census that hardcoded
+    `README.md` would keep agreeing with the guard right up until the guard's
+    own assignment changed, which is the drift this project keeps repairing.
+    """
+    m = re.search(r'^TARGET="([^"]+)"', guard_text, re.MULTILINE)
+    return m.group(1) if m else ""
+
+
 def closure_reach(path: str, tokens: set[str]) -> bool:
     """Would the closure ever PROPOSE this path as a destination?
 
@@ -160,7 +184,8 @@ def closure_reach(path: str, tokens: set[str]) -> bool:
     return any(t.endswith("/") and path.startswith(t) for t in tokens)
 
 
-def governance_verdict(has_row: bool, row_reachable: bool, path_reachable: bool) -> str:
+def governance_verdict(has_row: bool, row_reachable: bool, path_reachable: bool,
+                       excluded: bool = False) -> str:
     """The four states a tracked document can be in, named rather than counted.
 
     `governed_by_hand` is the defect class this leaf is about: the row exists
@@ -176,6 +201,12 @@ def governance_verdict(has_row: bool, row_reachable: bool, path_reachable: bool)
     row is reachable through the two it does — a governed collection misread as
     thirty-two hand-placed rows.
     """
+    if excluded:
+        # ⛔ NOT A GAP, AND SAYING SO IS THE POINT. The guard's second anchor
+        # excludes its own subject by name, so reporting the landing page as
+        # `invisible` would make this census carry one permanent false finding —
+        # the shape that teaches a reader to skip the last line of the report.
+        return "excluded_subject"
     if has_row:
         return "governed_reachable" if row_reachable else "governed_by_hand"
     return "unrouted_reachable" if path_reachable else "invisible"
@@ -212,7 +243,16 @@ def anchor_verdict(anchor: set[str], instance: str) -> str:
 
 # ── the closure, run out of the guard's own source ─────────────────────────────
 
+# The revision that means "the checkout, as the gate sees it". The gate judges the
+# WORKING TREE, so a census whose only answer is `HEAD` answers a different
+# question from the check it is about — visibly so while a change is staged.
+WORKTREE = "WORKTREE"
+
+
 def git_show(root: Path, rev: str, path: str) -> str | None:
+    if rev == WORKTREE:
+        target = root / path
+        return target.read_text(errors="replace") if target.is_file() else None
     r = subprocess.run(["git", "show", f"{rev}:{path}"],
                        cwd=root, capture_output=True, text=True)
     return r.stdout if r.returncode == 0 else None
@@ -225,19 +265,27 @@ def tracked_markdown(root: Path, rev: str) -> list[str]:
     index, so a census that used it at HEAD and `ls-tree` at a past revision
     would be comparing two different questions. `ls-tree -r` answers both.
     """
-    r = subprocess.run(["git", "ls-tree", "-r", "--name-only", rev],
-                       cwd=root, capture_output=True, text=True, check=True)
+    cmd = (["git", "ls-files"] if rev == WORKTREE
+           else ["git", "ls-tree", "-r", "--name-only", rev])
+    r = subprocess.run(cmd, cwd=root, capture_output=True, text=True, check=True)
     return sorted(p for p in r.stdout.splitlines() if p.endswith(".md"))
 
 
-def closure_tokens(root: Path, rev: str) -> tuple[set[str], list[str]]:
+def closure_tokens(root: Path, rev: str,
+                   guard_rev: str | None = None) -> tuple[set[str], list[str]]:
     """Run the guard's OWN anchor pipeline over the tree at `rev`.
 
-    Returns (tokens, the anchor functions that were found). The guard's four
+    Returns (tokens, the anchor functions that were found). The guard's
     definitions are lifted verbatim; `"$0"` becomes the guard's own path because
     the hint leg reads the guard file and this driver is not that file.
+
+    ⭐ `guard_rev` SEPARATES THE RULE FROM THE TREE IT JUDGES, and that is the
+    whole falsification. Asking a past commit's own guard about a past commit's
+    tree only re-reports history; asking TODAY'S guard about that tree answers
+    the question an acceptance criterion actually poses — *would the anchor we
+    are shipping have caught this?*
     """
-    guard_text = git_show(root, rev, GUARD)
+    guard_text = git_show(root, guard_rev or rev, GUARD)
     landing_text = git_show(root, rev, LANDING)
     registry_text = git_show(root, rev, REGISTRY)
     if guard_text is None or landing_text is None or registry_text is None:
@@ -250,19 +298,21 @@ def closure_tokens(root: Path, rev: str) -> tuple[set[str], list[str]]:
     (scratch / "landing.md").write_text(landing_text)
     (scratch / "registry.txt").write_text(registry_text)
 
-    spans, found = [], []
-    for name in ANCHOR_FUNCTIONS:
+    spans, found, called = [], [], []
+    for name in HELPER_FUNCTIONS + ANCHOR_FUNCTIONS:
         span = function_span(guard_text, name)
-        if span is not None:
-            spans.append(span.replace('"$0"', '"$GUARD"'))
-            found.append(name)
+        if span is None:
+            continue
+        spans.append(span.replace('"$0"', '"$GUARD"'))
+        found.append(name)
+        if name in ANCHOR_FUNCTIONS and name != LISTING_ANCHOR:
+            called.append(name)
 
     driver = "\n".join([
         "set -uo pipefail",
         'GUARD="$1"; TARGET="$2"; INVENTORY="$3"',
         *spans,
-        "{ routes_from_readme; routes_from_hint; routes_from_controls; } "
-        "| LC_ALL=C sort -u",
+        "{ " + "; ".join(called) + "; } | LC_ALL=C sort -u",
     ])
     driver_file = scratch / "closure_driver.sh"
     driver_file.write_text(driver + "\n")
@@ -272,7 +322,10 @@ def closure_tokens(root: Path, rev: str) -> tuple[set[str], list[str]]:
          str(scratch / "landing.md"), str(scratch / "registry.txt")],
         cwd=root, capture_output=True, text=True,
     )
-    return set(r.stdout.split()), found
+    tokens = set(r.stdout.split())
+    if LISTING_ANCHOR in found:
+        tokens |= set(tracked_markdown(root, rev)) - {landing_name(guard_text)}
+    return tokens, found
 
 
 def bootstrap_tokens(root: Path, rev: str) -> set[str]:
@@ -417,6 +470,14 @@ def self_test() -> int:
     # The collection member that the collapsed version got wrong: its own path is
     # unreachable, its row's path is not, and it is governed.
     check("verdict/member", governance_verdict(True, True, False), "governed_reachable")
+    # The guard's own subject: no row, unreachable, and NOT a gap.
+    check("verdict/excluded", governance_verdict(False, False, False, excluded=True),
+          "excluded_subject")
+    check("verdict/excluded-wins", governance_verdict(True, True, True, excluded=True),
+          "excluded_subject")
+    # landing_name is derived from the guard's own assignment.
+    check("landing", landing_name('X=1\nTARGET="README.md"\nY=2'), "README.md")
+    check("landing/absent", landing_name("no target here"), "")
 
     # minimal_cover: a wholly-ungoverned directory collapses to ONE row; a mixed
     # directory does not collapse at all; a root file is its own terminal.
@@ -468,14 +529,15 @@ class Survey:
     verdicts: dict[str, str]
 
 
-def survey(root: Path, rev: str) -> Survey:
+def survey(root: Path, rev: str, guard_rev: str | None = None) -> Survey:
     paths = tracked_markdown(root, rev)
-    tokens, found = closure_tokens(root, rev)
+    tokens, found = closure_tokens(root, rev, guard_rev)
     registry_text = git_show(root, rev, REGISTRY) or ""
     rows = parse_route_registry(registry_text)
     def row_reachable(row) -> bool:
         return any(t == row.path or t.startswith(row.path) for t in tokens)
 
+    excluded = landing_name(git_show(root, guard_rev or rev, GUARD) or "")
     verdicts = {}
     for p in paths:
         row = governing_row(p, rows)
@@ -483,6 +545,7 @@ def survey(root: Path, rev: str) -> Survey:
             row is not None,
             row is not None and row_reachable(row),
             closure_reach(p, tokens),
+            excluded=(p == excluded and LISTING_ANCHOR in found),
         )
     return Survey(rev, paths, tokens, found, rows, verdicts)
 
@@ -498,6 +561,8 @@ def resolve(root: Path, rev: str) -> str:
     quoted from it ages the moment that commit lands unless the revision travels
     with it (`docs/knowledge/a-metric-scoped-to-one-record-ages-silently.md`).
     """
+    if rev == WORKTREE:
+        return "the working tree (what the gate judges)"
     r = subprocess.run(["git", "rev-parse", "--short", rev],
                        cwd=root, capture_output=True, text=True)
     return f"{rev} ({r.stdout.strip()})" if r.returncode == 0 else rev
@@ -511,7 +576,8 @@ def report(root: Path, rev: str) -> int:
     anchored = resolve(root, rev)
 
     counts = {k: sum(1 for v in s.verdicts.values() if v == k) for k in
-              ("governed_reachable", "governed_by_hand", "unrouted_reachable", "invisible")}
+              ("governed_reachable", "governed_by_hand", "unrouted_reachable",
+               "invisible", "excluded_subject")}
     ungoverned = {p for p, v in s.verdicts.items() if v in ("invisible", "unrouted_reachable")}
     cover = minimal_cover(s.paths, ungoverned)
     root_level = [p for p in s.paths if "/" not in p]
@@ -528,6 +594,7 @@ def report(root: Path, rev: str) -> int:
         ("governed_by_hand", "row, and the closure CANNOT name it"),
         ("unrouted_reachable", "no row, closure names it (the gate is red)"),
         ("invisible", "no row, and the closure CANNOT name it"),
+        ("excluded_subject", "the guard's own subject, excluded by its anchor"),
     ):
         print(f"  {key:<20} {counts[key]:>4}   {label}")
     print()
@@ -555,7 +622,8 @@ def report(root: Path, rev: str) -> int:
     for path in root_level:
         row = governing_row(path, s.rows)
         mark = {"governed_reachable": "  ", "governed_by_hand": "🔴",
-                "unrouted_reachable": "⚠️", "invisible": "🔴"}[s.verdicts[path]]
+                "unrouted_reachable": "⚠️", "invisible": "🔴",
+                "excluded_subject": "⚪"}[s.verdicts[path]]
         print(f"  {mark} {path:<28} {s.verdicts[path]:<20} "
               f"row={'yes' if row else 'NONE'}")
     print()
@@ -579,9 +647,66 @@ def report(root: Path, rev: str) -> int:
     return 0
 
 
+def anchor_check(root: Path, rev: str) -> int:
+    """Today's anchor against a past tree: what would it have refused there?
+
+    ⛔ THE REGISTRY IS THAT REVISION'S TOO. Scoring the new rule against an old
+    file list but today's rows would credit the anchor with rows this repository
+    only has because somebody noticed by hand — the exact thing it exists to make
+    unnecessary. Both halves come from `rev`; only the RULE comes from here.
+    """
+    s = survey(root, rev, guard_rev=WORKTREE)
+    if LISTING_ANCHOR not in s.anchors_found:
+        print(f"REFUSED: the working tree's guard has no {LISTING_ANCHOR} anchor to apply.",
+              file=sys.stderr)
+        return 2
+    refused = sorted(p for p, v in s.verdicts.items() if v in ("invisible", "unrouted_reachable"))
+    print(f"=== today's anchor against {resolve(root, rev)} — "
+          f"{len(s.paths)} tracked documents, {len(s.rows)} registry rows at that commit ===")
+    print(f"  the anchor would refuse {len(refused)} destination(s) "
+          f"({len(minimal_cover(s.paths, set(refused)))} covering terminals)")
+    # 🔴 SCORED AT ITS OWN REVISION, and the first version of this arm was not.
+    # It required BOTH instances to be refused at EVERY revision, so it reported
+    # a failure at `8aadac3` — where `DEV_NOTES.md` already had a row, added one
+    # lane earlier, and not refusing it is the anchor behaving correctly. A
+    # control that cannot tell "the rule missed it" from "there was nothing to
+    # miss" is measuring the calendar, not the rule.
+    required = [(path, owner) for path, at, owner in INSTANCES if at == rev]
+    context = [(path, at, owner) for path, at, owner in INSTANCES if at != rev]
+    for path, owner in required:
+        hit = path in refused
+        print(f"  {'✅' if hit else '⛔'} {path:<28} "
+              f"{'REFUSED by name' if hit else 'NOT refused'} — SCORED "
+              f"(ungoverned at this commit; routed by hand at {owner})")
+    for path, at, owner in context:
+        state = "refused" if path in refused else "already routed here"
+        print(f"  ⚪ {path:<28} {state} — context only, its own commit is {at}")
+    for path in refused[:6]:
+        print(f"     · {path}")
+    if len(refused) > 6:
+        print(f"     · … and {len(refused) - 6} more")
+    if not required:
+        print("  ⚠️ no known instance is anchored at this revision, so nothing is scored.")
+        return 0
+    missed = [path for path, _ in required if path not in refused]
+    if missed:
+        print(f"  ⛔ the anchor does not catch {', '.join(missed)} at its own commit",
+              file=sys.stderr)
+        return 1
+    return 0
+
+
 def verify_closure(root: Path) -> int:
-    """Prove the derived token set against the real gate's behaviour."""
-    s = survey(root, "HEAD")
+    """Prove the derived token set against the real gate's behaviour.
+
+    🔴 IT SURVEYS THE WORKING TREE, AND SURVEYING `HEAD` WAS A REAL DEFECT THIS
+    ARM CAUGHT IN ITSELF. The probe perturbs the CHECKOUT and runs the enforcer
+    over the CHECKOUT; taking the token set from `HEAD` meant the prediction and
+    the measurement came from two different trees, and the moment the second
+    anchor was added to the checkout the arm reported the gate as disagreeing
+    with a closure that no longer existed.
+    """
+    s = survey(root, WORKTREE)
     print("=== closure verification — one row removed, real enforcer, restored ===")
     base_rc, _ = enforcer(root)
     print(f"  baseline: enforcer rc={base_rc} on the unmodified tree")
@@ -596,19 +721,25 @@ def verify_closure(root: Path) -> int:
     hand = sorted(r.path for r in s.rows
                   if not any(t == r.path or t.startswith(r.path) for t in s.tokens)
                   and not r.path.endswith("/"))
-    if not named or not hand:
-        print("  REFUSED: the registry has no row of one or both kinds to test.")
+    if not named:
+        print("  REFUSED: no row lies inside the closure, so arm A has no subject.")
         return 2
 
     # ⛔ THE VERDICT IS THE CLOSURE LEG'S, NEVER THE TREE'S EXIT CODE. Removing a
     # row perturbs every check that reads the registry, so `rc` and the other
     # failing doctrines are REPORTED — they say what else the row carries — and
     # never scored.
+    # ⭐ ARM B RETIRES ITSELF WHEN THE DEFECT IS REPAIRED, and says so rather than
+    # refusing. It demonstrates that a row OUTSIDE the closure can be deleted
+    # unnoticed; once the second anchor makes every row reachable there is no
+    # such row, and that absence is the repair rather than a broken control. The
+    # historical demonstration moves to `--anchor-check <rev>`.
+    arms = [("ARM A", named[0], True)]
+    if hand:
+        arms.append(("ARM B", hand[0], False))
+
     ok = True
-    for label, row_path, want in (
-        ("ARM A", named[0], True),
-        ("ARM B", hand[0], False),
-    ):
+    for label, row_path, want in arms:
         rc, output, restored = drop_row_and_run(root, row_path)
         refused = closure_refusal(output, row_path)
         others = [d for d in failing_doctrines(output)]
@@ -622,11 +753,16 @@ def verify_closure(root: Path) -> int:
             ok = False
             print("         ⛔ the closure leg did not behave as the derived token set predicts")
 
+    if not hand:
+        print("  ARM B  no subject: every registry row is inside the closure")
+        print("         ⭐ that is the repair, not a gap — the condition this arm")
+        print("         demonstrates no longer exists here. Falsify it against the trees")
+        print("         where it did: --anchor-check 386aa64^ and --anchor-check 8aadac3.")
+
     print()
     if ok:
-        print("  ⭐ BOTH ARMS HOLD: the derived closure is the gate's closure. A row")
-        print("     inside it cannot be removed without README-STABILITY naming it, and a")
-        print("     row outside it can be removed without README-STABILITY noticing at all.")
+        print("  ⭐ THE ARMS HOLD: the derived closure is the gate's closure. A row inside")
+        print("     it cannot be removed without README-STABILITY naming it.")
         return 0
     print("  ⛔ the derivation disagrees with the gate", file=sys.stderr)
     return 1
@@ -645,7 +781,7 @@ def probe_bounds(root: Path, payload: int) -> int:
       - a row declaring no ceiling is expected NOT to, which is the finding that
         a row is a governance record and not, by itself, a size bound.
     """
-    s = survey(root, "HEAD")
+    s = survey(root, WORKTREE)
     root_level = [p for p in s.paths if "/" not in p]
     no_row = [p for p in root_level if governing_row(p, s.rows) is None]
     with_ceiling = sorted(r.path for r in s.rows if "ceiling=" in r.assertions
@@ -696,8 +832,14 @@ def probe_bounds(root: Path, payload: int) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--self-test", action="store_true")
-    ap.add_argument("--as-of", default="HEAD", metavar="REV",
-                    help="run the census over the tree at REV — the falsification leg")
+    ap.add_argument("--as-of", default=WORKTREE, metavar="REV",
+                    help=f"run the census over the tree at REV, or {WORKTREE} (the default) "
+                         "for the checkout the gate actually judges — a past REV is the "
+                         "falsification leg")
+    ap.add_argument("--anchor-check", metavar="REV",
+                    help="apply the WORKING TREE's anchor to the tree at REV — the "
+                         "falsification: would the rule being shipped have caught the "
+                         "instances that were found by hand?")
     ap.add_argument("--verify-closure", action="store_true",
                     help="prove the derived closure against the real gate's behaviour")
     ap.add_argument("--probe-bounds", action="store_true",
@@ -709,6 +851,8 @@ def main() -> int:
     if args.self_test:
         return self_test()
     root = repo_root()
+    if args.anchor_check:
+        return anchor_check(root, args.anchor_check)
     if args.verify_closure:
         return verify_closure(root)
     if args.probe_bounds:

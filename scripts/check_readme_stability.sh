@@ -182,9 +182,29 @@ routes_from_hint() {
 routes_from_controls() { # transitive leg: paths named inside declared controls
   grep -v '^#' "$INVENTORY" | cut -d'|' -f3 | extract_routes
 }
+# ⭐ THE SECOND ANCHOR (`SIGNOFF-REPAIR.11.4.2.7.3.1`). The three legs above are
+# all anchored at what the LANDING PAGE reaches, so a tracked document the
+# landing page does not link — directly or through a control sentence — never
+# entered the closure at all: not refused, not listed, never asked for a
+# lifecycle, an owner or a verifier. Measured at `.11.4.2.7.3`: 3 of 21 rows
+# existed only because a person noticed, and 89 tracked documents had no row.
+#   ⛔ THE REMEDY IS NOT A LINK ON THE LANDING PAGE. It is quasi-static by
+#     director instruction (2026-09-21) and a registry row needs no link, so the
+#     ANCHOR widens and the landing page does not.
+#   ⛔ `$TARGET` IS EXCLUDED BY NAME, and this is the one exclusion. The landing
+#     page is this guard's SUBJECT — its ceiling is `LINE_CAP`/`BYTE_CAP` above —
+#     and a row would be a second source claiming authority for one cap, which is
+#     the stop condition `.11.4.2.7` declined the donor document on.
+#   ⚠️ COST: 89 undeclared documents, but the registry governs by PREFIX, so the
+#     rule is satisfied by 14 terminals — four of them directories carrying 50,
+#     13, 11 and 6 members. The member count is not the price.
+routes_from_tracked_markdown() {
+  git ls-files -- '*.md' | grep -vFx "$TARGET"
+}
 
 unrouted=0
-for token in $(routes_from_readme; routes_from_hint; routes_from_controls); do
+for token in $(routes_from_readme; routes_from_hint; routes_from_controls; \
+               routes_from_tracked_markdown); do
   if ! governed "$token"; then
     note "unrouted destination: $token — add a governed row to $INVENTORY (class + pressure control) or remove the link."
     unrouted=$((unrouted + 1))

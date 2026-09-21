@@ -1,5 +1,25 @@
 # CHANGELOG.md
 
+## 2026-09-21 — The rule becomes a gate, and the gate's own calibration found three false negatives in it (`SIGNOFF-REPAIR.11.2.1.2.3`)
+
+`REASONBRAID-REPAIR-0369`. The gate decision `.11.2.1.2` required, with the population it rests on.
+
+- ✅ **`RUNTIME-ROOT` SHIPS** — registered, mirrored in `DOCTRINE_ENFORCEMENT.md`, in the scaffold's NEUTRAL list, **14 self-test classifications**, whole-tree scan under a second. The enforcer now runs **26** checks.
+- ⭐ **CALIBRATED over 42 commits sampled evenly across all 743**: it would have FIRED on **40**, on **24 rising to 46** sites, and fires on **0** today. The two clean commits are the initial one and the second. Zero today over a real historical population is the shape this repository registers (`REASON-CODE-DOC`); the shape it has rejected three times is a rule firing on most of a correct population.
+- ⛔ **It is NOT a ban on `env!("CARGO_MANIFEST_DIR")`.** 13 uses name tracked source that travels with its crate — three `schema/` goldens, a `bench/v1` corpus, eight reads of `../../migrations` — and are correct. A pattern matching the macro itself would condemn all thirteen and teach bypass, the failure mode `.11.2.2` avoided by ruling on the ARGUMENT rather than the call.
+- 🔴 **DECIDABILITY WAS THE OPEN LEG — the one `.11.31.1` declined its gate over — and the corpus settled it.** The first calibration returned `UNRESOLVED: 1` at **fifteen consecutive commits**: a base BOUND to a local and joined in a LATER statement. Following that one name to the end of the statement that uses it takes UNRESOLVED to 0.
+- 🔴 **THEN THE GATE'S OWN `--calibrate` FALSIFIED THE GATE, THREE TIMES, by disagreeing with the census that opened the leaf.** It reported 42, then 43, then 44 breaches where the census said 46. Each gap was a shape the classifier could not follow, and each was repaired in the instrument:
+  1. **A join that is pure traversal names the ROOT, not a destination** — `.join("../..")` was read as SOURCE because it contains no `target`, while what lands under it is decided later. Four sites.
+  2. **A destination can be PUSHED rather than joined**, out of a `for component in ["target", …]` array literal.
+  3. **The root can be RE-BOUND to an alias** — `let mut parent = root;` — with the pushes on the alias. This one read as **SOURCE**: a false negative rather than a fail-closed one, and therefore the dangerous direction.
+- ⭐ **After all three, the two independently built instruments agree SITE FOR SITE — 46 breach / 13 source / 0 unresolved** — and `UNRESOLVED at 0` across the whole sample. That is the re-derivation leg `docs/CLAIM_VERIFICATION.md` asks for, reached through the disagreement rather than around it.
+- ⛔ It **fails CLOSED** on a base it cannot place, and a **comment** naming the macro is documentation of the rule rather than a breach of it.
+- ✅ **Falsified against the exact pre-repair sources** restored from `21b44c2`: red by name across all four shapes, then green after `git checkout HEAD`, `git status --porcelain` empty.
+- 🔴 Two existing gates refused this leaf before it could commit and both were right: `SCAFFOLD-COVERAGE` for a registered check the scaffold did not carry, and `FRONTIER-STATUS` for a row saying `pending` while its leaf said `active`.
+- 🔴 **`.11.2.1` DOES NOT CLOSE, and its own acceptance is what says so.** Both children are `done` and four of five clauses are met, but **`explicit consumed cleanup` has never been touched** — measured at **221,496 KiB across thirteen fixture families, 2,375 entries in `journal-tests` alone**. ⭐ That accumulation is the COST of the property `.11.2.1.1` bought: a fixture that refuses to reuse a directory makes a new one every run. Owned by the new `.11.2.1.3`.
+- ⛔ No product code, no Rust source and no test touched by this leaf.
+- promotion: declined — *measure what a proposed gate would fire on before registering it* is `.11.9`'s rejection and `.11.2.2`'s decision; *repair the instrument rather than the finding* is `TOOLBOX.md`, carried three times already in this batch.
+
 ## 2026-09-21 — Zero scratch bases left, and a clock in a shipped binary (`SIGNOFF-REPAIR.11.2.1.2.2.2`)
 
 `REASONBRAID-REPAIR-0368`. The last seven, closing `.11.2.1.2.2` on its own executed acceptance.

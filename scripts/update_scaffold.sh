@@ -72,6 +72,7 @@ NEUTRAL=(
   scripts/census_goal_receipt_gap.py
   scripts/check_rust_formatting.sh
   scripts/check_backtick_substitution.py
+  scripts/check_runtime_root.py
   scripts/check_self_tests.sh
   scripts/check_scaffold_coverage.sh
   knowledge-map/scripts/gen_knowledge_map.sh

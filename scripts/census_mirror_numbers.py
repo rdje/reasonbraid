@@ -61,8 +61,20 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+# ⛔ IMPORTED, NOT RE-IMPLEMENTED. `parse_doctrine_registry` is the enforcer's own
+# entry reader — the one `.11.4.2.7.3.2.1` repaired after it counted a format
+# comment as a doctrine — and it is the DENOMINATOR of the proportionality below.
+# A second copy would put this census one commit away from republishing the 25.
+from census_live_documents import parse_doctrine_registry  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 MIRROR = ROOT / "DOCTRINE_ENFORCEMENT.md"
+ENFORCER = "scripts/check_doctrines.sh"
+
+# A `##`/`###` heading starts a section; everything to the next one belongs to it.
+HEADING = re.compile(r"^#{2,3} ")
 
 # A registry row: `| \`ID\` | <rationale> | <check> |`. Only these are the mirror;
 # the prose around them is not restating a census.
@@ -245,6 +257,65 @@ def calibrate(depth: int) -> dict:
     }
 
 
+def sections(text: str) -> list[tuple[str, int]]:
+    """(heading, bytes) for every `##`/`###` section, preamble first.
+
+    ⭐ The question this answers is `SIGNOFF-REPAIR.11.4.2.6.5`'s, asked of a
+    different file: what fraction of this document is the thing it is named for?
+    That leaf found a status snapshot at 1.58% of the file it titled.
+    """
+    out: list[tuple[str, int]] = []
+    name, size = "(preamble)", 0
+    for line in text.splitlines(keepends=True):
+        if HEADING.match(line):
+            out.append((name, size))
+            name, size = line.strip(), 0
+        size += len(line)
+    out.append((name, size))
+    return out
+
+
+def per_doctrine(mirror_bytes: int, doctrines: int) -> float | None:
+    """Bytes of mirror per registered doctrine — `None` when there are none.
+
+    ⛔ THE POINT IS THE RATIO'S TREND, NOT ITS VALUE. A mirror that grows because
+    the thing it mirrors grew is behaving correctly; one whose per-item size
+    rises is accumulating something the population does not explain, and only the
+    second is an argument about bounds.
+    """
+    return None if doctrines <= 0 else mirror_bytes / doctrines
+
+
+def growth() -> dict:
+    """The mirror's size history against the population it mirrors."""
+    revs = subprocess.run(
+        ["git", "log", "--format=%H", "--reverse", "--", "DOCTRINE_ENFORCEMENT.md"],
+        cwd=ROOT, capture_output=True, text=True, check=True,
+    ).stdout.split()
+    series = []
+    for rev in revs:
+        size = subprocess.run(["git", "cat-file", "-s", f"{rev}:DOCTRINE_ENFORCEMENT.md"],
+                              cwd=ROOT, capture_output=True, text=True)
+        if size.returncode != 0:
+            continue
+        enf = subprocess.run(["git", "show", f"{rev}:{ENFORCER}"],
+                             cwd=ROOT, capture_output=True, text=True)
+        n = len(parse_doctrine_registry(enf.stdout)) if enf.returncode == 0 else 0
+        series.append({"commit": rev[:8], "bytes": int(size.stdout.strip()),
+                       "doctrines": n, "per_doctrine": per_doctrine(int(size.stdout.strip()), n)})
+    text = MIRROR.read_text()
+    total = len(text)
+    return {
+        "versions": len(series),
+        "first": series[0] if series else None,
+        "last": series[-1] if series else None,
+        "series": series,
+        "total_bytes": total,
+        "sections": [{"heading": h, "bytes": b, "share": round(100 * b / total, 1)}
+                     for h, b in sorted(sections(text), key=lambda s: -s[1])],
+    }
+
+
 def census() -> dict:
     items = classify(MIRROR.read_text())
     by_class = collections.Counter(i["class"] for i in items)
@@ -264,11 +335,27 @@ def census() -> dict:
     }
 
 
+def growth_self_test(check) -> None:
+    """Ground truth for the two pure functions the growth arm rests on."""
+    text = "intro\n## A\nbody\n### B\nmore\n"
+    check("sections", sections(text),
+          [("(preamble)", 6), ("## A", 10), ("### B", 11)])
+    check("sections/no heading", sections("just text\n"), [("(preamble)", 10)])
+    check("per doctrine", per_doctrine(1000, 4), 250.0)
+    check("per doctrine/zero", per_doctrine(1000, 0), None)
+
+
 def self_test() -> int:
     fails = 0
+    ran = 0
 
     def check(name: str, got, want) -> None:
-        nonlocal fails
+        # ⛔ THE ARM COUNT IS PRODUCED HERE, and it used to be a literal `12` in
+        # the summary line below — a restated number with no producer, in the very
+        # instrument that exists because this repository's mirrors drift
+        # (`docs/knowledge/a-restated-number-needs-a-producer.md`).
+        nonlocal fails, ran
+        ran += 1
         if got != want:
             print(f"MIRROR-NUMBERS self-test: {name}: got {got!r}, want {want!r}", file=sys.stderr)
             fails += 1
@@ -337,11 +424,14 @@ def self_test() -> int:
         real["population"],
     )
 
+    growth_self_test(check)
+
     if fails:
         return 1
     print(
-        "MIRROR-NUMBERS self-test: 12 arms — citation/sha anchoring and its negative,"
+        f"MIRROR-NUMBERS self-test: {ran} arms — citation/sha anchoring and its negative,"
         " four structural exclusions, an identifier, an escaped pipe, non-row prose,"
+        " section shares, per-population ratio,"
         f" and the live corpus ({real['population']} numerals) partitioned"
     )
     return 0
@@ -368,6 +458,34 @@ def main(argv: list[str]) -> int:
         print("     93%, both for teaching bypass; `POSITIONAL-REF` shipped at 9.5%.")
         for d in c["detail"][-10:]:
             print(f"     {d['commit']}  {', '.join(d['rows'])}")
+        return 0
+
+    if "--growth" in argv:
+        g = growth()
+        if "--json" in argv:
+            print(json.dumps(g, indent=2))
+            return 0
+        first, last = g["first"], g["last"]
+        print(f"=== the mirror's growth against the population it mirrors — "
+              f"{g['versions']} versions ===")
+        print(f"  first  {first['commit']}  {first['bytes']:>7,} bytes  "
+              f"{first['doctrines']:>3} doctrines  "
+              f"{first['per_doctrine']:>7,.0f} bytes/doctrine")
+        print(f"  last   {last['commit']}  {last['bytes']:>7,} bytes  "
+              f"{last['doctrines']:>3} doctrines  "
+              f"{last['per_doctrine']:>7,.0f} bytes/doctrine")
+        grow = last["bytes"] / first["bytes"]
+        pop = last["doctrines"] / first["doctrines"]
+        ratio = last["per_doctrine"] / first["per_doctrine"]
+        print(f"  file ×{grow:.1f}   population ×{pop:.1f}   per-doctrine ×{ratio:.1f}")
+        print()
+        print(f"=== what the {g['total_bytes']:,} bytes are ===")
+        for s in g["sections"]:
+            print(f"  {s['bytes']:>7,}  {s['share']:>5.1f}%  {s['heading'][:70]}")
+        print()
+        print("  ⛔ REPORTED, NOT GRADED. A mirror that grows because the thing it")
+        print("     mirrors grew is behaving correctly. The trend is an argument about")
+        print("     what the growth IS, never on its own a verdict that it is wrong.")
         return 0
 
     c = census()

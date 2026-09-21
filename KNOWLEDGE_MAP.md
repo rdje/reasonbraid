@@ -225,6 +225,7 @@
 - [`2026-09-20_the-nine-unregistered-reason-codes-recommended-per-code.md`](docs/decisions/2026-09-20_the-nine-unregistered-reason-codes-recommended-per-code.md)
 - [`2026-09-20_the-tail-read-is-the-offer.md`](docs/decisions/2026-09-20_the-tail-read-is-the-offer.md)
 - [`2026-09-20_two-packs-produce-evidence-the-store-cannot-hold.md`](docs/decisions/2026-09-20_two-packs-produce-evidence-the-store-cannot-hold.md)
+- [`2026-09-21_a-doctrine-document-is-deliberately-unbounded.md`](docs/decisions/2026-09-21_a-doctrine-document-is-deliberately-unbounded.md)
 - [`2026-09-21_live-status-carries-two-roles-and-a-pointer-that-never-resolved.md`](docs/decisions/2026-09-21_live-status-carries-two-roles-and-a-pointer-that-never-resolved.md)
 - [`2026-09-21_the-containment-contract-is-adopted-the-donor-document-is-not.md`](docs/decisions/2026-09-21_the-containment-contract-is-adopted-the-donor-document-is-not.md)
 - [`2026-09-21_the-landing-page-is-quasi-static-and-the-pointer-answers-one-question.md`](docs/decisions/2026-09-21_the-landing-page-is-quasi-static-and-the-pointer-answers-one-question.md)

@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-21 — A doctrine document is deliberately unbounded, because the ledgers' threshold cannot be borrowed (`SIGNOFF-REPAIR.11.4.2.7.3.2`)
+
+`REASONBRAID-DOC-0101`. The class question the previous leaf refused to answer with an invented number.
+
+- 🔴 **Four of four spine doctrine documents accept 200,000 appended bytes with a green enforcer** — `DOCTRINE_ENFORCEMENT.md` (41 versions, 40 grew, 0 shrank), `TOOLBOX.md` (46/44/1), `MEMORY_ARCHITECTURE.md` and `COMMIT.md` — all monotone, all at their all-time high, while three sibling ledgers in the same registry each carry a derived `ceiling=`.
+- ⭐ **DECIDED: no ceiling, because one cannot be DERIVED here.** A ledger's threshold comes from a pinned window — how much history must stay reachable IN the file — and a doctrine document retires nothing: every clause describes a rule in force. There is no quantity to derive from, and a chosen number is what `.11.6` forbids.
+- ⛔ **The remedy a ceiling triggers is also the wrong one.** Rotation is lossless for a ledger; for a reader document it means deleting rationale that has no other home.
+- ⭐ **The growth is structural, measured against the population it mirrors**: 6,700 → 56,424 bytes (**×8.4**) while registered doctrines went 13 → 24 (**×1.8**). **92.8% of the file is one section** — `## The enforcer registry`, 51,713 of 55,711 bytes, one row per doctrine.
+- ✅ **The measurement got a tracked producer in the instrument that already owns this document** — `census_mirror_numbers.py --growth`, two pure functions with self-test arms, importing `parse_doctrine_registry` as the denominator rather than copying it.
+- 🔴 **That denominator was wrong until one commit ago**, which is why this leaf paused to repair it: the first version of the ratio was computed against 14 and 25 rather than 13 and 24. Checking a number's producer before publishing it is what found `.11.4.2.7.3.2.1`.
+- ⭐ **And the self-test's own arm count was a restated literal `12`** — in the instrument that exists because this repository's mirrors drift. Produced by the run now: **15 arms**.
+- ⛔ **A ratchet on the ratio is DECLINED** (`.11.6`): calibrated against a single trajectory, the objection `.11.4.2.7.1` recorded. ✅ **The trigger that would reopen this is not a byte count but a second information role** — the `.11.4.2.6.5` shape — and `--growth` reports both halves of that condition.
+- ⚠️ One gap recorded rather than implied: `TOOLBOX.md`'s prose control *the tool-registry table grows only with new diagnostic tools* is the same mirror shape and nothing evaluates it.
+
 ## 2026-09-21 — A comment describing the entry format was read as an entry, and a gate believed it (`SIGNOFF-REPAIR.11.4.2.7.3.2.1`)
 
 `REASONBRAID-REPAIR-0360`. Found while checking the producer of a number before publishing it.

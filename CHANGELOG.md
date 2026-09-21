@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-21 — The containment contract is adopted and met, and the donor's document is declined on the donor's own stop condition (`SIGNOFF-REPAIR.11.4.2.7`)
+
+`REASONBRAID-DOC-0098`. The donor-package review `.11.4.1` deferred on 2026-09-09, executed against what this repository has since built.
+
+- ⭐ **DECIDED: the contract is ADOPTED and MET; the root document is NOT copied.** The guide says to stop when *two sources plausibly claim canonical authority for the same information*, and `README_POLICY.md` plus `.doctrine/readme_routes.txt` already hold that authority — enforced by `README-STABILITY`, `LEDGER-RUNWAY` and `ROUTE-CONTROL`. A 32 KB second body nobody here wrote and nothing here derives is the mirror this lane keeps removing.
+- ✅ **The guide's COMPLETION TEST is behavioural, not documentary, and every clause was EVALUATED**: a bounded current view (`MEMORY.md` 6,214 B under a 7,168 cap), one exact enforced pointer (`POINTER-CURRENCY`), deterministic retrieval through each ledger's chain notice, one unconditional gate in the hook and CI, and no monolith — the five core live documents ~145 KB, from 1,559,250 before this lane.
+- ✅ **The donor's revision state is MEASURED (§18), not assumed**: unchanged since `727e0d086`, 2026-09-05, with its SHA-256 recorded so the next check is a comparison.
+- 🔴 **One deliverable is genuinely unmet and has an owner.** The guide asks for a HEALTH TARGET as well as an enforcement ceiling per surface, and only the three ledgers have both — `README.md` and `MEMORY.md` refuse AT the cap with no earlier signal, and `MEMORY.md`'s has been crossed **seven recorded times**, each resolved by evicting a standing warning under pressure. `SIGNOFF-REPAIR.11.4.2.7.1`, census-first, with the harder half named: a ledger's remedy is mechanical rotation and `MEMORY.md`'s is a human decision.
+- ⚠️ One deliverable is met by a DIFFERENT mechanism and recorded as such rather than as a miss: `.11.4.2.4` ran the exact-current-state census over 645 pointer versions and shipped `POINTER-CURRENCY` instead of the donor's registry form.
+- ⛔ **Nothing of the donor's was copied** — no threshold, path, identifier, task id, decision, debt allowance or retention guarantee; the guide names those as evidence about the donor project rather than portable policy.
+- 🔴 **My own book box was the THIRD draft, and the first two cited commands that refuted them** — *returns nothing* against 6 hits, then *returns 0* against 1, the latter being the row this lane added a commit earlier. Writing the claim before running the check is this lane's own defect, met in the leaf that closes it.
+
 ## 2026-09-21 — The rotation notice now describes the object it names, and 31 of 48 said otherwise (`SIGNOFF-REPAIR.11.4.2.6.8`)
 
 `REASONBRAID-DOC-0097`. A published sentence that was untrue whenever the ledger had moved — which is the normal case.

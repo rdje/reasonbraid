@@ -1,5 +1,46 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — Three drafts of one sentence, each refuted by its own command
+
+The donor-package review was supposed to be the easy slice: audit twelve deliverables,
+decide, record. The audit itself went cleanly — ten met, one met by a different local
+mechanism, one genuinely missing with a real seven-instance cost behind it.
+
+Then I wrote the lockstep box, and wrote it three times.
+
+Draft one: "No docs/book/ change — `grep -rn "containment" docs/book/src/` returns
+nothing." It returns six. I had written the claim and appended a plausible command to
+it, which is precisely backwards. Reading the six showed they are a different sense of
+the word — four are policy containment, publication scope, and two are process
+containment, worker sandboxing — so the substance of the claim survived. The evidence
+did not.
+
+Draft two: narrow the search. "`grep -rn "live.document\|LIVE_DOCUMENT" docs/book/src/`
+returns 0." It returns one. And the one is the row I added to the book four commits
+earlier, in this same lane.
+
+So the book already spoke to the subject, the change was owed, and two drafts of a
+box asserting otherwise had each been written before the command ran. Draft three
+extends the row: the contract is met against the external standard it was adopted
+from, and one requirement of that standard is still unmet and owned.
+
+What makes this worth a note rather than an embarrassed edit is that it is the exact
+defect the lane exists for. `.11.4.2.6.7` shipped a gate because a registry row stated
+a control and nothing evaluated it. A lockstep box is a registry row: a claim about
+this commit, in prose, with a checker (`LOCKSTEP-CLAIM`) that validates its SHAPE —
+whether it names a core live document the commit does not stage — and not its truth.
+`grep -rn ... returns nothing` is a declared control, and nothing read it.
+
+I do not think that gap should be closed by a gate. A box's evidence is arbitrary shell
+in prose, and a checker that tried to execute it would be running whatever an author
+typed, which is the trap `check_doctrines.sh` refuses at the top of its own registry.
+The discipline is the cheap one: run the command, then write the sentence from what came
+back. Both failures here are the same inversion, one commit apart, in the same box.
+
+⛔ promotion: declined. `a-restated-number-needs-a-producer` already covers a figure
+written where nothing derives it, and this is that rule applied to a search rather than
+a count. Recorded in the leaf and in this note.
+
 ## 2026-09-21 — The falsification that refused for the wrong reason
 
 The scheme is an optional fifth field on each routed-destination row: space-separated

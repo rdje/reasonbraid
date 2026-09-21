@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-21 — The containment inventory is exhausted, and no cap was ever raised to get there (`SIGNOFF-REPAIR.11.4.2`)
+
+`REASONBRAID-DOC-0104`. The lane closes: all four named strands discharged and every one of its 31 descendants `done`.
+
+- ✅ **Strand by strand**: the donor-package review is `.11.4.2.7`; the document/route utility census is `.11.4.2.7.3`; the pressure controls are `ROUTE-CONTROL` at `.11.4.2.6.7`; the lifecycle controls are `.11.4.2.8`; exact-current-state derivation and its verifier are `.11.4.2.4`/`.4.1`; archive retrieval is the ledgers' chain notices; collection bounds are `.11.4.2.9`.
+- ⭐ **THE ACCEPTANCE WAS EXECUTED, NOT ASSERTED, and the clause worth keeping is *does not raise caps to accommodate growth*.** Every version of the registry and of the guard was read: **no declared `ceiling=` has ever increased** across 10 registry versions, and in 6 guard versions the two README caps only ever went **DOWN** — 300 → 60 lines and 16,384 → 2,400 bytes — with the changelog threshold constant at 96,000. Zero raises in the file's whole life.
+- ✅ **Retrieval intact**: `rotate_changelog.py --check-all` rc=0 over the three ledgers' chain notices. ⚠️ `--audit-notices` reports 32 of 49 HISTORICAL notices describing a predecessor that had moved — `.11.4.2.6.8`'s finding, repaired in the renderer and both live footers; the historical notices are in git and cannot be rewritten.
+- 🔴 **One thing had to be repaired before this leaf could close, and it was invisible from the narrative**: `.11.4.2.6` still said `Verification / commit: pending` with **no `- Status:` line at all**, three commits after a commit message announced it *fully closed*. Enumerating every descendant's status found it (DOC-0103).
+- ⛔ **Nothing was routed out to close it.** The one question it could not answer — `TOOLBOX.md`'s unevaluated prose control — is named in `.11.4.2.7.3.2`'s decision record rather than left implied.
+- ✅ Frontier moves to `.11.33`, promoted in place rather than given a second row (`FRONTIER-STATUS` rule 3), with `docs/TASK_TREE.md` updated in the same commit.
+
 ## 2026-09-21 — A parent whose children all closed had never run its own acceptance (`SIGNOFF-REPAIR.11.4.2.6`)
 
 `REASONBRAID-DOC-0103`. Found by enumerating every `.11.4.2` descendant's status before closing the grandparent.

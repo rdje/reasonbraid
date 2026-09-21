@@ -262,6 +262,14 @@ addressed by — and the local reference is the fresh role.
 
 ## Responding to an open call
 
+```text
+POST /v1/calls/{call_id}/respond    answer a recruitment call
+```
+
+The initiator's side — opening a call, and the panel snapshot taken when it
+closes — is in [Recruitment and automatic
+initiation](recruitment.md).
+
 A role answers a recruitment call by `POST`ing one response object to the call,
 and the same vocabulary rides the MCP `join_call` tool. The request body **is**
 the response — a single tagged object, where `kind` selects the shape:

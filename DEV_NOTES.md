@@ -1,5 +1,16 @@
 # DEV_NOTES.md
 
+## 2026-09-21 — The deliberation verbs, and the note promoted one commit earlier paid for itself (`SIGNOFF-REPAIR.11.4.6.7`)
+
+`REASONBRAID-DOC-0116`. Four routes, two different causes — and separating them is what the leaf was.
+
+- ⭐ **THE CONCEPT SEARCH RAN BEFORE ANY WRITING, AND IT CHANGED THE WORK.** `a-coverage-gap-names-what-is-missing-not-what-is-absent` was promoted one commit earlier; applying it found `profiles.md`'s *Responding to an open call* — the **eight response kinds** in a table with their members and meanings, the worked example, and `.3.4.4`'s measured defect where `{"kind":"join","reason":"I decline"}` was accepted **as a join**. So `POST /v1/calls/{call_id}/respond` needed a **contract line, not a section**.
+- ⛔ **And this leaf's own acceptance clause would have produced the duplicate.** It said *the four routes named beside their methods **with the eight-response vocabulary** `.3.4.4` established* — following it literally would have left the book holding **two tables of the same eight kinds, only one of them maintained**. The clause was already met; the note is what made that visible one commit after it was written.
+- ✅ **The other three were genuine absence, and had no home anywhere.** `docs/book/src/recruitment.md` covers the INITIATOR's side: the `ThreadInvite` gate — a call rides the same invitation machinery as naming a participant by hand (ADR-015), so opening one is not the weaker act — the participant bounds, the typed **429** per-tenant and per-initiator fan-out caps, the four checks a response passes with **eligibility re-resolved at response time**, and the **panel snapshot** taken at close with each panelist's stage-1 reasons and stage-2 features.
+- ✅ **`/v1/threads/auto` is the sharpest of the four.** Only an enrolled **role** may call it — a human principal is refused — and it takes the **explicit `thread:create:auto` grant**, not ordinary thread-creation authority: initiating work nobody asked for is a separate permission. The §11.5 wake checklist (topic gate, confidentiality match, concurrency gate, spend bound) is evaluated **server-side before the thread exists**, so a node cannot assert that it passed, and ⛔ **replies do not inherit the permission**, so one authorized initiation cannot become a tree of unauthorized ones.
+- ⭐ **EVERY `/v1/` PRODUCT ROUTE IS NOW DOCUMENTED.** The census reads **101 described / 1 mentioned / 2 absent** (from 97 / 1 / 6), and the three remaining are `/`, `/app.js` and `/style.css` — the console's own page and its assets, already adjudicated `covered` and `internal`.
+- **The adjudication now reads 39 covered · 3 internal · 1 gap**, the last held by `.11.4.6.8`.
+
 ## 2026-09-21 — Scoped to write sixteen routes up, and fourteen were already explained (`SIGNOFF-REPAIR.11.4.6.6`)
 
 `REASONBRAID-DOC-0115`. The leaf the adjudication sized at sixteen undocumented operator routes, which turned out to be an addressing failure rather than an explanation one.

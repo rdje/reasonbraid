@@ -2,9 +2,9 @@
 
 ## Current state (OVERWRITE this block each update — do not append)
 
-- next_action: `SIGNOFF-REPAIR.4.6.1.5` — backup/restore status and active incidents. DECIDE the producer first: who records a backup and a restore test (`scripts/backup.sh`, `scripts/restore.sh`, `tests/backup_restore.rs`, or a server verb), and whether an *active incident* is a new aggregate or an already-open correction / `incident_review` record. Then `.6` (census); `.3` is blocked on ADR-022; then `.11.4.7.2.1.2.2`, `.11.4.7.2.1.5`, `.8.1.1.3`–`.6`. ⚠️ A leaf that changes a route contract runs EVERY suite calling it.
-- active_work_unit: `SIGNOFF-REPAIR` → frontier leaf: `.4.6.1.5` (`pending`). This session: DOC-0131; REPAIR-0405 `.4.6.1.1`; 0406 `.4.6.1.2`; 0407 `.8.2.5.4`; 0408 `.4.6.1.4` (`GET /v1/health`).
-- latest_commit: `REASONBRAID-REPAIR-0408`.
+- next_action: `SIGNOFF-REPAIR.4.6.1.5.1` — `GET /v1/admin/incidents` + `rb inspect incidents`: list the tenant's threads whose projection (`aggregate_state.state`) names `workflow_profile = incident_review` and is not closed/cancelled. Then `.5.2` (backup receipts written by `scripts/backup.sh`/`restore.sh`, `--backup-dir`, the report with §17.5's verdict), `.4.6.1.6` census; `.3` blocked on ADR-022. Read DOC-0132 first.
+- active_work_unit: `SIGNOFF-REPAIR` → frontier leaf: `.4.6.1.5.1` (`pending`). This session: DOC-0131; REPAIR-0405 … 0408; DOC-0132 (incident = open `incident_review` thread; backups from receipts).
+- latest_commit: `REASONBRAID-DOC-0132`.
 - in_flight_uncommitted: none.
 - blockers: `SIGNOFF-REPAIR.13`. ⛔ `.8.2` clause 1's *blocked on grant vocabulary* is WITHDRAWN by `.15` — it was wrong twice and `.8.2.5` is unblocked.
 - ⭐ **THE SEQUENCE for the five remaining roadmap gaps** (`docs/decisions/2026-09-22_the-remaining-roadmap-gaps-are-sequenced-by-exposure-then-deletion.md`, leaf `.15`): ✅ **1 `.8.2.5` DONE** (REPAIR-0392; `.16` then corrected its 403 — a domain refusal is 400 with an audit id, only an AUTHORITY denial is 403) → ✅ **2 `.9.3.5` DONE** (REPAIR-0394) → ✅ **3 `.4.6` DONE** (DOC-0124) → ✅ **4 `.11.4.7.2.1.2` DONE** (DOC-0125) → ✅ **5 `.11.4.7.2.1.3` DONE** (DOC-0126) — ⭐ **WAVE B COMPLETE** → ✅ the NEW prerequisite `.11.4.7.2.1.2.1` DONE (REPAIR-0395) → **NEXT: 6** `.8.1.1` the counted outcome, now UNGATED → **7** what 2, 3 and 5 keep — now `.9.3.5.1`–`.3`, `.4.6.1` and `.11.4.7.2.1.2.1`–`.3` and `.11.4.7.2.1.3.1`. ⛔ Work them in this order; a wave-C build before its wave-B decision is the rework the rule exists to prevent.

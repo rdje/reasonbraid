@@ -241,6 +241,7 @@
 - [`2026-09-22_a-moderator-is-a-seat-restricted-to-the-moderation-vocabulary.md`](docs/decisions/2026-09-22_a-moderator-is-a-seat-restricted-to-the-moderation-vocabulary.md)
 - [`2026-09-22_a-policy-decision-is-its-threads-counted-close-and-an-approval-copies-it.md`](docs/decisions/2026-09-22_a-policy-decision-is-its-threads-counted-close-and-an-approval-copies-it.md)
 - [`2026-09-22_a-publication-records-its-git-operation-before-attempting-it.md`](docs/decisions/2026-09-22_a-publication-records-its-git-operation-before-attempting-it.md)
+- [`2026-09-22_an-incident-is-an-open-incident-review-thread-and-a-backup-is-reported-by-its-receipts.md`](docs/decisions/2026-09-22_an-incident-is-an-open-incident-review-thread-and-a-backup-is-reported-by-its-receipts.md)
 - [`2026-09-22_health-is-read-without-authority-and-says-only-state-and-age.md`](docs/decisions/2026-09-22_health-is-read-without-authority-and-says-only-state-and-age.md)
 - [`2026-09-22_the-moderator-is-a-role-boundary-not-a-feature-and-five-of-its-six-acts-already-ship.md`](docs/decisions/2026-09-22_the-moderator-is-a-role-boundary-not-a-feature-and-five-of-its-six-acts-already-ship.md)
 - [`2026-09-22_the-observability-row-is-four-commitments-and-two-were-already-discharged.md`](docs/decisions/2026-09-22_the-observability-row-is-four-commitments-and-two-were-already-discharged.md)

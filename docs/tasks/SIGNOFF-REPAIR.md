@@ -2424,9 +2424,23 @@ with `panicked at crates/reasonbraid-server/src/ca.rs:142:75` in the same run �
 
 ##### SIGNOFF-REPAIR.4.6.1.5 — A backup or restore test leaves no record, and there is no incident
 
-- Status: `pending`. Bullet 9.
+- Status: `active` — split into `.5.1` and `.5.2` by `REASONBRAID-DOC-0132` (`docs/decisions/2026-09-22_an-incident-is-an-open-incident-review-thread-and-a-backup-is-reported-by-its-receipts.md`). Bullet 9.
 - Owns: deciding who records a backup and a restore test (`scripts/backup.sh`, `scripts/restore.sh`, `tests/backup_restore.rs`, or a server verb), and whether an *active incident* is a new aggregate or an already-open correction/`incident_review` record; then the producer and the route.
 - Acceptance: the route reports the age of the last successful backup and of the last restore test, produced by actually running them; incidents per the decision; RED first; book and `SURFACE-JUDGEMENT` updated.
+- ⚖️ **Decided:** an active incident is an OPEN thread under the built-in `incident_review` profile, with no new aggregate. A backup and a restore test are reported from RECEIPTS that `scripts/backup.sh` and `scripts/restore.sh` write beside the dump, re-verified by the server. A shell script never inserts rows, because that would sit outside domain commands and audit.
+
+###### SIGNOFF-REPAIR.4.6.1.5.1 — Active incidents are open incident-review threads, and nothing lists them
+
+- Status: `pending`.
+- Owns: `GET /v1/admin/incidents?tenant_id=…` via `inspect_tenant_admin`, listing the tenant's threads whose projection names `workflow_profile = incident_review` and whose state is neither closed nor cancelled, with subject, state, workflow step and open challenges; `rb inspect incidents`.
+- Acceptance: an incident opened with the existing thread verb is listed, and closing it with the existing verb removes it; a thread under another profile is never listed; another tenant's incident is never listed; RED first; book and `SURFACE-JUDGEMENT`.
+- Verification / commit: pending.
+
+###### SIGNOFF-REPAIR.4.6.1.5.2 — A backup or restore test leaves no record the server can report
+
+- Status: `pending`.
+- Owns: the receipt each script writes after its step succeeds (`backup.sh`: bytes, SHA-256, taken-at, database name; `restore.sh`: verify the SHA-256 first, restore, check that the migrations are present, then write the restore receipt); `rb-server --backup-dir`; the report (each backup, the time since the newest one and since the newest restore-tested one, and §17.5's `recovery_control` verdict), with a size re-check of every receipted dump.
+- Acceptance: produced by RUNNING the two scripts against a real database, never by writing receipts by hand; a truncated dump is reported as such; a backup never restored is listed but does not make the verdict `accepted`; RED first; book, the restore runbook and `SURFACE-JUDGEMENT`.
 - Verification / commit: pending.
 
 ##### SIGNOFF-REPAIR.4.6.1.6 — The nine-bullet mapping is hand-derived
@@ -12483,7 +12497,8 @@ git grep -nI -E "never run|licen[cs]e decision|license decision" -- \
 | 1a | `SIGNOFF-REPAIR.11.29` | `done` | ✅ REPAIR-0318 — **the demonstration read presence without saying who was calling, and wrote a markdown table by executing it.** 🔴 `e8db1a1` (`.3.5.5`) bound `GET /v1/nodes/presence` to the caller's tenant; the demo's three reads use a bare `curl` with no principal header, so all three checks failed — the node-channel suite passed because ITS reads send one. 🔴 And backticks inside a double-quoted `echo` made bash RUN `rb node revoke`, substituting empty output into `summary.md` — **silently corrupting the evidence bundle for as long as it has existed**, never failing a check. ✅ 44 suites + demo ALL GREEN on the exact command CI runs |
 | 1a | `SIGNOFF-REPAIR.11.28` | `done` | ✅ REPAIR-0317 — **two enrollment expectations counted quota rows, and the row that moved them was three days old.** The first push's `rust` workflow went red on `enrollment_transaction`; it **reproduces locally**, so it is a suite the four cheap gates do not run. ⭐ `git log -S` names the cause: `398ecc7` (`.11.14.3.14`, 2026-09-17) gave every tenant two acquisition defaults, taking a bootstrap from 2 quota rows to 4 and the two-principal fixture from 3 to 5. ⛔ **4 and 5 were established from the source BEFORE either number was touched** — *adjust until it passes* is how a real double-insert gets laundered green. ✅ The expectations now NAME the rows (`quota_scopes`): a count has no producer, these pairs do. 9/9 |
 | 1a | `SIGNOFF-REPAIR.11.27` | `done` | ✅ REPAIR-0316 — **a self-test that pins one host's collation is not ground truth.** `doctrines` failed on the runner and was green locally: `check_readme_stability.sh`'s extraction arm ends in `sort -u`, and `LC_ALL=C` orders `docs/book/` third where `en_US.UTF-8` puts it first. ⭐ **Reproduced locally with the SHIPPED bytes** — `git show HEAD:…` under `LC_ALL=C` prints exactly what the runner logged. ✅ `LC_ALL=C` pins every stage of the extractor and the expectation is rewritten in that order; ⛔ the INSTRUMENT is pinned rather than the comparison loosened. Self-test green under BOTH collations, gate verdict unchanged in both. ⚠️ No script in `scripts/` pins a collation — latent hazard recorded, trigger stated |
-| 1 | `SIGNOFF-REPAIR.4.6.1.5` | `pending` | ⭐ **Item 7 continues.** ✅ `.4.6.1.4` (REPAIR-0408): `GET /v1/health`, unauthenticated, with freshness. NEXT `.5` backup/restore status and incidents — decide the producer first; then `.6` the census; `.3` checkpoint age `blocked` on ADR-022 |
+| 1 | `SIGNOFF-REPAIR.4.6.1.5.1` | `pending` | DOC-0132 split `.4.6.1.5`: an active incident is an open `incident_review` thread (a view, no new aggregate); backups are reported from script-written receipts (`.5.2`). |
+| 1a | `SIGNOFF-REPAIR.4.6.1.5.2` | `pending` | ⭐ **Item 7 continues.** ✅ `.4.6.1.4` (REPAIR-0408): `GET /v1/health`, unauthenticated, with freshness. NEXT `.5` backup/restore status and incidents — decide the producer first; then `.6` the census; `.3` checkpoint age `blocked` on ADR-022 |
 | 1a | `SIGNOFF-REPAIR.9.3.5.3` | `done` | ✅ DOC-0130 — **the book has a publication-store chapter**: three refs, write-once, compare-and-swap, fetch-back, every refusal, recovery — examples from a REAL run, which is how REPAIR-0404's two defects were found. `refs/rb/` in the book: 0 → 13 |
 | 1a | `SIGNOFF-REPAIR.9.3.5.3.1` | `done` | ✅ REPAIR-0404 — **a refused re-publish no longer moves the staging ref, and the CAS message reads once.** Both found by generating the book's examples from a REAL run rather than writing them by hand; the second was mine from REPAIR-0402 |
 | 1a | `SIGNOFF-REPAIR.9.3.5.2` | `done` | ✅ REPAIR-0403 — **a published bundle is served by its digest and verified on the way out.** The control tampers the STORE (re-points the immutable ref); M2 showed a tampered bundle would have been served, M3 that another tenant would have read it |

@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-22 — Tranche 2's seven verdicts, and the first proof that the deferral population double-counts (`SIGNOFF-REPAIR.11.4.7.2.1.4.2`)
+
+`REASONBRAID-DOC-0121`. The Phase-1 subtraction record's Phase-2 rows, graded one command each.
+
+- ✅ **FIVE `discharged`**: the workload certificate lifecycle (issuance in `ca.rs`, `node_certificates` in the schema, **45** revocation sites in `node_admin.rs`, and presence derived from whether every certificate is revoked); scoped grants and cached-decision rules (`authority/` is a module, `0013_cached_decisions.sql` is the store); the provider-attempt and spend-breaker family; production leases and fencing, where `0015_lease_epoch.sql`'s epoch IS the fencing token and `dead_letter` appears at 11 sites; and the incarnation/run writers.
+- 🔴 **AND THAT LAST ONE IS A VERBATIM DUPLICATE OF THE GATE RECORD'S #4.** The two records describe one deferral twice. ⛔ *38 deferral ROWS* is exact; *38 distinct deferrals* is not, and neither is *21 unfinished jobs*. Tranche 3 owes the corrected distinct count, because three of the four overlaps sit in it.
+- ⚠️ **ROW 13 SPLITS, AND IT IS THE TRANCHE'S MOST USEFUL RESULT.** `backup_restore.rs` and `migration_upgrade.rs` are live suites, so two thirds of *backup/PITR, object/Git inventory, upgrade/rollback testing* is discharged — and a row-level verdict would have called the whole thing done and buried the object-store absence for the **second time in two tranches**. ⭐ One gap reaching two independent deferral rows is what makes `.9.3.5` a lane rather than a tidy-up.
+- 🔴 **ONE `fired and open`: the observability row.** `telemetry.rs` ships a genuine dev-profile slice — JSON-line operational logs and an in-process registry under ADR-023's four-record doctrine — and its own header carries the deferral: *the OpenTelemetry sink stays the ADR-023 trigger*. No sink dependency exists, and every SLO, dashboard and game-day hit in the tree is documentation. ⛔ A revisit condition in prose with nothing evaluating it, this time inside a source comment. Owned by a new `.4.6`, whose acceptance splits the row's four nouns because carrying them as one unit is what hid them.
+- ⭐ **A SHAPE WORTH NAMING: work done AHEAD of its trigger is `discharged`.** The certificate lifecycle's condition — non-loopback exposure — has never fired, and Phase 2 identity shipped the work anyway. The verdict is about the work, so it closes; saying otherwise leaves a finished item on a backlog for ever.
+
 ## 2026-09-22 — Tranche 1's seven verdicts, and a spike needed a fourth value the vocabulary did not have (`SIGNOFF-REPAIR.11.4.7.2.1.4.1`)
 
 `REASONBRAID-DOC-0120`. The first of three tranches over the 21 deferrals no record had ever graded.

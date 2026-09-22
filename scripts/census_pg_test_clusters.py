@@ -36,6 +36,30 @@ moment of deletion rather than read off this census:
 
 A cluster failing any check is REPORTED and kept. The exit code is the verdict:
 0 when the requested operation completed, 1 when something was refused.
+
+⛔⛔ AND A CLUSTER OUTSIDE `target/pg-tests` USED TO BE INVISIBLE, NOT KEPT
+(`SIGNOFF-REPAIR.11.4.3.1.9.1`). This census iterated that one directory, so
+three retained clusters at the top of `target/` — `pg-iter.5Im1bN`,
+`pg-iter.DiTCe8`, `pg-ephemeral.5nSEfx` — were never judged and never mentioned.
+⭐ The difference matters because silence reads exactly like a clean verdict:
+`.11.4.3.1.9` printed `194 cluster(s) remain` and was telling the truth about
+`target/pg-tests` alone (`docs/knowledge/an-instruments-zero-describes-its-reach.md`).
+
+⛔ THE STRAY SCAN IS DERIVED FROM WHAT `initdb` WRITES, never from a list of
+directory-name prefixes. A PostgreSQL data directory contains `PG_VERSION`, so a
+cluster is any directory holding `data/PG_VERSION` — an oracle this instrument
+did not build. A prefix list would be a second copy of the producers' spellings
+and would drift exactly as `SCAFFOLD-COVERAGE`'s `NEUTRAL` list did; it would
+also have missed `pg-iter.*`, whose spelling NO tracked producer has ever
+written (`git log -S 'pg-iter' -- .` returns documentation commits only).
+
+⚠️ A STRAY IS ANNOUNCED AND NEVER AUTO-RETIRED, and that is the honest verdict
+rather than a timidity. Retirement requires a receipt proving the postmaster was
+stopped; a stray has no `runner.json`, because the producer that wrote it did
+not write receipts, so the guard cannot prove the bytes are unowned. ⛔ Removing
+it would be substituting a hand-run subset of these checks for the guard, which
+is the improvisation this instrument exists to replace. The census reports it,
+its size and its citation count, and a human decides.
 """
 
 from __future__ import annotations
@@ -55,6 +79,50 @@ PREFIX = "run-"
 # Written by scripts/census_retained_fixtures.py when it reduces a cluster to
 # its evidence. Its presence means the bulk is already gone.
 REDUCED = "retired.json"
+# What `initdb` writes into every PostgreSQL data directory. This is the stray
+# scan's whole population rule: a cluster is a directory holding `data/PG_VERSION`.
+DATA_DIR = "data"
+PG_MARKER = "PG_VERSION"
+# How far below `base` a stray is looked for. Depth 2 covers a cluster left at
+# the top of `target/` and one left one level inside another directory, and it
+# is BOUNDED deliberately: an unbounded walk would descend `target/debug`, which
+# is 69 GB and hundreds of thousands of files, to find nothing.
+STRAY_DEPTH = 2
+
+
+def is_cluster_dir(path: Path) -> bool:
+    """A directory is a PostgreSQL cluster when it holds `data/PG_VERSION`."""
+    try:
+        return (path / DATA_DIR / PG_MARKER).is_file()
+    except OSError:
+        return False
+
+
+def stray_clusters(base: Path, modelled: Path, depth: int = STRAY_DEPTH) -> list[Path]:
+    """Every cluster directory under `base` that `modelled` does not contain.
+
+    Bounded by `depth` and pruned at `modelled`, so the scan costs a handful of
+    directory listings rather than a walk of the build tree.
+    """
+    found: list[Path] = []
+    frontier = [(base, 0)]
+    while frontier:
+        directory, level = frontier.pop()
+        try:
+            children = sorted(p for p in directory.iterdir() if p.is_dir() and not p.is_symlink())
+        except OSError:
+            continue
+        for child in children:
+            if child == modelled:
+                continue  # the modelled population is censused in full elsewhere
+            if child.name == DATA_DIR:
+                continue  # a cluster's own payload, never a cluster itself
+            if is_cluster_dir(child):
+                found.append(child)
+                continue  # do not descend into a cluster we have already named
+            if level + 1 < depth:
+                frontier.append((child, level + 1))
+    return sorted(found)
 
 
 class Cluster:
@@ -225,6 +293,45 @@ def self_test() -> int:
             failures.append("citation guard: a tracked filename reported zero references")
         if tracked_references(absent) != 0:
             failures.append(f"citation guard: the absent name {absent} reported references")
+        # ---- `SIGNOFF-REPAIR.11.4.3.1.9.1`: the stray scan, in BOTH directions ----
+        # 🔴 The founding defect: a cluster outside the modelled directory was not
+        #   kept, it was INVISIBLE, and this census's totals read as if they covered
+        #   `target/`. The arms below are on a synthetic base, so they judge the
+        #   SCAN rather than whatever happens to be on this machine's disk today.
+        base = Path(tempfile.mkdtemp(prefix="straybase-", dir=scratch))
+        modelled = base / "pg-tests"
+        (modelled / "run-inside" / DATA_DIR).mkdir(parents=True)
+        (modelled / "run-inside" / DATA_DIR / PG_MARKER).write_text("16\n")
+        outside = base / "pg-ephemeral.AAAAAA"
+        (outside / DATA_DIR).mkdir(parents=True)
+        (outside / DATA_DIR / PG_MARKER).write_text("16\n")
+        nested = base / "scratchdir" / "pg-iter.BBBBBB"
+        (nested / DATA_DIR).mkdir(parents=True)
+        (nested / DATA_DIR / PG_MARKER).write_text("16\n")
+        # ⭐ NEGATIVE: a directory with no marker is not a cluster, whatever it is
+        #   called. Without this the scan degenerates into "any directory".
+        decoy = base / "pg-ephemeral.NOTACLUSTER"
+        (decoy / DATA_DIR).mkdir(parents=True)
+
+        seen = {p.name for p in stray_clusters(base, modelled)}
+        if "pg-ephemeral.AAAAAA" not in seen:
+            failures.append("stray scan: a cluster beside the modelled directory must be announced")
+        if "pg-iter.BBBBBB" not in seen:
+            failures.append("stray scan: a cluster one level deeper must be announced")
+        if "run-inside" in seen:
+            failures.append("stray scan: the modelled population must be pruned, not double-reported")
+        if "pg-ephemeral.NOTACLUSTER" in seen:
+            failures.append("stray scan: a directory with no data/PG_VERSION is not a cluster")
+        # ⭐ NEGATIVE: the depth bound is real. An unbounded walk would descend the
+        #   build tree, so a cluster below the bound is deliberately NOT found — the
+        #   arm pins the limit instead of leaving it to be discovered.
+        deep = base / "a" / "b" / "pg-iter.CCCCCC"
+        (deep / DATA_DIR).mkdir(parents=True)
+        (deep / DATA_DIR / PG_MARKER).write_text("16\n")
+        if "pg-iter.CCCCCC" in {p.name for p in stray_clusters(base, modelled)}:
+            failures.append("stray scan: the depth bound is not being applied")
+        if "pg-iter.CCCCCC" not in {p.name for p in stray_clusters(base, modelled, depth=3)}:
+            failures.append("stray scan: a deeper bound must reach a deeper cluster")
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
 
@@ -234,7 +341,9 @@ def self_test() -> int:
         return 1
     print(
         "self-test: 7 refusal arms — including a cluster already reduced to its evidence by "
-        "scripts/census_retained_fixtures.py — and the citation guard's two directions all fire"
+        "scripts/census_retained_fixtures.py — the citation guard's two directions, and 6 stray-scan "
+        "arms (announced beside and below the modelled directory, the modelled population pruned, a "
+        "marker-less directory refused, and the depth bound pinned in both directions) all fire"
     )
     return 0
 
@@ -298,6 +407,27 @@ def main() -> int:
     for cluster, reasons in kept:
         print(f"KEEP {cluster.name}: " + "; ".join(reasons))
     print(f"\nretirable: {len(retirable)}; kept: {len(kept)}")
+
+    # ⛔ Announce every cluster OUTSIDE the modelled directory. Until
+    # `SIGNOFF-REPAIR.11.4.3.1.9.1` these were not kept — they were invisible,
+    # and this census's own totals read as though they covered `target/`.
+    strays = stray_clusters(ROOT / "target", CLUSTERS)
+    if strays:
+        print(f"\nSTRAY: {len(strays)} cluster(s) outside {CLUSTERS.relative_to(ROOT)} — announced, never auto-retired")
+        for path in strays:
+            stray = Cluster(path)
+            cites = tracked_references(path.name)
+            print(
+                f"  {path.relative_to(ROOT)}  {stray.bytes} bytes  "
+                f"{stray.age_hours:.1f}h  tracked citations {cites}  "
+                f"receipt {'present' if (path / 'runner.json').is_file() else 'ABSENT'}"
+            )
+        print(
+            "  ⛔ No receipt means no proof the postmaster stopped, so the guard cannot\n"
+            "     judge these and does not remove them. Reported for a human decision."
+        )
+    else:
+        print(f"\nSTRAY: none — every cluster under target/ is inside {CLUSTERS.relative_to(ROOT)}")
 
     if not args.retire:
         return 0

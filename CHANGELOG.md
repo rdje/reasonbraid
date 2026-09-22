@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-22 — The stray scan is derived from what initdb writes, and the prefix list it replaces would have missed one of the three (`SIGNOFF-REPAIR.11.4.3.1.9.1`)
+
+`REASONBRAID-REPAIR-0384`. A cluster outside the scanned directory was not kept — it was invisible.
+
+- 🔴 **THE DEFECT.** `census_pg_test_clusters.py` iterated `target/pg-tests` alone, so three retained clusters at the top of `target/` were never judged and never mentioned. The previous leaf printed `194 cluster(s) remain` and was telling the truth about one directory while reading as a statement about `target/`.
+- ✅ **THE PRODUCER CENSUS CAME FIRST AND CHANGED THE DESIGN.** `git log -S '<prefix>' -- .` per prefix: `run-` has a live producer, `pg-ephemeral.` had one that was retired when the Python runner replaced the shell one, and 🔴 **`pg-iter.` has never had a tracked producer at all** — every hit is a documentation commit. ⛔ So a prefix list derived from the producers would contain `run-` alone and would still miss one of the three, and a list derived from today's disk would be a second copy of the residue.
+- ⭐ **THE POPULATION RULE IS THE ARTEFACT'S OWN: a cluster is a directory holding `data/PG_VERSION`**, which `initdb` writes — an oracle the instrument did not build. Against the real tree it returns the three strays and nothing else, with 206 markers correctly pruned inside the modelled directory.
+- ⛔ **DEPTH-BOUNDED ON PURPOSE**, because an unbounded walk would descend `target/debug` — 69 GB — to find nothing; the bound is pinned by two arms in both directions rather than left to be discovered.
+- ✅ **SIX NEW SELF-TEST ARMS, TWO OF THEM NEGATIVE** — a `pg-ephemeral.NOTACLUSTER` with no marker is refused, without which the scan degenerates into *any directory*. Falsified with two mutants, each caught by the arm that names it, source restored byte-identical by SHA-256.
+- ✅ **THE STRAYS GET THE GUARD'S VERDICT AND IT IS KEEP**: `receipt ABSENT` for all three, so nothing proves the postmaster stopped and the guard will not remove bytes it cannot prove are unowned. No removal, so the residue census is vacuous and is not claimed.
+- 🔎 **AND A SECOND REASON APPEARED MID-LEAF, WORTH MORE THAN THE FIRST.** The strays' tracked-citation count went **0 → 2**, and both citations are this lane's own records. **Writing a finding about an artefact makes that artefact cited evidence, and the citation guard then protects it.** ⛔ The precedent — re-word rather than weaken, as `POSITIONAL-REF` and `STORAGE-LOCALITY` both did — does NOT transfer, because here the artefact's name IS the finding's content. Promoted with the limit declared instead: `docs/knowledge/documenting-residue-makes-it-evidence.md`.
+
 ## 2026-09-22 — The artifact sweep run, and the class worth sweeping was the one priced by bytes (`SIGNOFF-REPAIR.11.4.3.1.9`)
 
 `REASONBRAID-REPAIR-0383`. Director directive 8, executed — and the re-measurement inverted which class deserved it.

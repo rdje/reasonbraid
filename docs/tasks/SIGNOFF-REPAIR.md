@@ -2479,6 +2479,7 @@ with `panicked at crates/reasonbraid-server/src/ca.rs:142:75` in the same run �
 ### SIGNOFF-REPAIR.5.2 — Recruitment and autonomous initiation
 
 - Status: `pending`.
+- ⛔ **SEQUENCING LOCK** (`docs/decisions/2026-09-22_three-storm-controls-were-deferred-behind-triggers-that-have-fired.md`): the once-per-tenant key below is today the ONLY bound on auto-initiation. Its repeat-initiation repair must not ship before, or without, `SIGNOFF-REPAIR.11.4.7.2.1.5.3.1`'s causation chain, depth limit and cycle detection, or it opens a runaway.
 - Sources / owned surfaces: `calls, offers, panels, auto-thread endpoints`.
 - Goal and acceptance: Bind call/thread/tenant/actor and grants, make panel/close/offer transitions atomic, enforce post-filter minimums and concurrent caps, and make repeated legitimate auto initiation possible with full budget/topics/classification semantics.
 - 🔴 **MATCHED FINDINGS annotated here by `SIGNOFF-REPAIR.11.9.1.3.2`** (2026-09-15, while reading `R-76-77-3`'s handler; not introduced by it). Both are inside `create_thread_auto`, and the first is what makes the record's coverage clause a live defect rather than a test gap.
@@ -6345,9 +6346,36 @@ PY
 
 ###### SIGNOFF-REPAIR.11.4.7.2.1.5.3 — Six storm controls were deferred behind triggers, and one trigger reads as fired
 
-- Status: `pending`. From row 16. ⭐ **A possible LIVE exposure, so it leads the frontier.**
+- Status: `active` — adjudicated and split by `REASONBRAID-DOC-0134` (`docs/decisions/2026-09-22_three-storm-controls-were-deferred-behind-triggers-that-have-fired.md`). From row 16.
 - `docs/tasks/PHASE-3.md`'s storm deferrals each name a trigger: duplicate-thread suggestions, parent/causation chains + max autonomous depth + cycle detection (*the first agent-initiated call*), storm-grade circuit breakers, quiet hours, max offline backlog, emergency broadcast. ⚠️ `thread.create_auto` ships, so *the first agent-initiated call* appears to have happened, and an autonomous initiation path with no depth or cycle bound is a runaway risk.
 - Owns: adjudicating each of the six against its trigger with the command that decides it, building what has fired, and giving the rest an evaluable condition. Also records that semantic matching is ADR-014's, behind its own trigger.
+- ⚖️ **Adjudicated, each with the command that decides it:** three triggers FIRED (causation/depth/cycle — `POST /v1/threads/auto` ships with no parent field and no depth check; quiet hours — the wake-policy lane shipped and `operating_hours` is enforced nowhere; offline backlog — subscriptions shipped and `node_inbox` has no cap); the circuit breakers' trigger is UNOBSERVABLE (a `storm_control` 429 is recorded nowhere); two did not fire (duplicate-thread suggestions behind ADR-014; emergency broadcast with no emergency class).
+- ⛔ **THE ORDERING FINDING:** auto-initiation is bounded today ONLY by `.5.2`'s defect (the key `auto_{role}_{tenant}` makes a second initiation replay the first), so repairing `.5.2` first would open a runaway. `.5.3.1` must land before, or together with, it.
+- 🔴 **AND A `done` LEAF THAT BUILT A THIRD OF ITS GOAL:** `PHASE-3.5.3` named the rate, depth and side-effect bounds and the full §11.5 checklist, and its `Done` records four gates. Owned by `.5.3.2`.
+
+###### SIGNOFF-REPAIR.11.4.7.2.1.5.3.1 — An auto-initiated thread records no cause, so nothing bounds depth or detects a cycle
+
+- Status: `pending`. ⭐ Frontier; prerequisite of `.5.2`'s repeat-initiation repair.
+- Owns: a causation chain on auto-initiation (the thread and event that caused it), a maximum autonomous depth (§3.2, §14.1 *autonomous child threads and recursion depth*) with its refusal, and cycle detection (§10.7) refusing a chain that returns to a role already on it; RED first, with a control that really chains initiations.
+- Verification / commit: pending.
+
+###### SIGNOFF-REPAIR.11.4.7.2.1.5.3.2 — `PHASE-3.5.3` named the §11.5 wake checklist and built four of its gates
+
+- Status: `pending`.
+- Built: topic, confidentiality, concurrency, spend. Named and neither built nor deferred: operating hours (quiet hours), rate, side-effect bounds, central + local reservation, recursion/duplicate/notification controls, allowed tools, adapter health, billing route.
+- Owns: adjudicating each — server-side gate or node-side check (§11.5 says *before wake, the node evaluates*) — then building it or giving it an evaluable trigger; quiet hours against the profile's existing `operating_hours`.
+- Verification / commit: pending.
+
+###### SIGNOFF-REPAIR.11.4.7.2.1.5.3.3 — An offline node's inbox grows without bound
+
+- Status: `pending`. §10.7 *maximum offline backlog*; trigger (the `.5` subscriptions) fired with `PHASE-3.5.2`.
+- Owns: a per-node cap on undelivered inbox rows with a typed, recorded refusal or coalescing, and the operator's view of a node at its cap.
+- Verification / commit: pending.
+
+###### SIGNOFF-REPAIR.11.4.7.2.1.5.3.4 — A storm-control refusal is answered and recorded nowhere, so the breaker's trigger cannot fire
+
+- Status: `pending`.
+- `POST /v1/calls` answers `429 storm_control` and stores nothing, so *the first multi-tenant storm observed* — the circuit breakers' trigger — can never be seen. Owns: recording each storm-control refusal (tenant, initiator, limit, instant) and a read over them, which turns the breakers' deferral into a condition anyone can evaluate. The breakers themselves stay deferred on it.
 - Verification / commit: pending.
 
 ###### SIGNOFF-REPAIR.11.4.7.2.1.5.4 — Four §4.2 grant fields exist nowhere
@@ -12573,7 +12601,7 @@ git grep -nI -E "never run|licen[cs]e decision|license decision" -- \
 | 1a | `SIGNOFF-REPAIR.11.29` | `done` | ✅ REPAIR-0318 — **the demonstration read presence without saying who was calling, and wrote a markdown table by executing it.** 🔴 `e8db1a1` (`.3.5.5`) bound `GET /v1/nodes/presence` to the caller's tenant; the demo's three reads use a bare `curl` with no principal header, so all three checks failed — the node-channel suite passed because ITS reads send one. 🔴 And backticks inside a double-quoted `echo` made bash RUN `rb node revoke`, substituting empty output into `summary.md` — **silently corrupting the evidence bundle for as long as it has existed**, never failing a check. ✅ 44 suites + demo ALL GREEN on the exact command CI runs |
 | 1a | `SIGNOFF-REPAIR.11.28` | `done` | ✅ REPAIR-0317 — **two enrollment expectations counted quota rows, and the row that moved them was three days old.** The first push's `rust` workflow went red on `enrollment_transaction`; it **reproduces locally**, so it is a suite the four cheap gates do not run. ⭐ `git log -S` names the cause: `398ecc7` (`.11.14.3.14`, 2026-09-17) gave every tenant two acquisition defaults, taking a bootstrap from 2 quota rows to 4 and the two-principal fixture from 3 to 5. ⛔ **4 and 5 were established from the source BEFORE either number was touched** — *adjust until it passes* is how a real double-insert gets laundered green. ✅ The expectations now NAME the rows (`quota_scopes`): a count has no producer, these pairs do. 9/9 |
 | 1a | `SIGNOFF-REPAIR.11.27` | `done` | ✅ REPAIR-0316 — **a self-test that pins one host's collation is not ground truth.** `doctrines` failed on the runner and was green locally: `check_readme_stability.sh`'s extraction arm ends in `sort -u`, and `LC_ALL=C` orders `docs/book/` third where `en_US.UTF-8` puts it first. ⭐ **Reproduced locally with the SHIPPED bytes** — `git show HEAD:…` under `LC_ALL=C` prints exactly what the runner logged. ✅ `LC_ALL=C` pins every stage of the extractor and the expectation is rewritten in that order; ⛔ the INSTRUMENT is pinned rather than the comparison loosened. Self-test green under BOTH collations, gate verdict unchanged in both. ⚠️ No script in `scripts/` pins a collation — latent hazard recorded, trigger stated |
-| 1 | `SIGNOFF-REPAIR.11.4.7.2.1.5.3` | `pending` | ✅ `.11.4.7.2.1.5` (DOC-0133): 12 discharged verdicts re-derived — **8 held, 4 moved** (rows 7, 8, 16, 17), all in the dangerous direction. ⭐ NEXT: six Phase-3 storm deferrals, one of whose triggers (*the first agent-initiated call*) reads as FIRED while `thread.create_auto` ships; then `.11.4.7.2.1.5.5`, `.11.4.7.2.1.5.1`, `.11.4.7.2.1.5.4` |
+| 1 | `SIGNOFF-REPAIR.11.4.7.2.1.5.3.1` | `pending` | ✅ `.11.4.7.2.1.5.3` adjudicated (DOC-0134): 3 storm triggers FIRED, 1 unobservable, 2 not. ⛔ **Auto-initiation is bounded today only by `.5.2`'s once-per-tenant defect** — build the causation chain + depth limit + cycle detection FIRST; it is a prerequisite of `.5.2`'s repeat-initiation repair. Then `.11.4.7.2.1.5.3.2`–`.4` |
 | 1a | `SIGNOFF-REPAIR.9.3.5.3` | `done` | ✅ DOC-0130 — **the book has a publication-store chapter**: three refs, write-once, compare-and-swap, fetch-back, every refusal, recovery — examples from a REAL run, which is how REPAIR-0404's two defects were found. `refs/rb/` in the book: 0 → 13 |
 | 1a | `SIGNOFF-REPAIR.9.3.5.3.1` | `done` | ✅ REPAIR-0404 — **a refused re-publish no longer moves the staging ref, and the CAS message reads once.** Both found by generating the book's examples from a REAL run rather than writing them by hand; the second was mine from REPAIR-0402 |
 | 1a | `SIGNOFF-REPAIR.9.3.5.2` | `done` | ✅ REPAIR-0403 — **a published bundle is served by its digest and verified on the way out.** The control tampers the STORE (re-points the immutable ref); M2 showed a tampered bundle would have been served, M3 that another tenant would have read it |

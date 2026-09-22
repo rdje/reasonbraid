@@ -40,80 +40,11 @@ will not help, because nothing about the request is wrong. A declared root that
 does not resolve to a directory refuses the **boot**, before the migrations run,
 so a typo cannot leave a changed database behind with no server on it.
 
-### A publish records where it is writing before it writes
+### The publication store
 
-A publish records **what it is about to do before it touches Git**. ROADMAP
-§15.7 step 4 calls this the *desired Git operation*. The publication row gets:
-
-- `repository`: the repository, **relative to** the publication root (for
-  example `"live"`), so the record stays valid if the root is moved;
-- `expected_effective`: the effective id the compare-and-swap expects. When
-  `repository` is recorded and this is absent, the publish expected **no**
-  effective channel yet.
-
-Both appear on the publication when recorded:
-
-```json
-{ "publication_id": "pub_…", "state": "staged", "repository": "live",
-  "expected_effective": "1111…" }
-```
-
-This is what lets an interrupted publish be found. If the server dies between
-writing to Git and marking the row `effective`, the row still names the
-repository it was writing to.
-
-- A publish refused **before** anything is written records nothing. That covers
-  a path outside the root, a location that is not a repository, and a manifest
-  that no longer matches the staged digest.
-- Once a publication has recorded its operation, a later publish must ask for
-  the **same** repository and `expected_effective`. A different request is
-  refused (*already recorded its Git operation*) rather than re-pointed,
-  because re-pointing it would strand whatever the first attempt wrote.
-
-**The publication commit is reproducible.** Its timestamp is the publication's
-**staging time**, not the moment of writing. Publishing the same publication's
-content twice therefore produces the **same commit id**, and the id can be
-recomputed from the record.
-
-⚠️ Publications staged before this rule carry no `repository`. Nothing recorded
-where they were written, and they are not guessed at.
-
-### Recovering an interrupted publish: `rb-reconciler`
-
-`rb-reconciler` is the §15.8 reconciler. It makes one pass over every
-publication that has recorded a Git operation. For each one it reads the
-publication's refs from the recorded repository, compares them with what the
-row says, and then either recovers the publication or reports it. Point it at
-the same database and publication root as `rb-server`:
-
-```text
-$ rb-reconciler --database-url postgres://… --publication-repo-root /srv/rb/publications
-pub_a: applied RetryStagedWrite
-pub_b: applied VerifyAndAdvance
-pub_c: requires a human: StopSecurityAlert — the immutable ref holds a commit this publication's content does not commit to — never pick a side
-pub_f: cannot be reconciled: no recorded Git operation — …
-```
-
-`--publication <id>` reconciles one publication. The reconciler never changes
-the database schema; migrating is `rb-server`'s job.
-
-| What it finds | What it does |
-| --- | --- |
-| staged, nothing written to Git | **recovers**: writes the recorded operation and marks the row `effective` |
-| staged, the Git write happened but the row never heard | **recovers**: verifies the commit and marks the row `effective` |
-| staged, but the immutable ref holds a different commit | **reports** — never picks a side |
-| `failed`, but its write appeared later | **reports** — quarantine and adjudicate; the row stays `failed` |
-| `effective`, but its ref is missing or moved | **reports** — freeze and repair through the authorized path |
-| the recorded compare-and-swap can no longer hold | **reports** — advancing would overwrite a publication the record does not know about |
-| database and Git agree | nothing |
-| no recorded Git operation | nothing to observe, so nothing is guessed |
-
-Recovery is **idempotent**. The commit is reproducible and rewriting an
-identical ref is a no-op, so a second pass over a recovered publication
-reports `consistent` and writes nothing.
-
-Exit status: `0` when every publication is consistent or recovered, `3` when at
-least one needs a human, and `1` when the pass itself failed.
+What a publish writes, the refs it moves, what refuses it, and how an
+interrupted publish is recovered by `rb-reconciler` are all in
+[The publication store](publication-store.md).
 
 ### A recorded Git object id must exist
 

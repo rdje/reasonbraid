@@ -19,6 +19,7 @@
 - [Deciding a thread: rules, ballots and the counted close](decision-rules.md)
 - [Moderating a thread](moderation.md)
 - [The policy lifecycle](policy-lifecycle.md)
+- [The publication store](publication-store.md)
 - [The evaluation harness](evaluation-harness.md)
 - [Budgets](budget.md)
 - [The CLI](cli.md)

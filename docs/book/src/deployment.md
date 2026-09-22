@@ -1499,7 +1499,7 @@ make release
 | `rb` | the CLI — the primary surface (threads, enrollment, node ops, budget/audit inspection) |
 | `rb-server` | the control plane — API + node channel + the embedded console at `/` (one listener, one binary) |
 | `rb-site` | deployment-local site authority administration and audited inventory; see [site authority](site-authority.md) for required database permissions and volume checks |
-| `rb-reconciler` | recovers interrupted publications and reports the ones only a human may resolve; see [the CLI chapter](cli.md#recovering-an-interrupted-publish-rb-reconciler) |
+| `rb-reconciler` | recovers interrupted publications and reports the ones only a human may resolve; see [the publication store](publication-store.md#recovering-an-interrupted-publish-rb-reconciler) |
 | `rb-bench` | adapter benchmark runner |
 | `reasonbraid-browse` | browser acquisition worker |
 | `reasonbraid-extract` | resource extraction worker |

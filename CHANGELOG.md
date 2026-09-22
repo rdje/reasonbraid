@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-22 — The generator this leaf owned deciding was measured and declined, and the check that replaced it goes red on the exact state that opened it (`SIGNOFF-REPAIR.11.2.9`)
+
+`REASONBRAID-DOC-0118`. A pending leaf re-read against later rulings before being executed.
+
+- ⛔ **THE ACCEPTANCE IS RETIRED RATHER THAN MET.** This leaf owned deciding whether `MEMORY.md`'s mechanical fields become DERIVED. `SIGNOFF-REPAIR.11.4.2.4` (REPAIR-0348) answered that over all **645** commits touching the pointer and **declined the generator** — the field with catastrophic drift had already been repaired by not carrying a value, **482 of 645** `latest_commit` versions were already derive-on-read, the residual risk lands on `next_action` and **222** curated-prose bullets, and in **5 of 10** frontier disagreements the TREE was the stale copy, so a generator sourcing row 1 would have written the wrong value half the time.
+- ⭐ **`docs/CLAIM_VERIFICATION.md` leg 2 decides it, and this leaf had already applied that rule to itself once** — it withdrew its own `commit-msg` predicate for the same reason. Building the generator now would be re-proposing a measured, declined option, so no difference being nameable, the ruling wins.
+- ✅ **WHAT THE LEAF WANTED IS SHIPPED AS A CHECK, NOT A WRITER.** `POINTER-CURRENCY` writes nothing, so it cannot touch the judgement line or the prose, and it names WHICH copy moved because the census measured the disagreement as symmetric.
+- ✅ **FALSIFIED AGAINST THE FOUNDING STATE, over history the gate did not police** (`.11.18.2`'s discriminator). `python3 -B scripts/check_pointer_currency.py --against f41997c` returns **rc=1**, naming `REASONBRAID-REPAIR-0318` and the commit that owns it, against a `HEAD` of `REPAIR-0322`; the same instrument returns rc=0 on the present tree.
+- 🔴 **THIS LEAF'S OWN CENSUS EXPIRED THE HEALTHIEST WAY — obsoleted by the work it routed.** `git grep -l 'MEMORY\.md' -- scripts/ .githooks/` was **7** at `aca9e14` and is **12** today, and one of the five arrivals is `check_pointer_currency.py`: the reader the leaf said did not exist.
+- ⚠️ **The one residue is findability, and the architecture already answers it.** *Layer A could not say what the last four commits did* sends a reader to the wrong layer — §6 says the pointer answers one question, and `CHANGELOG.md` is layer D's readable face.
+- ⛔ **This slice ships NO mechanism**, which is the correct output when the work has been done elsewhere.
+
 ## 2026-09-22 — The census gate could not see this project's own census family (`SIGNOFF-REPAIR.11.2.8`)
 
 `REASONBRAID-REPAIR-0382`. A doctrine gate that refused a claim its own evidence already answered.

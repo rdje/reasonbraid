@@ -4079,6 +4079,54 @@ grep -oE '`[a-z_]+`' docs/decisions/2026-09-16_evidence-is-shared-the-read-is-te
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
 
+#### SIGNOFF-REPAIR.8.2.1 — A gate that measured nothing reports PASS, and the write side of the same file already refuses what the read side accepts
+
+- Opened: `pending` by `.11.4.7.2.1.4.3`'s deferral pass, which walked the Phase-5 lane and found this clause of `.8.2` still carrying no executable owner. ⛔ `.8.2` is a container — a goal line naming five mechanisms, no `- Acceptance:` of its own and no children — so routing the clause there was a note rather than ownership (`TOOLBOX.md`: *a leaf that cannot be picked up and finished is not an owner*).
+- 🔴 **THE DEFECT, and its evidence is a CONTRAST INSIDE ONE FILE rather than a reading.** In `crates/reasonbraid-server/src/evaluation.rs`, `record_gate` refuses a threshold outside `[0, 1]`, a non-object baseline, an **empty** baseline, a non-numeric baseline score and a baseline score outside `[0, 1]`. `evaluate_gate`, over the same table, accepts all four of the corresponding shapes on the measurement side:
+
+| the shape | `record_gate` (write) | `evaluate_gate` (read) |
+| --- | --- | --- |
+| no cases at all | **refused** — *the baseline names at least one case* | ⛔ every baseline case `continue`s, `failures.is_empty()` is true, and the result is `passed: true` |
+| a non-numeric score | **refused** by name | ⛔ silently skipped, so the case is simply not compared |
+| a score outside `[0, 1]` | **refused** by name | ⛔ compared as written, so `5.0` clears any threshold |
+
+- ⛔ **SO THE HEADLINE IS EXACT: `evaluate_gate(gate, {})` RETURNS `passed: true` AND APPENDS THAT VERDICT TO `evaluation_gate_results`.** It is not a read-only mistake — a row claiming a pass that measured nothing becomes the durable record.
+- ⚠️ **WHAT MUST NOT CHANGE, stated before the repair so the scope cannot creep.** The comment *an unmeasured case is not compared (the caller owns the coverage)* is a DECLARED contract, not an oversight: a partial evaluation is legal. ⛔ Turning this into *every baseline case must be measured* would be a different product decision and is out of scope. The defect is the VACUOUS case — zero comparisons is not a verdict — and the two malformed-input shapes the write side already refuses.
+- ⭐ **AND THE COVERAGE SHOULD BE VISIBLE RATHER THAN INFERRED.** A reader of a `passed: true` row today cannot tell one case from five. The result gains `compared` and `unmeasured`, which costs nothing and is what makes the partial-coverage contract honest instead of merely legal.
+- Owns: refusing an evaluation that compares no case; refusing a measured score that is not a number or is outside `[0, 1]`, on the same terms and with the same message shape the write side already uses; and publishing the comparison counts in the result and in the appended row's response.
+- Acceptance: `evaluate_gate` with `{}` is REFUSED rather than passing, and the refusal is observed as a 400 through the HTTP surface; a non-numeric and an out-of-range measurement are each refused by name; a PARTIAL evaluation still succeeds, because that contract is unchanged, and its result names how many cases it compared; the existing gate walk in `crates/reasonbraid-server/tests/evaluation.rs` still passes unmodified except where it asserts the repaired behaviour; and every new control is observed RED against the pre-repair code before it is believed.
+- Status: `done`; REPAIR-0385. **Three refusals, each proved by its own mutant, and the partial contract deliberately untouched.**
+- ✅ **THE DEFECT, CAPTURED AS THE RESPONSE BODY RATHER THAN DESCRIBED.** With the pre-repair source and the new controls, the live suite fails at the first one and prints what the server actually returned:
+
+```text
+assertion `left == right` failed: an evaluation that compares NO case refuses:
+{"failures":[],"gate_id":"g5-blind","passed":true}
+```
+
+- ⛔ **AND THAT ROW IS APPENDED.** The `INSERT INTO evaluation_gate_results` runs before the response is built, so the pass over nothing was not a read-only mistake — it became the gate's durable record.
+- ✅ **THE FIX IS THE WRITE SIDE'S RULE, APPLIED TO THE READ SIDE, plus one refusal the write side has no equivalent for.** A measured score must be numeric and in `[0, 1]`, exactly as `record_gate` demands of a baseline score, using the same `out_of_range` constructor so the message shape matches. An evaluation that compares **no** case is refused outright. The result gains `compared` and `unmeasured`.
+- ⛔ **WHAT WAS NOT CHANGED, AND IT WAS THE EASY THING TO CHANGE.** The loop still skips an unmeasured baseline case. *The caller owns the coverage* is a declared contract, and turning it into *every case must be measured* would have been a different product decision arriving inside a defect repair. Only the empty intersection is refused; `compared`/`unmeasured` are what make the surviving contract legible instead of merely legal.
+- ✅ **FALSIFIED THREE TIMES, ONE MUTANT PER ARM, AND EACH RED NAMES ITS OWN ARM** (`.11.24.1.3.1`: a count is not a name — read WHERE it failed):
+
+| mutant | the arm that went red | the response body it printed |
+| --- | --- | --- |
+| the pre-repair source | *an evaluation that compares NO case refuses* | `{"failures":[],"passed":true}` |
+| the score-shape guard removed | *a non-numeric measurement refuses rather than dropping the case* | `{"compared":1,"unmeasured":1,"passed":true}` |
+| only the `[0, 1]` check removed | *an out-of-range measurement refuses instead of clearing every threshold* | `{"compared":2,"unmeasured":0,"passed":true}` |
+
+- ⭐ **THE SECOND AND THIRD BODIES ARE THE MECHANISM, not just a red.** `compared: 1, unmeasured: 1` shows the string DROPPING its case and the gate passing on the other one; `compared: 2` with `5.0` submitted shows the out-of-range value clearing a `0.8` baseline. ⛔ Without the new counts in the response neither red would have been distinguishable from the first.
+- ✅ **TWO NEGATIVE CONTROLS, because three refusals with no accepting case is a gate that cannot pass.** A partial evaluation (`{"c1": 0.95}` against a two-case baseline) still returns **200** with `compared: 1, unmeasured: 1`; and `{"c1": 1.0, "c2": 0.0}` is accepted, so the bound is the CLOSED range and not the open one.
+- **Restoration proved, not assumed:** `crates/reasonbraid-server/src/evaluation.rs` is byte-identical after all three mutants — SHA-256 `ff3c73e8…` before and after.
+- [x] **REPRODUCE / ISSUE** — the RED run above, with the server's own response body as the evidence; `target/eval_red.log` retains it.
+- [x] **ROOT CAUSE (WHY + WHERE)** — `evaluate_gate` in `crates/reasonbraid-server/src/evaluation.rs` derived `passed` from `failures.is_empty()` with no notion of how many cases it had compared, and validated the measurement side not at all, while `record_gate` in the same file refuses the three corresponding baseline shapes by name. The contrast is inside one file, which is why it is a contrast and not a reading.
+- [x] **FIX** — at the lowest level that works: one validation loop over the submitted scores, one `compared` counter with a refusal at zero, and two fields on the response. No schema change, no route change, no change to the partial-coverage contract.
+- [x] **ADDRESSED (verified)** — `bash scripts/run_pg_tests.sh evaluation` → **3 passed, 0 failed**, rc=0, against `FAILED. 2 passed; 1 failed` on each of the three mutants.
+- [x] **NO REGRESSION** — the adjacent `policy` suite, which exercises the same file's other paths, → **26 passed, 0 failed**, rc=0. `cargo clippy -p reasonbraid-server --all-targets -- -D warnings` rc=0; `cargo fmt --all -- --check` rc=0; `make book` builds; `make gate` → `=== all doctrines green ===`, rc=0. The existing gate walk is unmodified apart from the appended controls.
+- [x] **LOCKSTEP** — `MEMORY.md`, `CHANGELOG.md`, `DEV_NOTES.md`, `LIVE_STATUS.md`, `docs/book/src/evaluation-harness.md` and this tree, in this commit. ⭐ The book carried this defect as a **published limit** telling readers not to trust a green gate; that paragraph is now the repair's record, and the chapter's opening warning loses the clause that named it.
+- promotion: declined (*hold the read side to the write side's rules* is `docs/knowledge/a-claim-of-sameness-is-worth-its-call-graph.md` arriving at validation rather than authorization, and that note already states it).
+- Verification: RED ×3 with distinct arms and distinct response bodies; GREEN `evaluation` 3/3 and `policy` 26/26; strict clippy, fmt, book build and the doctrine gate all rc=0; source restored byte-identical by SHA-256.
+- Commit: `REASONBRAID-REPAIR-0385 (leaf SIGNOFF-REPAIR.8.2.1): a gate that compares no case is refused, and the read side now obeys the write side's rules`.
+
 ### SIGNOFF-REPAIR.9.1 — Policy registration and authority
 
 - Status: `pending`.
@@ -11317,6 +11365,7 @@ git grep -nI -E "never run|licen[cs]e decision|license decision" -- \
 
 | Row | Its effect record | Expected after `0077` | The leg it drives |
 | --- | --- | --- | --- |
+| 1a | `SIGNOFF-REPAIR.8.2.1` | `done` | ✅ REPAIR-0385 — **a gate that compares no case is refused, and the read side now obeys the write side's rules.** 🔴 `evaluate_gate({})` returned `{"failures":[],"passed":true}` **and appended it** to `evaluation_gate_results`, so a pass over nothing became the durable record; a non-numeric measurement dropped its case silently and a `5.0` cleared every threshold — while `record_gate`, in the SAME file, refuses all three in a baseline. ⭐ Falsified by **three mutants, one per arm**, each red naming its own arm AND printing the mechanism in the new counts: `compared:1 unmeasured:1` is the dropped case, `compared:2` with `5.0` is the cleared threshold. ⛔ The partial-coverage contract is deliberately untouched — *the caller owns the coverage* is a declaration, not an oversight — so only the empty intersection refuses, and `compared`/`unmeasured` make the rest legible. ✅ `evaluation` 3/3, `policy` 26/26, strict clippy, fmt, book build, source restored byte-identical. ⭐ The book carried this as a published *do not trust a green gate* limit; that paragraph is now the repair's record |
 | 1a | `SIGNOFF-REPAIR.11.4.7.2.1.4` | `done` | ✅ DOC-0122 — **the pass is complete: all 21 phase-triggered rows carry a verdict**, across three tranches — 13 discharged, 3 splits, 2 `fired and superseded`, 2 not yet triggered, 1 fired and open — and every open half names an executable owner (`.9.3.5`, `.4.6`, `.11.4.7.2.1.2`, `.11.4.7.2.1.3`, `.14`), none parked. ✅ **And the pass corrected its own parent's population**: 38 deferral ROWS is exact, 38 distinct deferrals is not — rows 9 and 21 are verbatim restatements of the gate record's #4 and #6, so **36 distinct statements**; two further rows CONTAIN a graded gate row and are deliberately not collapsed, because each carries nouns the gate record never listed |
 | 1a | `SIGNOFF-REPAIR.11.4.7.2.1.4.3` | `done` | ✅ DOC-0122 — **tranche 3 of 3: four discharged, two more splits, and the population corrected from rows to deferrals.** Discharged: the adapter conformance kit with its 11-fixture permanent-failure corpus and a third-party certification suite; the Phase-3 directory superset down to the fan-out storm control; resource acquisition including `0029_derivations.sql`, the one noun a reader would expect to be missing; and the Phase-6 policy stack. ⚠️ Row 18 splits **3 of 6** and row 20 **2 of 3** — Internet hardening is not met and says so. 🔴 **The one fresh finding is votes/abstentions, and the superset is why it surfaced**: `vote` exists as a workflow STEP so any word-keyed census returns hits, while no ballot table exists and `abstain` appears nowhere in `crates` or `migrations`. The gate record's narrower #2 would never have led a reader there |
 | `grt_applied_effect` | `applied`, same tenant | **dated `2026-03-01T04:05:06Z`** | the backfill itself |

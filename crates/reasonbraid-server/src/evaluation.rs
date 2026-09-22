@@ -675,7 +675,28 @@ pub async fn evaluate_gate(
     let scores = scores.as_object().ok_or_else(|| {
         EvaluationError::MalformedDigest("the scores are a case→score object".to_string())
     })?;
+    // ⛔ A MEASUREMENT IS HELD TO THE SAME SHAPE AS A BASELINE SCORE
+    // (`SIGNOFF-REPAIR.8.2.1`). `record_gate`, twenty lines up in this file,
+    // refuses a non-numeric baseline score and one outside [0, 1] by name.
+    // This side used to SKIP a non-numeric measurement — so a case could be
+    // dropped from the comparison by sending a string — and to compare an
+    // out-of-range one as written, so `5.0` cleared every threshold. The write
+    // side's rule is the read side's rule.
+    for (case_id, measured) in scores.iter() {
+        let value = measured.as_f64().ok_or_else(|| {
+            EvaluationError::MalformedDigest(format!(
+                "the measured score for `{case_id}` is not a number"
+            ))
+        })?;
+        if !(0.0..=1.0).contains(&value) {
+            return Err(EvaluationError::out_of_range(
+                &format!("the measured score for `{case_id}`"),
+                value,
+            ));
+        }
+    }
     let mut failures = Vec::new();
+    let mut compared = 0_u64;
     for (case_id, expected) in baseline {
         let Some(expected) = expected.as_f64() else {
             continue;
@@ -683,6 +704,7 @@ pub async fn evaluate_gate(
         let Some(measured) = scores.get(case_id).and_then(|v| v.as_f64()) else {
             continue; // an unmeasured case is not compared (the caller owns the coverage)
         };
+        compared += 1;
         let floor = expected - threshold;
         if measured < floor {
             failures.push(json!({
@@ -693,6 +715,20 @@ pub async fn evaluate_gate(
             }));
         }
     }
+    // ⛔ ZERO COMPARISONS IS NOT A VERDICT, and the old code made it the BEST
+    // one: with no case compared, `failures` is empty and the gate reported
+    // `passed: true` — then APPENDED that pass to `evaluation_gate_results`,
+    // so a row claiming success over nothing became the durable record.
+    // ⚠️ A PARTIAL evaluation is still legal: the loop above deliberately keeps
+    // skipping an unmeasured case, because `the caller owns the coverage` is a
+    // declared contract rather than an oversight. Only the empty intersection
+    // is refused, and the counts below are what make a partial result readable.
+    if compared == 0 {
+        return Err(EvaluationError::MalformedDigest(format!(
+            "the evaluation of gate `{gate_id}` compared no case —              the scores name at least one case the baseline carries"
+        )));
+    }
+    let unmeasured = baseline.len() as u64 - compared;
     let passed = failures.is_empty();
     let appended = sqlx::query(
         "INSERT INTO evaluation_gate_results (gate_id, passed, failures) VALUES ($1, $2, $3)",
@@ -707,7 +743,13 @@ pub async fn evaluate_gate(
             "gate result for `{gate_id}`"
         )));
     }
-    Ok(json!({ "gate_id": gate_id, "passed": passed, "failures": failures }))
+    Ok(json!({
+        "gate_id": gate_id,
+        "passed": passed,
+        "failures": failures,
+        "compared": compared,
+        "unmeasured": unmeasured,
+    }))
 }
 
 /// The calibrations + the gates, newest first.

@@ -1,5 +1,17 @@
 # DEV_NOTES.md
 
+## 2026-09-22 — A gate that compares no case is refused, and the read side now obeys the write side's rules (`SIGNOFF-REPAIR.8.2.1`)
+
+`REASONBRAID-REPAIR-0385`. A product defect the book had been publishing as a limit.
+
+- 🔴 **THE DEFECT, CAPTURED AS THE SERVER'S OWN RESPONSE.** `evaluate_gate` with an empty score object returned `{"failures":[],"gate_id":"g5-blind","passed":true}` — and the `INSERT` runs before the response is built, so that pass over nothing was **appended to `evaluation_gate_results`** as the gate's durable record. A non-numeric measurement dropped its case silently, and one outside `[0, 1]` was compared as written, so `5.0` cleared every threshold.
+- ⭐ **THE EVIDENCE IS A CONTRAST INSIDE ONE FILE.** `record_gate`, twenty lines up, refuses an empty baseline, a non-numeric score and one outside `[0, 1]`, each by name. The write side's rules are now the read side's rules, using the same `out_of_range` constructor so the message shape matches.
+- ⛔ **WHAT WAS NOT CHANGED, AND IT WAS THE EASY THING TO CHANGE.** The comparison still skips an unmeasured baseline case: *the caller owns the coverage* is a declared contract, and turning it into *every case must be measured* would be a different product decision arriving inside a defect repair. Only the empty intersection refuses; the new `compared` and `unmeasured` fields make the surviving contract legible rather than merely legal.
+- ✅ **FALSIFIED THREE TIMES, ONE MUTANT PER ARM**, each red naming its own arm — and the second and third print the mechanism rather than just a failure: `compared: 1, unmeasured: 1` is the string dropping its case while the gate passes on the other, and `compared: 2` with `5.0` submitted is the out-of-range value clearing a `0.8` baseline. ⛔ Without the new counts in the response neither would have been distinguishable from the first.
+- ✅ **TWO NEGATIVE CONTROLS**, because three refusals with no accepting case is a gate that cannot pass: a partial evaluation still returns 200 with its counts, and `{1.0, 0.0}` is accepted, so the bound is the closed range.
+- ✅ `evaluation` **3/3**, `policy` **26/26**, strict clippy, `cargo fmt --check`, `make book` and the doctrine gate all rc=0; `evaluation.rs` restored byte-identical by SHA-256 after every mutant.
+- ⭐ **THE BOOK CHANGES THE MOST.** It carried this as a published limit telling readers not to treat a green gate as evidence. That paragraph is now the repair's record, the chapter's opening warning loses the clause that named it, and the gate section documents the three refusals and the two counts.
+
 ## 2026-09-22 — All 21 rows carry a verdict, and 38 rows are 36 distinct deferrals (`SIGNOFF-REPAIR.11.4.7.2.1.4.3`, closing `.4`)
 
 `REASONBRAID-DOC-0122`. Tranche 3 of 3, and the pass corrects a population this lane published two commits ago.

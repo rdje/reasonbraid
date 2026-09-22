@@ -6,7 +6,7 @@ runs, and gates that block on a regression against a baseline.
 
 ⛔ **Read the [limits](#what-this-harness-does-not-establish) at the foot of this
 chapter before using any of it as evidence.** Several are known defects with an
-owning repair leaf, and one of them makes an unmeasured gate report `pass`.
+owning repair leaf.
 
 ## The routes
 
@@ -179,10 +179,32 @@ curl -s -X POST "localhost:4310/v1/evaluations/gates/gat_0192…/evaluations" \
 ```json
 {
   "passed": false,
+  "compared": 2,
+  "unmeasured": 0,
   "failures": [
     {"case_id": "c2", "baseline": 0.85, "measured": 0.79, "delta": 0.06}
   ]
 }
+```
+
+**Evaluating is as strict as recording, and `compared` is why a partial result is
+readable.** A measured score must be numeric and in `[0, 1]`, on the same terms
+the baseline is held to — a string used to drop its case from the comparison
+silently, and a `5.0` used to clear any threshold.
+
+**A partial evaluation is legal and a vacuous one is not.** Scores that name
+fewer cases than the baseline still succeed: the caller owns the coverage, and
+`compared` and `unmeasured` say what the verdict rests on. Scores that name
+**none** of the baseline's cases are refused with `400`, because a gate cannot
+pass on nothing — and before `SIGNOFF-REPAIR.8.2.1` that case returned
+`passed: true` and appended it to the gate's durable results.
+
+```bash
+# refused: compares no case
+curl -s -X POST ".../evaluations" -d '{}'
+# refused: the measurement is not a number / is outside [0, 1]
+curl -s -X POST ".../evaluations" -d '{"c1": "oops"}'
+curl -s -X POST ".../evaluations" -d '{"c1": 5.0}'
 ```
 
 ## What this harness does not establish
@@ -192,13 +214,17 @@ claim was withdrawn.** Nothing in this chapter demonstrates that deliberation
 improves an answer. The harness records measurements; it does not establish that
 the thing being measured got better.
 
-🔴 **A gate that measured nothing reports `pass`.** `evaluate_gate` skips any
-baseline case the submitted scores do not mention — "the caller owns the
-coverage" — so an empty score object compares no case, finds no failure and
-returns `passed: true`. Measured scores are also subject to no `[0, 1]` bound,
-although the **write** side of the same file refuses exactly that in a baseline.
-Recorded as `SIGNOFF-REPAIR.8.2` clause 3; **do not treat a green gate as
-evidence until it is repaired.**
+✅ **Repaired: a gate that measured nothing used to report `pass`.**
+`evaluate_gate` skipped any baseline case the submitted scores did not mention —
+"the caller owns the coverage" — so an empty score object compared no case,
+found no failure, returned `passed: true` and **appended that verdict** to the
+gate's results. A non-numeric measurement dropped its case just as silently, and
+a measurement outside `[0, 1]` was compared as written, so `5.0` cleared every
+threshold — while the **write** side of the same file refused all three in a
+baseline. `SIGNOFF-REPAIR.8.2.1` made the read side obey the write side's rules
+and published `compared` / `unmeasured`. ⚠️ **Partial coverage is still the
+caller's to own**, which is a contract and not a defect: read `compared` before
+treating any green gate as evidence.
 
 🔴 **A storage failure is reported as the caller's mistake.** Six write paths
 turn any database error into "already exists — register a new version or run id

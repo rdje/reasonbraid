@@ -867,6 +867,78 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
     .await;
     assert_eq!(status, 400, "the ghost gate refuses: {refused}");
 
+    // 6b. `SIGNOFF-REPAIR.8.2.1` — the read side is held to the write side's
+    // rules. Before the repair each of the three below returned 200 with
+    // `passed: true`, and the first of them APPENDED that pass to
+    // `evaluation_gate_results`: a durable row claiming success over nothing.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/evaluations/gates/g5-blind/evaluations",
+        &human_id,
+        &json!({}),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "an evaluation that compares NO case refuses: {refused}"
+    );
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/evaluations/gates/g5-blind/evaluations",
+        &human_id,
+        &json!({ "c1": 0.95, "c2": "oops" }),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "a non-numeric measurement refuses rather than dropping the case: {refused}"
+    );
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/evaluations/gates/g5-blind/evaluations",
+        &human_id,
+        &json!({ "c1": 0.95, "c2": 5.0 }),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "an out-of-range measurement refuses instead of clearing every threshold: {refused}"
+    );
+    // ⭐ NEGATIVE: a PARTIAL evaluation is still legal — `the caller owns the
+    // coverage` is a declared contract, and only the empty intersection is
+    // refused. Its result names how many cases it compared, which is what a
+    // reader of a `passed: true` row could not tell before.
+    let (status, partial) = post(
+        &client,
+        &base,
+        "/v1/evaluations/gates/g5-blind/evaluations",
+        &human_id,
+        &json!({ "c1": 0.95 }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "a partial evaluation still succeeds: {partial}"
+    );
+    assert_eq!(partial["passed"], json!(true), "{partial}");
+    assert_eq!(partial["compared"], json!(1), "{partial}");
+    assert_eq!(partial["unmeasured"], json!(1), "{partial}");
+    // ⭐ NEGATIVE: a score at each end of the closed range is accepted, so the
+    // bound is `[0, 1]` and not `(0, 1)`.
+    let (status, edges) = post(
+        &client,
+        &base,
+        "/v1/evaluations/gates/g5-blind/evaluations",
+        &human_id,
+        &json!({ "c1": 1.0, "c2": 0.0 }),
+    )
+    .await;
+    assert_eq!(status, 200, "the closed range accepts 0.0 and 1.0: {edges}");
+    assert_eq!(edges["compared"], json!(2), "{edges}");
+
     // 7. The lists.
     let (status, calibrations) =
         get(&client, &base, "/v1/evaluations/calibrations", &human_id).await;

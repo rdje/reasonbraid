@@ -1662,9 +1662,107 @@ pub async fn run_inspect_runs(
     Ok(out)
 }
 
+/// The tenant's OPEN ambiguous attempts, with the safe actions for them
+/// (`SIGNOFF-REPAIR.4.6.1.1`; ROADMAP §18.5; tenant_admin).
+pub async fn run_inspect_ambiguous(
+    cfg: &Config,
+    principal: &PrincipalRef,
+    tenant: Option<&str>,
+    json_out: bool,
+) -> Result<String, CliError> {
+    let tenant = tenant.or(principal.tenant.as_deref()).ok_or_else(|| {
+        CliError::usage("cannot determine the tenant — pass --tenant".to_string())
+    })?;
+    let client = ApiClient::for_base(&cfg.server_base)?;
+    let response = client
+        .get_admin(&principal.id, "/v1/admin/nodes/ambiguous-attempts", tenant)
+        .await?;
+    if json_out {
+        return or_json(&response, true);
+    }
+    Ok(format_ambiguous_attempts(tenant, &response))
+}
+
+/// The text view of `GET /v1/admin/nodes/ambiguous-attempts`. The safe actions
+/// are printed only when there is something to act on, and the one thing never
+/// to do is printed with them, because it is the tempting one.
+fn format_ambiguous_attempts(tenant: &str, response: &Value) -> String {
+    let attempts = response["attempts"].as_array().cloned().unwrap_or_default();
+    let mut out = format!(
+        "tenant {tenant}'s open ambiguous attempts ({}):\n",
+        attempts.len()
+    );
+    for a in &attempts {
+        out.push_str(&format!(
+            "  {} — node {} — op {} — reported {}× since {} (last {})\n    {}\n",
+            a["attempt_id"].as_str().unwrap_or("?"),
+            a["node_id"].as_str().unwrap_or("?"),
+            a["operation_id"].as_str().unwrap_or("?"),
+            a["report_count"].as_i64().unwrap_or(0),
+            a["first_reported_at"].as_str().unwrap_or("?"),
+            a["last_reported_at"].as_str().unwrap_or("?"),
+            a["reason"].as_str().unwrap_or("?"),
+        ));
+    }
+    if attempts.is_empty() {
+        return out;
+    }
+    out.push_str("safe actions:\n");
+    for action in response["safe_actions"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+    {
+        out.push_str(&format!(
+            "  {} ({}): {}\n",
+            action["action"].as_str().unwrap_or("?"),
+            action["who"].as_str().unwrap_or("?"),
+            action["effect"].as_str().unwrap_or("?"),
+        ));
+    }
+    out.push_str(&format!(
+        "never: {}\nrunbook: {}\n",
+        response["never"].as_str().unwrap_or("?"),
+        response["runbook"].as_str().unwrap_or("?"),
+    ));
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The ambiguous-attempt view prints each open attempt, and the safe actions
+    /// with the one forbidden act only when something is open.
+    #[test]
+    fn the_ambiguous_attempt_view_prints_the_actions_only_when_something_is_open() {
+        let tenant = "ten_00000000-0000-7000-8000-000000000001";
+        let open = serde_json::json!({
+            "attempts": [{
+                "attempt_id": "patt_1", "node_id": "nod_1", "operation_id": "op_1",
+                "report_count": 2, "first_reported_at": "t0", "last_reported_at": "t1",
+                "reason": "no server receipt for operation op_1",
+            }],
+            "safe_actions": [{
+                "action": "provider_status_lookup", "who": "the node's operator",
+                "effect": "proves it",
+            }],
+            "never": "re-fire the provider call to check: it can charge twice",
+            "runbook": "docs/runbooks/provider-outage-ambiguous-charge.md",
+        });
+        let text = format_ambiguous_attempts(tenant, &open);
+        assert!(text.contains("open ambiguous attempts (1)"), "{text}");
+        assert!(text.contains("patt_1 — node nod_1 — op op_1 — reported 2× since t0 (last t1)"));
+        assert!(text.contains("provider_status_lookup (the node's operator): proves it"));
+        assert!(text.contains("never: re-fire the provider call to check"));
+
+        let none = serde_json::json!({ "attempts": [], "safe_actions": open["safe_actions"] });
+        let text = format_ambiguous_attempts(tenant, &none);
+        assert_eq!(
+            text,
+            format!("tenant {tenant}'s open ambiguous attempts (0):\n")
+        );
+    }
 
     /// Names and raw ids resolve to the same principal; unknown names are a usage
     /// error (never a silent guess).

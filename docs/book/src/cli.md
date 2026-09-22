@@ -574,6 +574,17 @@ one result = one run, ever (the idempotency claim dedupes redelivery first):
  inspect runs --as alice
 ```
 
+The ambiguous-attempt surface (`SIGNOFF-REPAIR.4.6.1.1`; ROADMAP §18.5) lists
+the attempts the tenant's nodes reported as ambiguous and the server could not
+settle. It prints the safe actions, and the one act never to take, only when
+something is open:
+
+```text
+ inspect ambiguous --as alice
+```
+
+See [ambiguous attempts on the operator surface](node-channel.md#ambiguous-attempts-on-the-operator-surface).
+
 The dead-letter surface (`.2.4`): a terminal refusal auto-quarantines the
 inbox row with the reason, and the operator REPLAYS it — the quarantine
 clears, the admission decision refreshes, and the command re-enters the

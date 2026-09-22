@@ -719,6 +719,10 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
         .route("/v1/audit/receipts", get(list_cross_domain_receipts))
         .route("/v1/admin/metrics", get(admin_metrics))
         .route("/v1/admin/nodes/presence", get(list_node_presence))
+        .route(
+            "/v1/admin/nodes/ambiguous-attempts",
+            get(list_ambiguous_attempts),
+        )
         .route("/v1/directory/presence", get(directory_presence))
         .route("/v1/directory/match", post(directory_match))
         .route("/v1/calls", post(open_recruitment_call))
@@ -2138,6 +2142,110 @@ async fn list_node_presence(
             Ok(Json(json!({
                 "tenant_id": q.tenant_id.to_string(),
                 "nodes": nodes,
+            })))
+        },
+    )
+    .await
+}
+
+/// The safe resolution actions for an ambiguous attempt, in the order an
+/// operator should consider them — `docs/runbooks/provider-outage-ambiguous-charge.md`'s
+/// *Recovery*, as a fixed vocabulary. None of them is a server verb: each is
+/// taken where the authority for it lives, which is why the list names who.
+const AMBIGUOUS_ATTEMPT_ACTIONS: [(&str, &str, &str); 3] = [
+    (
+        "provider_status_lookup",
+        "the node's operator",
+        "a proven lookup lands the attempt completed or failed_known in the node's \
+         journal; the node's next handshake closes this row as resolved_by_node",
+    ),
+    (
+        "reask_with_allow_possible_duplicate",
+        "the thread's human",
+        "re-asks under the explicit possible-duplicate flag the retry policy honours; \
+         never a silent retry",
+    ),
+    (
+        "close_with_unresolved_register",
+        "the thread's human",
+        "closes the thread honestly with the attempt in its unresolved register",
+    ),
+];
+
+/// `GET /v1/admin/nodes/ambiguous-attempts?tenant_id=…` — the tenant's
+/// ambiguous attempts that are still OPEN, with the safe actions for them
+/// (`SIGNOFF-REPAIR.4.6.1.1`; ROADMAP §18.5).
+///
+/// A row is what a node reported at its handshake and the server could not
+/// settle: it holds no receipt for the attempt's operation. Rows are written by
+/// the handshake (`NodeChannelState::record_ambiguous_reports`); closed rows are
+/// kept with how they ended and are not listed here. The tenant is the node's.
+///
+/// ⛔ `re-fire the call to check` is NOT among the actions, deliberately: the
+/// runbook's first safe action is never to do it, because a re-fire can charge
+/// twice. The response says so rather than leaving it to be inferred.
+///
+/// Uses the own-tenant inspection gate, like `list_node_presence` beside it:
+/// both read node state an administrator needs while a revocation is in flight.
+async fn list_ambiguous_attempts(
+    State(state): State<Arc<ApiState>>,
+    Query(q): Query<AdminListQuery>,
+    headers: HeaderMap,
+) -> Result<Response, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    inspect_tenant_admin(
+        &state,
+        &principal,
+        q.tenant_id,
+        reasonbraid_core::TenantAdminInspection::AmbiguousAttempts {},
+        |pool| async move {
+            type Row = (
+                String,
+                String,
+                String,
+                String,
+                DateTime<Utc>,
+                DateTime<Utc>,
+                i64,
+            );
+            let rows: Vec<Row> = sqlx::query_as(
+                "SELECT a.node_id, a.attempt_id, a.operation_id, a.reason, \
+                        a.first_reported_at, a.last_reported_at, a.report_count \
+                 FROM node_ambiguous_attempts a JOIN nodes n ON n.node_id = a.node_id \
+                 WHERE n.tenant_id = $1 AND a.closed_at IS NULL \
+                 ORDER BY a.first_reported_at, a.node_id, a.attempt_id",
+            )
+            .bind(q.tenant_id.to_string())
+            .fetch_all(&pool)
+            .await?;
+            let attempts: Vec<Value> = rows
+                .into_iter()
+                .map(
+                    |(node_id, attempt_id, operation_id, reason, first, last, count)| {
+                        json!({
+                            "node_id": node_id,
+                            "attempt_id": attempt_id,
+                            "operation_id": operation_id,
+                            "reason": reason,
+                            "first_reported_at": first.to_rfc3339(),
+                            "last_reported_at": last.to_rfc3339(),
+                            "report_count": count,
+                        })
+                    },
+                )
+                .collect();
+            let safe_actions: Vec<Value> = AMBIGUOUS_ATTEMPT_ACTIONS
+                .iter()
+                .map(|(action, who, effect)| {
+                    json!({ "action": action, "who": who, "effect": effect })
+                })
+                .collect();
+            Ok(Json(json!({
+                "tenant_id": q.tenant_id.to_string(),
+                "attempts": attempts,
+                "safe_actions": safe_actions,
+                "never": "re-fire the provider call to check: it can charge twice",
+                "runbook": "docs/runbooks/provider-outage-ambiguous-charge.md",
             })))
         },
     )

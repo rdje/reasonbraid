@@ -69,14 +69,14 @@ POST /v1/federation-agreements	guarded transaction	recruitment_offers	module-rea
 POST /v1/federation-agreements/accept	guarded transaction	recruitment_offers	module-reach
 POST /v1/federation-agreements/revoke	guarded transaction	recruitment_offers	module-reach
 POST /v1/governance-charters	site authority	recruitment_offers	module-reach
-POST /v1/nodes/ack	not-censused	node_certificates,node_events,node_keys,node_leases,node_proof_nonces	module-reach
+POST /v1/nodes/ack	not-censused	node_ambiguous_attempts,node_certificates,node_events,node_keys,node_leases,node_proof_nonces	module-reach
 POST /v1/nodes/enroll	not-censused	node_certificates,node_keys,node_leases	walk
-POST /v1/nodes/enroll-tokens	guarded transaction	node_certificates,node_events,node_keys,node_leases,node_proof_nonces,recruitment_offers,server_ca	module-reach
+POST /v1/nodes/enroll-tokens	guarded transaction	node_ambiguous_attempts,node_certificates,node_events,node_keys,node_leases,node_proof_nonces,recruitment_offers,server_ca	module-reach
 POST /v1/nodes/events	not-censused	node_events,quota_events,resource_references	walk
-POST /v1/nodes/handshake	not-censused	node_certificates,node_events,node_keys,node_leases,node_proof_nonces	module-reach
-POST /v1/nodes/heartbeat	not-censused	node_certificates,node_events,node_keys,node_leases,node_proof_nonces	module-reach
+POST /v1/nodes/handshake	not-censused	node_ambiguous_attempts,node_certificates,node_events,node_keys,node_leases,node_proof_nonces	module-reach
+POST /v1/nodes/heartbeat	not-censused	node_ambiguous_attempts,node_certificates,node_events,node_keys,node_leases,node_proof_nonces	module-reach
 POST /v1/nodes/inbox/prune	guarded transaction	recruitment_offers	module-reach
-POST /v1/nodes/poll	not-censused	node_certificates,node_events,node_keys,node_leases,node_proof_nonces	module-reach
+POST /v1/nodes/poll	not-censused	node_ambiguous_attempts,node_certificates,node_events,node_keys,node_leases,node_proof_nonces	module-reach
 POST /v1/nodes/quarantine	guarded transaction	recruitment_offers	module-reach
 POST /v1/nodes/replay	guarded transaction	recruitment_offers	module-reach
 POST /v1/nodes/revoke	guarded transaction	recruitment_offers	module-reach

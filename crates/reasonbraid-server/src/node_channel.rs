@@ -956,6 +956,93 @@ impl NodeChannelState {
         .await
     }
 
+    /// Record what one handshake was told about the node's ambiguous attempts
+    /// and what it answered (`SIGNOFF-REPAIR.4.6.1.1`, migration 0087), so the
+    /// operator surface can list the ones still open.
+    ///
+    /// `reported` pairs each attempt the node reported with the directive this
+    /// handshake issued for it. In ONE transaction:
+    ///
+    /// - `needs_adjudication` opens the row, or refreshes it if it is open —
+    ///   and re-opens it, as a new episode, if an earlier closure was followed
+    ///   by a new report;
+    /// - `adjudicated` closes an open row with the receipt as its evidence. An
+    ///   attempt adjudicated on its FIRST report was never open to anyone, so
+    ///   it leaves no row;
+    /// - an open row this handshake did NOT report is closed `resolved_by_node`:
+    ///   the node's journal left `outcome_unknown` by a path the server does not
+    ///   see (a proven status lookup, a local reconciliation).
+    ///
+    /// ⛔ The last rule relies on the handshake reporting the node's COMPLETE
+    /// ambiguous set, which is what `Node::reconcile` sends: every attempt its
+    /// journal holds `outcome_unknown`. Every instant is the transaction's
+    /// `now()`, so the rows of one handshake share one instant.
+    pub async fn record_ambiguous_reports(
+        &self,
+        node_id: &str,
+        reported: &[(&AmbiguousAttempt, &Directive)],
+    ) -> Result<(), sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+        for (attempt, directive) in reported {
+            match directive {
+                Directive::NeedsAdjudication { reason, .. } => {
+                    sqlx::query(
+                        "INSERT INTO node_ambiguous_attempts \
+                           (node_id, attempt_id, operation_id, reason, \
+                            first_reported_at, last_reported_at, report_count) \
+                         VALUES ($1, $2, $3, $4, now(), now(), 1) \
+                         ON CONFLICT (node_id, attempt_id) DO UPDATE SET \
+                           operation_id = EXCLUDED.operation_id, \
+                           reason = EXCLUDED.reason, \
+                           last_reported_at = EXCLUDED.last_reported_at, \
+                           first_reported_at = CASE \
+                             WHEN node_ambiguous_attempts.closed_at IS NULL \
+                             THEN node_ambiguous_attempts.first_reported_at \
+                             ELSE EXCLUDED.first_reported_at END, \
+                           report_count = CASE \
+                             WHEN node_ambiguous_attempts.closed_at IS NULL \
+                             THEN node_ambiguous_attempts.report_count + 1 \
+                             ELSE 1 END, \
+                           closed_at = NULL, closure = NULL, closure_evidence = NULL",
+                    )
+                    .bind(node_id)
+                    .bind(&attempt.attempt_id)
+                    .bind(&attempt.operation_id)
+                    .bind(reason)
+                    .execute(&mut *tx)
+                    .await?;
+                }
+                Directive::Adjudicated { evidence, .. } => {
+                    sqlx::query(
+                        "UPDATE node_ambiguous_attempts \
+                         SET closed_at = now(), last_reported_at = now(), \
+                             closure = 'adjudicated', closure_evidence = $3 \
+                         WHERE node_id = $1 AND attempt_id = $2 AND closed_at IS NULL",
+                    )
+                    .bind(node_id)
+                    .bind(&attempt.attempt_id)
+                    .bind(evidence)
+                    .execute(&mut *tx)
+                    .await?;
+                }
+            }
+        }
+        let reported_ids: Vec<&str> = reported
+            .iter()
+            .map(|(attempt, _)| attempt.attempt_id.as_str())
+            .collect();
+        sqlx::query(
+            "UPDATE node_ambiguous_attempts \
+             SET closed_at = now(), closure = 'resolved_by_node' \
+             WHERE node_id = $1 AND closed_at IS NULL AND attempt_id <> ALL($2)",
+        )
+        .bind(node_id)
+        .bind(&reported_ids)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await
+    }
+
     /// Consume a proof nonce, in ONE statement (`SIGNOFF-REPAIR.4.2.2`).
     ///
     /// `ON CONFLICT DO NOTHING RETURNING` is the whole decision: the first
@@ -1677,6 +1764,14 @@ async fn handshake(
             }),
         }
     }
+    // The operator's copy of what this handshake decided (`SIGNOFF-REPAIR.4.6.1.1`).
+    // Without it the directive reached only the node, and §18.5's *ambiguous
+    // attempts* had nothing a route could list.
+    let reported: Vec<(&AmbiguousAttempt, &Directive)> =
+        req.ambiguous_attempts.iter().zip(&directives).collect();
+    state
+        .record_ambiguous_reports(&req.node_id, &reported)
+        .await?;
 
     let mut known_events = Vec::new();
     for operation_id in &req.pending_operations {

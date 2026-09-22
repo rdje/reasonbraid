@@ -170,6 +170,71 @@ guidance and the fresh lease:
 A node that reports a cursor ahead of the server's ledger is **refused** with a
 typed error: its journal saw commands this server cannot reproduce.
 
+## Ambiguous attempts on the operator surface
+
+An attempt is **ambiguous** when the node crossed the dispatch boundary and never
+recorded a result, so the provider call may or may not have happened. The node
+reports every such attempt at each handshake. Until `SIGNOFF-REPAIR.4.6.1.1`,
+the server answered the node and kept nothing, so an operator who could not
+reach the node could not see what was open.
+
+Each handshake now records its answer (migration `0087`), one row per node and
+attempt:
+
+| the handshake… | the row |
+| --- | --- |
+| reports the attempt, and the server holds no receipt | **open** — inserted, or refreshed: `report_count` goes up, `first_reported_at` stays |
+| reports it, and the server now holds a receipt | closed `adjudicated`, with the receipt as the evidence |
+| no longer reports an open attempt | closed `resolved_by_node` — the node's journal settled it itself, for example with a proven status lookup |
+| reports it again after it was closed | re-opened as a new episode |
+
+An attempt the server can adjudicate on its **first** report was never open to
+anyone, so it leaves no row. Closed rows are kept, with how they ended.
+
+```text
+GET /v1/admin/nodes/ambiguous-attempts?tenant_id=ten_…
+```
+
+The route returns the **open** rows for the tenant's nodes, together with the
+safe resolution actions from
+`docs/runbooks/provider-outage-ambiguous-charge.md`. It uses the own-tenant
+inspection gate, like `GET /v1/admin/nodes/presence`: the caller needs
+`tenant_admin` over that tenant, another tenant's administrator gets `403`, and
+both answers carry `x-reasonbraid-authorization`.
+
+```json
+{
+  "tenant_id": "ten_…",
+  "attempts": [
+    {
+      "node_id": "nod_…",
+      "attempt_id": "patt_…",
+      "operation_id": "op_…",
+      "reason": "no server receipt for operation op_… — provider proof or operator adjudication required",
+      "first_reported_at": "2026-09-22T19:02:11.412+00:00",
+      "last_reported_at": "2026-09-22T19:04:37.905+00:00",
+      "report_count": 2
+    }
+  ],
+  "safe_actions": [
+    { "action": "provider_status_lookup", "who": "the node's operator", "effect": "…" },
+    { "action": "reask_with_allow_possible_duplicate", "who": "the thread's human", "effect": "…" },
+    { "action": "close_with_unresolved_register", "who": "the thread's human", "effect": "…" }
+  ],
+  "never": "re-fire the provider call to check: it can charge twice",
+  "runbook": "docs/runbooks/provider-outage-ambiguous-charge.md"
+}
+```
+
+⚠️ **None of the three actions is a server verb.** Each is taken where its
+authority lives. A status lookup runs on the node, and the node's next handshake
+then closes the row. A re-ask, or an honest close, is a decision for the
+thread's human. The response lists who takes each action for that reason. It
+also states the one thing never to do, because that is the tempting one.
+
+From the CLI: `rb inspect ambiguous --as alice` (add `--json` for the raw
+response).
+
 ## Delivery state
 
 Every inbox row carries a **derived** delivery state, returned by

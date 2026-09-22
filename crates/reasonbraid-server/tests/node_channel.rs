@@ -81,6 +81,7 @@ async fn pool() -> Option<PgPool> {
             "server_ca",
             "runs",
             "incarnations",
+            "node_ambiguous_attempts",
             "node_proof_nonces",
             "nodes",
             "hosts",
@@ -663,6 +664,233 @@ async fn ambiguous_attempt_with_server_receipt_is_adjudicated_and_events_dedupe(
         .await
         .unwrap();
     assert_eq!(receipts, 1, "the known event was not re-sent");
+    server.crash();
+}
+
+/// Journal one command whose attempt crossed the dispatch boundary and never
+/// recorded a result — what a crash leaves behind, and what the next
+/// `reconcile` reports as ambiguous. Returns the attempt's operation id.
+async fn journal_dispatched_attempt(
+    journal: &Journal,
+    command_id: &str,
+    attempt_id: &str,
+) -> String {
+    let payload = json!({ "operation": "contribute" });
+    journal
+        .record_command(
+            &reasonbraid_node::CommandInput {
+                command_id,
+                tenant_id: "ten_00000000-0000-7000-8000-000000000000",
+                thread_id: "thr_00000000-0000-7000-8000-000000000000",
+                payload: &payload,
+                authz_ref: None,
+                policy_digest: None,
+                decided_at: None,
+                revocation_epoch: None,
+                server_cursor: "1",
+            },
+            Utc::now(),
+        )
+        .await
+        .unwrap();
+    let op = journal
+        .ensure_operation(command_id, Utc::now())
+        .await
+        .unwrap()
+        .operation_id;
+    journal
+        .prepare_attempt(attempt_id, &op, Utc::now())
+        .await
+        .unwrap();
+    journal
+        .record_dispatch(attempt_id, None, Utc::now())
+        .await
+        .unwrap();
+    op
+}
+
+/// GET the ambiguous-attempt list as `principal` for `tenant`.
+async fn ambiguous_list(
+    client: &reqwest::Client,
+    base: &str,
+    principal: &str,
+    tenant: &str,
+) -> (u16, bool, Value) {
+    let response = client
+        .get(format!(
+            "{base}/v1/admin/nodes/ambiguous-attempts?tenant_id={tenant}"
+        ))
+        .header(PRINCIPAL_HEADER, principal)
+        .send()
+        .await
+        .expect("ambiguous-attempt request");
+    let status = response.status().as_u16();
+    let receipt = response
+        .headers()
+        .contains_key("x-reasonbraid-authorization");
+    (status, receipt, response.json().await.unwrap())
+}
+
+/// THE `SIGNOFF-REPAIR.4.6.1.1` acceptance: §18.5's *ambiguous attempts and
+/// safe resolution actions* are listed from what the handshakes actually
+/// decided, and each way an attempt stops being ambiguous closes its row.
+///
+/// The defect: the handshake decided `needs_adjudication` and returned it to
+/// the node ALONE. No route could list it, because nothing stored it.
+///
+/// Nothing here is asserted on a constructed value: every row is produced by a
+/// real node's `reconcile` over the real channel, and each closure by the
+/// state change that causes it — a receipt the server comes to hold, and a
+/// proof the node's journal records.
+#[tokio::test]
+async fn the_operator_lists_open_ambiguous_attempts_and_each_closure_ends_one() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
+    let server = TestServer::start(&pool).await;
+    let base = server.base_url();
+    let client = reqwest::Client::new();
+
+    let (tenant_a, admin_a) = bootstrap_admin(&client, &base).await;
+    let (tenant_b, admin_b) = bootstrap_admin(&client, &base).await;
+    let node_id = "nod_00000000-0000-7000-8000-0000000000a9".to_string();
+    let (cert_der, key_der) = seed_node_in_tenant(&pool, &tenant_a, &node_id).await;
+
+    // Two attempts a crash left ambiguous; the server holds a receipt for neither.
+    let fixture = journal_fixture("ambiguous-listed");
+    let journal_path = fixture.join("node.db");
+    let (op_1, _op_2) = {
+        let journal = Journal::open(&journal_path).await.unwrap();
+        (
+            journal_dispatched_attempt(&journal, "cmd_amb_l1", "patt_amb_l1").await,
+            journal_dispatched_attempt(&journal, "cmd_amb_l2", "patt_amb_l2").await,
+        )
+    };
+    let node = Node::open(
+        &journal_path,
+        server.base_url(),
+        node_id.clone(),
+        cert_der.clone(),
+        key_from_der(&key_der),
+    )
+    .await
+    .unwrap();
+
+    // (1) The FIRST handshake opens both — this is the arm that was red.
+    node.reconcile().await.expect("first reconcile");
+    let (status, receipt, listed) = ambiguous_list(&client, &base, &admin_a, &tenant_a).await;
+    assert_eq!(status, 200, "{listed}");
+    assert!(receipt, "the admission receipt rides the response");
+    let attempts = listed["attempts"].as_array().expect("the attempt list");
+    assert_eq!(
+        attempts.len(),
+        2,
+        "both ambiguous attempts are listed: {listed}"
+    );
+    let first = attempts
+        .iter()
+        .find(|a| a["attempt_id"] == json!("patt_amb_l1"))
+        .expect("the first attempt is listed");
+    assert_eq!(first["node_id"], json!(node_id));
+    assert_eq!(first["operation_id"], json!(op_1));
+    assert_eq!(first["report_count"], json!(1));
+    assert!(
+        first["reason"]
+            .as_str()
+            .unwrap()
+            .contains("no server receipt"),
+        "the reason is the directive the node was given: {first}"
+    );
+    let first_reported = first["first_reported_at"].clone();
+    let actions: Vec<&str> = listed["safe_actions"]
+        .as_array()
+        .expect("the safe actions")
+        .iter()
+        .map(|a| a["action"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        actions,
+        [
+            "provider_status_lookup",
+            "reask_with_allow_possible_duplicate",
+            "close_with_unresolved_register"
+        ]
+    );
+    assert!(listed["never"].as_str().unwrap().contains("charge twice"));
+
+    // (2) The tenant boundary: another tenant's administrator sees none of it
+    // in its own tenant, and is refused this one's.
+    let (status, _, foreign) = ambiguous_list(&client, &base, &admin_b, &tenant_b).await;
+    assert_eq!(status, 200, "{foreign}");
+    assert_eq!(foreign["attempts"], json!([]), "no foreign node's attempts");
+    let (status, receipt, _) = ambiguous_list(&client, &base, &admin_b, &tenant_a).await;
+    assert_eq!(status, 403, "another tenant's administrator is refused");
+    assert!(receipt, "the refusal is audited too");
+
+    // (3) A second report of a still-open attempt refreshes it, and does not
+    // restart it: the count moves, the first instant does not.
+    node.reconcile().await.expect("second reconcile");
+    let (_, _, listed) = ambiguous_list(&client, &base, &admin_a, &tenant_a).await;
+    let first = listed["attempts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["attempt_id"] == json!("patt_amb_l1"))
+        .expect("still listed")
+        .clone();
+    assert_eq!(first["report_count"], json!(2), "{first}");
+    assert_eq!(first["first_reported_at"], first_reported);
+
+    // (4) Both closures, each by the change that causes it. The server comes
+    // to hold a receipt for the first attempt's operation; the node's journal
+    // records a proof for the second, so it stops reporting it.
+    state
+        .record_event(
+            &node_id,
+            "evt_amb_l1",
+            &op_1,
+            &json!({ "event_type": "ready" }),
+            Utc::now(),
+        )
+        .await
+        .unwrap();
+    node.journal()
+        .prove_result(
+            "patt_amb_l2",
+            reasonbraid_node::ProvenStatus::FailedKnown,
+            None,
+            None,
+            Utc::now(),
+        )
+        .await
+        .unwrap();
+    node.reconcile().await.expect("third reconcile");
+
+    let (status, _, listed) = ambiguous_list(&client, &base, &admin_a, &tenant_a).await;
+    assert_eq!(status, 200);
+    assert_eq!(listed["attempts"], json!([]), "nothing is open: {listed}");
+    let closures: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT attempt_id, closure, closure_evidence FROM node_ambiguous_attempts \
+         WHERE node_id = $1 ORDER BY attempt_id",
+    )
+    .bind(&node_id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(closures.len(), 2, "closed rows are kept: {closures:?}");
+    assert_eq!(closures[0].0, "patt_amb_l1");
+    assert_eq!(closures[0].1.as_deref(), Some("adjudicated"));
+    assert!(
+        closures[0]
+            .2
+            .as_deref()
+            .is_some_and(|e| e.contains("evt_amb_l1")),
+        "the receipt is the evidence: {closures:?}"
+    );
+    assert_eq!(closures[1].0, "patt_amb_l2");
+    assert_eq!(closures[1].1.as_deref(), Some("resolved_by_node"));
+    assert_eq!(closures[1].2, None);
     server.crash();
 }
 

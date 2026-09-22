@@ -1752,18 +1752,19 @@ pre-mutation state came back.
   all target 100 % with a ZERO error budget — a red pass halts the frontier.
   Unmeasured latency families are named with their triggers, not numbers.
 - **What an operator cannot see yet** (`SIGNOFF-REPAIR.4.6.1`). The roadmap
-  (§18.5) lists nine things the admin surface must show. Four are shown, and five
-  are not:
+  (§18.5) lists nine things the admin surface must show. Five are shown, and four
+  are not. Ambiguous attempts became the fifth shown item in `SIGNOFF-REPAIR.4.6.1.1`
+  ([node channel](node-channel.md#ambiguous-attempts-on-the-operator-surface)).
+  The four still missing are:
 
   | what §18.5 asks for | today | owner |
   | --- | --- | --- |
   | service and dependency health, with how fresh it is | no health route; nothing checks a dependency after start-up | `.4.6.1.4` |
-  | ambiguous attempts and their safe resolution | a node reports them when it reconnects, and the server tells the node what to do — but it keeps no record, so no route can list them | `.4.6.1.1` |
   | resolver denials | a refused acquisition is explained in the response and then forgotten (a quota refusal is the one exception that is stored) | `.4.6.1.2` |
   | audit-chain checkpoint age | there is no checkpoint yet: the audit hash chain is deferred by ADR-022 until the first non-loopback deployment or the G7 gate | `.4.6.1.3` (blocked) |
   | backup/restore status and active incidents | `scripts/backup.sh` and the restore test run, but leave no record the server can report; there is no incident record | `.4.6.1.5` |
 
-  ⚠️ In three of these rows, the system does the work but does not store the
+  ⚠️ In two of these rows, the system does the work but does not store the
   result. That means each one needs something that records the result before a
   route can report it; adding a route alone would not be enough.
 - **Runbook:** node lost/replaced (`docs/runbooks/node-lost-replaced.md`)

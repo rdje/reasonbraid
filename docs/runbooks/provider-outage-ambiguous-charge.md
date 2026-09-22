@@ -31,6 +31,9 @@
 ## Diagnostic queries
 
 - `rb-journal --dir <node-dir> attempts` — the attempt's boundary + its terminal.
+- `rb inspect ambiguous` — the tenant's OPEN ambiguous attempts as the server
+  last heard them from each node's handshake, without reaching the node
+  (`GET /v1/admin/nodes/ambiguous-attempts`, `SIGNOFF-REPAIR.4.6.1.1`).
 - `rb inspect runs` — the run row (one result = one run).
 - `rb inspect usage` — the held/settled split for the ceiling.
 

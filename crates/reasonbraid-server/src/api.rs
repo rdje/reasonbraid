@@ -4161,12 +4161,36 @@ async fn publish_publication(
             publication.manifest_digest
         )));
     }
+    // `SIGNOFF-REPAIR.9.3.5.1.1` (§15.7 step 4): the desired Git operation is
+    // COMMITTED before the first Git object is written, so a publish that dies
+    // anywhere after this line leaves a row naming where to look.
+    let repository =
+        crate::publisher::root_relative(state.publication_repo_root.as_deref(), &repo_path)
+            .map_err(publication_repository_refused)?;
+    crate::publisher::opens(&repo_path)
+        .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+    crate::publications::record_git_operation(
+        &state.pool,
+        &caller_tenant,
+        &publication_id,
+        &repository,
+        input.expected_effective.as_deref(),
+    )
+    .await
+    .map_err(|e| match e {
+        crate::publications::PublicationError::Storage(detail) => {
+            eprintln!("control api: the publication store failed: {detail}");
+            ControlApiError::internal()
+        }
+        refusal => ControlApiError::invalid_command(refusal.to_string()),
+    })?;
     let refs = crate::publisher::publish(
         repo_path.path(),
         &publication_id,
         &manifest,
         &projection.bytes,
         expected_effective,
+        publication.staged_at_seconds,
     )
     .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
     let git_object_ids = vec![refs.publication_ref_id, refs.effective_ref_id];

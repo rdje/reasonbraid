@@ -15,6 +15,10 @@ use reasonbraid_server::publisher::{
 };
 use uuid::Uuid;
 
+/// A publication's staging time (`SIGNOFF-REPAIR.9.3.5.1.1`): the commit takes
+/// it, so every publish below is reproducible.
+const STAGED_AT: i64 = 1_758_499_200;
+
 struct Fixture {
     path: PathBuf,
     identity: (u64, u64),
@@ -167,8 +171,15 @@ fn a_location_outside_the_configured_root_is_refused() {
             .canonicalize()
             .expect("the inside location canonicalizes")
     );
-    publish(resolved.path(), "pub-inside", "{}", "# bundle", None)
-        .expect("the publish rides the resolved location");
+    publish(
+        resolved.path(),
+        "pub-inside",
+        "{}",
+        "# bundle",
+        None,
+        STAGED_AT,
+    )
+    .expect("the publish rides the resolved location");
 
     // 7. The root itself is validated by ONE definition, which `rb-server`
     //    calls at boot and `resolve_repository` calls per request.
@@ -303,6 +314,7 @@ fn the_publisher_writes_the_refs_and_verifies_the_fetch_back() {
         "{\"publication_id\":\"pub-1\"}",
         "# bundle",
         None,
+        STAGED_AT,
     )
     .expect("the publish succeeds");
     assert!(!refs.publication_ref_id.is_empty());
@@ -337,6 +349,7 @@ fn the_publisher_writes_the_refs_and_verifies_the_fetch_back() {
         "{\"publication_id\":\"pub-2\"}",
         "# b2",
         Some(old),
+        STAGED_AT,
     )
     .expect("the CAS publish succeeds");
     assert_ne!(
@@ -351,21 +364,23 @@ fn the_stale_cas_expectation_refuses_and_the_immutable_never_moves() {
     let fixture = Fixture::new();
     let dir = &fixture.path;
     gix::init_bare(dir).expect("the bare repo inits");
-    publish(dir, "pub-1", "{}", "# b", None).expect("the first publish succeeds");
+    publish(dir, "pub-1", "{}", "# b", None, STAGED_AT).expect("the first publish succeeds");
     let real_old = effective_id(dir).expect("the effective exists");
 
     // The STALE expectation (the channel has already advanced beyond it)
     // refuses — never a force-push.
     let stale = gix::ObjectId::empty_tree(gix::hash::Kind::Sha1);
-    let error =
-        publish(dir, "pub-2", "{}", "# b2", Some(stale)).expect_err("the stale CAS refuses");
+    let error = publish(dir, "pub-2", "{}", "# b2", Some(stale), STAGED_AT)
+        .expect_err("the stale CAS refuses");
     assert!(matches!(error, PublishError::CasMismatch(_)), "{error}");
     // The correct expectation succeeds.
-    let _ = publish(dir, "pub-3", "{}", "# b3", Some(real_old)).expect("the correct CAS succeeds");
+    let _ = publish(dir, "pub-3", "{}", "# b3", Some(real_old), STAGED_AT)
+        .expect("the correct CAS succeeds");
 
     // The immutable ref never moves: the re-publish with the SAME
     // publication id refuses.
-    let error = publish(dir, "pub-1", "{}", "# b4", None).expect_err("the immutable refuses");
+    let error =
+        publish(dir, "pub-1", "{}", "# b4", None, STAGED_AT).expect_err("the immutable refuses");
     assert!(matches!(error, PublishError::ImmutableExists), "{error}");
     fixture.finish().expect("owned fixture cleanup completes");
 }
@@ -412,4 +427,50 @@ fn cleanup_refuses_a_replaced_directory() {
     assert_eq!(std::fs::read(path.join("witness")).unwrap(), b"replacement");
     assert!(original.is_dir());
     owner.finish().unwrap();
+}
+
+/// `SIGNOFF-REPAIR.9.3.5.1.1`: the same publication's content commits to the
+/// SAME id in two repositories, and the commit records the staging time rather
+/// than the clock. The second assertion is the one a wall-clock stamp fails
+/// even when both publishes land inside one second.
+#[test]
+fn the_same_publication_commits_to_the_same_id() {
+    let publish_into = |fixture: &Fixture, staged_at: i64| {
+        gix::init_bare(&fixture.path).expect("the bare repo inits");
+        publish(
+            &fixture.path,
+            "pub-repro",
+            "{\"publication_id\":\"pub-repro\"}",
+            "# bundle",
+            None,
+            staged_at,
+        )
+        .expect("the publish succeeds")
+        .publication_ref_id
+    };
+    let (a, b, c) = (Fixture::new(), Fixture::new(), Fixture::new());
+    let first = publish_into(&a, STAGED_AT);
+    assert_eq!(
+        first,
+        publish_into(&b, STAGED_AT),
+        "one publication, one commit id — the retry §15.8 relies on"
+    );
+    assert_ne!(
+        first,
+        publish_into(&c, STAGED_AT + 1),
+        "the staging time is an input to the id, not decoration"
+    );
+    let repo = gix::open(&a.path).expect("opens");
+    let commit = repo
+        .find_object(first.parse::<gix::ObjectId>().unwrap())
+        .expect("the commit loads")
+        .into_commit();
+    assert_eq!(
+        commit.time().expect("the commit has a time").seconds,
+        STAGED_AT,
+        "the commit carries the STAGING time, not the clock"
+    );
+    for fixture in [a, b, c] {
+        fixture.finish().expect("the fixture cleans up");
+    }
 }

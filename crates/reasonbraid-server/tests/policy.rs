@@ -2374,9 +2374,12 @@ async fn the_publish_verb_drives_the_git_half() {
     .await;
     let verdict_event = verdict["event_id"].as_str().unwrap().to_string();
     close_as_owner(&client, &base, &human_id, &tenant_id, &thread_id).await;
-    for (proposal_id, decision_id, approval_id, publication_id) in
-        [("pu-prop", "pu-dec", "pu-app", "pu-pub")]
-    {
+    for (proposal_id, decision_id, approval_id, publication_id) in [
+        ("pu-prop", "pu-dec", "pu-app", "pu-pub"),
+        // `SIGNOFF-REPAIR.9.3.5.1.1`: a second publication, stranded on
+        // purpose below — only the reconciler may recover it.
+        ("pu-prop-2", "pu-dec-2", "pu-app-2", "pu-pub-2"),
+    ] {
         let (status, _) = post(
             &client,
             &base,
@@ -2559,6 +2562,78 @@ async fn the_publish_verb_drives_the_git_half() {
         .await
         .expect("the projection digest is restored");
 
+    // `SIGNOFF-REPAIR.9.3.5.1.1`: the refused publishes above wrote nothing,
+    // so they recorded no Git operation either.
+    let recorded = |listing: &Value, id: &str| {
+        listing
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["publication_id"] == json!(id))
+            .cloned()
+            .unwrap_or_else(|| panic!("{id} is listed: {listing}"))
+    };
+    let (_, listing) = get(&client, &base, "/v1/policy-publications", &human_id).await;
+    assert_eq!(
+        recorded(&listing, "pu-pub")["repository"],
+        Value::Null,
+        "a publish refused before any write records no operation: {listing}"
+    );
+
+    // 1b. `SIGNOFF-REPAIR.9.3.5.1.1` — A PUBLISH THAT DIES AFTER ITS GIT WRITE
+    // LEAVES A ROW NAMING WHERE IT WROTE. The effective channel does not exist
+    // yet, so an `expected_effective` fails the compare-and-swap AFTER the
+    // commit and the immutable ref are written — a real interruption between
+    // the Git write and `mark_effective`, not a constructed one.
+    let bogus_effective = "1".repeat(40);
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-publications/pu-pub-2/publish",
+        &human_id,
+        &json!({ "repo_path": "live", "owning_authority": grant_id,
+                 "expected_effective": bogus_effective }),
+    )
+    .await;
+    assert_eq!(status, 400, "the stale CAS refuses: {refused}");
+    let (_, listing) = get(&client, &base, "/v1/policy-publications", &human_id).await;
+    let stranded = recorded(&listing, "pu-pub-2");
+    assert_eq!(stranded["state"], json!("staged"), "{stranded}");
+    assert_eq!(
+        stranded["repository"],
+        json!("live"),
+        "the row names the repository, ROOT-RELATIVE: {stranded}"
+    );
+    assert_eq!(
+        stranded["expected_effective"],
+        json!(bogus_effective),
+        "{stranded}"
+    );
+    {
+        let repo = gix::open(repo_root.join("live")).expect("the repository opens");
+        assert!(
+            repo.find_reference("refs/rb/publications/pu-pub-2").is_ok(),
+            "the Git write really happened before the failure"
+        );
+    }
+    // A retry that asks for a DIFFERENT operation is refused, not re-pointed.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-publications/pu-pub-2/publish",
+        &human_id,
+        &json!({ "repo_path": "live", "owning_authority": grant_id }),
+    )
+    .await;
+    assert_eq!(status, 400, "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("already recorded its Git operation"),
+        "{refused}"
+    );
+
     // 2. The publish drives the Git half: the bare repo + the verb → the
     // record marks effective with the ref ids. The location is named RELATIVE
     // to the configured root, which is the shape the root exists to support.
@@ -2572,6 +2647,7 @@ async fn the_publish_verb_drives_the_git_half() {
     .await;
     assert_eq!(status, 200, "the publish drives the git half: {published}");
     assert_eq!(published["state"], json!("effective"));
+    assert_eq!(published["repository"], json!("live"), "{published}");
     let object_ids = published["git_object_ids"].as_array().unwrap();
     assert_eq!(object_ids.len(), 2, "{published}");
 

@@ -189,6 +189,34 @@ pub fn resolve_repository(
 /// one resolves. The repository failing to open is a different thing from an
 /// id being absent, so it comes back as [`PublishError::Open`] rather than as
 /// a verdict about the ids.
+/// Whether the repository opens — checked before a publish RECORDS its Git
+/// operation (`SIGNOFF-REPAIR.9.3.5.1.1`): a location that is not a repository
+/// was never written to, so recording an operation against it would pin every
+/// later, correct publish to a repository that cannot exist.
+pub fn opens(repository: &PublicationRepository) -> Result<(), PublishError> {
+    gix::open(repository.path())
+        .map(|_| ())
+        .map_err(|e| PublishError::Open(e.to_string()))
+}
+
+/// The repository's location RELATIVE to the configured publication root —
+/// what a publication records (§12: persisted paths are root-relative, so the
+/// root may move without stranding the record).
+pub fn root_relative(
+    configured_root: Option<&Path>,
+    repository: &PublicationRepository,
+) -> Result<String, RepositoryRefusal> {
+    let root = validate_root(configured_root.ok_or(RepositoryRefusal::Unconfigured)?)?;
+    let relative =
+        repository
+            .path()
+            .strip_prefix(&root)
+            .map_err(|_| RepositoryRefusal::Outside {
+                requested: repository.path().display().to_string(),
+            })?;
+    Ok(relative.to_string_lossy().into_owned())
+}
+
 pub fn missing_objects(
     repository: &PublicationRepository,
     declared: &[String],
@@ -235,6 +263,7 @@ pub fn publish(
     manifest: &str,
     bundle: &str,
     expected_effective: Option<gix::ObjectId>,
+    staged_at_seconds: i64,
 ) -> Result<PublishedRefs, PublishError> {
     let repo = gix::open(repo_path).map_err(|e| PublishError::Open(e.to_string()))?;
 
@@ -268,7 +297,12 @@ pub fn publish(
         .map_err(|e| PublishError::Write(e.to_string()))?;
 
     let tree_hex = tree_id.to_string();
-    let raw_signature = signature(gix::date::Time::now_local_or_utc());
+    // `SIGNOFF-REPAIR.9.3.5.1.1`: the commit's time is the publication's
+    // STAGING time, not the clock — so the commit id is a pure function of the
+    // record and its content, a retry writes the identical commit, and the
+    // reconciler can recompute the id it expects. A wall-clock stamp made
+    // §15.8's `RetryStagedWrite` (*commits identically*) false.
+    let raw_signature = signature(gix::date::Time::new(staged_at_seconds, 0));
     let message = format!("publication {publication_id}");
     let commit_ref = gix::objs::CommitRef {
         tree: BStr::new(tree_hex.as_bytes()),

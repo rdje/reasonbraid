@@ -144,6 +144,20 @@ pub struct StoredPublication {
     pub owning_authority: Option<String>,
     pub git_object_ids: Vec<String>,
     pub failed_reason: Option<String>,
+    /// The Git operation recorded BEFORE the write (`SIGNOFF-REPAIR.9.3.5.1.1`,
+    /// §15.7 step 4): the repository, relative to the deployment's publication
+    /// root. `None` means no publish has begun — or the row predates
+    /// `migrations/0086`, which recorded nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>,
+    /// The effective id the compare-and-swap expected. Meaningful only when
+    /// `repository` is recorded: then `None` means it expected NO effective ref.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_effective: Option<String>,
+    /// The staging time in whole seconds since the epoch — the publication
+    /// commit's timestamp, so the commit id is reproducible from the record.
+    #[serde(skip)]
+    pub staged_at_seconds: i64,
 }
 
 /// The typed refusal reasons.
@@ -190,6 +204,16 @@ pub enum PublicationError {
     /// fault, and deliberately NOT the same answer as an absent object.
     RepositoryUnreadable(String),
     Duplicate(String),
+    /// A publish asked for a Git operation other than the one already recorded
+    /// for this publication (`SIGNOFF-REPAIR.9.3.5.1.1`).
+    OperationRecorded {
+        publication_id: String,
+        repository: String,
+        expected_effective: Option<String>,
+    },
+    /// The publication store itself failed — the server's fault, never the
+    /// caller's (`.7.4.2`'s rule).
+    Storage(String),
 }
 
 impl std::fmt::Display for PublicationError {
@@ -273,6 +297,18 @@ impl std::fmt::Display for PublicationError {
                     "{what} already exists — the record's identity is its content"
                 )
             }
+            PublicationError::OperationRecorded {
+                publication_id,
+                repository,
+                expected_effective,
+            } => write!(
+                f,
+                "publication `{publication_id}` already recorded its Git operation — \
+                 repository `{repository}`, expected effective `{}` — and a publish must \
+                 retry that operation, not another",
+                expected_effective.as_deref().unwrap_or("none")
+            ),
+            PublicationError::Storage(e) => write!(f, "the publication store failed: {e}"),
         }
     }
 }
@@ -298,7 +334,49 @@ type PublicationRow = (
     // `owning_authority` (`.9.2.1.2.2`) — NULL for rows staged before it was
     // recorded, never a claim that nobody staged them.
     Option<String>,
+    // `repository`, `expected_effective` (`.9.3.5.1.1`) and the staging time.
+    Option<String>,
+    Option<String>,
+    i64,
 );
+
+/// The columns [`PublicationRow`] reads, in its order.
+const PUBLICATION_COLUMNS: &str = "publication_id, proposal_id, decision_id, approval_id, \
+     projection_id, state, manifest_digest, git_object_ids, failed_reason, owning_authority, \
+     repository, expected_effective, EXTRACT(EPOCH FROM created_at)::bigint";
+
+fn from_row(row: PublicationRow) -> StoredPublication {
+    let (
+        publication_id,
+        proposal_id,
+        decision_id,
+        approval_id,
+        projection_id,
+        state,
+        manifest_digest,
+        git_object_ids,
+        failed_reason,
+        owning_authority,
+        repository,
+        expected_effective,
+        staged_at_seconds,
+    ) = row;
+    StoredPublication {
+        publication_id,
+        proposal_id,
+        decision_id,
+        approval_id,
+        projection_id,
+        state,
+        manifest_digest,
+        owning_authority,
+        git_object_ids: serde_json::from_value(git_object_ids).expect("the object ids parse"),
+        failed_reason,
+        repository,
+        expected_effective,
+        staged_at_seconds,
+    }
+}
 
 /// Stage one publication (the §15.7 steps 1–4's record half): the
 /// references must resolve AND belong to the proposal; the proposal must be
@@ -546,11 +624,74 @@ pub async fn stage(
         owning_authority: Some(owning_authority),
         git_object_ids: Vec::new(),
         failed_reason: None,
+        repository: None,
+        expected_effective: None,
+        staged_at_seconds: 0,
     })
 }
 
 /// Mark one publication EFFECTIVE (the §15.7 step 8's record half): the
 /// staged → effective transition with the Git object ids recorded.
+/// Record the Git operation a publish is about to attempt
+/// (`SIGNOFF-REPAIR.9.3.5.1.1`, §15.7 step 4) — committed BEFORE the first
+/// Git object is written, so a publish interrupted at any later point leaves a
+/// row that says where to look.
+///
+/// ⛔ A second publish of the same publication must attempt the SAME operation:
+/// an already-recorded repository or expected id that differs is refused rather
+/// than overwritten, because the reconciler recovers the operation the row
+/// names, and silently re-pointing it would strand whatever the first attempt
+/// wrote.
+pub async fn record_git_operation(
+    pool: &PgPool,
+    tenant_id: &str,
+    publication_id: &str,
+    repository: &str,
+    expected_effective: Option<&str>,
+) -> Result<(), PublicationError> {
+    owned_by(pool, publication_id, tenant_id).await?;
+    let recorded: Option<(String, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT state, repository, expected_effective FROM policy_publications \
+         WHERE publication_id = $1",
+    )
+    .bind(publication_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| PublicationError::Storage(e.to_string()))?;
+    let Some((state, prior_repository, prior_expected)) = recorded else {
+        return Err(PublicationError::UnknownProposal(
+            publication_id.to_string(),
+        ));
+    };
+    if state != "staged" {
+        return Err(PublicationError::WrongStage {
+            publication_id: publication_id.to_string(),
+            state,
+        });
+    }
+    if let Some(prior) = prior_repository {
+        if prior != repository || prior_expected.as_deref() != expected_effective {
+            return Err(PublicationError::OperationRecorded {
+                publication_id: publication_id.to_string(),
+                repository: prior,
+                expected_effective: prior_expected,
+            });
+        }
+        return Ok(());
+    }
+    sqlx::query(
+        "UPDATE policy_publications SET repository = $2, expected_effective = $3 \
+         WHERE publication_id = $1 AND state = 'staged' AND repository IS NULL",
+    )
+    .bind(publication_id)
+    .bind(repository)
+    .bind(expected_effective)
+    .execute(pool)
+    .await
+    .map_err(|e| PublicationError::Storage(e.to_string()))?;
+    Ok(())
+}
+
 pub async fn mark_effective(
     pool: &PgPool,
     tenant_id: &str,
@@ -658,44 +799,15 @@ pub async fn load(
     pool: &PgPool,
     publication_id: &str,
 ) -> Result<StoredPublication, PublicationError> {
-    let row: Option<PublicationRow> = sqlx::query_as(
-        "SELECT publication_id, proposal_id, decision_id, approval_id, projection_id, state, \
-             manifest_digest, git_object_ids, failed_reason, owning_authority \
-             FROM policy_publications WHERE publication_id = $1",
-    )
+    let row: Option<PublicationRow> = sqlx::query_as(&format!(
+        "SELECT {PUBLICATION_COLUMNS} FROM policy_publications WHERE publication_id = $1"
+    ))
     .bind(publication_id)
     .fetch_optional(pool)
     .await
     .map_err(|_| PublicationError::UnknownProposal(publication_id.to_string()))?;
-    let Some((
-        publication_id,
-        proposal_id,
-        decision_id,
-        approval_id,
-        projection_id,
-        state,
-        manifest_digest,
-        git_object_ids,
-        failed_reason,
-        owning_authority,
-    )) = row
-    else {
-        return Err(PublicationError::UnknownProposal(
-            publication_id.to_string(),
-        ));
-    };
-    Ok(StoredPublication {
-        publication_id,
-        proposal_id,
-        decision_id,
-        approval_id,
-        projection_id,
-        state,
-        manifest_digest,
-        owning_authority,
-        git_object_ids: serde_json::from_value(git_object_ids).expect("the object ids parse"),
-        failed_reason,
-    })
+    row.map(from_row)
+        .ok_or_else(|| PublicationError::UnknownProposal(publication_id.to_string()))
 }
 
 /// The publications, newest first.
@@ -705,41 +817,12 @@ pub async fn load(
 /// by NOBODY — `.7.1.2.2`'s disposition, and the reason the backfill's coverage
 /// is published as a measured count rather than assumed complete.
 pub async fn list(pool: &PgPool, tenant_id: &str) -> Result<Vec<StoredPublication>, sqlx::Error> {
-    let rows: Vec<PublicationRow> = sqlx::query_as(
-        "SELECT publication_id, proposal_id, decision_id, approval_id, projection_id, state, \
-             manifest_digest, git_object_ids, failed_reason, owning_authority \
-             FROM policy_publications WHERE tenant_id = $1 ORDER BY created_at DESC",
-    )
+    let rows: Vec<PublicationRow> = sqlx::query_as(&format!(
+        "SELECT {PUBLICATION_COLUMNS} FROM policy_publications \
+         WHERE tenant_id = $1 ORDER BY created_at DESC"
+    ))
     .bind(tenant_id)
     .fetch_all(pool)
     .await?;
-    Ok(rows
-        .into_iter()
-        .map(
-            |(
-                publication_id,
-                proposal_id,
-                decision_id,
-                approval_id,
-                projection_id,
-                state,
-                manifest_digest,
-                git_object_ids,
-                failed_reason,
-                owning_authority,
-            )| StoredPublication {
-                publication_id,
-                proposal_id,
-                decision_id,
-                approval_id,
-                projection_id,
-                state,
-                manifest_digest,
-                owning_authority,
-                git_object_ids: serde_json::from_value(git_object_ids)
-                    .expect("the object ids parse"),
-                failed_reason,
-            },
-        )
-        .collect())
+    Ok(rows.into_iter().map(from_row).collect())
 }

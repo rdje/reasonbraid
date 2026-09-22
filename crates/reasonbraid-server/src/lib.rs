@@ -36,6 +36,7 @@ pub mod cards;
 pub mod charters;
 pub mod claims;
 pub mod corrections;
+pub mod decisions;
 mod dependence;
 pub mod deployments;
 pub mod derivations;

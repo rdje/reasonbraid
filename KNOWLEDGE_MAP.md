@@ -235,6 +235,7 @@
 - [`2026-09-21_the-second-ledgers-record-boundary-is-quoted-not-chosen.md`](docs/decisions/2026-09-21_the-second-ledgers-record-boundary-is-quoted-not-chosen.md)
 - [`2026-09-21_the-second-ledgers-threshold-is-the-first-ledgers-window.md`](docs/decisions/2026-09-21_the-second-ledgers-threshold-is-the-first-ledgers-window.md)
 - [`2026-09-22_a-charter-is-content-addressed-and-registering-one-is-a-site-act.md`](docs/decisions/2026-09-22_a-charter-is-content-addressed-and-registering-one-is-a-site-act.md)
+- [`2026-09-22_a-counted-rule-derives-its-outcome-and-a-rule-it-cannot-count-is-refused.md`](docs/decisions/2026-09-22_a-counted-rule-derives-its-outcome-and-a-rule-it-cannot-count-is-refused.md)
 - [`2026-09-22_a-decision-rule-is-a-charter-scoped-vocabulary-and-never-ships-without-its-tally.md`](docs/decisions/2026-09-22_a-decision-rule-is-a-charter-scoped-vocabulary-and-never-ships-without-its-tally.md)
 - [`2026-09-22_a-domain-refusal-is-not-an-authority-denial.md`](docs/decisions/2026-09-22_a-domain-refusal-is-not-an-authority-denial.md)
 - [`2026-09-22_the-moderator-is-a-role-boundary-not-a-feature-and-five-of-its-six-acts-already-ship.md`](docs/decisions/2026-09-22_the-moderator-is-a-role-boundary-not-a-feature-and-five-of-its-six-acts-already-ship.md)

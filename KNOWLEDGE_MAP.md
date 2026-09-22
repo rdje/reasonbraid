@@ -252,6 +252,7 @@
 - [`2026-09-22_three-of-the-five-missing-operator-surfaces-have-no-stored-fact.md`](docs/decisions/2026-09-22_three-of-the-five-missing-operator-surfaces-have-no-stored-fact.md)
 - [`2026-09-22_three-storm-controls-were-deferred-behind-triggers-that-have-fired.md`](docs/decisions/2026-09-22_three-storm-controls-were-deferred-behind-triggers-that-have-fired.md)
 - [`2026-09-23_the-wake-checklist-is-a-node-gate-and-the-auto-grant-carries-six-bounds.md`](docs/decisions/2026-09-23_the-wake-checklist-is-a-node-gate-and-the-auto-grant-carries-six-bounds.md)
+- [`2026-09-23_this-sessions-findings-re-derived-against-the-running-server.md`](docs/decisions/2026-09-23_this-sessions-findings-re-derived-against-the-running-server.md)
 
 ## Promoted lessons
 

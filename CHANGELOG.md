@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-23 — This session's findings re-checked against the real running server (DOC-0136)
+
+`REASONBRAID-DOC-0136`. Verification; no code changed.
+
+- At your request, every finding was re-checked in a way different from how it was first produced, mostly by starting the real server and calling it.
+- ✅ **Held.** All 8 operator views answer on the running server. An agent really can start only one automatic thread (the second attempt returns the same thread). The backup script prints and stores no password even when the address contains one. All four audit corrections hold. The stored-but-never-checked agent settings really are ignored. The disk-space figure matches to the byte.
+- 🔴 **Two things were wrong.**
+  - An old review row still said "open" although it had been re-checked the day before. The correction had been written elsewhere but never on the row itself. Now fixed, and one count moves accordingly.
+  - I told you 17 commits; it was 16.
+- ⚠️ **Three new gaps found, each now tracked.**
+  - My new operator-view check proves a route is *written in the code*, not that the running server *serves* it.
+  - The working-hours setting accepts any text (for example "never").
+  - Two thread views disagree about whether a missing thread exists.
+
 ## 2026-09-23 — The pre-wake checks for agents were mostly never built (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2`)
 
 `REASONBRAID-DOC-0135`. A decision; no code changed.

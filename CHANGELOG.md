@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-22 — The artifact sweep run, and the class worth sweeping was the one priced by bytes (`SIGNOFF-REPAIR.11.4.3.1.9`)
+
+`REASONBRAID-REPAIR-0383`. Director directive 8, executed — and the re-measurement inverted which class deserved it.
+
+- 🔴 **EVERY FIGURE THE LEAF PUBLISHED HAD MOVED, ONE OF THEM BY SIX TIMES**, which is why its acceptance forbids using its own stale list. `target/debug` 11.9 GB → **69 GB** (74% → 91% of the tree); the whole tree 16 GB → **72 GiB**; top-level logs 257/101/156 → **401 total, 125 cited, 276 uncited**.
+- ⛔ **THE LOG SWEEP IS DECLINED AGAIN, ON A SHARE THAT FELL.** The uncited logs grew 2.6 MB → 4.0 MB while the tree grew 4.5×, so their share dropped to **0.0053%**. Deleting them is safe and pointless, and safe was never the question.
+- ✅ **THE CLUSTER CLASS IS THE OPPOSITE.** **23 of 217** retained PostgreSQL clusters were judged retirable and held **1,144.9 MiB — 87% of `target/pg-tests`** — because a few `policy`-suite clusters are ~52 MB each against a ~45 KB tail. ⭐ Priced by COUNT, 23-of-217 reads marginal; priced by BYTES it is the only class here worth touching.
+- ✅ **RETIRED THROUGH THE PROJECT'S OWN INSTRUMENT, never a hand-written removal**, because its eight refusals ARE the leaf's acceptance mechanised — unreadable receipt, state not `stopped`, live postmaster, symlink, wrong device, under the age floor, cited by a tracked file, already reduced to evidence — and it re-checks each cluster immediately before removing it. `target/pg-tests` **1,360,488 → 186,332 KiB**, **44,744 → 7,114** files, 217 → 194 clusters.
+- ✅ **THE GUARD FALSIFIED BY A SECOND ROUTE.** All 23 removed names are absent, and `git grep -l` for each over the whole tracked tree returns **0 of 23** cited. The guard and the deletion are the same program; a grep afterwards is not.
+- 🔴 **AND THE THREE STRAYS ARE DELIBERATELY NOT REMOVED.** The acceptance requires them judged by that guard, whose population is `target/pg-tests/run-*` — so `pg-iter.*` and `pg-ephemeral.*` are structurally outside its reach and a hand removal would be the improvisation the leaf was written to avoid. Measured (39 MB each, 0 citations, no postgres alive) and routed to `.11.4.3.1.9.1`, which widens the instrument from its producers rather than from a listing.
+- ⚠️ **Surfaced, not acted on:** `target/debug` is **69 GB, 91% of the tree**, and retiring it costs a cold rebuild measured at 68m 16s. That trade is `.11.4.3.1.8`'s and the director's.
+
 ## 2026-09-22 — Four deferrals adjudicated, three of six split under measurement, and the trigger check declined at 71% (`SIGNOFF-REPAIR.11.4.7.2.1`)
 
 `REASONBRAID-DOC-0119`. A deferral with a revisit trigger nobody checks is an omission with extra steps — so the six were graded, one command per verdict.

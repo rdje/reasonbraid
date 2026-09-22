@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-22 — Four deferrals adjudicated, three of six split under measurement, and the trigger check declined at 71% (`SIGNOFF-REPAIR.11.4.7.2.1`)
+
+`REASONBRAID-DOC-0119`. A deferral with a revisit trigger nobody checks is an omission with extra steps — so the six were graded, one command per verdict.
+
+- ✅ **#1 capability advertisement — `discharged`.** The profile advertises `Vec<CapabilityClaim>` behind a `VisibilityClass`, the matcher consumes `Vec<CapabilityRequirement>`, and `/v1/directory/presence` and `/v1/directory/match` serve them. ⭐ The claim even separates `Benchmarked` from `OwnerAttested`, which the deferral never asked for.
+- 🔴 **#2 expected-artifact + manual decision-rule create fields — `fired and open`.** Phase 5's workflow-profile registry shipped, the fields did not. `git grep -n "expected_artifact\|decision_rule" -- crates migrations` returns exactly one hit and reading it settles it: an A2A `SemanticLosses` flag recording that a remote decision rule is ALWAYS LOST. ⛔ `CreateBody` is `deny_unknown_fields`, so either field is a typed refusal today, and the registry's `steps` column is a step sequence with no threshold, quorum or veto — the stand-in did not quietly become the thing.
+- ⚠️ **#3 LLM synthesis — SPLITS, and only half landed.** The synthesizer arrived with more than was deferred (ADR-030: synthesizer identity, input event range, and a coverage report naming which objection the synthesis excluded and why). The moderator did not: **0** occurrences in server and core, and every one in the workspace is the deliberation BENCHMARK. ⛔ So ROADMAP §13.5's six permitted acts and three prohibitions are **vacuous rather than enforced**.
+- ⚠️ **#6 TLS/mTLS + supervision + containers + PG automation + config files — `not yet triggered`, and five items under one row.** `--host` still defaults to `127.0.0.1` and G6/G7 is NOT MET. ⭐ One of the five is built and uncalled — `mtls::` has callers only under `tests/` — which is `SIGNOFF-REPAIR.14`'s subject with the identical measurement, so it is cited rather than re-opened.
+- ⛔ **THE MECHANICAL TRIGGER CHECK IS DECLINED, ON THE CENSUS.** 38 deferral rows across 6 records; **27** name a phase; **all 27** name a phase whose tree is already `done`. A check keyed on *the named phase has closed* fires on **27 of 38 — 71%** on registration day, which is `.11.9`'s rejected shape (87%), `.11.15`'s (93%) and `.11.16`'s (71%), against the 9.5% that argued `POSITIONAL-REF` in.
+- ⭐ **AND THE CENSUS REDIRECTED THE WORK RATHER THAN ONLY BLOCKING IT.** *27 of 27 fired* is a population whose verdict is unknown, not 27 defects — #4 fired and was discharged. What is owed is a one-time adjudication pass, and **21** phase-triggered rows in the sibling records have never been graded at all. Children `.1`–`.4` own the fuzz baseline, the create fields, §13.5's moderator and the 21.
+- 🔴 **A NEAR-MISS KEPT BECAUSE ONLY ONE CHECK WOULD HAVE CAUGHT IT.** The fenced census was published with its `split` escape already consumed, so the block read correctly and was a syntax error. Reading it, re-running the original script and re-deriving by another route all pass while the published text is dead. **Run a command from the record, not from the shell history it came out of.**
+
 ## 2026-09-22 — The generator this leaf owned deciding was measured and declined, and the check that replaced it goes red on the exact state that opened it (`SIGNOFF-REPAIR.11.2.9`)
 
 `REASONBRAID-DOC-0118`. A pending leaf re-read against later rulings before being executed.

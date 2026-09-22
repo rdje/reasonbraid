@@ -5415,6 +5415,101 @@ python3 -B scripts/check_pointer_currency.py --against f41997c
 - ⚠️ Early signal, NOT a verdict: `git grep -c "expected_artifact\|decision_rule" -- crates migrations` returns a single hit, `crates/reasonbraid-a2a/src/lib.rs:30`, and no migration — so #2 may be undischarged. ⛔ Do not record that as a finding without first establishing what the roadmap actually names these fields; a grep for a guessed identifier is a claim about the guess.
 - ⭐ The durable half, and the reason this is a leaf rather than a note: the verdicts age the moment they are written. What would not age is a **mechanical trigger check** — the `REASON-CODE-DOC` / `ATTACH-LANDED` shape, where a deferral row names its trigger in a form a script can evaluate.
 - Acceptance: each of #1, #2, #3 and #6 carries a verdict from `discharged` / `fired and open` / `not yet triggered` with the command that produces it; any `fired and open` names the leaf that owns it; and the leaf states plainly whether a mechanical trigger check is worth building, with the census that settles it — never a preference.
+- Status: `done`; DOC-0119. **Four verdicts, each with its command; three of the six split under measurement; and the trigger check is DECLINED at 71%.**
+- ✅ **#1 CAPABILITY ADVERTISEMENT — DISCHARGED.** The trigger (`PHASE-3.1`) fired and the work landed. `git grep -n "pub capabilities" -- crates/reasonbraid-server/src/profiles.rs crates/reasonbraid-server/src/matching.rs` returns the advertising side (`Vec<CapabilityClaim>` on the profile, plus a `VisibilityClass` governing who sees it) and the consuming side (`Vec<CapabilityRequirement>` in the matcher); `git grep -no '"/v1/directory[a-z/]*"' -- crates/reasonbraid-server/src/api.rs` returns `/v1/directory/presence` and `/v1/directory/match`. ⭐ The claim is not a bare string either — `ClaimConfidence` separates `Benchmarked` from `OwnerAttested`, which is more than the deferral asked for.
+- 🔴 **#2 EXPECTED-ARTIFACT + MANUAL DECISION-RULE CREATE FIELDS — FIRED AND OPEN.** The trigger fired: `migrations/0032_workflow_profiles.sql` is Phase 5's workflow-profile registry (ADR-016, §13.1), with eight versioned built-ins. The fields did not arrive. `git grep -n "expected_artifact\|decision_rule" -- crates migrations` returns **exactly one** hit — `crates/reasonbraid-a2a/src/lib.rs:30`, and reading it settles what the leaf warned about: it is a `SemanticLosses` flag recording that a remote decision rule is **always lost**, the opposite of an implementation. ⛔ And `threads::CreateBody` carries `#[serde(deny_unknown_fields)]`, so either field submitted today is a typed refusal rather than an ignored extra. ⚠️ The registry's `steps` column is a step SEQUENCE (`["solicit", "revise", "assess", "vote", "approve"]`); no row carries a threshold, quorum or veto scope, so the stand-in `workflow_profile` did not quietly become the decision rule. **Owned by `.11.4.7.2.1.2`.**
+- ⚠️ **#3 LLM SYNTHESIS (MODERATOR/SYNTHESIZER) — SPLITS, AND ONLY HALF IS DISCHARGED.** ✅ The synthesizer landed with more than was deferred: `git grep -n "pub synthesizer" -- crates/reasonbraid-server/src/threads.rs` returns two sites (ADR-030's synthesis input and its stored record), each carrying the synthesizer identity, the input event range and a coverage report naming which objection or uncertainty item the synthesis included and why any was excluded. 🔴 The moderator did not: `git grep -c "moderator" -- crates/reasonbraid-server/src crates/reasonbraid-core/src` returns **0**, and every occurrence in the workspace is the deliberation BENCHMARK (`crates/reasonbraid-adapter/bench`, `rb-bench`, the CLI's bench verb) — §19's *moderator/synthesis flow* arm, not §13.5's role. ⛔ So ROADMAP §13.5's five permitted moderator acts and three prohibitions are **vacuous rather than enforced**, which is `.7.3.6.1`'s verdict vocabulary: true today, guarded by nothing, false the day a moderator exists. **Owned by `.11.4.7.2.1.3`.**
+- ⚠️ **#6 TLS/mTLS, SUPERVISION UNITS, CONTAINERS, PG AUTOMATION, CONFIG FILES — NOT YET TRIGGERED, and it is five items under one row.** The trigger is non-loopback exposure, and it has not fired: `crates/reasonbraid-server/src/bin/rb-server.rs` defaults `--host` to `127.0.0.1`, and G6/G7 Internet exposure is recorded NOT MET. ⭐ The informative half is that ONE of the five is already built and uncalled — `git grep -n "mtls::" -- crates` returns callers only in `crates/reasonbraid-server/tests/mtls.rs`, so the server has never served TLS. ⛔ That is **`SIGNOFF-REPAIR.14`'s subject, already owned with the identical measurement**, so it is cited rather than re-opened. The other four are absent BY DESIGN and each carries its own trigger in `deploy/README.md`'s subtraction table, which is the deferral discipline working rather than failing.
+- ⛔ **THE MECHANICAL TRIGGER CHECK IS DECLINED, ON THE CENSUS AND NOT ON A PREFERENCE — and the number is the one this project rejects gates at.** Over every tracked decision record, **38** deferral rows across **6** records (3 rows of a `Verdict | Derivation` table under a heading matching *defer* are excluded as a non-deferral table, and 2 restatements of #4/#5 in the G1–G2 re-derivation record are excluded as already counted):
+
+| trigger form | rows | a script could evaluate it |
+| --- | ---: | --- |
+| names a phase (`Phase 2`, `Phases 7–8`, `PHASE-3.1`) | **27** | yes — a tree's status is a tracked fact |
+| names a judgement condition (*a second consumer appears*, *enough seeded runs*, *the real owners accept*) | **11** | no — and no threshold exists to derive one from |
+
+- 🔴 **ALL 27 NAME A PHASE WHOSE TREE IS ALREADY `done`.** A check keyed on *the named phase has closed* would therefore fire on **27 of 38 — 71%** the day it was registered. ⛔ That is `SIGNOFF-REPAIR.11.9`'s rejected shape at 87%, `.11.15`'s at 93% and `.11.16`'s staged-diff approximation at 71%, against the 9.5% that argued `POSITIONAL-REF` in and the 0.5% that argued `BROKEN-TABLE` in. A gate that fires on two-thirds of a standing population teaches bypass, and this one would present a backlog rather than catch a next occurrence.
+- ⭐ **AND THE CENSUS REDIRECTED THE WORK RATHER THAN ONLY BLOCKING IT, which is why it was worth running.** *27 of 27 fired* is not 27 defects — it is a population whose VERDICT IS UNKNOWN, and #4's `discharged` proves the class is real in both directions. What is owed is a **one-time adjudication pass**, not a recurring gate: this leaf adjudicates the 6 in the Phase-1 gate record and **21 phase-triggered rows in the five sibling records have never been adjudicated at all**. Re-derive both figures with the fenced census below. **Owned by `.11.4.7.2.1.4`.**
+
+```bash
+# Every deferral row in a tracked decision record, and whether its trigger names
+# a phase whose tree has closed. Re-derive rather than read: the phase statuses
+# move, and so does the corpus.
+python3 - <<'PY'
+import re, subprocess, pathlib
+rows = []
+for f in subprocess.run(['git','ls-files','docs/decisions/*.md'],
+                        capture_output=True, text=True).stdout.split():
+    inside = False
+    for l in pathlib.Path(f).read_text().splitlines():
+        if l.startswith('#'):
+            inside = bool(re.search(r'defer', l, re.I)); continue
+        if not inside or not l.startswith('|') or re.match(r'^\|[ :|-]+\|$', l):
+            continue
+        cells = [c.strip() for c in l.strip('|').split('|')]
+        if cells[0].lower() in ('feature','#','deferred','item','verdict'):
+            continue
+        rows.append((f.split('/')[-1], ' | '.join(cells)))
+rows = [r for r in rows if 'the-policy-library' not in r[0] and 'g1g2' not in r[0]]
+STATUS = {0:'done',1:'done',2:'done',3:'done',4:'done',5:'done',
+          6:'done',7:'done',8:'active',9:'proposed'}   # docs/TASK_TREE.md
+named = [r for r in rows if re.search(r'Phase[s]? ?[0-9]', r[1], re.I)]
+fired = [r for r in named
+         if any(STATUS[int(n)] == 'done'
+                for m in re.findall(r'Phase[s]? ?([0-9])(?:[-–]([0-9]))?', r[1], re.I)
+                for n in m if n)]
+print(f"deferral rows {len(rows)} | phase-named {len(named)} | "
+      f"phase already done {len(fired)} | judgement {len(rows)-len(named)}")
+print("phase-named OUTSIDE the Phase-1 gate record:",
+      len([r for r in named if 'phase1-gate-record' not in r[0]]))
+PY
+```
+
+- ⭐ **THE SHAPE THIS LEAF CONFIRMS, stated because it generalises past deferrals:** a revisit trigger written as PROSE is a promise, and the thing that makes it a mechanism is not a gate over it but **an adjudication pass with one command per verdict**. Three of the six rows split under that discipline — #3 into a landed half and an absent half, #6 into five items with different answers, and #2's stand-in into something measurably not a decision rule — and a checker keyed on the row would have reported one verdict for each.
+- 🔴 **A NEAR-MISS WORTH KEEPING: the census above was published BROKEN and was caught by running it from the published text.** The first version reached the file with its `split('\n')` escape already consumed, so the line break was literal and the block was a syntax error — a command that reads correctly and cannot run. ⛔ Extracting the fence and executing it is what found it, and it is the only check that would have: reading the block, re-running the original script, and re-deriving the number by another route all pass while the PUBLISHED text is dead. ⭐ The rule is narrow and mechanical: **run a command from the record, not from the shell history it came out of.**
+- [x] **REPRODUCE / ISSUE** — the four unadjudicated rows are read from `docs/decisions/2026-09-07_phase1-gate-record.md`'s own numbered table, not retyped, and each verdict below carries the command that produces it.
+- [x] **ROOT CAUSE (WHY + WHERE)** — a deferral's revisit condition lives in prose in a decision record, and nothing evaluates prose. The population is the fenced census above: 38 rows, 27 phase-named and every one of those 27 already fired.
+- [x] **THE DECISION** — no mechanical trigger check (71% standing-fire, `.11.9`'s rejected shape) and a one-time adjudication pass instead. #1 discharged, #3 half-discharged, #6 not yet triggered and cited to `.14`, #2 fired and open. Three new children own what is open; none of it is parked.
+- [x] **ADDRESSED (verified)** — each verdict's command re-run at this commit: `#1` two `pub capabilities` sites + two `/v1/directory` routes; `#2` one `decision_rule` hit and it is an A2A loss flag; `#3` two `pub synthesizer` sites and `moderator` count **0** in server+core; `#6` `mtls::` callers only under `tests/`, `--host` default `127.0.0.1`.
+- [x] **NO REGRESSION** — nothing executable changed. `make gate` → `=== all doctrines green ===`, rc=0 over the staged tree.
+- [x] **LOCKSTEP** — `MEMORY.md`, `CHANGELOG.md`, `DEV_NOTES.md`, `LIVE_STATUS.md` and this tree, in this commit. No product surface moved, so the mdBook is unchanged.
+- promotion: declined (the transferable rule — *a prose revisit trigger is discharged by an adjudication pass, not by a gate over it* — is this leaf's own census applied to itself, and `DOCTRINE_ENFORCEMENT.md`'s registry already carries the standing-fire threshold it rests on).
+- Verification: every command above re-run at this commit with the output quoted; the fenced census reproduced `38 | 27 | 27 | 11` and `21`; `make gate` green, rc=0.
+- Commit: `REASONBRAID-DOC-0119 (leaf SIGNOFF-REPAIR.11.4.7.2.1): four deferrals adjudicated, three of six split under measurement, and the trigger check declined at 71%`.
+
+##### SIGNOFF-REPAIR.11.4.7.2.1.1 — Deferral #5: the fuzz baseline, fired at Phase 4 and never revisited
+
+- Opened: `pending` by `.11.4.7.2.1`, which adjudicated the six Phase-1 deferrals and found this one the only `fired and open` its parent had already measured.
+- 🔴 **THE TRIGGER FIRED AND THE BASELINE DOES NOT EXIST.** Measured at `.11.4.7.2`: the trigger is *the first untrusted parser (Phase 4's resource packs)*, Phase 4 has a gate record, and `fetcher.rs`, `git.rs`, `reasonbraid-extract` and `reasonbraid-browse` all parse untrusted input. `git ls-files | grep -ic fuzz` returns **0**, and the word appears in exactly ONE decision record — the Phase-1 one that deferred it — and ZERO times in Phase 4's, with the Phase-1 record returning 2 as the positive control.
+- ⛔ **What is NOT claimed:** that a parser is exploitable. This leaf owns the baseline's ABSENCE against a fired trigger, not a vulnerability; anything found would be routed with its own evidence.
+- Owns: deciding what a fuzz baseline means for this project's untrusted-input surfaces — which parsers are in scope, what corpus each starts from, where it runs and what makes it fail — or recording, with the same one-command-per-claim standard, that the deferral is superseded and why.
+- Acceptance: the untrusted-parser population is DERIVED from the producers rather than listed by hand, with the command; the decision to build or supersede is taken on that population and not on a preference; if built, at least one target runs to completion and is observed RED against a deliberately malformed input, because a fuzz target never seen failing is not known to work (`docs/CLAIM_VERIFICATION.md` leg 2); and if superseded, the decision record says which existing control covers each parser and what it still permits.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.11.4.7.2.1.2 — Deferral #2: the create fields Phase 5's engine was supposed to bring
+
+- Opened: `pending` by `.11.4.7.2.1`, whose adjudication returned `fired and open` for this row.
+- 🔴 **THE MEASUREMENT.** `git grep -n "expected_artifact\|decision_rule" -- crates migrations` returns one hit and it is `reasonbraid-a2a`'s `SemanticLosses.decision_rule`, a flag recording that a remote decision rule is ALWAYS LOST. `threads::CreateBody` carries `#[serde(deny_unknown_fields)]` with neither field, so both are a typed refusal at the create boundary today.
+- ⚠️ **AND THE STAND-IN DID NOT QUIETLY BECOME THE THING.** The deferral said `objective` + typed `workflow_profile` stand in. `migrations/0032_workflow_profiles.sql`'s `steps` column is a step SEQUENCE and no built-in row carries a threshold, quorum or veto scope — so what shipped is a workflow, not a decision rule.
+- Owns: establishing what the roadmap actually requires of these two fields before any code is written — ROADMAP §3's thread-creation contract names *decision rule, electorate policy, quorum, veto scope, and human role*, and §26's walk names *expected artifact* — and then either implementing the create fields with their validation and refusals, or recording why the shipped `workflow_profile` is the intended terminal design and superseding the deferral.
+- Acceptance: the roadmap's own words for both fields are quoted with their section, so no identifier is guessed (`.11.4.7.2.1`'s warning); the decision is taken against that contract; if implemented, an unknown or malformed value is a typed refusal with a reason code the book documents, and a control observes the refusal; if superseded, the Phase-1 gate record gains a superseding decision record rather than being edited.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.11.4.7.2.1.3 — Deferral #3's other half: §13.5's moderator exists only in the benchmark
+
+- Opened: `pending` by `.11.4.7.2.1`, whose adjudication split this row — the synthesizer landed, the moderator did not.
+- 🔴 **THE MEASUREMENT, in both directions.** `git grep -c "moderator" -- crates/reasonbraid-server/src crates/reasonbraid-core/src` returns **0**; `git grep -l "moderator" -- crates` returns only `reasonbraid-adapter`'s benchmark (`bench/v1/corpus.json`, `bench/v1/prompts.json`, `src/bench/*`, `src/bin/rb-bench.rs`), its harness test and the CLI's bench verb. That is §19's *moderator/synthesis flow* measurement arm, not §13.5's role.
+- ⛔ **SO §13.5 IS VACUOUS, NOT ENFORCED, and the distinction is the whole point** (`.7.3.6.1`'s verdict vocabulary). §13.5 lets a moderator classify messages, request clarification, propose round closure, enforce format or length, identify unanswered claims and draft summaries, and forbids it altering votes, authority or evidence records. With no moderator, the prohibitions are true today, guarded by nothing, and false the day one exists.
+- Owns: deciding whether §13.5's moderator is in scope for the shipped thread engine at all — and if it is, which of the six permitted acts map onto existing verbs and which need a new one — or recording that the benchmark arm is the only intended home and superseding this half of the deferral.
+- Acceptance: each of §13.5's six permitted acts is mapped to an existing thread verb or named as absent, with the command that decides it; the three prohibitions are stated as what would enforce them rather than as prose, since a prohibition over a role that does not exist cannot be tested; the decision names the leaf that owns any implementation; and if superseded, the reason distinguishes the benchmark arm from the product role explicitly, because conflating them is what made this half invisible for the life of the deferral.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.11.4.7.2.1.4 — The twenty-one phase-triggered deferrals no record has ever adjudicated
+
+- Opened: `pending` by `.11.4.7.2.1`, whose census found the Phase-1 gate record's six are the only deferrals anyone has graded.
+- 🔴 **THE POPULATION, and it is a population rather than a defect count.** The fenced census in `.11.4.7.2.1` returns **38** deferral rows across 6 records, **27** phase-named, **27** whose named phase is already `done`, and **21** of those outside the Phase-1 gate record — in `phase0-subtraction`, `phase1-subtraction`, `phase5-subtraction` and `phase6-subtraction`. ⛔ *Fired* is not *undischarged*: deferral #4 fired and was discharged by the phase that owned it, which is the deferral discipline working. What is unknown is the verdict.
+- ⚠️ **The other 11 rows are NOT in this leaf's scope and the reason is measured**, not a scoping convenience: their triggers name judgement conditions with no threshold to derive one from — *a second consumer of the wire types appears*, *the `.4` service accumulates enough seeded runs*, *the real owners accept the authority/correction model*. Adjudicating those needs the threshold to be decided first, which is a different act.
+- Owns: one verdict per row from `discharged` / `fired and open` / `not yet triggered`, each with the command that produces it, over the 21; and naming an owning leaf for every `fired and open`.
+- Acceptance: all 21 carry a verdict and its command; no verdict rests on a grep for a guessed identifier (`.11.4.7.2.1`'s warning, which that leaf's own #2 had to obey); every `fired and open` names an executable owner with its own `- Acceptance:` line, never a container (`TOOLBOX.md`'s *a leaf that cannot be picked up and finished is not an owner*); a row that splits under measurement is split rather than rounded, as #3 and #6 were; and the pass is run in tranches small enough to commit, since 21 verdicts is not one slice.
 - Verification / commit: pending.
 
 #### SIGNOFF-REPAIR.11.4.7.2.2 — The dependency gate is red: RUSTSEC-2026-0285
@@ -11203,6 +11298,7 @@ git grep -nI -E "never run|licen[cs]e decision|license decision" -- \
 
 | # | Claim | The independent route | Verdict |
 | --- | --- | --- | --- |
+| 1a | `SIGNOFF-REPAIR.11.4.7.2.1` | `done` | ✅ DOC-0119 — **four deferrals adjudicated with one command each, and three of the six SPLIT under measurement**: #1 capability advertisement `discharged` (the claim even carries a `Benchmarked`/`OwnerAttested` confidence the deferral never asked for), #3 `half` — the synthesizer landed with ADR-030's coverage report while §13.5's moderator is **0** in server+core and lives only in the benchmark, #6 `not yet triggered` and five items under one row, with its mTLS half already owned by `.14`, #2 `fired and open`. ⛔ **The mechanical trigger check is DECLINED at 71%** — 27 of 38 deferral rows name a phase and all 27 name one already `done`, which is `.11.9`'s rejected shape. ⭐ The census redirected the work: what is owed is a one-time adjudication pass, and **21** phase-triggered rows in the sibling records have never been graded. Children `.1`–`.4` own every open half |
 | A | **nothing calls `mcp_listen`** (`.6.2.3.1`) | the COMPILER, not a grep: `mod mcp_listen;` DELETED outright, then `cargo build --workspace --lib` | ✅ **0 errors** — no caller in any crate, including the server's own `src/` |
 | B | 21 index-assign sites, one caller-supplied (`.6.1.3`) | a third, wider key over `crates/*/src` | ✅ 64 raw hits, the extra ones `Vec`/slice indexing; the classification stands |
 | C | `25/16`, `17 tables`, `residue 0` | recomputed from the baseline TSV by a standalone script, not by the census module | ✅ 25 · 16 · 17 · 0 |

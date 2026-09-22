@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-22 — Twelve "already done" verdicts re-checked: eight held, four were wrong (`SIGNOFF-REPAIR.11.4.7.2.1.5`)
+
+`REASONBRAID-DOC-0133`. An audit of earlier conclusions; no code changed.
+
+- An earlier review had marked 13 postponed items as "already delivered", mostly by checking that a file existed. I re-checked the 12 that nobody had re-verified, this time by reading the requirement, the code and the test that exercises it.
+- ✅ **8 held.** 🔴 **4 were wrong, all in the same direction**: something called done was only partly done.
+  - The registry that maps machines to agent roles was never built; a temporary development rule still stands in for it.
+  - Certificates are issued, rotated and revoked, but the server does not require them at the connection level yet.
+  - "Semantic matching" was claimed, but the matcher is rule-based; the semantic part is formally postponed.
+  - "Any resource can be fetched" is overstated: the agent-assisted fetch path is never completed.
+- ✅ Every correction is written at the row, and every gap found now has its own tracked task.
+- ⚠️ One of them may be urgent. A safeguard against automatic thread-starting running away (depth and cycle limits) was postponed until "the first automatically started thread", and that feature now exists. It is next.
+
 ## 2026-09-22 — A thread with no voting rule can no longer be closed as if a vote was counted (`SIGNOFF-REPAIR.8.1.1.5`)
 
 `REASONBRAID-REPAIR-0414`.

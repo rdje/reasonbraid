@@ -380,6 +380,23 @@ impl EvaluationError {
     }
 }
 
+/// Choose an arm index from a `u64` draw.
+///
+/// ⛔ **THE MODULO HAPPENS IN `u64`, AND THE NARROWING ONLY AFTERWARDS**
+/// (`SIGNOFF-REPAIR.8.2.3`). The old expression was `(draw as usize) % arms`,
+/// and on a 32-bit target `draw as usize` TRUNCATES to the low 32 bits — so the
+/// arm chosen for one `(case_id, seed)` depended on the host, while the comment
+/// on [`splitmix64`] promised the opposite as this function's whole purpose.
+/// ⭐ After the modulo the value is strictly less than `arms`, which is already
+/// a `usize`, so the cast here cannot lose anything on any target.
+///
+/// # Panics
+/// Never called with `arms == 0`: `create_trial` refuses an empty arm list
+/// before it reaches the draw.
+fn arm_index(draw: u64, arms: usize) -> usize {
+    (draw % arms as u64) as usize
+}
+
 /// The stable splitmix64 over (seed, bytes) — a dependency-free deterministic
 /// draw so the same seed + case re-draws the same arm on every run (the
 /// `std` hasher is NOT stable across releases; the assignment must be).
@@ -425,11 +442,13 @@ pub async fn create_trial(
     }
 
     // The seeded draw: splitmix64 over the (case id, seed) — stable across
-    // runs and platforms (the std hasher is not).
+    // runs and platforms (the std hasher is not), and stable across POINTER
+    // WIDTHS because `arm_index` takes the modulo in u64 before narrowing
+    // (`SIGNOFF-REPAIR.8.2.3`; the old `draw as usize` did not).
     let mut assignment = serde_json::Map::new();
     for case_id in &submission.case_ids {
         let draw = splitmix64(submission.seed as u64, case_id.as_bytes());
-        let arm = &submission.arms[(draw as usize) % submission.arms.len()];
+        let arm = &submission.arms[arm_index(draw, submission.arms.len())];
         assignment.insert(case_id.clone(), serde_json::Value::String(arm.clone()));
     }
 
@@ -831,4 +850,49 @@ pub async fn list_gate_results(pool: &PgPool, gate_id: &str) -> Result<Vec<Value
     .fetch_all(pool)
     .await?;
     Ok(rows)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// ⛔ A DRAW ABOVE `u32::MAX`, chosen so the truncated and untruncated
+    /// answers DISAGREE — otherwise the control passes under the defect.
+    /// `0x1_0000_0003 % 5 == 4`, while its low 32 bits are `3` and `3 % 5 == 3`.
+    const WIDE_DRAW: u64 = 0x1_0000_0003;
+
+    #[test]
+    fn the_arm_index_is_taken_in_u64_space() {
+        assert_eq!(
+            arm_index(WIDE_DRAW, 5),
+            4,
+            "the modulo is over the whole u64"
+        );
+        assert_ne!(
+            arm_index(WIDE_DRAW, 5),
+            ((WIDE_DRAW as u32) as usize) % 5,
+            "a 32-bit narrowing must give a DIFFERENT answer, or this control              cannot detect the defect it exists for"
+        );
+    }
+
+    #[test]
+    fn the_index_is_always_inside_the_arm_list() {
+        for arms in 1..=8_usize {
+            for draw in [0, 1, u32::MAX as u64, WIDE_DRAW, u64::MAX] {
+                assert!(
+                    arm_index(draw, arms) < arms,
+                    "draw {draw} over {arms} arms escaped the list"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_draw_is_stable_for_one_case_and_seed() {
+        // The reproducibility claim the assignment record rests on: the same
+        // (seed, case id) yields the same draw, and a different seed does not.
+        assert_eq!(splitmix64(7, b"case-a"), splitmix64(7, b"case-a"));
+        assert_ne!(splitmix64(7, b"case-a"), splitmix64(8, b"case-a"));
+        assert_ne!(splitmix64(7, b"case-a"), splitmix64(7, b"case-b"));
+    }
 }

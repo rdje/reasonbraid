@@ -119,10 +119,12 @@ The response carries the computed `assignment`, a `case_id → arm` map. A cohor
 It is **append-only**: the record's identity is its content, and nothing rewrites
 an earlier row.
 
-⚠️ **The assignment is not portable to a 32-bit target.** `splitmix64` returns a
-`u64` and the arm index is `draw as usize`, which truncates to 32 bits where
-`usize` is 32 bits — while the code comment beside it says the draw must be
-stable across platforms. Recorded as `SIGNOFF-REPAIR.8.2` clause 2.
+✅ **The assignment is portable across pointer widths.** `splitmix64` returns a
+`u64`, and the arm is chosen with `draw % arms.len()` taken in `u64` before the
+result is narrowed — so the index cannot lose information on any target. Until
+`SIGNOFF-REPAIR.8.2.3` the draw was narrowed FIRST, with `draw as usize`, which
+truncates to 32 bits on a 32-bit host and would have picked a different arm for
+the same `(case_id, seed)` than a 64-bit host does.
 
 ## Calibration
 

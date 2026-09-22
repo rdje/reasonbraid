@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-22 — The modulo moves into u64, and the control is built so the defect and the repair can disagree (`SIGNOFF-REPAIR.8.2.3`)
+
+`REASONBRAID-REPAIR-0387`. The evaluation chapter's third and last published limit.
+
+- 🔴 **ONE CAST AGAINST ONE SENTENCE.** The shadow-trial arm was chosen with `(draw as usize) % arms.len()`, narrowing a `u64` draw BEFORE the modulo — which truncates to 32 bits on a 32-bit host — while the comment three lines above promised *stable across runs and platforms* as the function's whole purpose. The fix reorders it: `draw % arms.len()` in `u64`, narrowed after, where the result is already smaller than a `usize`.
+- ⭐ **THE HARD PART IS THAT THE CONTROL CANNOT GO RED ON THIS HOST BY ITSELF.** On 64 bits `draw as usize` is the identity, so old and new agree for every input and an ordinary control passes before AND after — the anti-pattern `docs/CLAIM_VERIFICATION.md` opens with. The constant is chosen to break the tie: `0x1_0000_0003 % 5` is **4**, while its low 32 bits give **3**.
+- ✅ **THE ARM IS TWO-SIDED**, asserting the right answer and that the 32-bit narrowing gives a different one — so a future edit that made the constant narrow harmlessly fails the second assertion instead of silently satisfying the first.
+- ✅ **FALSIFIED BY SIMULATING THE TARGET THIS PROJECT CANNOT RUN.** A mutant writing `((draw as u32) as usize) % arms` makes exactly one control fail, by name, with the other two green.
+- ✅ **TWO MORE PURE CONTROLS**, because one arm over one constant is a claim about that constant: the index stays inside the arm list across `0`, `1`, `u32::MAX`, the wide draw and `u64::MAX` for every list length 1..=8; and the draw is stable for one `(seed, case_id)` and moves when either does. ⚠️ This module had **no** unit tests at all before.
+- ⛔ **Not claimed: that anything here has run on a 32-bit target.** It has not; the defect was latent. It is repaired because a trial row's contract is that `(seed, case_id, arms)` reproduces it, and a guarantee true only of the hosts tried so far is what this lane keeps finding.
+- ⭐ **With `.8.2.1` and `.8.2.2`, every published limit the evaluation chapter carried is now a repair record.**
+
 ## 2026-09-22 — A store fault is the server's, and the caller's duplicate is the one the database says it is (`SIGNOFF-REPAIR.8.2.2`)
 
 `REASONBRAID-REPAIR-0386`. The evaluation chapter's second published limit, repaired.

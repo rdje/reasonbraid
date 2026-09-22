@@ -107,6 +107,7 @@ async fn pool() -> Option<PgPool> {
             "policy_approvals",
             "policy_decisions",
             "policy_proposals",
+            "resolution_refusals",
             "tenants",
             "idempotency",
             "event_log",
@@ -11962,6 +11963,187 @@ async fn the_acquisition_path_is_bounded_per_resolver_and_per_destination() {
     eprintln!(
         "acquisition quota: the enrol transaction seeds one DEFAULT row per open scope; one resolution records one use per scope (resolver + destination); a host-specific ceiling overrides the default and refuses with a RECORDED denial (429); and removing both rows is still the typed fail-closed 503"
     );
+}
+
+/// THE `SIGNOFF-REPAIR.4.6.1.2` acceptance: §18.5's *resolver denials* are
+/// listed from what the resolve path actually answered.
+///
+/// The defect: every refusal below was explained in the response and then
+/// forgotten — only the quota denial reached storage, in `quota_events`, which
+/// names neither the resource nor who asked.
+///
+/// ⭐ Each refusal is produced by a control that REALLY refuses, and none
+/// touches the network: the shipped destination policy refusing a loopback
+/// host, an isolation bound no registered pack meets, and a zero ceiling on
+/// that host. The two answers that are NOT refusals of a resolution — a
+/// foreign resource (404) and an off-vocabulary requirement (400) — must record
+/// nothing.
+#[tokio::test]
+async fn the_operator_lists_the_refusals_the_resolve_path_answered() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let mut principals = Vec::new();
+    for name in ["refusal-admin-a", "refusal-admin-b"] {
+        let (status, human) =
+            enroll(&client, &base, json!({ "kind": "human", "name": name })).await;
+        assert_eq!(status, 200, "the human enrols: {human}");
+        principals.push((
+            human["principal_id"].as_str().unwrap().to_string(),
+            human["tenant_id"].as_str().unwrap().to_string(),
+        ));
+    }
+    let [(admin_a, tenant_a), (admin_b, tenant_b)] = <[_; 2]>::try_from(principals).unwrap();
+
+    let (status, reference) = post(
+        &client,
+        &base,
+        "/v1/resources",
+        &admin_a,
+        &json!({ "original_locator": "https://127.0.0.1/refusal-probe", "scheme": "https" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the reference registers: {reference}");
+    let resource_id = reference["resource_id"].as_str().unwrap().to_string();
+    let resolve = |caller: String, sandbox: &'static str, egress: &'static str| {
+        let client = client.clone();
+        let base = base.clone();
+        let resource_id = resource_id.clone();
+        async move {
+            post(
+                &client,
+                &base,
+                &format!("/v1/resources/{resource_id}/resolve"),
+                &caller,
+                &json!({ "required_sandbox": sandbox, "required_egress": egress }),
+            )
+            .await
+        }
+    };
+    let recorded = || {
+        let pool = pool.clone();
+        let tenant_a = tenant_a.clone();
+        async move {
+            sqlx::query_scalar::<_, i64>(
+                "SELECT count(*) FROM resolution_refusals WHERE tenant_id = $1",
+            )
+            .bind(&tenant_a)
+            .fetch_one(&pool)
+            .await
+            .expect("count the refusals")
+        }
+    };
+
+    // (1) The shipped destination policy refuses the loopback class by name.
+    let (status, refused) = resolve(admin_a.clone(), "none", "listed").await;
+    assert_eq!(status, 200, "{refused}");
+    assert_eq!(
+        refused["acquisition_error"]["kind"],
+        json!("destination_refused"),
+        "{refused}"
+    );
+    // (2) No registered pack runs inside a VM with no egress at all.
+    let (status, unresolvable) = resolve(admin_a.clone(), "vm_container", "none").await;
+    assert_eq!(status, 200, "{unresolvable}");
+    assert_eq!(
+        unresolvable["unresolvable_now"],
+        json!(true),
+        "{unresolvable}"
+    );
+    // (3) A zero ceiling on the host refuses the next attempt.
+    sqlx::query(
+        "INSERT INTO usage_quotas (quota_id, tenant_id, scope_kind, scope_id, ceiling, window_seconds) \
+         VALUES ($1, $2, 'destination', '127.0.0.1', 0, 3600)",
+    )
+    .bind(format!("quo_{tenant_a}_refusal_probe"))
+    .bind(&tenant_a)
+    .execute(&pool)
+    .await
+    .expect("declare a zero host ceiling");
+    let (status, exceeded) = resolve(admin_a.clone(), "none", "listed").await;
+    assert_eq!(status, 429, "{exceeded}");
+    assert_eq!(exceeded["code"], json!("quota_exceeded"), "{exceeded}");
+    assert_eq!(recorded().await, 3, "each refusal is one row");
+
+    // (4) Answers that are not a refused resolution record nothing: another
+    // tenant's caller gets the existence-oracle 404, and an off-vocabulary
+    // requirement is the caller's own error.
+    let (status, _) = resolve(admin_b.clone(), "none", "listed").await;
+    assert_eq!(status, 404, "a foreign resource is not found");
+    let (status, _) = resolve(admin_a.clone(), "hypervisor", "listed").await;
+    assert_eq!(
+        status, 400,
+        "an off-vocabulary requirement is refused as input"
+    );
+    assert_eq!(recorded().await, 3, "neither answer is a resolver denial");
+
+    // (5) The operator's list: newest first, each row exactly as answered.
+    let path = format!("/v1/admin/resolution-refusals?tenant_id={tenant_a}");
+    let (status, listed) = get(&client, &base, &path, &admin_a).await;
+    assert_eq!(status, 200, "{listed}");
+    let rows = listed["refusals"].as_array().expect("the refusal list");
+    let kinds: Vec<&str> = rows.iter().map(|r| r["kind"].as_str().unwrap()).collect();
+    assert_eq!(
+        kinds,
+        ["quota_exceeded", "unresolvable_now", "destination_refused"]
+    );
+    for row in rows {
+        assert_eq!(row["resource_id"], json!(resource_id), "{row}");
+        assert_eq!(row["requested_by"], json!(admin_a), "{row}");
+    }
+    assert_eq!(rows[0]["resolver_id"], json!("r0-https-fetcher"));
+    assert_eq!(
+        rows[0]["message"], exceeded["message"],
+        "the quota words, verbatim"
+    );
+    assert_eq!(
+        rows[1]["resolver_id"],
+        Value::Null,
+        "no resolver was eligible"
+    );
+    assert!(
+        rows[1]["message"]
+            .as_str()
+            .unwrap()
+            .contains("vm_container"),
+        "{}",
+        rows[1]
+    );
+    assert_eq!(rows[2]["resolver_id"], json!("r0-https-fetcher"));
+    assert_eq!(rows[2]["message"], refused["acquisition_error"]["message"]);
+    assert_eq!(listed["limit"], json!(500));
+
+    // The quota ledger still holds its own denial: the refusal row is a
+    // second FACT about the same event, not a replacement for the count.
+    let denials: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM quota_events e JOIN usage_quotas q USING (quota_id) \
+         WHERE q.tenant_id = $1 AND e.kind = 'denial'",
+    )
+    .bind(&tenant_a)
+    .fetch_one(&pool)
+    .await
+    .expect("count the quota denials");
+    assert_eq!(denials, 1);
+
+    // (6) The tenant boundary.
+    let (status, own) = get(
+        &client,
+        &base,
+        &format!("/v1/admin/resolution-refusals?tenant_id={tenant_b}"),
+        &admin_b,
+    )
+    .await;
+    assert_eq!(status, 200, "{own}");
+    assert_eq!(
+        own["refusals"],
+        json!([]),
+        "another tenant sees none of them"
+    );
+    let (status, _) = get(&client, &base, &path, &admin_b).await;
+    assert_eq!(status, 403, "another tenant's administrator is refused");
 }
 
 /// `SIGNOFF-REPAIR.7.1.2.1` — the workflow registry is site-wide configuration,

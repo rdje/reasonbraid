@@ -110,6 +110,7 @@ async fn pool() -> Option<PgPool> {
             "cross_domain_receipts",
             "mcp_listen_state",
             "tenant_bootstrap_requests",
+            "resolution_refusals",
             "tenants",
             "idempotency",
             "event_log",

@@ -1683,6 +1683,56 @@ pub async fn run_inspect_ambiguous(
     Ok(format_ambiguous_attempts(tenant, &response))
 }
 
+/// The refusals the resolve path answered the tenant's callers, newest first
+/// (`SIGNOFF-REPAIR.4.6.1.2`; ROADMAP §18.5 *resolver denials*; tenant_admin).
+pub async fn run_inspect_refusals(
+    cfg: &Config,
+    principal: &PrincipalRef,
+    tenant: Option<&str>,
+    json_out: bool,
+) -> Result<String, CliError> {
+    let tenant = tenant.or(principal.tenant.as_deref()).ok_or_else(|| {
+        CliError::usage("cannot determine the tenant — pass --tenant".to_string())
+    })?;
+    let client = ApiClient::for_base(&cfg.server_base)?;
+    let response = client
+        .get_admin(&principal.id, "/v1/admin/resolution-refusals", tenant)
+        .await?;
+    if json_out {
+        return or_json(&response, true);
+    }
+    Ok(format_resolution_refusals(tenant, &response))
+}
+
+/// The text view of `GET /v1/admin/resolution-refusals`. A full page says so,
+/// because the route returns at most `limit` rows and older ones exist.
+fn format_resolution_refusals(tenant: &str, response: &Value) -> String {
+    let refusals = response["refusals"].as_array().cloned().unwrap_or_default();
+    let mut out = format!(
+        "tenant {tenant}'s resolution refusals ({}):\n",
+        refusals.len()
+    );
+    for r in &refusals {
+        out.push_str(&format!(
+            "  {} — {} — resource {} — resolver {} — asked by {}\n    {}\n",
+            r["refused_at"].as_str().unwrap_or("?"),
+            r["kind"].as_str().unwrap_or("?"),
+            r["resource_id"].as_str().unwrap_or("?"),
+            r["resolver_id"].as_str().unwrap_or("none eligible"),
+            r["requested_by"].as_str().unwrap_or("?"),
+            r["message"].as_str().unwrap_or("?"),
+        ));
+    }
+    if let Some(limit) = response["limit"].as_u64() {
+        if refusals.len() as u64 >= limit {
+            out.push_str(&format!(
+                "(the newest {limit}; older refusals are not shown)\n"
+            ));
+        }
+    }
+    out
+}
+
 /// The text view of `GET /v1/admin/nodes/ambiguous-attempts`. The safe actions
 /// are printed only when there is something to act on, and the one thing never
 /// to do is printed with them, because it is the tempting one.
@@ -1731,6 +1781,35 @@ fn format_ambiguous_attempts(tenant: &str, response: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The refusal view names each refusal's kind, resolver and message, says
+    /// "none eligible" for `unresolvable_now`, and flags a full page.
+    #[test]
+    fn the_refusal_view_names_the_kind_and_flags_a_full_page() {
+        let tenant = "ten_00000000-0000-7000-8000-000000000001";
+        let page = serde_json::json!({
+            "refusals": [
+                {
+                    "refused_at": "t1", "kind": "unresolvable_now", "resource_id": "res_1",
+                    "resolver_id": null, "requested_by": "hpr_1", "message": "no resolver",
+                },
+                {
+                    "refused_at": "t0", "kind": "destination_refused", "resource_id": "res_1",
+                    "resolver_id": "r0-https-fetcher", "requested_by": "hpr_1",
+                    "message": "loopback refused",
+                },
+            ],
+            "limit": 2,
+        });
+        let text = format_resolution_refusals(tenant, &page);
+        assert!(text.contains("resolution refusals (2)"), "{text}");
+        assert!(text.contains("t1 — unresolvable_now — resource res_1 — resolver none eligible"));
+        assert!(text.contains("resolver r0-https-fetcher — asked by hpr_1\n    loopback refused"));
+        assert!(text.contains("(the newest 2; older refusals are not shown)"));
+
+        let short = serde_json::json!({ "refusals": [], "limit": 500 });
+        assert!(!format_resolution_refusals(tenant, &short).contains("newest"));
+    }
 
     /// The ambiguous-attempt view prints each open attempt, and the safe actions
     /// with the one forbidden act only when something is open.

@@ -93,6 +93,7 @@ async fn pool() -> Option<PgPool> {
             "policy_approvals",
             "policy_decisions",
             "policy_proposals",
+            "resolution_refusals",
             "tenants",
         ],
     )

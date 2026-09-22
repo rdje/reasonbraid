@@ -998,6 +998,54 @@ say the document was acquired while nothing was stored.
 ⛔ **Two of the three acquisition arms used to do exactly that.** The R2 arm has
 reported `evidence_unstored` since `SIGNOFF-REPAIR.7.4.2`; the R0 and R5 arms
 discarded the store's answer and set the receipt regardless.
+
+#### Every refused resolution is recorded, and an operator can list them
+
+A resolve request can be refused in three ways. The first-ranked pack can refuse
+by name (`acquisition_error.kind`). No pack may be eligible at all
+(`unresolvable_now`). Or a quota can refuse the attempt (`429 quota_exceeded`,
+`503 quota_unconfigured`). Until `SIGNOFF-REPAIR.4.6.1.2` each of these reached
+only the caller: the quota denial was counted in `quota_events`, which names
+neither the resource nor who asked, and the others were not stored at all.
+
+Each refusal now leaves one row (migration `0088`), holding the words the
+caller was given. A quota refusal commits in the same transaction as its
+`quota_events` denial. The two rows are different facts: one is the counting
+ledger, the other says which request was refused.
+
+```text
+GET /v1/admin/resolution-refusals?tenant_id=ten_…
+```
+
+```json
+{
+  "tenant_id": "ten_…",
+  "refusals": [
+    { "refusal_id": "rrf_…", "kind": "quota_exceeded", "resolver_id": "r0-https-fetcher",
+      "resource_id": "res_…", "requested_by": "hpr_…", "message": "…",
+      "refused_at": "2026-09-22T…" },
+    { "refusal_id": "rrf_…", "kind": "unresolvable_now", "resolver_id": null,
+      "resource_id": "res_…", "requested_by": "hpr_…",
+      "message": "no registered resolver serves scheme `https` within required_sandbox `vm_container` and required_egress `none`",
+      "refused_at": "2026-09-22T…" },
+    { "refusal_id": "rrf_…", "kind": "destination_refused", "resolver_id": "r0-https-fetcher",
+      "resource_id": "res_…", "requested_by": "hpr_…", "message": "…loopback…",
+      "refused_at": "2026-09-22T…" }
+  ],
+  "limit": 500
+}
+```
+
+The list is newest first and holds at most `limit` rows; the response states
+the bound, so a full page is never mistaken for the whole history. It uses the
+own-tenant inspection gate, like the other `/v1/admin/*` reads: another tenant's
+administrator gets `403`, and both answers carry `x-reasonbraid-authorization`.
+From the CLI: `rb inspect refusals --as alice`.
+
+⚠️ **Two answers are deliberately not recorded.** A resource the caller may not
+read answers `404`, and recording it would put a row in a tenant that never
+asked. A requirement outside the ADR-018 vocabulary answers `400`: that is an
+error in the caller's input, not a resolver refusing.
 `SIGNOFF-REPAIR.11.14.3.12` put all three on the same contract — the same `kind`,
 so a client already handling it from R2 handles it from R0 and R5 unchanged.
 
@@ -1752,21 +1800,22 @@ pre-mutation state came back.
   all target 100 % with a ZERO error budget — a red pass halts the frontier.
   Unmeasured latency families are named with their triggers, not numbers.
 - **What an operator cannot see yet** (`SIGNOFF-REPAIR.4.6.1`). The roadmap
-  (§18.5) lists nine things the admin surface must show. Five are shown, and four
-  are not. Ambiguous attempts became the fifth shown item in `SIGNOFF-REPAIR.4.6.1.1`
-  ([node channel](node-channel.md#ambiguous-attempts-on-the-operator-surface)).
-  The four still missing are:
+  (§18.5) lists nine things the admin surface must show. Six are shown, and three
+  are not. Ambiguous attempts were added in `SIGNOFF-REPAIR.4.6.1.1`
+  ([node channel](node-channel.md#ambiguous-attempts-on-the-operator-surface)),
+  and resolver denials in `.4.6.1.2`
+  ([every refused resolution is recorded](#every-refused-resolution-is-recorded-and-an-operator-can-list-them)).
+  The three still missing are:
 
   | what §18.5 asks for | today | owner |
   | --- | --- | --- |
   | service and dependency health, with how fresh it is | no health route; nothing checks a dependency after start-up | `.4.6.1.4` |
-  | resolver denials | a refused acquisition is explained in the response and then forgotten (a quota refusal is the one exception that is stored) | `.4.6.1.2` |
   | audit-chain checkpoint age | there is no checkpoint yet: the audit hash chain is deferred by ADR-022 until the first non-loopback deployment or the G7 gate | `.4.6.1.3` (blocked) |
   | backup/restore status and active incidents | `scripts/backup.sh` and the restore test run, but leave no record the server can report; there is no incident record | `.4.6.1.5` |
 
-  ⚠️ In two of these rows, the system does the work but does not store the
-  result. That means each one needs something that records the result before a
-  route can report it; adding a route alone would not be enough.
+  ⚠️ In the backup row, the system does the work but does not store the
+  result, so it needs something that records the result before a route can
+  report it; adding a route alone would not be enough.
 - **Runbook:** node lost/replaced (`docs/runbooks/node-lost-replaced.md`)
   covers detection through closure tests; its closure tests are the demo's
   SIGKILL beat, the revoke beat, the replay suites, and the restore exercise.

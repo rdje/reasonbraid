@@ -723,6 +723,10 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
             "/v1/admin/nodes/ambiguous-attempts",
             get(list_ambiguous_attempts),
         )
+        .route(
+            "/v1/admin/resolution-refusals",
+            get(list_resolution_refusals),
+        )
         .route("/v1/directory/presence", get(directory_presence))
         .route("/v1/directory/match", post(directory_match))
         .route("/v1/calls", post(open_recruitment_call))
@@ -2412,7 +2416,7 @@ async fn resolve_resource(
             )));
         }
     }
-    let mut outcome = crate::resolvers::resolve(
+    let outcome = crate::resolvers::resolve(
         &state.pool,
         &reference.scheme,
         reference.media_type_hint.as_deref(),
@@ -2462,6 +2466,29 @@ async fn resolve_resource(
                 break;
             }
         }
+        // The operator's record of WHICH request was refused
+        // (`SIGNOFF-REPAIR.4.6.1.2`): `quota_events` counts the denial per
+        // quota and names neither the resource nor the caller. A storage
+        // failure is not a refusal of the caller, so it records nothing here.
+        let refused_as = match &refusal {
+            Some(crate::quota::QuotaError::Exceeded { .. }) => Some("quota_exceeded"),
+            Some(crate::quota::QuotaError::Unconfigured { .. }) => Some("quota_unconfigured"),
+            Some(crate::quota::QuotaError::Storage(_)) | None => None,
+        };
+        if let (Some(kind), Some(error)) = (refused_as, &refusal) {
+            record_resolution_refusal(
+                &mut *quota_tx,
+                &ResolutionRefusal {
+                    tenant_id: &tenant,
+                    resource_id: &resource_id,
+                    requested_by: &principal.id_string(),
+                    resolver_id: Some(&ranked),
+                    kind,
+                    message: &error.to_string(),
+                },
+            )
+            .await?;
+        }
         // The denial row is a recorded fact and must survive the refusal, so the
         // transaction commits either way — the `.3.5.1` shape.
         quota_tx.commit().await?;
@@ -2479,6 +2506,179 @@ async fn resolve_resource(
             });
         }
     }
+    let outcome = acquire_ranked(&state, &citer, &resource_id, &reference, outcome).await?;
+    // §18.5's *resolver denials* (`SIGNOFF-REPAIR.4.6.1.2`): the refusal this
+    // answer carries is recorded before it is returned. Without the row the
+    // refusal reached the caller alone and no operator route could list it.
+    if let Some((resolver_id, kind, message)) = refusal_answered(&outcome, &reference.scheme, &req)
+    {
+        record_resolution_refusal(
+            &state.pool,
+            &ResolutionRefusal {
+                tenant_id: &tenant,
+                resource_id: &resource_id,
+                requested_by: &principal.id_string(),
+                resolver_id: resolver_id.as_deref(),
+                kind: &kind,
+                message: &message,
+            },
+        )
+        .await?;
+    }
+    Ok(Json(outcome))
+}
+
+/// The most refusals one read returns, newest first. The response states the
+/// bound, so a truncated list is never mistaken for the whole history.
+const RESOLUTION_REFUSAL_PAGE: i64 = 500;
+
+/// `GET /v1/admin/resolution-refusals?tenant_id=…` — the refusals the resolve
+/// path answered the tenant's callers, newest first (`SIGNOFF-REPAIR.4.6.1.2`;
+/// ROADMAP §18.5 *resolver denials*).
+///
+/// Each row is exactly what the caller was told: the refusal's own `kind`, its
+/// message, the resolver that ranked first (none for `unresolvable_now`), the
+/// resource, and who asked. Rows are written by `resolve_resource` itself, so
+/// the list cannot disagree with what was answered.
+///
+/// Uses the own-tenant inspection gate, like the other `/v1/admin/*` reads.
+async fn list_resolution_refusals(
+    State(state): State<Arc<ApiState>>,
+    Query(q): Query<AdminListQuery>,
+    headers: HeaderMap,
+) -> Result<Response, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    inspect_tenant_admin(
+        &state,
+        &principal,
+        q.tenant_id,
+        reasonbraid_core::TenantAdminInspection::ResolutionRefusals {},
+        |pool| async move {
+            type Row = (
+                String,
+                String,
+                String,
+                Option<String>,
+                String,
+                String,
+                DateTime<Utc>,
+            );
+            let rows: Vec<Row> = sqlx::query_as(
+                "SELECT refusal_id, resource_id, requested_by, resolver_id, kind, message, \
+                        refused_at \
+                 FROM resolution_refusals WHERE tenant_id = $1 \
+                 ORDER BY refused_at DESC, refusal_id DESC LIMIT $2",
+            )
+            .bind(q.tenant_id.to_string())
+            .bind(RESOLUTION_REFUSAL_PAGE)
+            .fetch_all(&pool)
+            .await?;
+            let refusals: Vec<Value> = rows
+                .into_iter()
+                .map(
+                    |(refusal_id, resource_id, requested_by, resolver_id, kind, message, at)| {
+                        json!({
+                            "refusal_id": refusal_id,
+                            "resource_id": resource_id,
+                            "requested_by": requested_by,
+                            "resolver_id": resolver_id,
+                            "kind": kind,
+                            "message": message,
+                            "refused_at": at.to_rfc3339(),
+                        })
+                    },
+                )
+                .collect();
+            Ok(Json(json!({
+                "tenant_id": q.tenant_id.to_string(),
+                "refusals": refusals,
+                "limit": RESOLUTION_REFUSAL_PAGE,
+            })))
+        },
+    )
+    .await
+}
+
+/// The refusal a resolution answer carries, if it carries one, as
+/// `(resolver, kind, message)` — exactly the words the caller was given.
+///
+/// `unresolvable_now` has no resolver: none was eligible. Every other refusal
+/// is the first-ranked pack's named `acquisition_error`. An answer carrying
+/// neither is an acquisition, and records nothing here.
+fn refusal_answered(
+    outcome: &crate::resolvers::ResolutionOutcome,
+    scheme: &str,
+    req: &ResolveRequest,
+) -> Option<(Option<String>, String, String)> {
+    if outcome.unresolvable_now {
+        return Some((
+            None,
+            "unresolvable_now".to_owned(),
+            format!(
+                "no registered resolver serves scheme `{scheme}` within required_sandbox \
+                 `{}` and required_egress `{}`",
+                req.required_sandbox, req.required_egress
+            ),
+        ));
+    }
+    outcome.acquisition_error.as_ref().map(|error| {
+        (
+            outcome.resolvers.first().cloned(),
+            error.kind.clone(),
+            error.message.clone(),
+        )
+    })
+}
+
+/// One refused resolution, as `migrations/0088_resolution_refusals.sql` stores it.
+struct ResolutionRefusal<'a> {
+    tenant_id: &'a str,
+    resource_id: &'a str,
+    requested_by: &'a str,
+    resolver_id: Option<&'a str>,
+    kind: &'a str,
+    message: &'a str,
+}
+
+/// Record one refused resolution (`SIGNOFF-REPAIR.4.6.1.2`). Generic over the
+/// executor so a quota refusal commits in the SAME transaction as its
+/// `quota_events` denial.
+async fn record_resolution_refusal<'e, E>(
+    executor: E,
+    refusal: &ResolutionRefusal<'_>,
+) -> Result<(), sqlx::Error>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+{
+    sqlx::query(
+        "INSERT INTO resolution_refusals \
+           (refusal_id, tenant_id, resource_id, requested_by, resolver_id, kind, message) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+    )
+    .bind(format!("rrf_{}", uuid::Uuid::now_v7()))
+    .bind(refusal.tenant_id)
+    .bind(refusal.resource_id)
+    .bind(refusal.requested_by)
+    .bind(refusal.resolver_id)
+    .bind(refusal.kind)
+    .bind(refusal.message)
+    .execute(executor)
+    .await?;
+    Ok(())
+}
+
+/// Execute the first-ranked built-in pack, if one ranked (the body of
+/// `resolve_resource` after its binding, validation, ranking and quota
+/// admission). Returns the outcome with the acquisition or its NAMED refusal;
+/// the caller records a refusal before answering, which is why this returns
+/// the outcome rather than the response.
+async fn acquire_ranked(
+    state: &ApiState,
+    citer: &crate::snapshots::Citer,
+    resource_id: &str,
+    reference: &crate::resources::ResourceReference,
+    mut outcome: crate::resolvers::ResolutionOutcome,
+) -> Result<crate::resolvers::ResolutionOutcome, ControlApiError> {
     // The built-in packs execute when they rank first: the acquisition
     // runs under the pack's own ceilings + the `.2.1` policy; a refusal is
     // the NAMED error, and the reference stays submitted either way.
@@ -2501,7 +2701,7 @@ async fn resolve_resource(
                     let stored = crate::snapshots::submit(
                         &state.pool,
                         &crate::snapshots::SnapshotSubmission {
-                            reference_id: resource_id.clone(),
+                            reference_id: resource_id.to_owned(),
                             original_locator: reference.original_locator.clone(),
                             final_locator: receipt.final_url.clone(),
                             resolver_id: crate::resolvers::R0_RESOLVER_ID.to_owned(),
@@ -2527,20 +2727,20 @@ async fn resolve_resource(
                         },
                         &document.bytes,
                         chrono::Utc::now(),
-                        &citer,
+                        citer,
                     )
                     .await;
                     if let Err(error) = stored {
                         crate::log_event!(
                             "acquisition_evidence_unstored",
-                            "resource_id" => resource_id.clone(),
+                            "resource_id" => resource_id,
                             "reason" => error.to_string(),
                         );
                         outcome.acquisition_error = Some(crate::resolvers::AcquisitionError {
                             kind: "evidence_unstored".to_owned(),
                             message: error.to_string(),
                         });
-                        return Ok(Json(outcome));
+                        return Ok(outcome);
                     }
                     outcome.acquisition = Some(crate::resolvers::Acquisition::Web(receipt));
                 }
@@ -2604,7 +2804,7 @@ async fn resolve_resource(
                                     let stored = crate::snapshots::submit(
                                         &state.pool,
                                         &crate::snapshots::SnapshotSubmission {
-                                            reference_id: resource_id.clone(),
+                                            reference_id: resource_id.to_owned(),
                                             original_locator: reference.original_locator.clone(),
                                             final_locator: receipt.final_url.clone(),
                                             resolver_id: crate::resolvers::R5_RESOLVER_ID.to_owned(),
@@ -2630,13 +2830,13 @@ async fn resolve_resource(
                                         },
                                         &document.bytes,
                                         chrono::Utc::now(),
-                                        &citer,
+                                        citer,
                                     )
                                     .await;
                                     if let Err(error) = stored {
                                         crate::log_event!(
                                             "acquisition_evidence_unstored",
-                                            "resource_id" => resource_id.clone(),
+                                            "resource_id" => resource_id,
                                             "reason" => error.to_string(),
                                         );
                                         outcome.acquisition_error =
@@ -2644,7 +2844,7 @@ async fn resolve_resource(
                                                 kind: "evidence_unstored".to_owned(),
                                                 message: error.to_string(),
                                             });
-                                        return Ok(Json(outcome));
+                                        return Ok(outcome);
                                     }
                                     outcome.acquisition =
                                         Some(crate::resolvers::Acquisition::Authenticated(
@@ -2717,12 +2917,12 @@ async fn resolve_resource(
                                     response.parent_digest
                                 ),
                             });
-                            return Ok(Json(outcome));
+                            return Ok(outcome);
                         }
                         let snapshot = crate::snapshots::submit(
                             &state.pool,
                             &crate::snapshots::SnapshotSubmission {
-                                reference_id: resource_id.clone(),
+                                reference_id: resource_id.to_owned(),
                                 original_locator: reference.original_locator.clone(),
                                 final_locator: reference.original_locator.clone(),
                                 resolver_id: crate::resolvers::R3_RESOLVER_ID.to_owned(),
@@ -2759,7 +2959,7 @@ async fn resolve_resource(
                             },
                             document,
                             chrono::Utc::now(),
-                            &citer,
+                            citer,
                         )
                         .await;
                         // A failed snapshot is NOT a successful acquisition —
@@ -2769,7 +2969,7 @@ async fn resolve_resource(
                         let Ok(snapshot) = snapshot.inspect_err(|error| {
                             crate::log_event!(
                                 "acquisition_evidence_unstored",
-                                "resource_id" => resource_id.clone(),
+                                "resource_id" => resource_id,
                                 "reason" => error.to_string(),
                             );
                             outcome.acquisition_error = Some(crate::resolvers::AcquisitionError {
@@ -2777,7 +2977,7 @@ async fn resolve_resource(
                                 message: error.to_string(),
                             });
                         }) else {
-                            return Ok(Json(outcome));
+                            return Ok(outcome);
                         };
                         // One edge per chunk. The parent is the snapshot this
                         // render just wrote and cited, so the resolving tenant
@@ -2883,7 +3083,7 @@ async fn resolve_resource(
                             let snapshot = crate::snapshots::submit(
                                 &state.pool,
                                 &crate::snapshots::SnapshotSubmission {
-                                    reference_id: resource_id.clone(),
+                                    reference_id: resource_id.to_owned(),
                                     original_locator: reference.original_locator.clone(),
                                     final_locator: document.final_url.to_string(),
                                     resolver_id: crate::resolvers::R2_RESOLVER_ID.to_owned(),
@@ -2909,7 +3109,7 @@ async fn resolve_resource(
                                 },
                                 &document.bytes,
                                 chrono::Utc::now(),
-                                &citer,
+                                citer,
                             )
                             .await;
                             // A failed snapshot is NOT a successful acquisition.
@@ -2920,7 +3120,7 @@ async fn resolve_resource(
                             let Ok(snapshot) = snapshot.inspect_err(|error| {
                                 crate::log_event!(
                                     "acquisition_evidence_unstored",
-                                    "resource_id" => resource_id.clone(),
+                                    "resource_id" => resource_id,
                                     "reason" => error.to_string(),
                                 );
                                 outcome.acquisition_error =
@@ -2932,7 +3132,7 @@ async fn resolve_resource(
                                 // No snapshot, so no derivations and no
                                 // acquisition receipt: the refusal above is the
                                 // whole outcome for this reference.
-                                return Ok(Json(outcome));
+                                return Ok(outcome);
                             };
                             // The derivation graph: every derived chunk is a
                             // Derivation edge — the parent stays addressable
@@ -3046,25 +3246,25 @@ async fn resolve_resource(
                     if let Err(error) = crate::snapshots::submit_external(
                         &state.pool,
                         &crate::git::external_snapshot_submission(
-                            &resource_id,
+                            resource_id,
                             &reference.original_locator,
                             &receipt,
                         ),
                         chrono::Utc::now(),
-                        &citer,
+                        citer,
                     )
                     .await
                     {
                         crate::log_event!(
                             "acquisition_evidence_unstored",
-                            "resource_id" => resource_id.clone(),
+                            "resource_id" => resource_id,
                             "reason" => error.to_string(),
                         );
                         outcome.acquisition_error = Some(crate::resolvers::AcquisitionError {
                             kind: "evidence_unstored".to_owned(),
                             message: error.to_string(),
                         });
-                        return Ok(Json(outcome));
+                        return Ok(outcome);
                     }
                     outcome.acquisition = Some(crate::resolvers::Acquisition::Git(receipt));
                 }
@@ -3121,7 +3321,7 @@ async fn resolve_resource(
         }
         _ => {}
     }
-    Ok(Json(outcome))
+    Ok(outcome)
 }
 
 // ── The workflow-profile registry (PHASE-5.1.2; backlog 36) ─────────────────────────

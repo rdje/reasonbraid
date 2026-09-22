@@ -20,6 +20,7 @@ pub enum TenantAdminInspection {
     Breakers {},
     Usage {},
     AmbiguousAttempts {},
+    ResolutionRefusals {},
     AuthorizationRecord { record_id: AuthorizationRecordId },
 }
 
@@ -112,6 +113,7 @@ enum InspectionWire {
     Breakers {},
     Usage {},
     AmbiguousAttempts {},
+    ResolutionRefusals {},
     AuthorizationRecord { record_id: AuthorizationRecordId },
 }
 
@@ -126,6 +128,7 @@ impl<'de> Deserialize<'de> for TenantAdminInspection {
             InspectionWire::Breakers {} => Self::Breakers {},
             InspectionWire::Usage {} => Self::Usage {},
             InspectionWire::AmbiguousAttempts {} => Self::AmbiguousAttempts {},
+            InspectionWire::ResolutionRefusals {} => Self::ResolutionRefusals {},
             InspectionWire::AuthorizationRecord { record_id } => {
                 Self::AuthorizationRecord { record_id }
             }

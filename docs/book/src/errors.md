@@ -90,6 +90,10 @@ a resource resolution branches on both, in different places:
 { "acquisition_error": { "kind": "timed_out", "message": "the acquisition exceeded the time ceiling" } }
 ```
 
+Every refused resolution is also recorded with its `kind`, and a tenant
+administrator can list them at `GET /v1/admin/resolution-refusals`
+([deployment](deployment.md#every-refused-resolution-is-recorded-and-an-operator-can-list-them)).
+
 Derived from the producers — every `AcquisitionError { kind: … }` construction in
 the server — and held in step by the `ACQUISITION-KIND-DOC` gate, the same way
 the table above is held.

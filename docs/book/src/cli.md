@@ -585,6 +585,14 @@ something is open:
 
 See [ambiguous attempts on the operator surface](node-channel.md#ambiguous-attempts-on-the-operator-surface).
 
+The resolution-refusal surface (`SIGNOFF-REPAIR.4.6.1.2`; ROADMAP §18.5 *resolver
+denials*) lists the refused resource resolutions, newest first, and says so when
+the page is full:
+
+```text
+ inspect refusals --as alice
+```
+
 The dead-letter surface (`.2.4`): a terminal refusal auto-quarantines the
 inbox row with the reason, and the operator REPLAYS it — the quarantine
 clears, the admission decision refreshes, and the command re-enters the

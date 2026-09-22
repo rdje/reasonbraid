@@ -356,6 +356,9 @@ impl From<threads::ThreadError> for ControlApiError {
                 eprintln!("control api: corrupt stored thread state: {detail}");
                 ControlApiError::internal()
             }
+            e @ threads::ThreadError::ModeratorRestricted { .. } => {
+                ControlApiError::unauthorized(e.to_string())
+            }
             threads::ThreadError::QuotaRefused(q) => match q {
                 crate::quota::QuotaError::Unconfigured { .. } => {
                     ControlApiError::quota_unconfigured(q.to_string())

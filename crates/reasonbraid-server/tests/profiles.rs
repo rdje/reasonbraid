@@ -125,6 +125,17 @@ async fn pool() -> Option<PgPool> {
     .execute(&pool)
     .await
     .expect("clear site authority fixtures");
+    // `SIGNOFF-REPAIR.11.4.7.2.1.3.1`: the workflow registry is part of the
+    // world a test starts in too. Tests that register a custom profile drop it
+    // at their END, so one that fails midway leaked it into every later test —
+    // and `the_workflow_profile_registry_validates_and_resolves`, which counts
+    // the eight built-ins, then failed for a reason that was not its own
+    // (observed under falsification). The built-ins are the migration's and
+    // stay.
+    sqlx::query("DELETE FROM public.workflow_profiles WHERE NOT built_in")
+        .execute(&pool)
+        .await
+        .expect("clear custom workflow profiles");
     // ⛔ The opt-in R3/R5/RX gate is part of the world a test starts in, and it
     // was the one part this helper did not reset. `sync_gated_entries` writes
     // `resolver_capabilities` rows, which the migration seeds and the cleanup
@@ -12929,4 +12940,251 @@ async fn a_declared_rule_is_checked_against_the_charter_after_authorization() {
     );
     assert_eq!(event["body"]["decision_rule"], Value::Null, "{event}");
     assert_eq!(event["body"]["tally"], Value::Null, "{event}");
+}
+
+/// `SIGNOFF-REPAIR.11.4.7.2.1.3.1` (ROADMAP §13.5): a moderator is a seat
+/// restricted to the moderation vocabulary. It HOLDS the grants for every verb
+/// it is refused here, so each refusal can only be the seat's — and the
+/// electorate it is kept out of is the real one the vote counts.
+#[tokio::test]
+async fn a_moderator_moderates_and_is_refused_everything_else() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(&client, &base, json!({ "kind": "human", "name": "mo-a" })).await;
+    assert_eq!(status, 200, "A enrolls: {human}");
+    let a_id = human["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+    let role = |name: &'static str, actions: Value| {
+        let (client, base, tenant_id) = (client.clone(), base.clone(), tenant_id.clone());
+        async move {
+            let (status, role) = enroll(
+                &client,
+                &base,
+                json!({ "kind": "role", "name": name, "tenant_id": tenant_id, "actions": actions }),
+            )
+            .await;
+            assert_eq!(status, 200, "{name} enrolls: {role}");
+            role["principal_id"].as_str().unwrap().to_string()
+        }
+    };
+    let m_id = role(
+        "mo-moderator",
+        json!([
+            "thread_contribute",
+            "thread_inspect",
+            "thread_invitation_respond",
+            "thread_advance_round",
+            "thread_invite",
+            "thread_close"
+        ]),
+    )
+    .await;
+    let b_id = role(
+        "mo-b",
+        json!([
+            "thread_contribute",
+            "thread_inspect",
+            "thread_invitation_respond"
+        ]),
+    )
+    .await;
+    site_fixture::provision(
+        &pool,
+        &a_id,
+        &[reasonbraid_server::site_authority::Action::WorkflowRegister],
+    )
+    .await;
+    // A failed earlier run may have left the profile behind.
+    sqlx::query(
+        "DELETE FROM workflow_profiles WHERE profile_id = 'moderated_vote' AND NOT built_in",
+    )
+    .execute(&pool)
+    .await
+    .expect("drop the custom profile");
+    let (status, registered) = post(
+        &client,
+        &base,
+        "/v1/workflow-profiles",
+        &a_id,
+        &json!({
+            "profile_id": "moderated_vote",
+            "steps": ["moderate", "vote"],
+            "reason": "a moderated step before a counted vote",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the profile registers: {registered}");
+    govern(&pool, &tenant_id, &["unanimity"]).await;
+    let (status, created) = create_with(
+        &client,
+        &base,
+        &a_id,
+        "mo-create",
+        json!({
+            "tenant_id": tenant_id, "subject": "mo", "objective": "moderated",
+            "workflow_profile": "moderated_vote", "decision_rule": "unanimity",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the create succeeds: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    let cmd = |who: &str, key: &str, op: &str, body: Value| {
+        let principal = match who {
+            "A" => a_id.clone(),
+            "B" => b_id.clone(),
+            _ => m_id.clone(),
+        };
+        let (client, base, thread_id, key, op) = (
+            client.clone(),
+            base.clone(),
+            thread_id.clone(),
+            key.to_owned(),
+            op.to_owned(),
+        );
+        async move { thread_command(&client, &base, &thread_id, &principal, &key, &op, body).await }
+    };
+    let seat_refuses = |status: u16, value: &Value, clause: &str, what: &str| {
+        assert_eq!(status, 403, "{what}: {value}");
+        let message = value["message"].as_str().unwrap_or_default();
+        assert!(
+            message.contains("seated as moderator") && message.contains(clause),
+            "{what} is refused BY THE SEAT, naming `{clause}`: {value}"
+        );
+    };
+
+    let (status, v) = cmd(
+        "A",
+        "mo-invite-m",
+        "thread.invite",
+        json!({ "tenant_id": tenant_id, "agent_role": m_id, "seat": "moderator" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{v}");
+    assert_eq!(v["ok"], json!(true));
+    let (status, v) = cmd(
+        "A",
+        "mo-invite-b",
+        "thread.invite",
+        json!({ "tenant_id": tenant_id, "agent_role": b_id }),
+    )
+    .await;
+    assert_eq!(status, 200, "{v}");
+    for who in ["M", "B"] {
+        let (status, v) = cmd(
+            who,
+            &format!("mo-accept-{who}"),
+            "thread.accept_invitation",
+            json!({ "tenant_id": tenant_id }),
+        )
+        .await;
+        assert_eq!(status, 200, "{who} accepts: {v}");
+    }
+
+    // The permitted act, on the `moderate` step.
+    let (status, v) = cmd(
+        "M",
+        "mo-classify",
+        "thread.contribute",
+        json!({ "tenant_id": tenant_id, "content": "this is a procedural question", "kind": "classify" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the moderator classifies: {v}");
+
+    // Refused by the seat, with the grant held.
+    let (status, v) = cmd(
+        "M",
+        "mo-position",
+        "thread.contribute",
+        json!({ "tenant_id": tenant_id, "content": "I think v3" }),
+    )
+    .await;
+    seat_refuses(status, &v, "no position of its own", "a position");
+    let (status, v) = cmd(
+        "M",
+        "mo-advance",
+        "thread.advance_round",
+        json!({ "tenant_id": tenant_id }),
+    )
+    .await;
+    seat_refuses(status, &v, "propose_close", "advancing the round");
+    let (status, v) = cmd(
+        "M",
+        "mo-invite",
+        "thread.invite",
+        json!({ "tenant_id": tenant_id, "agent_role": "rol_00000000-0000-7000-8000-00000000cafe" }),
+    )
+    .await;
+    seat_refuses(status, &v, "change the electorate", "inviting");
+
+    // The vote opens; the moderator is NOT in the electorate.
+    let (status, v) = cmd(
+        "A",
+        "mo-open-vote",
+        "thread.advance_round",
+        json!({ "tenant_id": tenant_id }),
+    )
+    .await;
+    assert_eq!(status, 200, "{v}");
+    let (_, state) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}?tenant_id={tenant_id}"),
+        &a_id,
+    )
+    .await;
+    let mut expected = vec![a_id.clone(), b_id.clone()];
+    expected.sort();
+    assert_eq!(state["state"]["electorate"], json!(expected), "{state}");
+
+    let ballot = |choice: &str| json!({ "tenant_id": tenant_id, "content": "ballot", "kind": "ballot", "ballot": { "choice": choice } });
+    let (status, v) = cmd("M", "mo-m-votes", "thread.contribute", ballot("approve")).await;
+    seat_refuses(status, &v, "add a vote", "a moderator's ballot");
+    for who in ["A", "B"] {
+        let (status, v) = cmd(
+            who,
+            &format!("mo-{who}-votes"),
+            "thread.contribute",
+            ballot("approve"),
+        )
+        .await;
+        assert_eq!(status, 200, "{who} votes: {v}");
+    }
+    let (status, v) = cmd(
+        "M",
+        "mo-m-closes",
+        "thread.close",
+        json!({ "tenant_id": tenant_id, "reason": "moderator closes" }),
+    )
+    .await;
+    seat_refuses(status, &v, "change its quorum", "a moderator's close");
+
+    // Unanimity of the ELECTORATE: two approvals of two. Were the moderator
+    // counted, its forbidden ballot would be outstanding and this `no_quorum`.
+    let (status, v) = cmd(
+        "A",
+        "mo-close",
+        "thread.close",
+        json!({ "tenant_id": tenant_id, "reason": "the vote is in" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{v}");
+    let event = close_event(&client, &base, &thread_id, &tenant_id, &a_id).await;
+    assert_eq!(
+        event["body"]["outcome"],
+        json!("accepted_unanimously"),
+        "{event}"
+    );
+
+    // The registry test counts the eight built-ins, so a custom profile left
+    // behind breaks it — the precedent `the_moderation_actions_are_bounded_contributions` set.
+    sqlx::query(
+        "DELETE FROM workflow_profiles WHERE profile_id = 'moderated_vote' AND NOT built_in",
+    )
+    .execute(&pool)
+    .await
+    .expect("drop the custom profile");
 }

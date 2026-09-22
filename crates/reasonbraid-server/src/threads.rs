@@ -305,6 +305,25 @@ pub struct InviteBody {
     pub agent_role: String,
     #[serde(default)]
     pub expires_in_seconds: Option<i64>,
+    /// The seat the role is invited to (`SIGNOFF-REPAIR.11.4.7.2.1.3.1`);
+    /// absent → an ordinary participant.
+    #[serde(default)]
+    pub seat: Seat,
+}
+
+/// A participant's seat (`SIGNOFF-REPAIR.11.4.7.2.1.3.1`, ROADMAP §13.5).
+///
+/// ⛔ A `moderator` is a participant RESTRICTED to ADR-030's five moderation
+/// kinds — the closed vocabulary that already carries §13.5's permitted acts —
+/// and refused every other verb by [`ThreadError::ModeratorRestricted`]. The
+/// seat adds no authority; it removes it
+/// (`docs/decisions/2026-09-22_a-moderator-is-a-seat-restricted-to-the-moderation-vocabulary.md`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Seat {
+    #[default]
+    Participant,
+    Moderator,
 }
 
 /// `thread.accept_invitation` body (`.1.3.1`): the actor IS the invited role —
@@ -824,6 +843,10 @@ pub struct ThreadProjection {
     /// existed, which a policy decision therefore refuses.
     #[serde(default)]
     pub close_provenance: Option<crate::decisions::Provenance>,
+    /// Principals seated as moderator (`SIGNOFF-REPAIR.11.4.7.2.1.3.1`).
+    /// Restricted to the moderation vocabulary, and never in the electorate.
+    #[serde(default)]
+    pub moderators: BTreeSet<String>,
     pub ceiling_id: String,
     pub budget: BudgetDimensions,
 }
@@ -868,6 +891,13 @@ pub enum ThreadError {
     /// carried error names the exact verdict (exceeded vs unconfigured vs a
     /// storage failure).
     QuotaRefused(crate::quota::QuotaError),
+    /// A moderator attempted a verb outside its seat (`SIGNOFF-REPAIR.11.4.7.2.1.3.1`);
+    /// `prohibition` names the §13.5 clause the refusal enforces.
+    ModeratorRestricted {
+        principal: String,
+        act: String,
+        prohibition: &'static str,
+    },
 }
 
 impl std::fmt::Display for ThreadError {
@@ -909,6 +939,15 @@ impl std::fmt::Display for ThreadError {
             ThreadError::QuotaRefused(e) => {
                 write!(f, "the quota refused the command: {e}")
             }
+            ThreadError::ModeratorRestricted {
+                principal,
+                act,
+                prohibition,
+            } => write!(
+                f,
+                "principal `{principal}` is seated as moderator, which may use only the \
+                 moderation kinds — `{act}` is refused: {prohibition}"
+            ),
         }
     }
 }
@@ -1003,6 +1042,7 @@ pub fn prepare_create(
         electorate: None,
         ballots: BTreeMap::new(),
         close_provenance: None,
+        moderators: BTreeSet::new(),
         ceiling_id: ceiling_id.clone(),
         budget,
     };
@@ -1069,6 +1109,84 @@ fn ensure_participant(projection: &ThreadProjection, principal: &str) -> Result<
     }
 }
 
+/// The moderator's seat, as a pure function of the command
+/// (`SIGNOFF-REPAIR.11.4.7.2.1.3.1`, ROADMAP §13.5).
+///
+/// A moderator may respond to its own invitation and post a moderation-kind
+/// contribution; ADR-030 already refuses the capability-shaped fields on those
+/// kinds. Every other verb is refused and the refusal names the §13.5
+/// prohibition it enforces — so the six are enforced by name, not by absence.
+pub fn moderator_may(principal: &str, operation: &str, body: &Value) -> Result<(), ThreadError> {
+    let kind_name = |kind: ContributionKind| {
+        serde_json::to_value(kind)
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_owned))
+            .unwrap_or_default()
+    };
+    let refuse = |act: String, prohibition: &'static str| {
+        Err(ThreadError::ModeratorRestricted {
+            principal: principal.to_string(),
+            act,
+            prohibition,
+        })
+    };
+    match operation {
+        OP_ACCEPT_INVITATION | OP_DECLINE_INVITATION => Ok(()),
+        OP_CONTRIBUTE => {
+            let kind: ContributionKind = body
+                .get("kind")
+                .cloned()
+                .map(serde_json::from_value)
+                .transpose()
+                .map_err(|e| ThreadError::InvalidCommand(e.to_string()))?
+                .unwrap_or_default();
+            match kind {
+                k if k.is_moderation_kind() => Ok(()),
+                ContributionKind::Ballot => refuse(
+                    "a ballot".to_string(),
+                    "a moderator cannot add a vote or approval",
+                ),
+                ContributionKind::Verdict => refuse(
+                    "a verdict".to_string(),
+                    "a moderator cannot add a vote or approval",
+                ),
+                ContributionKind::EvidenceReference | ContributionKind::Assessment => refuse(
+                    format!("a `{}` contribution", kind_name(kind)),
+                    "a moderator cannot fabricate evidence or change citations",
+                ),
+                other => refuse(
+                    format!("a `{}` contribution", kind_name(other)),
+                    "a moderator takes no position of its own; it may only moderate",
+                ),
+            }
+        }
+        OP_REVISE => refuse(
+            OP_REVISE.to_string(),
+            "a moderator cannot change a proposal",
+        ),
+        OP_CHALLENGE => refuse(
+            OP_CHALLENGE.to_string(),
+            "a moderator takes no position of its own; it may only moderate",
+        ),
+        OP_INVITE | OP_REMOVE_PARTICIPANT | OP_JOIN => refuse(
+            operation.to_string(),
+            "a moderator cannot change the electorate",
+        ),
+        OP_ADVANCE_ROUND => refuse(
+            operation.to_string(),
+            "a moderator proposes round closure (`propose_close`); it does not advance the round",
+        ),
+        OP_CLOSE | OP_CANCEL => refuse(
+            operation.to_string(),
+            "a moderator cannot decide the thread or change its quorum",
+        ),
+        other => refuse(
+            other.to_string(),
+            "a moderator may use only the moderation kinds",
+        ),
+    }
+}
+
 /// Whether this thread's declared rule is counted from ballots.
 fn counts_ballots(projection: &ThreadProjection) -> bool {
     projection.decision_rule.is_some_and(|rule| {
@@ -1092,6 +1210,9 @@ fn open_vote_if_entered(projection: &mut ThreadProjection) {
                 .iter()
                 .filter(|(_, state)| **state == ParticipationState::Accepted)
                 .map(|(principal, _)| principal.clone())
+                // A moderator may not vote (§13.5), so counting one would
+                // leave a ballot outstanding forever.
+                .filter(|principal| !projection.moderators.contains(principal))
                 .collect(),
         );
     }
@@ -1341,6 +1462,11 @@ where
     };
     let mut projection: ThreadProjection =
         serde_json::from_value(state_json).map_err(|e| ThreadError::CorruptState(e.to_string()))?;
+    // `SIGNOFF-REPAIR.11.4.7.2.1.3.1`: the moderator's seat binds before any
+    // verb runs.
+    if projection.moderators.contains(principal) {
+        moderator_may(principal, operation, body)?;
+    }
 
     let event_id = EventId::new();
     let (event_type, event_body, next_state) = match operation {
@@ -1392,6 +1518,12 @@ where
             projection
                 .participants
                 .insert(body.agent_role.clone(), ParticipationState::Invited);
+            // A re-invitation seats the role afresh, so a former moderator
+            // invited as a participant is no longer restricted — and vice versa.
+            match body.seat {
+                Seat::Moderator => projection.moderators.insert(body.agent_role.clone()),
+                Seat::Participant => projection.moderators.remove(&body.agent_role),
+            };
             projection.invitations.insert(
                 body.agent_role.clone(),
                 InvitationMeta {
@@ -1407,6 +1539,7 @@ where
                     "tenant_id": tenant_id.to_string(),
                     "actor_principal_id": principal,
                     "agent_role": role.to_string(),
+                    "seat": body.seat,
                     "invited_at": now.to_rfc3339(),
                     "expires_at": expires_at.map(|at| at.to_rfc3339()),
                 }),
@@ -2586,5 +2719,47 @@ mod tests {
             uncounted.electorate, None,
             "owner_decides counts no ballots"
         );
+    }
+
+    /// `SIGNOFF-REPAIR.11.4.7.2.1.3.1`: the moderator's seat over every verb.
+    #[test]
+    fn a_moderator_may_only_moderate() {
+        let m = "rol_00000000-0000-7000-8000-00000000000m";
+        let kind = |k: &str| json!({ "kind": k });
+        for k in [
+            "classify",
+            "request_clarification",
+            "propose_close",
+            "draft_summary",
+            "identify_unanswered",
+        ] {
+            assert!(moderator_may(m, OP_CONTRIBUTE, &kind(k)).is_ok(), "{k}");
+        }
+        assert!(moderator_may(m, OP_ACCEPT_INVITATION, &json!({})).is_ok());
+        assert!(moderator_may(m, OP_DECLINE_INVITATION, &json!({})).is_ok());
+
+        let refused = |op: &str, body: Value, clause: &str| {
+            let err = moderator_may(m, op, &body).expect_err(op).to_string();
+            assert!(err.contains(clause), "{op} names `{clause}`: {err}");
+        };
+        refused(OP_CONTRIBUTE, kind("ballot"), "add a vote");
+        refused(OP_CONTRIBUTE, kind("verdict"), "add a vote");
+        refused(
+            OP_CONTRIBUTE,
+            kind("evidence_reference"),
+            "fabricate evidence",
+        );
+        refused(OP_CONTRIBUTE, kind("assessment"), "fabricate evidence");
+        refused(OP_CONTRIBUTE, json!({}), "no position of its own");
+        refused(OP_CONTRIBUTE, kind("claim"), "no position of its own");
+        refused(OP_REVISE, json!({}), "change a proposal");
+        refused(OP_CHALLENGE, json!({}), "no position of its own");
+        for op in [OP_INVITE, OP_REMOVE_PARTICIPANT, OP_JOIN] {
+            refused(op, json!({}), "change the electorate");
+        }
+        refused(OP_ADVANCE_ROUND, json!({}), "propose_close");
+        for op in [OP_CLOSE, OP_CANCEL] {
+            refused(op, json!({}), "change its quorum");
+        }
     }
 }

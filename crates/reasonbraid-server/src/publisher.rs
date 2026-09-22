@@ -43,7 +43,7 @@ impl std::fmt::Display for PublishError {
                 )
             }
             PublishError::CasMismatch(found) => {
-                write!(f, "the effective channel moved underneath: found `{found}` — the compare-and-swap failed, never a force-push")
+                write!(f, "the effective channel is not what the compare-and-swap expected — {found} — never a force-push")
             }
         }
     }
@@ -410,6 +410,16 @@ pub fn publish(
         )));
     }
 
+    // `SIGNOFF-REPAIR.9.3.5.3.1`: the write-once rule is checked BEFORE any ref
+    // moves. It used to be enforced only by the immutable ref's own edit, which
+    // runs after the staging ref's — so a re-publish of DIFFERENT content under
+    // an existing id was refused, and left `refs/rb/staging/<id>` naming content
+    // that was never published. The edit's `MustNotExist` still guards the race.
+    let publication_ref_name = format!("refs/rb/publications/{publication_id}");
+    if current(&repo, &publication_ref_name).is_some_and(|existing| existing != commit_id) {
+        return Err(PublishError::ImmutableExists);
+    }
+
     // The staging branch (the idempotent re-write: the same content commits
     // identically).
     let staging_name = format!("refs/rb/staging/{publication_id}");
@@ -427,7 +437,6 @@ pub fn publish(
     .map_err(|e| PublishError::Write(e.to_string()))?;
 
     // The IMMUTABLE publication ref (the written-once rule).
-    let publication_ref_name = format!("refs/rb/publications/{publication_id}");
     let publication_ref = gix::refs::FullName::try_from(publication_ref_name.as_str())
         .map_err(|e| PublishError::Write(e.to_string()))?;
     repo.edit_reference(gix::refs::transaction::RefEdit {

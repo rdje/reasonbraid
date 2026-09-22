@@ -518,3 +518,55 @@ fn a_cas_against_an_absent_effective_channel_is_a_cas_mismatch() {
     );
     fixture.finish().expect("owned fixture cleanup completes");
 }
+
+/// `SIGNOFF-REPAIR.9.3.5.3.1`: a REFUSED re-publish moves no ref. Different
+/// content under an existing id used to be refused only after the staging ref
+/// had moved, leaving it naming content that was never published.
+#[test]
+fn a_refused_re_publish_moves_no_ref() {
+    let fixture = Fixture::new();
+    let dir = &fixture.path;
+    gix::init_bare(dir).expect("the bare repo inits");
+    publish(dir, "pub-1", "{}", "# b", None, STAGED_AT).expect("the first publish");
+    let refs = |dir: &Path| {
+        let repo = gix::open(dir).expect("opens");
+        [
+            "refs/rb/staging/pub-1",
+            "refs/rb/publications/pub-1",
+            "refs/rb/effective",
+        ]
+        .map(|name| repo.find_reference(name).ok().map(|r| r.id().detach()))
+    };
+    let before = refs(dir);
+    let error = publish(dir, "pub-1", "{}", "# different content", None, STAGED_AT)
+        .expect_err("the write-once rule refuses");
+    assert_eq!(error, PublishError::ImmutableExists);
+    assert_eq!(
+        refs(dir),
+        before,
+        "staging, immutable and effective are untouched"
+    );
+    fixture.finish().expect("owned fixture cleanup completes");
+}
+
+/// `SIGNOFF-REPAIR.9.3.5.3.1`: the CAS refusal says what was expected and what
+/// was found, once each.
+#[test]
+fn the_cas_refusal_names_expected_and_found_once() {
+    let fixture = Fixture::new();
+    let dir = &fixture.path;
+    gix::init_bare(dir).expect("the bare repo inits");
+    let expected: gix::ObjectId = "1111111111111111111111111111111111111111".parse().unwrap();
+    let text = publish(dir, "pub-cas", "{}", "# b", Some(expected), STAGED_AT)
+        .expect_err("the channel does not exist")
+        .to_string();
+    assert_eq!(text.matches("expected").count(), 2, "{text}");
+    assert_eq!(text.matches("found").count(), 1, "{text}");
+    assert!(
+        text.contains(
+            "expected `1111111111111111111111111111111111111111`, found `no effective ref`"
+        ),
+        "{text}"
+    );
+    fixture.finish().expect("owned fixture cleanup completes");
+}

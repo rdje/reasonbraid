@@ -57,6 +57,24 @@ pub enum ThreadState {
 }
 
 impl ThreadState {
+    /// Every state, in lifecycle order.
+    pub const ALL: [ThreadState; 5] = [
+        ThreadState::Open,
+        ThreadState::Closing,
+        ThreadState::Closed,
+        ThreadState::Inconclusive,
+        ThreadState::Cancelled,
+    ];
+
+    /// True for a state no transition leaves — the thread is over. Derived from
+    /// [`ThreadState::apply`] rather than listed, so the two cannot disagree: a
+    /// state is terminal exactly when every transition from it is refused.
+    pub fn is_terminal(self) -> bool {
+        ThreadTransition::ALL
+            .into_iter()
+            .all(|event| self.apply(event).is_err())
+    }
+
     /// The wire/record name (snake_case, matches the serde serialization).
     pub fn as_str(self) -> &'static str {
         match self {
@@ -101,6 +119,16 @@ pub enum ThreadTransition {
 }
 
 impl ThreadTransition {
+    /// Every transition, in declaration order. ⚠️ Nothing makes the compiler
+    /// check this list against the enum: a new variant must be added here by
+    /// hand, or `ThreadState::is_terminal` would ignore it.
+    pub const ALL: [ThreadTransition; 4] = [
+        ThreadTransition::BeginClose,
+        ThreadTransition::FinalizeClose,
+        ThreadTransition::FinalizeInconclusive,
+        ThreadTransition::Cancel,
+    ];
+
     pub fn as_str(self) -> &'static str {
         match self {
             ThreadTransition::BeginClose => "begin_close",
@@ -331,6 +359,19 @@ impl std::str::FromStr for ProviderAttemptState {
 
 #[cfg(test)]
 mod tests {
+
+    /// The terminal set is DERIVED from the transition table, and it is the
+    /// three states a thread ends in.
+    #[test]
+    fn the_terminal_thread_states_are_the_three_endings() {
+        let terminal: Vec<&str> = ThreadState::ALL
+            .into_iter()
+            .filter(|s| s.is_terminal())
+            .map(ThreadState::as_str)
+            .collect();
+        assert_eq!(terminal, ["closed", "inconclusive", "cancelled"]);
+    }
+
     use super::*;
 
     // The single source of truth for each state machine is an explicit (state, event,

@@ -65,6 +65,7 @@ fn inspection_provenance_round_trips_the_actual_subject_status_scope_and_purpose
             TenantAdminInspection::Usage {},
             TenantAdminInspection::AmbiguousAttempts {},
             TenantAdminInspection::ResolutionRefusals {},
+            TenantAdminInspection::Incidents {},
             TenantAdminInspection::AuthorizationRecord {
                 record_id: AuthorizationRecordId::new(),
             },

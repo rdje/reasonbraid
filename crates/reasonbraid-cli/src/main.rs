@@ -9,11 +9,11 @@ use reasonbraid_cli::{
     resolve_agent, resolve_principal, run_boundary_revoke, run_breaker_arm, run_breaker_reset,
     run_enroll_with_recovery, run_grant_revoke, run_inspect_ambiguous, run_inspect_boundaries,
     run_inspect_breakers, run_inspect_budget, run_inspect_grants, run_inspect_incarnations,
-    run_inspect_node_inbox, run_inspect_refusals, run_inspect_runs, run_inspect_thread,
-    run_inspect_threads, run_inspect_usage, run_issue_node_token, run_prune_node_inbox,
-    run_quarantine_command, run_replay_command, run_revoke_node, run_thread_create_named,
-    run_thread_verb, BudgetArgs, Config, CreateProfileArgs, PrincipalRef, StateFile,
-    ThreadVerbArgs,
+    run_inspect_incidents, run_inspect_node_inbox, run_inspect_refusals, run_inspect_runs,
+    run_inspect_thread, run_inspect_threads, run_inspect_usage, run_issue_node_token,
+    run_prune_node_inbox, run_quarantine_command, run_replay_command, run_revoke_node,
+    run_thread_create_named, run_thread_verb, BudgetArgs, Config, CreateProfileArgs, PrincipalRef,
+    StateFile, ThreadVerbArgs,
 };
 use serde_json::json;
 
@@ -619,6 +619,16 @@ enum InspectCommand {
         #[arg(long)]
         json: bool,
     },
+    /// The tenant's ACTIVE incidents — open `incident_review` threads
+    /// (`SIGNOFF-REPAIR.4.6.1.5.1`; ROADMAP §18.5; tenant_admin).
+    Incidents {
+        #[arg(long)]
+        as_: Option<String>,
+        #[arg(long)]
+        tenant: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Explicit actor selection is required in the development profile.
@@ -1078,6 +1088,10 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
         Command::Inspect(InspectCommand::Refusals { as_, tenant, json }) => {
             let principal = acting_principal(&state, as_.as_deref())?;
             run_inspect_refusals(cfg, &principal, tenant.as_deref(), json).await
+        }
+        Command::Inspect(InspectCommand::Incidents { as_, tenant, json }) => {
+            let principal = acting_principal(&state, as_.as_deref())?;
+            run_inspect_incidents(cfg, &principal, tenant.as_deref(), json).await
         }
         Command::Inspect(InspectCommand::Breakers { as_, tenant, json }) => {
             let principal = acting_principal(&state, as_.as_deref())?;

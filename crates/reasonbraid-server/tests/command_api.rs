@@ -1031,6 +1031,141 @@ async fn cancel_is_inspectable_terminal_and_audited() {
     assert_eq!(contribution["code"], json!("invalid_transition"));
 }
 
+/// THE `SIGNOFF-REPAIR.4.6.1.5.1` acceptance: §18.5's *active incidents* are
+/// the tenant's open `incident_review` threads, declared and resolved with the
+/// thread verbs that already exist — this route only lists them.
+///
+/// Every row is produced by `thread.create`, and the incident leaves the list
+/// by `thread.cancel`, the real resolving verb; nothing is written by hand.
+#[tokio::test]
+async fn the_operator_lists_active_incidents_and_a_resolved_one_leaves_the_list() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (_, alice) = enroll(&client, &base, json!({ "kind": "human", "name": "alice" })).await;
+    let tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    let (_, bob) = enroll(&client, &base, json!({ "kind": "human", "name": "bob" })).await;
+    let bob_tenant = bob["tenant_id"].as_str().unwrap().to_string();
+    let bob_id = bob["principal_id"].as_str().unwrap().to_string();
+
+    let open = |caller: String,
+                tenant: String,
+                key: &'static str,
+                subject: &'static str,
+                profile: &'static str| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            let (status, created) = command(
+                &client,
+                &base,
+                "/v1/threads",
+                &caller,
+                &envelope(
+                    "thread.create",
+                    key,
+                    json!({
+                        "tenant_id": tenant,
+                        "subject": subject,
+                        "objective": "restore service",
+                        "workflow_profile": profile,
+                    }),
+                ),
+            )
+            .await;
+            assert_eq!(status, 200, "create: {created}");
+            created["thread_id"].as_str().unwrap().to_string()
+        }
+    };
+    let incident = open(
+        alice_id.clone(),
+        tenant.clone(),
+        "k-inc-1",
+        "database failover",
+        "incident_review",
+    )
+    .await;
+    let _ordinary = open(
+        alice_id.clone(),
+        tenant.clone(),
+        "k-inc-2",
+        "a design question",
+        "critique",
+    )
+    .await;
+    let _foreign = open(
+        bob_id.clone(),
+        bob_tenant.clone(),
+        "k-inc-3",
+        "bob's outage",
+        "incident_review",
+    )
+    .await;
+
+    let list = |caller: String, tenant: String| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            get(
+                &client,
+                &base,
+                &format!("/v1/admin/incidents?tenant_id={tenant}"),
+                &caller,
+            )
+            .await
+        }
+    };
+
+    // Only the incident-review thread, and only this tenant's.
+    let (status, listed) = list(alice_id.clone(), tenant.clone()).await;
+    assert_eq!(status, 200, "{listed}");
+    let incidents = listed["incidents"].as_array().expect("the incident list");
+    assert_eq!(incidents.len(), 1, "one active incident: {listed}");
+    assert_eq!(incidents[0]["thread_id"], json!(incident));
+    assert_eq!(incidents[0]["subject"], json!("database failover"));
+    assert_eq!(incidents[0]["state"], json!("open"));
+    assert_eq!(incidents[0]["workflow_step"], json!("solicit"));
+    assert!(incidents[0]["opened_at"].as_str().is_some(), "{listed}");
+
+    // The tenant boundary.
+    let (status, _) = list(bob_id.clone(), tenant.clone()).await;
+    assert_eq!(status, 403, "another tenant's administrator is refused");
+    let (status, own) = list(bob_id.clone(), bob_tenant.clone()).await;
+    assert_eq!(status, 200, "{own}");
+    assert_eq!(
+        own["incidents"].as_array().unwrap().len(),
+        1,
+        "bob sees his own only: {own}"
+    );
+    assert_eq!(own["incidents"][0]["subject"], json!("bob's outage"));
+
+    // Resolving it with the thread's own verb removes it from the list.
+    let (status, cancelled) = command(
+        &client,
+        &base,
+        &format!("/v1/threads/{incident}/commands"),
+        &alice_id,
+        &envelope(
+            "thread.cancel",
+            "k-inc-cancel",
+            json!({ "tenant_id": tenant, "reason": "service restored" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "cancel: {cancelled}");
+    let (status, listed) = list(alice_id.clone(), tenant.clone()).await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        listed["incidents"],
+        json!([]),
+        "a resolved incident is not active: {listed}"
+    );
+}
+
 /// The typed create fields (`PHASE-1.1.3`): classification / workflow profile /
 /// participant rules land on the projection with deny-unknown typing, the stated
 /// defaults apply when unnamed, and unknown or malformed values are rejected.

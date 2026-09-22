@@ -1683,6 +1683,51 @@ pub async fn run_inspect_ambiguous(
     Ok(format_ambiguous_attempts(tenant, &response))
 }
 
+/// The tenant's ACTIVE incidents: open threads under the `incident_review`
+/// profile, oldest first (`SIGNOFF-REPAIR.4.6.1.5.1`; ROADMAP §18.5).
+pub async fn run_inspect_incidents(
+    cfg: &Config,
+    principal: &PrincipalRef,
+    tenant: Option<&str>,
+    json_out: bool,
+) -> Result<String, CliError> {
+    let tenant = tenant.or(principal.tenant.as_deref()).ok_or_else(|| {
+        CliError::usage("cannot determine the tenant — pass --tenant".to_string())
+    })?;
+    let client = ApiClient::for_base(&cfg.server_base)?;
+    let response = client
+        .get_admin(&principal.id, "/v1/admin/incidents", tenant)
+        .await?;
+    if json_out {
+        return or_json(&response, true);
+    }
+    Ok(format_incidents(tenant, &response))
+}
+
+/// The text view of `GET /v1/admin/incidents`.
+fn format_incidents(tenant: &str, response: &Value) -> String {
+    let incidents = response["incidents"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let mut out = format!(
+        "tenant {tenant}'s active incidents ({}):\n",
+        incidents.len()
+    );
+    for i in &incidents {
+        out.push_str(&format!(
+            "  {} — {} — {} since {} — step {} — {} open challenge(s)\n",
+            i["thread_id"].as_str().unwrap_or("?"),
+            i["subject"].as_str().unwrap_or("?"),
+            i["state"].as_str().unwrap_or("?"),
+            i["opened_at"].as_str().unwrap_or("?"),
+            i["workflow_step"].as_str().unwrap_or("?"),
+            i["open_challenges"].as_u64().unwrap_or(0),
+        ));
+    }
+    out
+}
+
 /// The refusals the resolve path answered the tenant's callers, newest first
 /// (`SIGNOFF-REPAIR.4.6.1.2`; ROADMAP §18.5 *resolver denials*; tenant_admin).
 pub async fn run_inspect_refusals(
@@ -1781,6 +1826,21 @@ fn format_ambiguous_attempts(tenant: &str, response: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The incident view prints one line per active incident.
+    #[test]
+    fn the_incident_view_prints_one_line_per_active_incident() {
+        let tenant = "ten_00000000-0000-7000-8000-000000000001";
+        let body = serde_json::json!({ "incidents": [{
+            "thread_id": "thr_1", "subject": "db failover", "state": "open",
+            "opened_at": "t0", "workflow_step": "evidence_request", "open_challenges": 2,
+        }]});
+        let text = format_incidents(tenant, &body);
+        assert!(text.contains("active incidents (1)"), "{text}");
+        assert!(text.contains(
+            "thr_1 — db failover — open since t0 — step evidence_request — 2 open challenge(s)"
+        ));
+    }
 
     /// The refusal view names each refusal's kind, resolver and message, says
     /// "none eligible" for `unresolvable_now`, and flags a full page.

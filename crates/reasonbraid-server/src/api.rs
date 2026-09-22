@@ -727,6 +727,7 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
             "/v1/admin/resolution-refusals",
             get(list_resolution_refusals),
         )
+        .route("/v1/admin/incidents", get(list_active_incidents))
         .route("/v1/directory/presence", get(directory_presence))
         .route("/v1/directory/match", post(directory_match))
         .route("/v1/calls", post(open_recruitment_call))
@@ -2526,6 +2527,86 @@ async fn resolve_resource(
         .await?;
     }
     Ok(Json(outcome))
+}
+
+/// The workflow profile an incident is conducted under (§13's table:
+/// *operational/security events*).
+const INCIDENT_PROFILE: &str = "incident_review";
+
+/// `GET /v1/admin/incidents?tenant_id=…` — the tenant's ACTIVE incidents
+/// (`SIGNOFF-REPAIR.4.6.1.5.1`; ROADMAP §18.5).
+///
+/// An incident is a thread under the built-in `incident_review` profile, and
+/// it is active while its state is not terminal
+/// (`docs/decisions/2026-09-22_an-incident-is-an-open-incident-review-thread-and-a-backup-is-reported-by-its-receipts.md`).
+/// Declaring one is `thread.create` with that profile and resolving one is the
+/// thread's own close or cancel, so this route adds no verb: it is a view over
+/// the projection the thread verbs already maintain, oldest incident first.
+///
+/// The active states are DERIVED from `ThreadState`'s transition table rather
+/// than typed here, so a new state cannot be silently missing from the list.
+async fn list_active_incidents(
+    State(state): State<Arc<ApiState>>,
+    Query(q): Query<AdminListQuery>,
+    headers: HeaderMap,
+) -> Result<Response, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    inspect_tenant_admin(
+        &state,
+        &principal,
+        q.tenant_id,
+        reasonbraid_core::TenantAdminInspection::Incidents {},
+        |pool| async move {
+            let active: Vec<String> = reasonbraid_core::ThreadState::ALL
+                .into_iter()
+                .filter(|s| !s.is_terminal())
+                .map(|s| s.as_str().to_owned())
+                .collect();
+            let tenant = q.tenant_id.to_string();
+            let claim = tenant.clone();
+            let rows: Vec<(String, Value, DateTime<Utc>)> =
+                crate::rls::with_tenant_claim(&pool, &claim, |tx| {
+                    Box::pin(async move {
+                        sqlx::query_as(
+                            "SELECT s.aggregate_id, s.state, \
+                                    (SELECT min(e.committed_at) FROM event_log e \
+                                     WHERE e.tenant_id = s.tenant_id \
+                                       AND e.aggregate_id = s.aggregate_id) \
+                             FROM aggregate_state s \
+                             WHERE s.tenant_id = $1 AND s.aggregate_type = 'thread' \
+                               AND s.state->>'workflow_profile' = $2 \
+                               AND s.state->>'state' = ANY($3) \
+                             ORDER BY 3, 1",
+                        )
+                        .bind(tenant)
+                        .bind(INCIDENT_PROFILE)
+                        .bind(active)
+                        .fetch_all(&mut *tx)
+                        .await
+                    })
+                })
+                .await?;
+            let incidents: Vec<Value> = rows
+                .into_iter()
+                .map(|(thread_id, projection, opened_at)| {
+                    let step = projection["workflow_step"].as_u64().unwrap_or(0) as usize;
+                    json!({
+                        "thread_id": thread_id,
+                        "subject": projection["subject"],
+                        "state": projection["state"],
+                        "opened_at": opened_at.to_rfc3339(),
+                        "workflow_step": projection["workflow_steps"].get(step),
+                        "open_challenges": projection["open_challenges"],
+                    })
+                })
+                .collect();
+            Ok(Json(json!({
+                "tenant_id": q.tenant_id.to_string(),
+                "incidents": incidents,
+            })))
+        },
+    )
+    .await
 }
 
 /// The most refusals one read returns, newest first. The response states the

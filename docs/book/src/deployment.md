@@ -1851,6 +1851,35 @@ pre-mutation state came back.
   host, a database name or a path. At a non-loopback bind, this exposure must
   be reconsidered
   (`docs/decisions/2026-09-22_health-is-read-without-authority-and-says-only-state-and-age.md`).
+- **Active incidents** (`SIGNOFF-REPAIR.4.6.1.5.1`; ROADMAP §18.5). An incident
+  is a thread under the built-in `incident_review` workflow profile: *timeline,
+  hypotheses, evidence, actions* for operational and security events. It is
+  declared with the ordinary `thread.create` verb, and resolved by closing or
+  cancelling the thread. The admin list shows the ones not yet resolved,
+  oldest first:
+
+  ```text
+  GET /v1/admin/incidents?tenant_id=ten_…
+  ```
+
+  ```json
+  {"tenant_id":"ten_…","incidents":[
+    {"thread_id":"thr_…","subject":"database failover","state":"open",
+     "opened_at":"2026-09-22T20:52:17.899481+00:00","workflow_step":"solicit",
+     "open_challenges":0}]}
+  ```
+
+  "Not yet resolved" means the thread's state is not terminal. That set is
+  worked out from the thread's own lifecycle rules, not typed into the route, so
+  `open` and `closing` are listed while `closed`, `inconclusive` and `cancelled`
+  are not. The list uses the same own-tenant administrator check as the other
+  `/v1/admin/*` reads. From the CLI: `rb inspect incidents --as alice`.
+
+  ⚠️ **There is no separate incident record.** Its timeline is the thread's
+  event log; its evidence, challenges and decision are the thread's. A second
+  incident table was rejected because it could give a different answer to "is
+  this incident over?"
+  (`docs/decisions/2026-09-22_an-incident-is-an-open-incident-review-thread-and-a-backup-is-reported-by-its-receipts.md`).
 - **What an operator cannot see yet** (`SIGNOFF-REPAIR.4.6.1`). The roadmap
   (§18.5) lists nine things the admin surface must show. Seven are shown, and two
   are not. Health, with freshness, was added in `.4.6.1.4` (above). Ambiguous attempts were added in `SIGNOFF-REPAIR.4.6.1.1`
@@ -1862,7 +1891,7 @@ pre-mutation state came back.
   | what §18.5 asks for | today | owner |
   | --- | --- | --- |
   | audit-chain checkpoint age | there is no checkpoint yet: the audit hash chain is deferred by ADR-022 until the first non-loopback deployment or the G7 gate | `.4.6.1.3` (blocked) |
-  | backup/restore status and active incidents | `scripts/backup.sh` and the restore test run, but leave no record the server can report; there is no incident record | `.4.6.1.5` |
+  | backup/restore status | `scripts/backup.sh` and the restore test run, but leave no record the server can report (active incidents are shown, above) | `.4.6.1.5.2` |
 
   ⚠️ In the backup row, the system does the work but does not store the
   result, so it needs something that records the result before a route can

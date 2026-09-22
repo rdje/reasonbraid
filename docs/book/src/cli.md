@@ -593,6 +593,13 @@ the page is full:
  inspect refusals --as alice
 ```
 
+The active-incident surface (`SIGNOFF-REPAIR.4.6.1.5.1`) lists the tenant's open
+`incident_review` threads, oldest first:
+
+```text
+ inspect incidents --as alice
+```
+
 The dead-letter surface (`.2.4`): a terminal refusal auto-quarantines the
 inbox row with the reason, and the operator REPLAYS it — the quarantine
 clears, the admission decision refreshes, and the command re-enters the

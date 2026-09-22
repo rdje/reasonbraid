@@ -249,6 +249,104 @@ pub struct CreateBody {
     /// [`validate_expected_artifact`] before authorization.
     #[serde(default)]
     pub expected_artifact: Option<String>,
+    /// The causation lineage of an AUTONOMOUS initiation
+    /// (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.1`). Server-set only: `skip` means no
+    /// request body can supply it, so a human create can never claim a place in
+    /// an autonomous chain. `POST /v1/threads/auto` sets it after
+    /// [`auto_lineage`] has checked depth and cycles.
+    #[serde(skip)]
+    pub lineage: Option<AutoLineage>,
+}
+
+/// The deepest chain of autonomous initiations a thread may sit at (ROADMAP
+/// §3.2 *recursion depth*, §14.1 *autonomous child threads and recursion
+/// depth*, §10.7 *maximum autonomous depth*). A human-created thread is depth 0;
+/// a thread a role initiates is one deeper than the thread that caused it, or 1
+/// when it names no cause. ⚠️ A dev-profile constant: §14.1 makes it a budget
+/// dimension, so a tenant profile will own the number when profiles exist.
+pub const MAX_AUTONOMOUS_DEPTH: u32 = 3;
+
+/// Where an autonomous initiation sits: the thread that caused it, its depth,
+/// and every role that auto-initiated along the chain, this one included.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct AutoLineage {
+    pub caused_by: Option<ThreadId>,
+    pub depth: u32,
+    pub initiators: Vec<String>,
+}
+
+/// Why an autonomous initiation was refused its place in a chain.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LineageRefusal {
+    /// The role names as its cause a thread it does not participate in.
+    NotAParticipant,
+    /// The role already auto-initiated a thread on this chain (§10.7 *cycle
+    /// detection for agent-initiated calls*).
+    Cycle { role: String },
+    /// The chain would exceed [`MAX_AUTONOMOUS_DEPTH`].
+    TooDeep { depth: u32 },
+}
+
+impl std::fmt::Display for LineageRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotAParticipant => write!(
+                f,
+                "the role names as its cause a thread it has not accepted participation in"
+            ),
+            Self::Cycle { role } => write!(
+                f,
+                "autonomous initiation cycle: `{role}` already initiated a thread on this causation \
+                 chain"
+            ),
+            Self::TooDeep { depth } => write!(
+                f,
+                "autonomous initiation depth {depth} exceeds the maximum of {MAX_AUTONOMOUS_DEPTH}"
+            ),
+        }
+    }
+}
+
+/// The lineage of an autonomous initiation by `role`, caused by `parent` (the
+/// thread's id and projection) or by nothing it declares. Pure, so every
+/// refusal is decided from stored facts before anything is written.
+///
+/// ⚠️ **Causation is DECLARED.** A role that names no cause starts a new chain
+/// at depth 1, and nothing here can tell a spontaneous wake from an omitted
+/// cause. What is enforced is that a DECLARED cause is honest: the role must
+/// participate in it, and it cannot rejoin its own chain or grow it past the
+/// limit. Bounding how often a role may start a chain is the rate gate, owned
+/// by `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2`.
+pub fn auto_lineage(
+    role: &str,
+    parent: Option<(&ThreadId, &ThreadProjection)>,
+) -> Result<AutoLineage, LineageRefusal> {
+    let Some((parent_id, parent)) = parent else {
+        return Ok(AutoLineage {
+            caused_by: None,
+            depth: 1,
+            initiators: vec![role.to_owned()],
+        });
+    };
+    if parent.participants.get(role) != Some(&ParticipationState::Accepted) {
+        return Err(LineageRefusal::NotAParticipant);
+    }
+    if parent.autonomous_initiators.iter().any(|r| r == role) {
+        return Err(LineageRefusal::Cycle {
+            role: role.to_owned(),
+        });
+    }
+    let depth = parent.autonomous_depth + 1;
+    if depth > MAX_AUTONOMOUS_DEPTH {
+        return Err(LineageRefusal::TooDeep { depth });
+    }
+    let mut initiators = parent.autonomous_initiators.clone();
+    initiators.push(role.to_owned());
+    Ok(AutoLineage {
+        caused_by: Some(*parent_id),
+        depth,
+        initiators,
+    })
 }
 
 /// The longest expected-artifact description a thread accepts, in characters.
@@ -910,6 +1008,15 @@ pub struct ThreadProjection {
     /// Restricted to the moderation vocabulary, and never in the electorate.
     #[serde(default)]
     pub moderators: BTreeSet<String>,
+    /// The autonomous-initiation lineage (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.1`):
+    /// 0 / none / empty for a thread a human created, and for every thread
+    /// created before the lineage existed.
+    #[serde(default)]
+    pub autonomous_depth: u32,
+    #[serde(default)]
+    pub caused_by: Option<ThreadId>,
+    #[serde(default)]
+    pub autonomous_initiators: Vec<String>,
     pub ceiling_id: String,
     pub budget: BudgetDimensions,
 }
@@ -1107,6 +1214,13 @@ pub fn prepare_create(
         ballots: BTreeMap::new(),
         close_provenance: None,
         moderators: BTreeSet::new(),
+        autonomous_depth: body.lineage.as_ref().map_or(0, |l| l.depth),
+        caused_by: body.lineage.as_ref().and_then(|l| l.caused_by),
+        autonomous_initiators: body
+            .lineage
+            .as_ref()
+            .map(|l| l.initiators.clone())
+            .unwrap_or_default(),
         ceiling_id: ceiling_id.clone(),
         budget,
     };
@@ -1122,6 +1236,9 @@ pub fn prepare_create(
         "subject": body.subject,
         "objective": body.objective,
         "expected_artifact": projection.expected_artifact,
+        "autonomous_depth": projection.autonomous_depth,
+        "caused_by": projection.caused_by.map(|t| t.to_string()),
+        "autonomous_initiators": projection.autonomous_initiators,
         "budget": budget,
         "classification": projection.classification,
         "workflow_profile": projection.workflow_profile,
@@ -2621,6 +2738,7 @@ mod tests {
                 participant_rules: None,
                 decision_rule: None,
                 expected_artifact: None,
+                lineage: None,
             },
             default_workflow_steps(),
             None,
@@ -2731,6 +2849,85 @@ mod tests {
     }
 
     /// `SIGNOFF-REPAIR.8.1.1.2`: the create boundary's pure refusals.
+    /// §10.7's depth and cycle controls, decided from the parent's stored
+    /// lineage: a declared cause must be a thread the role participates in, a
+    /// role cannot rejoin its own chain, and no chain grows past the limit.
+    #[test]
+    fn an_autonomous_initiation_is_bounded_by_depth_and_refuses_a_cycle() {
+        let parent_id = ThreadId::new();
+        let mut parent: ThreadProjection = serde_json::from_value(
+            prepare_create(
+                &TenantId::new(),
+                &parent_id,
+                "hpr_00000000-0000-7000-8000-000000000001",
+                &CreateBody {
+                    tenant_id: TenantId::new(),
+                    subject: "s".into(),
+                    objective: "o".into(),
+                    budget: None,
+                    classification: None,
+                    workflow_profile: None,
+                    routing_class: None,
+                    participant_rules: None,
+                    decision_rule: None,
+                    expected_artifact: None,
+                    lineage: None,
+                },
+                default_workflow_steps(),
+                None,
+            )
+            .next_state,
+        )
+        .unwrap();
+        assert_eq!(
+            parent.autonomous_depth, 0,
+            "a human-created thread is depth 0"
+        );
+
+        // No declared cause: a new chain at depth 1.
+        let root = auto_lineage("rol_a", None).unwrap();
+        assert_eq!(
+            (root.depth, root.caused_by, root.initiators.as_slice()),
+            (1, None, &["rol_a".to_owned()][..])
+        );
+
+        // A cause the role does not participate in is refused.
+        assert_eq!(
+            auto_lineage("rol_a", Some((&parent_id, &parent))),
+            Err(LineageRefusal::NotAParticipant)
+        );
+        parent
+            .participants
+            .insert("rol_a".into(), ParticipationState::Accepted);
+        let child = auto_lineage("rol_a", Some((&parent_id, &parent))).unwrap();
+        assert_eq!((child.depth, child.caused_by), (1, Some(parent_id)));
+
+        // The chain carries its initiators: rejoining is a cycle.
+        parent.autonomous_depth = 2;
+        parent.autonomous_initiators = vec!["rol_a".into(), "rol_b".into()];
+        assert_eq!(
+            auto_lineage("rol_a", Some((&parent_id, &parent))),
+            Err(LineageRefusal::Cycle {
+                role: "rol_a".into()
+            })
+        );
+
+        // The depth limit is inclusive: MAX is reachable, MAX + 1 is not.
+        parent
+            .participants
+            .insert("rol_c".into(), ParticipationState::Accepted);
+        let deepest = auto_lineage("rol_c", Some((&parent_id, &parent))).unwrap();
+        assert_eq!(deepest.depth, MAX_AUTONOMOUS_DEPTH);
+        assert_eq!(deepest.initiators, ["rol_a", "rol_b", "rol_c"]);
+        parent.autonomous_depth = MAX_AUTONOMOUS_DEPTH;
+        assert_eq!(
+            auto_lineage("rol_c", Some((&parent_id, &parent))),
+            Err(LineageRefusal::TooDeep {
+                depth: MAX_AUTONOMOUS_DEPTH + 1
+            })
+        );
+    }
+
     /// The expected artifact is optional, but a value that is present must say
     /// something: blank, over-long and control-bearing values are refused.
     #[test]
@@ -2793,6 +2990,7 @@ mod tests {
             participant_rules: None,
             decision_rule: rule,
             expected_artifact: None,
+            lineage: None,
         };
         let declared = |rule| DeclaredRule {
             rule,

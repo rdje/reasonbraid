@@ -5454,6 +5454,11 @@ struct AutoCreateRequest {
     confidentiality_class: Option<String>,
     #[serde(default)]
     budget_amount: Option<f64>,
+    /// The thread whose activity caused this initiation, when there is one
+    /// (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.1`). It fixes the new thread's place in
+    /// its causation chain: its depth, and the roles already on it.
+    #[serde(default)]
+    caused_by: Option<String>,
 }
 
 /// `POST /v1/threads/auto` — the node-initiated thread creation (`.3.5.3`):
@@ -5559,6 +5564,43 @@ async fn create_thread_auto(
     //    it — the command machinery does the rest). The idempotency key is the
     //    server-assigned creation key (the auto-initiation is NOT a client
     //    replay surface).
+    // §10.7's depth and cycle controls (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.1`),
+    // decided from STORED facts before anything is written — and before the
+    // create flow's idempotency path, so a refused chain is never answered
+    // with a replay of an earlier thread.
+    let parent = match &req.caused_by {
+        None => None,
+        Some(raw) => {
+            let parent_id: ThreadId = raw
+                .parse()
+                .map_err(|_| ControlApiError::invalid_command("caused_by is not a thread id"))?;
+            let Some(projection) =
+                load_thread_projection(&state.pool, tenant_id, parent_id).await?
+            else {
+                return Err(ControlApiError::not_found(format!(
+                    "no thread `{parent_id}` to name as the cause"
+                )));
+            };
+            Some((parent_id, projection))
+        }
+    };
+    let lineage = threads::auto_lineage(
+        &role.to_string(),
+        parent.as_ref().map(|(id, projection)| (id, projection)),
+    )
+    .map_err(|refusal| match refusal {
+        threads::LineageRefusal::NotAParticipant => {
+            ControlApiError::unauthorized(refusal.to_string())
+        }
+        threads::LineageRefusal::Cycle { .. } | threads::LineageRefusal::TooDeep { .. } => {
+            ControlApiError {
+                status: StatusCode::TOO_MANY_REQUESTS,
+                code: "storm_control",
+                message: refusal.to_string(),
+            }
+        }
+    })?;
+
     let body_value = serde_json::json!({
         "tenant_id": tenant_id.to_string(),
         "subject": req.subject,
@@ -5566,9 +5608,13 @@ async fn create_thread_auto(
     });
     let mut body: threads::CreateBody = serde_json::from_value(body_value.clone())
         .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+    body.lineage = Some(lineage);
     // `None` twice: no delegation, and no thread to bind — a creation's target is
-    // the tenant, which the idempotency primary key already carries.
-    let hash = request_hash(threads::OP_CREATE, &principal, &body_value, None, None);
+    // the tenant, which the idempotency primary key already carries. The cause is
+    // part of what was asked, so it is hashed too: the same key with a different
+    // cause is a mismatch, never a replay.
+    let hashed = serde_json::json!({ "body": body_value, "caused_by": req.caused_by });
+    let hash = request_hash(threads::OP_CREATE, &principal, &hashed, None, None);
     // `.5.2` (ADR-031): the explicit profile always wins; the routing class
     // resolves through the rule table ONLY when no profile is named (the
     // human authority outranks the rule).
@@ -8530,6 +8576,38 @@ async fn get_thread(
         |pool| async move { thread_inspection(&pool, tenant_id, thread_id).await },
     )
     .await
+}
+
+/// One thread's stored projection, tenant-bound under the tenant's RLS claim —
+/// the same select `thread_inspection` makes, without the derived view. `None`
+/// for a thread id that does not exist in this tenant.
+async fn load_thread_projection(
+    pool: &PgPool,
+    tenant_id: TenantId,
+    thread_id: ThreadId,
+) -> Result<Option<threads::ThreadProjection>, ControlApiError> {
+    let tenant = tenant_id.to_string();
+    let thread = thread_id.to_string();
+    let claim = tenant.clone();
+    let row: Option<(Value,)> = crate::rls::with_tenant_claim(pool, &claim, |tx| {
+        Box::pin(async move {
+            sqlx::query_as(
+                "SELECT state FROM aggregate_state \
+                 WHERE tenant_id = $1 AND aggregate_id = $2 AND aggregate_type = 'thread'",
+            )
+            .bind(tenant)
+            .bind(thread)
+            .fetch_optional(&mut *tx)
+            .await
+        })
+    })
+    .await?;
+    row.map(|(state,)| {
+        serde_json::from_value(state).map_err(|e| {
+            ControlApiError::internal_with_log(format!("corrupt stored thread state: {e}"))
+        })
+    })
+    .transpose()
 }
 
 /// The thread inspection's read half: the tenant-BOUND `aggregate_state`

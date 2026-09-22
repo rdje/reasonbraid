@@ -1806,6 +1806,197 @@ async fn the_open_call_advertises_to_the_subscribers() {
 /// (the topic gate, the confidentiality match, the concurrency gate, the
 /// spend bound), and replies do NOT inherit the permission — the plain
 /// thread.create stays denied for the role.
+/// THE `SIGNOFF-REPAIR.11.4.7.2.1.5.3.1` acceptance: §10.7's *parent/causation
+/// chains and maximum autonomous depth* and *cycle detection for agent-
+/// initiated calls*, over a REAL chain — each initiation is a role's
+/// `POST /v1/threads/auto` naming the thread it participates in as its cause,
+/// and each participation is a real invitation the role accepted.
+///
+/// The defect: an auto-initiated thread recorded no cause, so nothing could
+/// bound a chain or see it return to a role already on it. The only bound was
+/// `SIGNOFF-REPAIR.5.2`'s once-per-tenant key — a defect, not a control.
+#[tokio::test]
+async fn an_autonomous_chain_is_bounded_by_depth_and_refuses_a_cycle() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "chain-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrols: {human}");
+    let tenant = human["tenant_id"].as_str().unwrap().to_string();
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let boundary_id = human["boundary_id"].as_str().unwrap().to_string();
+    sqlx::query(
+        "UPDATE enrollment_boundaries \
+         SET permitted_actions = permitted_actions || '[\"thread_create_auto\"]'::jsonb \
+         WHERE boundary_id = $1",
+    )
+    .bind(&boundary_id)
+    .execute(&pool)
+    .await
+    .expect("the boundary permits the auto action");
+
+    // Four roles, each with a profile and its own explicit auto grant.
+    let mut roles = Vec::new();
+    for i in 1..=4 {
+        let (status, role) = enroll(
+            &client,
+            &base,
+            json!({ "kind": "role", "name": format!("chain-agent-{i}"), "tenant_id": tenant }),
+        )
+        .await;
+        assert_eq!(status, 200, "role {i} enrols: {role}");
+        let role_id = role["principal_id"].as_str().unwrap().to_string();
+        enroll_node(&client, &base, &human_id, &tenant, &role_id).await;
+        let (status, _) = put(
+            &client,
+            &base,
+            &format!("/v1/profiles/{role_id}"),
+            &role_id,
+            &visibility_profile(),
+        )
+        .await;
+        assert_eq!(status, 200, "role {i} writes its profile");
+        sqlx::query(
+            "INSERT INTO authority_grants \
+             (grant_id, boundary_id, tenant_id, issuer, subject_kind, subject_id, actions, \
+              selector, risk_ceiling, spend_limits, delegable, valid_from, expires_at, status) \
+             VALUES ($1, $2, $3, $4, 'role', $5, '[\"thread_create_auto\"]', \
+                     '{\"kind\":\"tenant_wide\"}', 'low', '{\"amount\": 100.0}', false, \
+                     now(), now() + interval '1 day', 'active')",
+        )
+        .bind(format!("grt_chain_{i}"))
+        .bind(&boundary_id)
+        .bind(&tenant)
+        .bind(&human_id)
+        .bind(&role_id)
+        .execute(&pool)
+        .await
+        .expect("seed the role's auto grant");
+        roles.push(role_id);
+    }
+
+    let auto = |role: String, cause: Option<String>| {
+        let client = client.clone();
+        let base = base.clone();
+        let tenant = tenant.clone();
+        async move {
+            let mut body = json!({
+                "tenant_id": tenant,
+                "subject": "a chained initiation",
+                "objective": "probe",
+                "topics": ["parser trivia"],
+            });
+            if let Some(cause) = cause {
+                body["caused_by"] = json!(cause);
+            }
+            let response = client
+                .post(format!("{base}/v1/threads/auto"))
+                .header(PRINCIPAL_HEADER, &role)
+                .json(&body)
+                .send()
+                .await
+                .expect("auto request");
+            let status = response.status().as_u16();
+            (status, response.json::<Value>().await.expect("auto json"))
+        }
+    };
+    // The human invites `role` into `thread`, and the role accepts.
+    let join = |thread: String, role: String, tag: String| {
+        let client = client.clone();
+        let base = base.clone();
+        let tenant = tenant.clone();
+        let human_id = human_id.clone();
+        async move {
+            let (status, invited) = thread_command(
+                &client,
+                &base,
+                &thread,
+                &human_id,
+                &format!("{tag}-invite"),
+                "thread.invite",
+                json!({ "tenant_id": tenant, "agent_role": role }),
+            )
+            .await;
+            assert_eq!(status, 200, "the invitation: {invited}");
+            let (status, accepted) = thread_command(
+                &client,
+                &base,
+                &thread,
+                &role,
+                &format!("{tag}-accept"),
+                "thread.accept_invitation",
+                json!({ "tenant_id": tenant }),
+            )
+            .await;
+            assert_eq!(status, 200, "the acceptance: {accepted}");
+        }
+    };
+
+    // Depth 1: the first role starts a chain.
+    let (status, t1) = auto(roles[0].clone(), None).await;
+    assert_eq!(status, 200, "{t1}");
+    let t1 = t1["thread_id"].as_str().unwrap().to_string();
+
+    // ⛔ A CYCLE: the same role names its own chain as its cause.
+    let (status, refused) = auto(roles[0].clone(), Some(t1.clone())).await;
+    assert_eq!(status, 429, "{refused}");
+    assert_eq!(refused["code"], json!("storm_control"));
+    assert!(
+        refused["message"].as_str().unwrap().contains("cycle"),
+        "{refused}"
+    );
+
+    // ⛔ A cause the role does not participate in.
+    let (status, refused) = auto(roles[1].clone(), Some(t1.clone())).await;
+    assert_eq!(
+        status, 403,
+        "a role cannot claim a place in a thread it is not in: {refused}"
+    );
+
+    // Depth 2 and 3, each role invited into the thread it then names.
+    join(t1.clone(), roles[1].clone(), "chain-1".into()).await;
+    let (status, t2) = auto(roles[1].clone(), Some(t1.clone())).await;
+    assert_eq!(status, 200, "{t2}");
+    let t2 = t2["thread_id"].as_str().unwrap().to_string();
+    join(t2.clone(), roles[2].clone(), "chain-2".into()).await;
+    let (status, t3) = auto(roles[2].clone(), Some(t2.clone())).await;
+    assert_eq!(status, 200, "{t3}");
+    let t3 = t3["thread_id"].as_str().unwrap().to_string();
+
+    // ⛔ DEPTH: the fourth link would be depth 4.
+    join(t3.clone(), roles[3].clone(), "chain-3".into()).await;
+    let (status, refused) = auto(roles[3].clone(), Some(t3.clone())).await;
+    assert_eq!(status, 429, "{refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("depth 4"),
+        "{refused}"
+    );
+
+    // The chain is on the record, so an operator can read it.
+    let (status, state) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{t3}?tenant_id={tenant}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "{state}");
+    assert_eq!(state["state"]["autonomous_depth"], json!(3), "{state}");
+    assert_eq!(state["state"]["caused_by"], json!(t2));
+    assert_eq!(
+        state["state"]["autonomous_initiators"],
+        json!([roles[0], roles[1], roles[2]])
+    );
+}
+
 #[tokio::test]
 async fn the_auto_initiation_lands_under_the_grant_and_the_checklist() {
     let _guard = guard().await;

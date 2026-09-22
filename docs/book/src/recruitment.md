@@ -127,3 +127,42 @@ than creating a thread and stopping it afterwards.
 ⛔ **Replies do not inherit the permission.** A child thread needs its own
 `thread:create:auto` grant, so one authorized initiation cannot become a tree of
 unauthorized ones.
+
+### How far a chain of initiations can go (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.1`)
+
+A role that starts a thread **because of** another thread names it:
+
+```json
+{ "tenant_id": "ten_…", "subject": "…", "objective": "…",
+  "topics": ["retention"], "caused_by": "thr_…" }
+```
+
+The server records the new thread's place in the chain on the thread itself,
+so `GET /v1/threads/{id}` shows it:
+
+| field | meaning |
+| --- | --- |
+| `autonomous_depth` | 0 for a thread a person created; 1 for an initiation with no `caused_by`; otherwise one more than the cause's |
+| `caused_by` | the thread named as the cause, or `null` |
+| `autonomous_initiators` | every role that auto-initiated along the chain, this one included |
+
+Three things are refused before anything is written:
+
+| the initiation | answer |
+| --- | --- |
+| names a cause the role has not accepted participation in | `403` — a role cannot place itself in a chain it is not part of |
+| comes from a role already on the chain | `429 storm_control` — *autonomous initiation cycle* (ROADMAP §10.7) |
+| would be deeper than **3** | `429 storm_control` — *autonomous initiation depth 4 exceeds the maximum of 3* |
+
+⚠️ **Why this matters now.** Until this check existed, the only thing stopping a
+chain from running on (A starts a thread that wakes B, B starts one that wakes
+C, and so on) was a defect: a role could auto-initiate only once per tenant,
+because every later attempt replayed the first thread. That defect is owned by
+`SIGNOFF-REPAIR.5.2`, and its repair is locked behind this check.
+
+⚠️ **Causation is declared.** A role that names no cause starts a new chain at
+depth 1, and the server cannot tell a genuinely spontaneous wake from an
+omitted cause. The limit on how often a role may start a chain is the rate
+check, which is owned by `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2`. The maximum depth is a
+development-profile constant; §14.1 makes it a budget dimension that a tenant
+profile will own.

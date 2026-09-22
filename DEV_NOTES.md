@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-22 — Tranche 1's seven verdicts, and a spike needed a fourth value the vocabulary did not have (`SIGNOFF-REPAIR.11.4.7.2.1.4.1`)
+
+`REASONBRAID-DOC-0120`. The first of three tranches over the 21 deferrals no record had ever graded.
+
+- ✅ **THREE `discharged`**: the MCP and A2A interop spikes shipped as crates with their own chapters; the second real adapter is `claude.rs` beside `codex.rs`; the directory registry is `agent_roles` + `agent_profiles` behind `/v1/directory/presence` and `/v1/directory/match`, so the dev stand-in *node-id = role-id* is gone.
+- ✅ **ONE `not yet triggered`**: the authenticated streaming channel. No gRPC or HTTP/2 dependency exists and reservations carry no signature, but its trigger is non-loopback exposure and `--host` still defaults to `127.0.0.1`.
+- ⭐ **TWO `fired and superseded` — A FOURTH VALUE THE INHERITED VOCABULARY DID NOT HAVE.** The WebSocket/SSE/NATS transport spike and the OPA/Cedar policy-engine spike both had their triggers fire, and neither is wanted: multi-host delivery arrived over HTTP/1 polling, and the project answered *which policy engine* by writing one. ⛔ The cause is structural — every row the parent graded was a FEATURE, and a feature is discharged by an implementation while **a SPIKE is discharged by a DECISION**, which can be *we shipped without needing to ask*. ⚠️ The value requires the successor to be pointed at, so it is not a place to put anything awkward.
+- 🔴 **ONE `fired and open`, and a census keyed on the obvious word would have missed it.** `git.rs` exists and is used — by `resolvers.rs` and `snapshots.rs`, for evidence acquisition — so *is there git code* returns yes. The deferral is about publication, and `publications.rs` reaches `git::` **zero** times: the manifest digest is computed server-side and stored in PostgreSQL while no immutable content is written anywhere, and no object-store dependency exists at all. ROADMAP §15's *signed manifest plus immutable Git/object content* is half-shipped. Owned by the new `.9.3.5`.
+- **14 rows remain**, all in the Phase-1 subtraction record, and tranche 2 uses all four values.
+
 ## 2026-09-22 — The stray scan is derived from what initdb writes, and the prefix list it replaces would have missed one of the three (`SIGNOFF-REPAIR.11.4.3.1.9.1`)
 
 `REASONBRAID-REPAIR-0384`. A cluster outside the scanned directory was not kept — it was invisible.

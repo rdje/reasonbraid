@@ -90,8 +90,10 @@ pub enum LifecycleError {
         status: String,
     },
     UnknownVerdict(String),
-    EmptyElectorate,
     Duplicate(String),
+    /// A decision recorded before `migrations/0085`: its electorate is the
+    /// caller's, so no derived quorum exists for an approval to copy.
+    UnderivedDecision(String),
     /// The proposal's thread has no counted decision to record.
     NoCountedDecision {
         thread_id: String,
@@ -129,9 +131,11 @@ impl std::fmt::Display for LifecycleError {
                     "verdict event `{v}` is not a verdict contribution of the proposal's thread"
                 )
             }
-            LifecycleError::EmptyElectorate => {
-                write!(f, "the electorate snapshot names at least one participant")
-            }
+            LifecycleError::UnderivedDecision(d) => write!(
+                f,
+                "decision `{d}` was recorded before decisions were derived, so its \
+                 electorate is the caller's own and there is no derived quorum to approve"
+            ),
             LifecycleError::Duplicate(what) => {
                 write!(
                     f,
@@ -559,9 +563,13 @@ pub async fn list_decisions(
 // ── The approval records + the authority proofs (`.2.3`, ADR-032) ──────────────────
 
 /// The approval submission (`.2.3`): the proposal + the decision it approves,
-/// the approver, the AUTHORITY PROOF (the grant id — re-checked at the
-/// approval boundary: the status, the expiry, and the subject match), and
-/// the quorum snapshot.
+/// the approver, and the AUTHORITY PROOF (the grant id — re-checked at the
+/// approval boundary: the status, the expiry, and the subject match).
+///
+/// ⛔ `SIGNOFF-REPAIR.11.4.7.2.1.2.3.2`: the quorum snapshot is COPIED from the
+/// decision being approved — whose electorate is itself derived from the
+/// thread's counted close (`.1`). `quorum` is an optional ASSERTION that must
+/// equal it; the approver supplies nothing the record keeps.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ApprovalInput {
@@ -570,7 +578,8 @@ pub struct ApprovalInput {
     pub decision_id: String,
     pub approver: String,
     pub grant_id: String,
-    pub quorum: Value,
+    #[serde(default)]
+    pub quorum: Option<Value>,
 }
 
 /// The stored approval row.
@@ -598,9 +607,6 @@ impl LifecycleError {
             "the authority proof fails: grant `{grant_id}` is not an active, unexpired \
              grant held by `{approver}`"
         ))
-    }
-    fn empty_quorum() -> Self {
-        LifecycleError::EmptyElectorate
     }
 }
 
@@ -680,13 +686,14 @@ pub async fn record_approval(
             status,
         });
     }
-    let decision: Option<String> =
-        sqlx::query_scalar("SELECT proposal_id FROM policy_decisions WHERE decision_id = $1")
-            .bind(&input.decision_id)
-            .fetch_optional(pool)
-            .await
-            .map_err(|_| LifecycleError::unknown_decision(&input.decision_id))?;
-    let Some(decision_proposal) = decision else {
+    let decision: Option<(String, Value, Option<Value>)> = sqlx::query_as(
+        "SELECT proposal_id, electorate, derivation FROM policy_decisions WHERE decision_id = $1",
+    )
+    .bind(&input.decision_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| LifecycleError::unknown_decision(&input.decision_id))?;
+    let Some((decision_proposal, electorate, derivation)) = decision else {
         return Err(LifecycleError::unknown_decision(&input.decision_id));
     };
     if decision_proposal != input.proposal_id {
@@ -695,14 +702,21 @@ pub async fn record_approval(
             &input.proposal_id,
         ));
     }
-    let quorum_participants = input
-        .quorum
-        .get("participants")
-        .and_then(|v| v.as_array())
-        .map(|a| a.len())
-        .unwrap_or(0);
-    if quorum_participants == 0 {
-        return Err(LifecycleError::empty_quorum());
+    // `SIGNOFF-REPAIR.11.4.7.2.1.2.3.2`: the quorum snapshot is the DECISION's
+    // derived electorate. ⛔ A decision recorded before `migrations/0085` has
+    // no derivation — its electorate is the caller's — so there is no derived
+    // quorum to copy, and approving it would bind a policy on a claim.
+    if derivation.is_none() {
+        return Err(LifecycleError::UnderivedDecision(input.decision_id.clone()));
+    }
+    if let Some(asserted) = &input.quorum {
+        if asserted_electorate(asserted).as_ref() != Some(&electorate) {
+            return Err(LifecycleError::Disagrees {
+                field: "quorum",
+                asserted: asserted.to_string(),
+                derived: electorate.to_string(),
+            });
+        }
     }
     // The authority proof: the grant must be LIVE and HELD BY the approver —
     // and the approver must BE the authenticated caller.
@@ -752,7 +766,7 @@ pub async fn record_approval(
     .bind(&input.decision_id)
     .bind(&input.approver)
     .bind(&input.grant_id)
-    .bind(&input.quorum)
+    .bind(&electorate)
     .bind(tenant_id)
     .execute(pool)
     .await;
@@ -773,7 +787,7 @@ pub async fn record_approval(
         decision_id: input.decision_id.clone(),
         approver: input.approver.clone(),
         grant_id: input.grant_id.clone(),
-        quorum: input.quorum.clone(),
+        quorum: electorate,
     })
 }
 

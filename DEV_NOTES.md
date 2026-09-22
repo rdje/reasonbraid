@@ -1,5 +1,16 @@
 # DEV_NOTES.md
 
+## 2026-09-22 — An approval's quorum is copied from its decision, and a control that could not see storage was fixed (`SIGNOFF-REPAIR.11.4.7.2.1.2.3.2`)
+
+`REASONBRAID-REPAIR-0399`. The second half of the policy-approval repair; `.11.4.7.2.1.2.3` closes.
+
+- 🔴 **Before this commit, an approver typed the quorum their own approval rested on**, and it was stored as given.
+- ✅ **Now the quorum is copied from the decision being approved** — which, since the last commit, is itself read from the thread's count. An approver who names a different or larger quorum is refused. A decision recorded before decisions were derived cannot be approved at all, because there is nothing honest to copy.
+- ✅ The whole policy chain now runs charter → thread → decision → approval, and no step takes the caller's word for the result.
+- 🔴 **One of my own tests could not see what it claimed to check.** It compared the approval's *response*, which the server builds from the correct value regardless of what it stored — so a deliberately broken version that stored the wrong quorum still passed. The test now reads the stored record back, and the broken version fails.
+- ⚠️ Recusal does not exist yet, so "a recused member does not count" is true only because nobody can be recused. Stated, not claimed.
+- ✅ Policy 27/27; lint, format and the book clean. New book section: *Approvals*.
+
 ## 2026-09-22 — A policy decision is the record of its thread's counted close (`SIGNOFF-REPAIR.11.4.7.2.1.2.3.1`)
 
 `REASONBRAID-REPAIR-0398`. The first half of the policy-approval repair, re-scoped by measurement.

@@ -7,8 +7,8 @@ what actually happens comes back: **drift** between what was published and what 
 target is running, **outcomes** that record real effects, and **reviews** that
 those outcomes and drift observations schedule automatically.
 
-This chapter covers the stages that had no chapter of their own. Approval and
-publication are in [Authority](authority.md) and the publish verbs are in
+This chapter covers the stages that had no chapter of their own. The grants
+approval and publication require are in [Authority](authority.md) and the publish verbs are in
 [The CLI](cli.md); [Site authority](site-authority.md) covers who may hold the
 grants publication requires.
 
@@ -207,6 +207,45 @@ be recorded twice against the same proposal.
 ⚠️ **Decisions recorded before this rule** carry `"derivation": null`. Their
 `rule` and `electorate` are what the caller sent, and they are kept as written
 rather than rewritten.
+
+## Approvals
+
+`POST /v1/policy-approvals` performs the **decided → approved** transition. The
+approver cites a grant covering `policy_proposal_approve` (see
+[Authority](authority.md)), and must be the caller.
+
+The approval's **quorum snapshot is copied from the decision** it approves — the
+electorate that decision derived from its thread. The approver supplies nothing
+the record keeps:
+
+```bash
+curl -s -X POST localhost:4310/v1/policy-approvals \
+  -H 'x-reasonbraid-principal: hpr_0192…' \
+  -H 'content-type: application/json' \
+  -d '{
+        "approval_id": "app_0192…",
+        "proposal_id": "prp_0192…",
+        "decision_id": "dec_0192…",
+        "approver": "hpr_0192…",
+        "grant_id": "grt_hpr_0192…"
+      }'
+```
+
+`quorum` may still be sent, as an **assertion**: it must equal the decision's
+electorate, or the approval is refused with both named. An approver cannot
+widen the quorum their approval rests on.
+
+The approval threshold reaches an approval by one route only: the charter
+supplies it to the thread when the thread is created, the thread's count uses
+it, and the decision records it. A request never supplies it.
+
+⚠️ A decision recorded before decisions were derived (`"derivation": null`) has
+no derived quorum to copy, so it **cannot be approved**. Its electorate is what
+its caller typed.
+
+⚠️ **Recusal is not implemented**, so no member is ever excluded from a quorum;
+the rule *a recused participant does not count* holds only because nobody can
+be recused yet.
 
 ## Projections
 

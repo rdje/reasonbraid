@@ -3162,14 +3162,19 @@ async fn a_held_grant_must_cover_the_administrative_verb_it_is_cited_for() {
         .execute(&pool)
         .await
         .expect("the proposal seeds");
+        // `SIGNOFF-REPAIR.11.4.7.2.1.2.3.2`: an approval copies its decision's
+        // DERIVED quorum, so the seeded decision carries a derivation and an
+        // electorate EQUAL to the quorum the approval asserts — leaving the
+        // authority check as the only thing that can refuse it.
         sqlx::query(
             "INSERT INTO policy_decisions \
-             (decision_id, proposal_id, rule, electorate, verdict_event_id, tenant_id) \
-             VALUES ($2, $3, 'majority', '{}'::jsonb, 'cv-evt', $1)",
+             (decision_id, proposal_id, rule, electorate, verdict_event_id, tenant_id, derivation) \
+             VALUES ($2, $3, 'owner_decides', $4, 'cv-evt', $1, '{\"fixture\": \"authority\"}'::jsonb)",
         )
         .bind(&tenant_id)
         .bind(format!("cv-dec-{arm}"))
         .bind(format!("cv-prp-{arm}"))
+        .bind(json!({ "participants": [human_id], "denominator": 1, "abstentions": [] }))
         .execute(&pool)
         .await
         .expect("the decision seeds");
@@ -5204,10 +5209,15 @@ async fn citing_an_authority_requires_holding_it() {
     .execute(&pool)
     .await
     .expect("seed the decided proposal");
+    // `SIGNOFF-REPAIR.11.4.7.2.1.2.3.2`: a DERIVED decision whose electorate
+    // equals the quorum this leg asserts, so only authority can refuse it.
     sqlx::query(
-        "INSERT INTO policy_decisions (decision_id, proposal_id, rule, electorate, verdict_event_id) \
-         VALUES ('cite-dec-1', 'cite-prp-1', 'consensus', '[]'::jsonb, 'cite-evt')",
+        "INSERT INTO policy_decisions \
+         (decision_id, proposal_id, rule, electorate, verdict_event_id, derivation) \
+         VALUES ('cite-dec-1', 'cite-prp-1', 'owner_decides', $1, 'cite-evt', \
+                 '{\"fixture\": \"authority\"}'::jsonb)",
     )
+    .bind(json!({ "participants": [bob_id], "denominator": 1, "abstentions": [] }))
     .execute(&pool)
     .await
     .expect("seed the decision");
@@ -5228,10 +5238,15 @@ async fn citing_an_authority_requires_holding_it() {
     .execute(&pool)
     .await
     .expect("seed the second decided proposal");
+    // `SIGNOFF-REPAIR.11.4.7.2.1.2.3.2`: a DERIVED decision whose electorate
+    // equals the quorum this leg asserts, so only authority can refuse it.
     sqlx::query(
-        "INSERT INTO policy_decisions (decision_id, proposal_id, rule, electorate, verdict_event_id) \
-         VALUES ('cite-dec-2', 'cite-prp-2', 'consensus', '[]'::jsonb, 'cite-evt-2')",
+        "INSERT INTO policy_decisions \
+         (decision_id, proposal_id, rule, electorate, verdict_event_id, derivation) \
+         VALUES ('cite-dec-2', 'cite-prp-2', 'owner_decides', $1, 'cite-evt-2', \
+                 '{\"fixture\": \"authority\"}'::jsonb)",
     )
+    .bind(json!({ "participants": [alice_id], "denominator": 1, "abstentions": [] }))
     .execute(&pool)
     .await
     .expect("seed the second decision");
@@ -5249,10 +5264,15 @@ async fn citing_an_authority_requires_holding_it() {
     .execute(&pool)
     .await
     .expect("seed the third decided proposal");
+    // `SIGNOFF-REPAIR.11.4.7.2.1.2.3.2`: a DERIVED decision whose electorate
+    // equals the quorum this leg asserts, so only authority can refuse it.
     sqlx::query(
-        "INSERT INTO policy_decisions (decision_id, proposal_id, rule, electorate, verdict_event_id) \
-         VALUES ('cite-dec-3', 'cite-prp-3', 'consensus', '[]'::jsonb, 'cite-evt-3')",
+        "INSERT INTO policy_decisions \
+         (decision_id, proposal_id, rule, electorate, verdict_event_id, derivation) \
+         VALUES ('cite-dec-3', 'cite-prp-3', 'owner_decides', $1, 'cite-evt-3', \
+                 '{\"fixture\": \"authority\"}'::jsonb)",
     )
+    .bind(json!({ "participants": [alice_id], "denominator": 1, "abstentions": [] }))
     .execute(&pool)
     .await
     .expect("seed the third decision");
@@ -7751,5 +7771,88 @@ async fn a_policy_decision_is_its_threads_counted_close() {
             .as_str()
             .is_some_and(|d| d.starts_with("sha256:")),
         "the decision names the charter it was taken under: {decision}"
+    );
+
+    // `SIGNOFF-REPAIR.11.4.7.2.1.2.3.2`: the approval copies that decision's
+    // derived quorum. THE CONTROL: an approver who inflates it is refused.
+    let approve = |id: &'static str,
+                   proposal: &'static str,
+                   decision: &'static str,
+                   quorum: Option<Value>| {
+        let (client, base, human_id) = (client.clone(), base.clone(), human_id.clone());
+        async move {
+            let mut body = json!({
+                "approval_id": id,
+                "proposal_id": proposal,
+                "decision_id": decision,
+                "approver": human_id,
+                "grant_id": format!("grt_{human_id}"),
+            });
+            if let Some(quorum) = quorum {
+                body["quorum"] = quorum;
+            }
+            post(&client, &base, "/v1/policy-approvals", &human_id, &body).await
+        }
+    };
+    let (status, value) = approve(
+        "pdc-app-inflated",
+        "pdc-decided-prop",
+        "pdc-decided-dec",
+        Some(json!({ "participants": [human_id, "hpr_00000000-0000-7000-8000-00000000beef"] })),
+    )
+    .await;
+    refused(status, &value, "quorum", "an inflated quorum");
+    let (status, approval) = approve("pdc-app", "pdc-decided-prop", "pdc-decided-dec", None).await;
+    assert_eq!(status, 200, "the approval records: {approval}");
+    assert_eq!(
+        approval["quorum"], decision["electorate"],
+        "the approval's quorum IS the decision's derived electorate"
+    );
+    // ⛔ Read back from the STORE, not the response: the response is built
+    // from the derived value whatever the row holds, so a control on it alone
+    // cannot see what was written (a mutation storing the request's quorum
+    // survived exactly that way).
+    let (status, approvals) = get(&client, &base, "/v1/policy-approvals", &human_id).await;
+    assert_eq!(status, 200, "{approvals}");
+    let stored = approvals
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["approval_id"] == json!("pdc-app"))
+        .cloned()
+        .expect("the approval is listed");
+    assert_eq!(
+        stored["quorum"], decision["electorate"],
+        "the STORED quorum is the decision's derived electorate: {stored}"
+    );
+
+    // A decision recorded before decisions were derived has no quorum to copy.
+    sqlx::query(
+        "INSERT INTO policy_proposals \
+         (proposal_id, policy_id, policy_version, thread_id, status, tenant_id) \
+         VALUES ('pdc-legacy-prop', 'pdc-policy', '1.0.0', $1, 'decided', $2)",
+    )
+    .bind(&decided)
+    .bind(&tenant_id)
+    .execute(&pool)
+    .await
+    .expect("seed the legacy proposal");
+    sqlx::query(
+        "INSERT INTO policy_decisions \
+         (decision_id, proposal_id, rule, electorate, verdict_event_id, tenant_id) \
+         VALUES ('pdc-legacy-dec', 'pdc-legacy-prop', 'majority', $1, 'evt-legacy', $2)",
+    )
+    .bind(json!({ "participants": [human_id], "denominator": 1, "abstentions": [] }))
+    .bind(&tenant_id)
+    .execute(&pool)
+    .await
+    .expect("seed the legacy decision");
+    let (status, value) =
+        approve("pdc-app-legacy", "pdc-legacy-prop", "pdc-legacy-dec", None).await;
+    refused(
+        status,
+        &value,
+        "recorded before decisions were derived",
+        "an underived decision",
     );
 }

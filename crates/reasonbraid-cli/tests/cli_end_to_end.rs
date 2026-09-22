@@ -311,6 +311,8 @@ async fn the_real_cli_drives_the_whole_flow() {
             "should we ship?",
             "--objective",
             "decide with evidence",
+            "--expected-artifact",
+            "a go/no-go recommendation",
             "--as",
             "alice",
             "--json",
@@ -502,6 +504,12 @@ async fn the_real_cli_drives_the_whole_flow() {
     assert!(ok, "inspect failed: {stderr}");
     assert!(stdout.contains("state: closed"), "{stdout}");
     assert!(stdout.contains("reason: decision reached"), "{stdout}");
+    // §26 step 7: the audit view shows what the thread was asked to produce,
+    // beside the stop reason (`SIGNOFF-REPAIR.11.4.7.2.1.2.2`).
+    assert!(
+        stdout.contains("reason: decision reached\nexpected artifact: a go/no-go recommendation\n"),
+        "{stdout}"
+    );
     assert!(stdout.contains("thread.created"), "{stdout}");
     assert!(stdout.contains("thread.participant_invited"), "{stdout}");
     assert!(stdout.contains("thread.invitation_accepted"), "{stdout}");

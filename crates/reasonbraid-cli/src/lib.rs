@@ -725,6 +725,8 @@ pub struct CreateProfileArgs {
     pub classification: Option<String>,
     pub workflow_profile: Option<String>,
     pub allow_join_requests: bool,
+    /// What the thread is expected to produce (`SIGNOFF-REPAIR.11.4.7.2.1.2.2`).
+    pub expected_artifact: Option<String>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -832,6 +834,9 @@ async fn run_thread_create_in_store(
     }
     if profile.allow_join_requests {
         body["participant_rules"] = json!({ "allow_join_requests": true });
+    }
+    if let Some(artifact) = &profile.expected_artifact {
+        body["expected_artifact"] = json!(artifact);
     }
     let delegation = on_behalf_of.map(|subject| {
         (
@@ -975,6 +980,11 @@ pub async fn run_inspect_thread(
             })
             .unwrap_or_default(),
     ));
+    // §26 step 7's audit view: what the thread was asked to produce, beside the
+    // stop reason on the line above (`SIGNOFF-REPAIR.11.4.7.2.1.2.2`).
+    if let Some(artifact) = st["expected_artifact"].as_str() {
+        out.push_str(&format!("expected artifact: {artifact}\n"));
+    }
     out.push_str(&format!(
         "classification: {} · workflow: {}\n",
         st["classification"].as_str().unwrap_or("?"),

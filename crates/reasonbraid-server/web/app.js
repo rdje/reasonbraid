@@ -189,6 +189,7 @@ async function viewThread(out) {
   renderKeyValue(details, [
     ["subject", st.subject],
     ["objective", st.objective],
+    ["expected artifact", st.expected_artifact],
     ["state", st.state],
     ["close reason", st.close_reason],
     ["cancel reason", st.cancel_reason],

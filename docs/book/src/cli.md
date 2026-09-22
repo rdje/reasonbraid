@@ -296,13 +296,30 @@ The create verb also takes the typed profile fields (`.1.1.3`):
 $ rb thread create --subject "…" --objective "…" --as alice \
     --classification confidential \
     --workflow-profile critique-revise \
-    --allow-join-requests
+    --allow-join-requests \
+    --expected-artifact "a go/no-go recommendation"
 ```
 
 - `--classification` — `general` (default) | `confidential`.
 - `--workflow-profile` — `single-agent` (**the stated default**, ADR-002's
   routing decision) | `blind-independent` | `critique-revise` | `moderator`.
 - `--allow-join-requests` — off by default: explicit participants first (§20.3).
+- `--expected-artifact` — what the thread is expected to produce (ROADMAP §26
+  step 2 names it beside the objective; `SIGNOFF-REPAIR.11.4.7.2.1.2.2`). It is
+  **optional**, because an advisory thread has no artifact. Nothing evaluates it:
+  it is for the person who closes the thread, so `rb inspect thread` prints it
+  directly under the state and stop reason:
+
+  ```text
+  state: closed — reason: decision reached
+  expected artifact: a go/no-go recommendation
+  ```
+
+  On the wire it is `expected_artifact` in the `thread.create` body. It is also
+  recorded in the `thread.created` event and shown in the web console. A blank
+  value, one over 2000 characters, or one containing a control character other
+  than newline or tab is refused with `400 invalid_command`, and nothing is
+  created. To say "no artifact", leave the field out.
 
 The contribute verb takes the structured body (`.1.5.1`):
 

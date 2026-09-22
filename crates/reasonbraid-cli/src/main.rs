@@ -264,6 +264,11 @@ enum ThreadCommand {
         /// Allow join requests (default off — explicit participants first, §20.3).
         #[arg(long)]
         allow_join_requests: bool,
+        /// What the thread is expected to produce (§26 step 2), shown beside the
+        /// stop reason when the thread is inspected. Omit it for an advisory
+        /// thread with no artifact.
+        #[arg(long)]
+        expected_artifact: Option<String>,
         /// The acting principal (a state-file name or a raw hpr_…/rol_… id).
         #[arg(long)]
         as_: Option<String>,
@@ -708,6 +713,7 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
             classification,
             workflow_profile,
             allow_join_requests,
+            expected_artifact,
             as_,
             tenant,
             on_behalf_of,
@@ -724,6 +730,7 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
                 classification,
                 workflow_profile,
                 allow_join_requests,
+                expected_artifact,
             };
             run_thread_create_named(
                 cfg,

@@ -242,6 +242,45 @@ pub struct CreateBody {
     /// (`docs/decisions/2026-09-22_a-counted-rule-derives-its-outcome-and-a-rule-it-cannot-count-is-refused.md` §6).
     #[serde(default)]
     pub decision_rule: Option<DecisionRule>,
+    /// What the thread is expected to produce (`SIGNOFF-REPAIR.11.4.7.2.1.2.2`;
+    /// ROADMAP §26 step 2 names it beside the objective). Free text, read by the
+    /// human who closes the thread and shown beside the stop reason; nothing
+    /// evaluates it. Optional: an advisory thread has no artifact. Checked by
+    /// [`validate_expected_artifact`] before authorization.
+    #[serde(default)]
+    pub expected_artifact: Option<String>,
+}
+
+/// The longest expected-artifact description a thread accepts, in characters.
+pub const EXPECTED_ARTIFACT_MAX_CHARS: usize = 2000;
+
+/// The create boundary's check on a declared expected artifact: a value that is
+/// present says something. ⛔ A blank one is refused rather than stored, since a
+/// stored blank would read as *this thread was asked to produce nothing* when
+/// the caller only sent an empty field — and absence already says "none".
+/// Control characters other than newline and tab are refused, because the value
+/// is printed verbatim in the CLI and the console.
+pub fn validate_expected_artifact(value: &str) -> Result<(), ThreadError> {
+    if value.trim().is_empty() {
+        return Err(ThreadError::InvalidCommand(
+            "`expected_artifact` is blank; omit it when the thread has no artifact".to_owned(),
+        ));
+    }
+    let chars = value.chars().count();
+    if chars > EXPECTED_ARTIFACT_MAX_CHARS {
+        return Err(ThreadError::InvalidCommand(format!(
+            "`expected_artifact` is {chars} characters; at most {EXPECTED_ARTIFACT_MAX_CHARS}"
+        )));
+    }
+    if value
+        .chars()
+        .any(|c| c.is_control() && c != '\n' && c != '\t')
+    {
+        return Err(ThreadError::InvalidCommand(
+            "`expected_artifact` contains a control character".to_owned(),
+        ));
+    }
+    Ok(())
 }
 
 /// The rule a thread was created under, as the charter answered for it: the
@@ -779,6 +818,11 @@ pub struct ThreadProjection {
     pub thread_id: ThreadId,
     pub subject: String,
     pub objective: String,
+    /// What the thread is expected to produce, as declared at creation
+    /// (`SIGNOFF-REPAIR.11.4.7.2.1.2.2`). Absent on every thread created before
+    /// the field existed, and on one that declared none.
+    #[serde(default)]
+    pub expected_artifact: Option<String>,
     pub state: ThreadState,
     /// The creating principal's wire id (`hpr_…`/`rol_…`).
     pub created_by: String,
@@ -1018,6 +1062,7 @@ pub fn prepare_create(
         thread_id: *thread_id,
         subject: body.subject.clone(),
         objective: body.objective.clone(),
+        expected_artifact: body.expected_artifact.clone(),
         state: ThreadState::Open,
         created_by: principal.to_string(),
         participants: BTreeMap::from([(principal.to_string(), ParticipationState::Accepted)]),
@@ -1057,6 +1102,7 @@ pub fn prepare_create(
         "actor_principal_id": principal,
         "subject": body.subject,
         "objective": body.objective,
+        "expected_artifact": projection.expected_artifact,
         "budget": budget,
         "classification": projection.classification,
         "workflow_profile": projection.workflow_profile,
@@ -2536,6 +2582,7 @@ mod tests {
                 routing_class: None,
                 participant_rules: None,
                 decision_rule: None,
+                expected_artifact: None,
             },
             default_workflow_steps(),
             None,
@@ -2646,6 +2693,28 @@ mod tests {
     }
 
     /// `SIGNOFF-REPAIR.8.1.1.2`: the create boundary's pure refusals.
+    /// The expected artifact is optional, but a value that is present must say
+    /// something: blank, over-long and control-bearing values are refused.
+    #[test]
+    fn an_expected_artifact_is_refused_blank_overlong_or_with_control_characters() {
+        assert!(validate_expected_artifact("a go/no-go recommendation\nwith evidence").is_ok());
+        for bad in [
+            "",
+            "   \n\t",
+            "bell\u{7}",
+            &"x".repeat(EXPECTED_ARTIFACT_MAX_CHARS + 1),
+        ] {
+            assert!(
+                matches!(
+                    validate_expected_artifact(bad),
+                    Err(ThreadError::InvalidCommand(_))
+                ),
+                "{bad:?} must be refused"
+            );
+        }
+        assert!(validate_expected_artifact(&"é".repeat(EXPECTED_ARTIFACT_MAX_CHARS)).is_ok());
+    }
+
     #[test]
     fn a_declared_rule_is_refused_when_nothing_could_evaluate_it() {
         for rule in [DecisionRule::RoleWeighted, DecisionRule::HumanCommittee] {
@@ -2685,6 +2754,7 @@ mod tests {
             routing_class: None,
             participant_rules: None,
             decision_rule: rule,
+            expected_artifact: None,
         };
         let declared = |rule| DeclaredRule {
             rule,

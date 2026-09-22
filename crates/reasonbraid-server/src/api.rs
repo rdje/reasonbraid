@@ -8158,6 +8158,10 @@ async fn create_thread(
     if let Some(rule) = body.decision_rule {
         threads::validate_declared_rule(rule, &workflow_steps)?;
     }
+    // `SIGNOFF-REPAIR.11.4.7.2.1.2.2`: pure, so it too runs before authorization.
+    if let Some(artifact) = &body.expected_artifact {
+        threads::validate_expected_artifact(artifact)?;
+    }
     let tenant_id = body.tenant_id;
     // `None`: a creation has no thread to bind. Its target is the TENANT, which
     // is already the first column of `idempotency`'s primary key, so two creates

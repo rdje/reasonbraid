@@ -1166,6 +1166,103 @@ async fn the_operator_lists_active_incidents_and_a_resolved_one_leaves_the_list(
     );
 }
 
+/// THE `SIGNOFF-REPAIR.11.4.7.2.1.2.2` acceptance at the server: §26 step 2's
+/// *expected artifact* is recorded when declared, absent when not, and a value
+/// that says nothing is refused at the create boundary rather than stored.
+#[tokio::test]
+async fn a_thread_records_what_it_is_expected_to_produce() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (_, alice) = enroll(&client, &base, json!({ "kind": "human", "name": "alice" })).await;
+    let tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    let create = |key: &'static str, artifact: Option<&'static str>| {
+        let client = client.clone();
+        let base = base.clone();
+        let alice_id = alice_id.clone();
+        let tenant = tenant.clone();
+        async move {
+            let mut body =
+                json!({ "tenant_id": tenant, "subject": "ship?", "objective": "decide" });
+            if let Some(artifact) = artifact {
+                body["expected_artifact"] = json!(artifact);
+            }
+            command(
+                &client,
+                &base,
+                "/v1/threads",
+                &alice_id,
+                &envelope("thread.create", key, body),
+            )
+            .await
+        }
+    };
+    let inspect = |thread_id: String| {
+        let client = client.clone();
+        let base = base.clone();
+        let alice_id = alice_id.clone();
+        let tenant = tenant.clone();
+        async move {
+            get(
+                &client,
+                &base,
+                &format!("/v1/threads/{thread_id}?tenant_id={tenant}"),
+                &alice_id,
+            )
+            .await
+            .1
+        }
+    };
+
+    let (status, created) = create("k-artifact", Some("a go/no-go recommendation")).await;
+    assert_eq!(status, 200, "{created}");
+    let declared = created["thread_id"].as_str().unwrap().to_string();
+    let inspected = inspect(declared.clone()).await;
+    assert_eq!(
+        inspected["state"]["expected_artifact"],
+        json!("a go/no-go recommendation"),
+        "{inspected}"
+    );
+
+    let (status, created) = create("k-artifact-none", None).await;
+    assert_eq!(status, 200, "{created}");
+    let inspected = inspect(created["thread_id"].as_str().unwrap().to_string()).await;
+    assert_eq!(
+        inspected["state"]["expected_artifact"],
+        Value::Null,
+        "absent means none"
+    );
+
+    // A blank value is refused, and nothing is created under its key.
+    let (status, refused) = create("k-artifact-blank", Some("   ")).await;
+    assert_eq!(status, 400, "{refused}");
+    assert_eq!(refused["code"], json!("invalid_command"), "{refused}");
+    let stored: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM idempotency WHERE idempotency_key = 'k-artifact-blank'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(stored, 0, "a refused create records nothing");
+
+    // The create event carries it, so the thread's own history does too.
+    let created_event: Value = sqlx::query_scalar(
+        "SELECT body FROM event_log WHERE aggregate_id = $1 AND event_type = 'thread.created'",
+    )
+    .bind(&declared)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        created_event["expected_artifact"],
+        json!("a go/no-go recommendation")
+    );
+}
+
 /// The typed create fields (`PHASE-1.1.3`): classification / workflow profile /
 /// participant rules land on the projection with deny-unknown typing, the stated
 /// defaults apply when unnamed, and unknown or malformed values are rejected.

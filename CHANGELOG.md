@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-22 — A thread can say what it is supposed to produce (`SIGNOFF-REPAIR.11.4.7.2.1.2.2`)
+
+`REASONBRAID-REPAIR-0412`.
+
+- 🔴 The roadmap's first demonstration has a person create a thread with an objective **and an expected artifact**, but the system had no field for the artifact. Sending one was rejected.
+- ✅ `rb thread create --expected-artifact "…"` (optional) records it. `rb inspect thread` shows it directly under the thread's state and stop reason, and the web console shows it too. An empty or unreasonable value is refused, and nothing is created.
+- ✅ Tested through the full create → discuss → close → inspect walk. The same test fails against the old code.
+
 ## 2026-09-22 — The operator-view checklist is now checked automatically (`SIGNOFF-REPAIR.4.6.1.6`)
 
 `REASONBRAID-REPAIR-0411`.

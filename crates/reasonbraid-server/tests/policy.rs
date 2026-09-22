@@ -900,6 +900,45 @@ async fn the_proposal_and_the_decision_stay_separate_records() {
     )
     .await;
     assert_eq!(status, 200, "the round advances: {advanced}");
+    // `SIGNOFF-REPAIR.8.1.1.3`: this fixture used to record `rule: "unanimity"`
+    // with `accepted_unanimously` — ONE adjudicator claiming a unanimous count
+    // on a thread that declares `owner_decides`. Re-derived, not edited to
+    // pass: the claim is now the refusal, and the verdict this lifecycle needs
+    // as supporting evidence names only what it judges.
+    let (status, refused) = command(
+        "lc-verdict-count",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "the panel judged",
+            "kind": "verdict",
+            "verdict": { "target_digest": "sha256:00", "outcome": "accepted_unanimously" },
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "a verdict cannot claim a count: {refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("names a count of ballots"),
+        "{refused}"
+    );
+    let (status, refused) = command(
+        "lc-verdict-rule",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "the panel judged",
+            "kind": "verdict",
+            "verdict": { "target_digest": "sha256:00", "rule": "unanimity", "outcome": "accepted_by_rule" },
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "the rule is no longer the adjudicator's to state: {refused}"
+    );
     let (status, verdict) = command(
         "lc-verdict",
         "thread.contribute",
@@ -907,16 +946,23 @@ async fn the_proposal_and_the_decision_stay_separate_records() {
             "tenant_id": tenant_id,
             "content": "the panel judged",
             "kind": "verdict",
-            "verdict": {
-                "target_digest": "sha256:00",
-                "rule": "unanimity",
-                "outcome": "accepted_unanimously",
-            },
+            "verdict": { "target_digest": "sha256:00", "outcome": "accepted_by_rule" },
         }),
     )
     .await;
     assert_eq!(status, 200, "the verdict contributes: {verdict}");
     let verdict_event = verdict["event_id"].as_str().unwrap().to_string();
+    // The rule it applies is the THREAD's, derived by the server.
+    let recorded: Value = sqlx::query_scalar("SELECT body FROM event_log WHERE event_id = $1")
+        .bind(&verdict_event)
+        .fetch_one(&pool)
+        .await
+        .expect("the verdict event");
+    assert_eq!(
+        recorded["verdict"]["rule"],
+        json!("owner_decides"),
+        "{recorded}"
+    );
     close_as_owner(&client, &base, &human_id, &tenant_id, &thread_id).await;
 
     // 1. The proposal registers (the draft stage; a REFERENCE).
@@ -1216,7 +1262,7 @@ async fn the_approval_carries_its_authority_proof() {
             "tenant_id": tenant_id,
             "content": "judged",
             "kind": "verdict",
-            "verdict": { "target_digest": "sha256:00", "rule": "majority", "outcome": "accepted_by_rule" },
+            "verdict": { "target_digest": "sha256:00", "outcome": "accepted_by_rule" },
         }),
     )
     .await;
@@ -1818,7 +1864,7 @@ async fn the_publication_stages_and_marks_its_typed_state() {
             "tenant_id": tenant_id,
             "content": "judged",
             "kind": "verdict",
-            "verdict": { "target_digest": "sha256:00", "rule": "majority", "outcome": "accepted_by_rule" },
+            "verdict": { "target_digest": "sha256:00", "outcome": "accepted_by_rule" },
         }),
     )
     .await;
@@ -2370,7 +2416,7 @@ async fn the_publish_verb_drives_the_git_half() {
             "tenant_id": tenant_id,
             "content": "judged",
             "kind": "verdict",
-            "verdict": { "target_digest": "sha256:00", "rule": "majority", "outcome": "accepted_by_rule" },
+            "verdict": { "target_digest": "sha256:00", "outcome": "accepted_by_rule" },
         }),
     )
     .await;
@@ -4117,7 +4163,7 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
             "tenant_id": tenant_id,
             "content": "judged",
             "kind": "verdict",
-            "verdict": { "target_digest": "sha256:00", "rule": "majority", "outcome": "accepted_by_rule" },
+            "verdict": { "target_digest": "sha256:00", "outcome": "accepted_by_rule" },
         }),
     )
     .await;
@@ -4490,7 +4536,7 @@ async fn the_drift_corrections_and_outcomes_ride_the_records() {
             "tenant_id": tenant_id,
             "content": "judged",
             "kind": "verdict",
-            "verdict": { "target_digest": "sha256:00", "rule": "majority", "outcome": "accepted_by_rule" },
+            "verdict": { "target_digest": "sha256:00", "outcome": "accepted_by_rule" },
         }),
     )
     .await;
@@ -4929,7 +4975,7 @@ async fn the_scheduled_reviews_evaluate_the_triggers() {
             "tenant_id": tenant_id,
             "content": "judged",
             "kind": "verdict",
-            "verdict": { "target_digest": "sha256:00", "rule": "majority", "outcome": "accepted_by_rule" },
+            "verdict": { "target_digest": "sha256:00", "outcome": "accepted_by_rule" },
         }),
     )
     .await;
@@ -5682,7 +5728,7 @@ async fn an_approval_is_bound_to_the_proposals_own_tenant() {
             "tenant_id": alice_tenant,
             "content": "judged",
             "kind": "verdict",
-            "verdict": { "target_digest": "sha256:00", "rule": "majority", "outcome": "accepted_by_rule" },
+            "verdict": { "target_digest": "sha256:00", "outcome": "accepted_by_rule" },
         }),
     )
     .await;
@@ -5892,7 +5938,7 @@ async fn the_lifecycle_verbs_refuse_a_foreign_tenants_thread() {
         "thread.contribute",
         json!({
             "tenant_id": alice_tenant, "content": "judged", "kind": "verdict",
-            "verdict": { "target_digest": "sha256:00", "rule": "majority", "outcome": "accepted_by_rule" },
+            "verdict": { "target_digest": "sha256:00", "outcome": "accepted_by_rule" },
         }),
     )
     .await;
@@ -6114,7 +6160,7 @@ async fn the_lifecycle_row_carries_the_tenant_that_owns_it() {
         "thread.contribute",
         json!({
             "tenant_id": alice_tenant, "content": "judged", "kind": "verdict",
-            "verdict": { "target_digest": "sha256:00", "rule": "majority", "outcome": "accepted_by_rule" },
+            "verdict": { "target_digest": "sha256:00", "outcome": "accepted_by_rule" },
         }),
     )
     .await;
@@ -6523,7 +6569,7 @@ async fn the_lifecycle_verbs_refuse_another_tenants_publication() {
         "thread.contribute",
         json!({
             "tenant_id": alice_tenant, "content": "judged", "kind": "verdict",
-            "verdict": { "target_digest": "sha256:00", "rule": "majority", "outcome": "accepted_by_rule" },
+            "verdict": { "target_digest": "sha256:00", "outcome": "accepted_by_rule" },
         }),
     )
     .await;
@@ -7094,7 +7140,7 @@ async fn every_lifecycle_read_is_bound_to_its_own_tenant() {
                 format!("{tag}-verdict"),
                 "thread.contribute",
                 json!({ "tenant_id": tenant, "content": "judged", "kind": "verdict",
-                        "verdict": { "target_digest": "sha256:00", "rule": "majority",
+                        "verdict": { "target_digest": "sha256:00",
                                      "outcome": "accepted_by_rule" } }),
             )
             .await;

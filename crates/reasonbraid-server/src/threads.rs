@@ -578,16 +578,35 @@ pub struct SynthesisInput {
     pub coverage: Vec<CoverageItem>,
 }
 
-/// The adjudication verdict input (`.2.4.2`, ADR-029): the judged digest, the
-/// decision rule applied, and the §13.4 outcome declared. The record is
-/// attributable (the contribution's author rides the event) — never a silent
-/// rewrite; the canonical outcome persists (the legacy aliases never do).
+/// The adjudication verdict input (`.2.4.2`, ADR-029): the judged digest and
+/// the §13.4 outcome declared. The record is attributable (the contribution's
+/// author rides the event) — never a silent rewrite; the canonical outcome
+/// persists (the legacy aliases never do).
+///
+/// ⛔ **The rule is NOT an input** (`SIGNOFF-REPAIR.8.1.1.3`). ADR-029 has the
+/// verdict name *the rule it applies*, and the rule a verdict applies is the
+/// thread's: the event records the thread's declared `decision_rule` (or null),
+/// derived by the server. It used to be free text, so one adjudicator could
+/// record `rule: "unanimity"` on a thread that declared no rule at all
+/// (`docs/decisions/2026-09-22_a-verdict-applies-its-threads-rule-and-cannot-claim-a-count.md`).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct VerdictInput {
     pub target_digest: String,
-    pub rule: String,
     pub outcome: CloseOutcome,
+}
+
+/// The outcomes that name a TALLY — a count of ballots one adjudicator cannot
+/// make (`SIGNOFF-REPAIR.8.1.1.3`; `.8.1.1`'s record §5 derives exactly these
+/// three from a count). A verdict is one person's attributable judgement, so it
+/// may not declare one; under a counted rule the thread's close derives it.
+pub fn names_a_count(outcome: CloseOutcome) -> bool {
+    matches!(
+        outcome,
+        CloseOutcome::AcceptedUnanimously
+            | CloseOutcome::AcceptedWithRecordedObjections
+            | CloseOutcome::NoQuorum
+    )
 }
 
 /// One structured claim riding a contribution (`PHASE-5.2.2`, ADR-029): the
@@ -1901,6 +1920,23 @@ where
                     step.unwrap_or("none")
                 )));
             }
+            // `SIGNOFF-REPAIR.8.1.1.3`, AFTER the step gate so a verdict out of
+            // turn keeps that refusal: a verdict names what it judges, and it
+            // may not claim a count.
+            if body.kind == ContributionKind::Verdict {
+                let Some(verdict) = body.verdict.as_ref() else {
+                    return Err(ThreadError::InvalidCommand(
+                        "a `verdict` contribution requires `verdict`".to_string(),
+                    ));
+                };
+                if names_a_count(verdict.outcome) {
+                    return Err(ThreadError::InvalidCommand(format!(
+                        "`{}` names a count of ballots, and a verdict is one adjudicator's \
+                         judgement (ADR-029) — a count is cast as ballots under a counted rule",
+                        verdict.outcome.canonical()
+                    )));
+                }
+            }
             // `SIGNOFF-REPAIR.8.1.1.2`: a ballot is cast on the `vote` step,
             // under a rule that counts ballots, by a member of the electorate
             // fixed when voting opened — once.
@@ -2221,9 +2257,11 @@ where
                     "ref_event_id": body.ref_event_id,
                     "synthesis": body.synthesis,
                     "ballot": cast.map(|choice| json!({ "choice": choice })),
+                    // The rule is the THREAD's, derived (`.8.1.1.3`): null when the
+                    // thread declared none, never an adjudicator's word.
                     "verdict": body.verdict.as_ref().map(|v| json!({
                         "target_digest": v.target_digest,
-                        "rule": v.rule,
+                        "rule": projection.decision_rule.map(|r| r.as_str()),
                         "outcome": v.outcome.canonical(),
                     })),
                     "assessment": body.assessment.as_ref().map(|a| json!({

@@ -194,6 +194,39 @@ and each rule currently takes the narrowest honest reading:
   ID is not one.
 - **Amendments after voting starts** — a ballot is final.
 
-Two other surfaces are also still open. The adjudication verdict (the `verdict`
-contribution on the `adjudicate` step) still names its rule as free text and can
-use the ballot words. `role_weighted` and `human_committee` cannot be declared yet.
+`role_weighted` and `human_committee` cannot be declared yet.
+
+## An adjudication verdict applies the thread's rule, and cannot claim a count
+
+A `verdict` contribution on the `adjudicate` step is one adjudicator's
+attributable judgement of a claim (ADR-029). Since `SIGNOFF-REPAIR.8.1.1.3` it
+carries only what it judges and what it concludes:
+
+```json
+{ "kind": "verdict",
+  "verdict": { "target_digest": "sha256:…", "outcome": "accepted_by_rule" } }
+```
+
+- **The rule is not an input.** The rule a verdict applies is the thread's
+  own, so the server writes the thread's declared `decision_rule` into the
+  verdict event, or `null` for a thread that declared none. A request that
+  still sends `"rule"` is refused as an unknown field. It used to be free text,
+  so one adjudicator could record `"rule": "unanimity"` on an `owner_decides`
+  thread.
+- **Three outcomes are refused on a verdict**: `accepted_unanimously`,
+  `accepted_with_recorded_objections` and `no_quorum`. Each names a count of
+  ballots, and one adjudicator cannot count:
+
+  ```text
+  400 `accepted_unanimously` names a count of ballots, and a verdict is one
+      adjudicator's judgement (ADR-029) — a count is cast as ballots under a
+      counted rule
+  ```
+
+  Under a counted rule the thread's close works that outcome out from the
+  ballots ([which outcomes a closer may still state](#which-outcomes-a-closer-may-still-state)).
+- A `verdict`-kind contribution must carry its `verdict`. One without it used to
+  be accepted, recording a verdict that judged nothing.
+
+A verdict out of turn is still refused by the step check first, with that
+check's own message.

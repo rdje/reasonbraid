@@ -9228,7 +9228,6 @@ async fn the_evidence_requests_and_verdicts_execute_on_their_steps() {
             "kind": "verdict",
             "verdict": {
                 "target_digest": "sha256:00",
-                "rule": "majority",
                 "outcome": "accepted_with_recorded_objections",
             },
         }),
@@ -9260,7 +9259,6 @@ async fn the_evidence_requests_and_verdicts_execute_on_their_steps() {
             "kind": "verdict",
             "verdict": {
                 "target_digest": "sha256:00",
-                "rule": "majority",
                 "outcome": "decided",
             },
         }),
@@ -9289,7 +9287,46 @@ async fn the_evidence_requests_and_verdicts_execute_on_their_steps() {
         verdict_event["body"]["verdict"]["outcome"],
         json!("accepted_by_rule")
     );
-    assert_eq!(verdict_event["body"]["verdict"]["rule"], json!("majority"));
+    // `SIGNOFF-REPAIR.8.1.1.3`: the rule is the THREAD's, derived — and this
+    // thread declared none, so the record says so rather than carrying an
+    // adjudicator's free-text `"majority"`.
+    assert_eq!(verdict_event["body"]["verdict"]["rule"], Value::Null);
+
+    // 10b. On its own step, a verdict still cannot claim a count, and a
+    // `verdict`-kind contribution must carry the verdict it records.
+    let (status, refused) = command2(
+        "ev-verdict-count",
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "the panel judged",
+            "kind": "verdict",
+            "verdict": { "target_digest": "sha256:00", "outcome": "no_quorum" },
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "a verdict cannot claim a count: {refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("`no_quorum` names a count"),
+        "{refused}"
+    );
+    let (status, refused) = command2(
+        "ev-verdict-empty",
+        "thread.contribute",
+        json!({ "tenant_id": tenant_id, "content": "the panel judged", "kind": "verdict" }),
+    )
+    .await;
+    assert_eq!(status, 400, "a verdict records what it judges: {refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("requires `verdict`"),
+        "{refused}"
+    );
 
     // 11. The verdict field rides its kind only.
     let (status, refused) = command2(
@@ -9301,7 +9338,6 @@ async fn the_evidence_requests_and_verdicts_execute_on_their_steps() {
             "kind": "position",
             "verdict": {
                 "target_digest": "sha256:00",
-                "rule": "majority",
                 "outcome": "accepted_by_rule",
             },
         }),
@@ -9486,7 +9522,7 @@ async fn the_moderation_actions_are_bounded_contributions() {
             "tenant_id": tenant_id,
             "content": "not a verdict",
             "kind": "classify",
-            "verdict": { "target_digest": "sha256:00", "rule": "majority", "outcome": "accepted_by_rule" },
+            "verdict": { "target_digest": "sha256:00", "outcome": "accepted_by_rule" },
         }),
     )
     .await;

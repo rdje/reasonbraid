@@ -31,24 +31,44 @@ GET    /v1/evaluations/gates/{gate_id}/evaluations  the gate's results
 
 Every route here admits any **enrolled principal** and nothing more.
 
-⛔ **The harness is deployment-wide, not tenant-scoped.** Unlike the policy
-lifecycle tables, none of the seven `evaluation_*` tables carries a `tenant_id`
-column, and no handler passes a tenant or a principal into the service. So any
-enrolled principal can register a corpus, record a run, or evaluate any gate in
-the deployment, and can read every other caller's records.
+⛔ **The harness is deployment-wide, not tenant-scoped, and that is the design.**
+None of the seven `evaluation_*` tables carries a `tenant_id` column, because
+the harness is release engineering — gate records, corpus versions, CI manifests
+— rather than a tenant product surface. `docs/decisions/` records the verdict:
+site-wide by design, gated by **site-operator** grants.
 
-⚠️ **The missing tenant column is the DESIGN; the missing gate is the defect.**
-`docs/decisions/` records the verdict for this family: the seven tables are
-site-wide by design and gated by **site-operator** grants, because the harness is
-release engineering rather than a tenant product surface. What was never applied
-is that gate.
+✅ **Every write is a site act** (`SIGNOFF-REPAIR.8.2.5`). Until it, each one
+admitted on bare enrolment, so any enrolled principal in the deployment set the
+standard the whole site measured against. Two capabilities, not one:
 
-⛔ **An earlier version of this page said the fix was unavailable — *no
-`GrantAction` and no `TargetSelector` can name a corpus or a gate, so there is
-nothing for an authority check to bind to yet*. That was wrong twice**, and
-`SIGNOFF-REPAIR.15` withdrew it: a site-operator gate does not bind through
-`GrantAction` at all, and four site-wide surfaces already use it. Owned by
-`SIGNOFF-REPAIR.8.2.5`, and not blocked.
+| capability | the verbs it carries |
+| --- | --- |
+| `evaluation_record` | register a corpus, record a run, create a trial, record its results, record a calibration, record a gate |
+| `gate_evaluate` | evaluate a gate against scores |
+
+⭐ **They are separate because a party that MEASURES against a standard must not
+be able to MOVE the standard.** §4.1's charter names separation-of-duties, and
+the release flow has two parties: one maintains the corpus, the runs and the
+baselines, while CI evaluates gates against them continuously. A holder of
+`gate_evaluate` alone runs gates and cannot register one.
+
+Every write therefore takes a **`reason`**, and a refused act returns its
+`audit_id` alongside the class that was refused.
+
+⚠️ **READS STAY ON ENROLMENT, deliberately.** The tables are site-wide by
+design, and §19.7's gate manifest is meant to be auditable; nothing in the
+roadmap makes a corpus version or a gate result confidential. Gating the reads
+would be a separate decision about confidentiality, and it is **not taken here
+by omission**.
+
+⚠️ **Two refusals changed status, and the reason is worth knowing.** Whether a
+coordinate is taken, or a named run or gate exists, is a question about the
+database — so it is answered INSIDE the gate as an audited domain refusal
+(**403** with an `audit_id`), not before it. Answering it earlier would hand a
+caller with no site authority an existence oracle over a registry it may not
+write. ✅ **Input validation is unaffected and still returns its typed 400**: a
+malformed digest, an empty arm list, an out-of-range threshold or a non-numeric
+score needs no database, so it is refused before the gate with its own message.
 
 ## Corpora
 
@@ -64,7 +84,8 @@ curl -s -X POST localhost:4310/v1/evaluations/corpora \
         "version": 3,
         "cases_digest": "9f2b…64 hex…",
         "prompts_digest": "41ca…64 hex…",
-        "cases": [{"case_id": "c1", "prompt": "…", "expected": "…"}]
+        "cases": [{"case_id": "c1", "prompt": "…", "expected": "…"}],
+        "reason": "the quarterly corpus refresh"
       }'
 ```
 
@@ -88,7 +109,8 @@ curl -s -X POST localhost:4310/v1/evaluations/runs \
         "seed": 42,
         "deterministic": false,
         "trial_count": 20,
-        "results": {"c1": 0.91}
+        "results": {"c1": 0.91},
+        "reason": "the nightly workflow run"
       }'
 ```
 
@@ -116,7 +138,8 @@ curl -s -X POST localhost:4310/v1/evaluations/trials \
         "seed": 42,
         "arms": ["baseline", "candidate"],
         "cohorts": [{"label": "eu", "kind": "case", "members": ["c1"]}],
-        "case_ids": ["c1", "c2"]
+        "case_ids": ["c1", "c2"],
+        "reason": "the routing shadow trial"
       }'
 ```
 
@@ -153,7 +176,8 @@ curl -s -X POST localhost:4310/v1/evaluations/calibrations \
         "workflow": "wf_retention_review",
         "run_ids": ["run_0192…"],
         "brier": 0.11,
-        "confidence": {"bins": [[0.9, 0.87]]}
+        "confidence": {"bins": [[0.9, 0.87]]},
+        "reason": "the quarterly calibration"
       }'
 ```
 
@@ -175,7 +199,8 @@ curl -s -X POST localhost:4310/v1/evaluations/gates \
         "corpus_version": 3,
         "workflow": "wf_retention_review",
         "baseline": {"c1": 0.90, "c2": 0.85},
-        "threshold": 0.05
+        "threshold": 0.05,
+        "reason": "the retention-review gate's first baseline"
       }'
 ```
 
@@ -189,7 +214,7 @@ and **appends** the result; a gate never rewrites one.
 curl -s -X POST "localhost:4310/v1/evaluations/gates/gat_0192…/evaluations" \
   -H 'x-reasonbraid-principal: hpr_0192…' \
   -H 'content-type: application/json' \
-  -d '{"c1": 0.91, "c2": 0.79}'
+  -d '{"scores": {"c1": 0.91, "c2": 0.79}, "reason": "the nightly release gate"}'
 ```
 
 ```json
@@ -216,11 +241,11 @@ pass on nothing — and before `SIGNOFF-REPAIR.8.2.1` that case returned
 `passed: true` and appended it to the gate's durable results.
 
 ```bash
-# refused: compares no case
-curl -s -X POST ".../evaluations" -d '{}'
-# refused: the measurement is not a number / is outside [0, 1]
-curl -s -X POST ".../evaluations" -d '{"c1": "oops"}'
-curl -s -X POST ".../evaluations" -d '{"c1": 5.0}'
+# 403, audited: compares no case (only the stored baseline can answer this)
+curl -s -X POST ".../evaluations" -d '{"scores": {}, "reason": "..."}'
+# 400, before the gate: the measurement is not a number / is outside [0, 1]
+curl -s -X POST ".../evaluations" -d '{"scores": {"c1": "oops"}, "reason": "..."}'
+curl -s -X POST ".../evaluations" -d '{"scores": {"c1": 5.0}, "reason": "..."}'
 ```
 
 ## What this harness does not establish

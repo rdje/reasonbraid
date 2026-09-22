@@ -14,6 +14,9 @@ mod pg_test_support;
 #[path = "support/cleanup.rs"]
 mod pg_cleanup;
 
+#[path = "support/site.rs"]
+mod site_fixture;
+
 use std::net::SocketAddr;
 use std::sync::OnceLock;
 
@@ -203,6 +206,20 @@ async fn the_evaluation_service_records_the_registry_and_the_runs() {
     assert_eq!(status, 200, "the human enrolls: {human}");
     let human_id = human["principal_id"].as_str().unwrap().to_string();
 
+    // `SIGNOFF-REPAIR.8.2.5`: every `evaluation_*` write is a SITE act. The
+    // family is site-wide by design (DOC-0029) and was admitted on bare
+    // enrolment; this suite's author now holds both capabilities explicitly.
+    // Reading stays on enrolment — see the read-side disposition in `.3`.
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[
+            reasonbraid_server::site_authority::Action::EvaluationRecord,
+            reasonbraid_server::site_authority::Action::GateEvaluate,
+        ],
+    )
+    .await;
+
     // 1. Register one corpus version (the declared digests + the cases).
     let (status, registered) = post(
         &client,
@@ -210,6 +227,7 @@ async fn the_evaluation_service_records_the_registry_and_the_runs() {
         "/v1/evaluations/corpora",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "corpus_id": "bench-v1",
             "version": 1,
             "cases_digest": DIGEST_A,
@@ -234,6 +252,7 @@ async fn the_evaluation_service_records_the_registry_and_the_runs() {
         "/v1/evaluations/corpora",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "corpus_id": "bench-v1",
             "version": 1,
             "cases_digest": DIGEST_B,
@@ -242,13 +261,22 @@ async fn the_evaluation_service_records_the_registry_and_the_runs() {
         }),
     )
     .await;
-    assert_eq!(status, 400, "the duplicate refuses: {refused}");
-    assert!(
-        refused["message"]
-            .as_str()
-            .unwrap()
-            .contains("already exists"),
+    // ⚠️ 403, not the 400 this was before `SIGNOFF-REPAIR.8.2.5.3`, and for the
+    // reason `.6.1.5.4` recorded for the policy registry: whether a coordinate
+    // is taken, or a named run or gate exists, is a question about the DATABASE
+    // — so it is answered INSIDE the site gate as a domain refusal, audited
+    // `denied` with the grant attached because the caller did hold the
+    // authority. Answering it before the gate would hand a caller with no site
+    // authority an existence oracle over a registry it may not write.
+    assert_eq!(status, 403, "the duplicate refuses: {refused}");
+    assert_eq!(
+        refused["code"],
+        json!("that corpus version is already registered"),
         "{refused}"
+    );
+    assert!(
+        refused["audit_id"].is_string(),
+        "a refused site act carries its audit id: {refused}"
     );
 
     // 3. A malformed digest is the typed refusal.
@@ -258,6 +286,7 @@ async fn the_evaluation_service_records_the_registry_and_the_runs() {
         "/v1/evaluations/corpora",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "corpus_id": "bench-bad",
             "version": 1,
             "cases_digest": "not-hex",
@@ -280,6 +309,7 @@ async fn the_evaluation_service_records_the_registry_and_the_runs() {
         "/v1/evaluations/runs",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "run_id": "run-1",
             "workflow": "blind",
             "corpus_id": "bench-v1",
@@ -303,6 +333,7 @@ async fn the_evaluation_service_records_the_registry_and_the_runs() {
         "/v1/evaluations/runs",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "run_id": "run-1",
             "workflow": "blind",
             "corpus_id": "bench-v1",
@@ -325,6 +356,7 @@ async fn the_evaluation_service_records_the_registry_and_the_runs() {
         "/v1/evaluations/runs",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "run_id": "run-2",
             "workflow": "single",
             "corpus_id": "bench-v1",
@@ -346,6 +378,7 @@ async fn the_evaluation_service_records_the_registry_and_the_runs() {
         "/v1/evaluations/runs",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "run_id": "run-3",
             "workflow": "blind",
             "corpus_id": "ghost",
@@ -356,13 +389,15 @@ async fn the_evaluation_service_records_the_registry_and_the_runs() {
         }),
     )
     .await;
-    assert_eq!(status, 400, "the phantom corpus refuses: {refused}");
-    assert!(
-        refused["message"]
-            .as_str()
-            .unwrap()
-            .contains("not registered"),
+    assert_eq!(status, 403, "the phantom corpus refuses: {refused}");
+    assert_eq!(
+        refused["code"],
+        json!("the named corpus version is not registered"),
         "{refused}"
+    );
+    assert!(
+        refused["audit_id"].is_string(),
+        "a refused site act carries its audit id: {refused}"
     );
     let (status, refused) = post(
         &client,
@@ -370,6 +405,7 @@ async fn the_evaluation_service_records_the_registry_and_the_runs() {
         "/v1/evaluations/runs",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "run_id": "run-1",
             "workflow": "single",
             "corpus_id": "bench-v1",
@@ -380,7 +416,7 @@ async fn the_evaluation_service_records_the_registry_and_the_runs() {
         }),
     )
     .await;
-    assert_eq!(status, 400, "the duplicate run id refuses: {refused}");
+    assert_eq!(status, 403, "the duplicate run id refuses: {refused}");
 
     // 6. The reads: the registry + the runs, newest first.
     let (status, corpora) = get(&client, &base, "/v1/evaluations/corpora", &human_id).await;
@@ -416,6 +452,20 @@ async fn the_shadow_trials_record_the_seeded_assignment_and_the_cohorts() {
     assert_eq!(status, 200, "the human enrolls: {human}");
     let human_id = human["principal_id"].as_str().unwrap().to_string();
 
+    // `SIGNOFF-REPAIR.8.2.5`: every `evaluation_*` write is a SITE act. The
+    // family is site-wide by design (DOC-0029) and was admitted on bare
+    // enrolment; this suite's author now holds both capabilities explicitly.
+    // Reading stays on enrolment — see the read-side disposition in `.3`.
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[
+            reasonbraid_server::site_authority::Action::EvaluationRecord,
+            reasonbraid_server::site_authority::Action::GateEvaluate,
+        ],
+    )
+    .await;
+
     // The trial's corpus must exist.
     let (status, _) = post(
         &client,
@@ -423,6 +473,7 @@ async fn the_shadow_trials_record_the_seeded_assignment_and_the_cohorts() {
         "/v1/evaluations/corpora",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "corpus_id": "tri-corpus",
             "version": 1,
             "cases_digest": DIGEST_A,
@@ -441,6 +492,7 @@ async fn the_shadow_trials_record_the_seeded_assignment_and_the_cohorts() {
         "/v1/evaluations/trials",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "trial_id": "tri-1",
             "corpus_id": "tri-corpus",
             "corpus_version": 1,
@@ -475,6 +527,7 @@ async fn the_shadow_trials_record_the_seeded_assignment_and_the_cohorts() {
         "/v1/evaluations/trials",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "trial_id": "tri-1-repeat",
             "corpus_id": "tri-corpus",
             "corpus_version": 1,
@@ -499,6 +552,7 @@ async fn the_shadow_trials_record_the_seeded_assignment_and_the_cohorts() {
         "/v1/evaluations/trials",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "trial_id": "tri-2",
             "corpus_id": "tri-corpus",
             "corpus_version": 1,
@@ -519,6 +573,7 @@ async fn the_shadow_trials_record_the_seeded_assignment_and_the_cohorts() {
             "tri-empty-arms",
             json!({
                 "trial_id": "tri-empty-arms",
+                "reason": "the suite records an evaluation site act",
                 "corpus_id": "tri-corpus",
                 "corpus_version": 1,
                 "seed": 7,
@@ -531,6 +586,7 @@ async fn the_shadow_trials_record_the_seeded_assignment_and_the_cohorts() {
             "tri-empty-cases",
             json!({
                 "trial_id": "tri-empty-cases",
+                "reason": "the suite records an evaluation site act",
                 "corpus_id": "tri-corpus",
                 "corpus_version": 1,
                 "seed": 7,
@@ -543,6 +599,7 @@ async fn the_shadow_trials_record_the_seeded_assignment_and_the_cohorts() {
             "tri-bad-cohort",
             json!({
                 "trial_id": "tri-bad-cohort",
+                "reason": "the suite records an evaluation site act",
                 "corpus_id": "tri-corpus",
                 "corpus_version": 1,
                 "seed": 7,
@@ -552,19 +609,11 @@ async fn the_shadow_trials_record_the_seeded_assignment_and_the_cohorts() {
             }),
             "unknown kind",
         ),
-        (
-            "tri-phantom",
-            json!({
-                "trial_id": "tri-phantom",
-                "corpus_id": "ghost",
-                "corpus_version": 1,
-                "seed": 7,
-                "arms": ["single"],
-                "case_ids": ["c1"],
-            }),
-            "not registered",
-        ),
     ] {
+        // ⭐ These three stay **400** and that is `SIGNOFF-REPAIR.8.2.5.2`'s whole
+        // value: empty arms, empty cases and an unknown cohort kind need no
+        // database, so the pre-gate validator refuses them with their own
+        // message before the site act is ever attempted.
         let (status, refused) =
             post(&client, &base, "/v1/evaluations/trials", &human_id, &body).await;
         assert_eq!(status, 400, "{key}: {refused}");
@@ -573,12 +622,39 @@ async fn the_shadow_trials_record_the_seeded_assignment_and_the_cohorts() {
             "{refused}"
         );
     }
+    // ⚠️ The phantom corpus is the contrast: whether `ghost` is registered is a
+    // question about the database, so it is an in-gate domain refusal — 403,
+    // audited, with its class on the wire.
     let (status, refused) = post(
         &client,
         &base,
         "/v1/evaluations/trials",
         &human_id,
         &json!({
+            "trial_id": "tri-phantom",
+            "reason": "the suite records an evaluation site act",
+            "corpus_id": "ghost",
+            "corpus_version": 1,
+            "seed": 7,
+            "arms": ["single"],
+            "case_ids": ["c1"],
+        }),
+    )
+    .await;
+    assert_eq!(status, 403, "the phantom corpus refuses: {refused}");
+    assert_eq!(
+        refused["code"],
+        json!("the named corpus version is not registered"),
+        "{refused}"
+    );
+    assert!(refused["audit_id"].is_string(), "{refused}");
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/evaluations/trials",
+        &human_id,
+        &json!({
+            "reason": "the suite records an evaluation site act",
             "trial_id": "tri-1",
             "corpus_id": "tri-corpus",
             "corpus_version": 1,
@@ -588,7 +664,7 @@ async fn the_shadow_trials_record_the_seeded_assignment_and_the_cohorts() {
         }),
     )
     .await;
-    assert_eq!(status, 400, "the duplicate trial refuses: {refused}");
+    assert_eq!(status, 403, "the duplicate trial refuses: {refused}");
 
     // 5. The per-arm results are APPEND-ONLY: two submissions accumulate
     // (the record's identity is its content, never an overwrite).
@@ -597,7 +673,8 @@ async fn the_shadow_trials_record_the_seeded_assignment_and_the_cohorts() {
         &base,
         "/v1/evaluations/trials/tri-1/results",
         &human_id,
-        &json!({ "single": { "mean": 0.9 }, "blind": { "mean": 0.8 } }),
+        &json!({
+            "reason": "the suite records an evaluation site act", "results": { "single": { "mean": 0.9 }, "blind": { "mean": 0.8 } } }),
     )
     .await;
     assert_eq!(status, 200, "the results append: {appended}");
@@ -606,7 +683,8 @@ async fn the_shadow_trials_record_the_seeded_assignment_and_the_cohorts() {
         &base,
         "/v1/evaluations/trials/tri-1/results",
         &human_id,
-        &json!({ "critique": { "mean": 0.95 } }),
+        &json!({
+            "reason": "the suite records an evaluation site act", "results": { "critique": { "mean": 0.95 } } }),
     )
     .await;
     assert_eq!(status, 200, "the second results row appends: {appended}");
@@ -630,10 +708,11 @@ async fn the_shadow_trials_record_the_seeded_assignment_and_the_cohorts() {
         &base,
         "/v1/evaluations/trials/ghost/results",
         &human_id,
-        &json!({ "single": { "mean": 0.5 } }),
+        &json!({
+            "reason": "the suite records an evaluation site act", "results": { "single": { "mean": 0.5 } } }),
     )
     .await;
-    assert_eq!(status, 400, "the ghost trial refuses: {refused}");
+    assert_eq!(status, 403, "the ghost trial refuses: {refused}");
 
     // 7. The trials list, newest first.
     let (status, trials) = get(&client, &base, "/v1/evaluations/trials", &human_id).await;
@@ -660,12 +739,27 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
     assert_eq!(status, 200, "the human enrolls: {human}");
     let human_id = human["principal_id"].as_str().unwrap().to_string();
 
+    // `SIGNOFF-REPAIR.8.2.5`: every `evaluation_*` write is a SITE act. The
+    // family is site-wide by design (DOC-0029) and was admitted on bare
+    // enrolment; this suite's author now holds both capabilities explicitly.
+    // Reading stays on enrolment — see the read-side disposition in `.3`.
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[
+            reasonbraid_server::site_authority::Action::EvaluationRecord,
+            reasonbraid_server::site_authority::Action::GateEvaluate,
+        ],
+    )
+    .await;
+
     let (status, _) = post(
         &client,
         &base,
         "/v1/evaluations/corpora",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "corpus_id": "cal-corpus",
             "version": 1,
             "cases_digest": DIGEST_A,
@@ -682,6 +776,7 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
             "/v1/evaluations/runs",
             &human_id,
             &json!({
+            "reason": "the suite records an evaluation site act",
                 "run_id": run_id,
                 "workflow": "blind",
                 "corpus_id": "cal-corpus",
@@ -702,6 +797,7 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
         "/v1/evaluations/calibrations",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "calibration_id": "cal-1",
             "corpus_id": "cal-corpus",
             "corpus_version": 1,
@@ -723,6 +819,7 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
         "/v1/evaluations/calibrations",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "calibration_id": "cal-ghost",
             "corpus_id": "cal-corpus",
             "corpus_version": 1,
@@ -733,13 +830,11 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
         }),
     )
     .await;
-    assert_eq!(status, 400, "the ghost run refuses: {refused}");
+    assert_eq!(status, 403, "the ghost run refuses: {refused}");
+    assert_eq!(refused["code"], json!("a named run is not registered, or was taken against another corpus version or workflow"), "{refused}");
     assert!(
-        refused["message"]
-            .as_str()
-            .unwrap()
-            .contains("REGISTERED runs"),
-        "{refused}"
+        refused["audit_id"].is_string(),
+        "a refused site act carries its audit id: {refused}"
     );
     let (status, refused) = post(
         &client,
@@ -747,6 +842,7 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
         "/v1/evaluations/calibrations",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "calibration_id": "cal-brier",
             "corpus_id": "cal-corpus",
             "corpus_version": 1,
@@ -766,6 +862,7 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
         "/v1/evaluations/gates",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "gate_id": "g5-blind",
             "corpus_id": "cal-corpus",
             "corpus_version": 1,
@@ -784,7 +881,8 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
         &base,
         "/v1/evaluations/gates/g5-blind/evaluations",
         &human_id,
-        &json!({ "c1": 0.85, "c2": 0.5 }),
+        &json!({
+            "reason": "the suite records an evaluation site act", "scores": { "c1": 0.85, "c2": 0.5 } }),
     )
     .await;
     assert_eq!(status, 200, "the evaluation appends: {evaluated}");
@@ -804,7 +902,8 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
         &base,
         "/v1/evaluations/gates/g5-blind/evaluations",
         &human_id,
-        &json!({ "c1": 0.95, "c2": 0.85 }),
+        &json!({
+            "reason": "the suite records an evaluation site act", "scores": { "c1": 0.95, "c2": 0.85 } }),
     )
     .await;
     assert_eq!(status, 200, "the second evaluation appends: {evaluated}");
@@ -831,6 +930,7 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
         "/v1/evaluations/gates",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "gate_id": "g5-bad",
             "corpus_id": "cal-corpus",
             "corpus_version": 1,
@@ -847,6 +947,7 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
         "/v1/evaluations/gates",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "gate_id": "g5-empty",
             "corpus_id": "cal-corpus",
             "corpus_version": 1,
@@ -862,10 +963,11 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
         &base,
         "/v1/evaluations/gates/ghost/evaluations",
         &human_id,
-        &json!({ "c1": 0.9 }),
+        &json!({
+            "reason": "the suite records an evaluation site act", "scores": { "c1": 0.9 } }),
     )
     .await;
-    assert_eq!(status, 400, "the ghost gate refuses: {refused}");
+    assert_eq!(status, 403, "the ghost gate refuses: {refused}");
 
     // 6b. `SIGNOFF-REPAIR.8.2.1` — the read side is held to the write side's
     // rules. Before the repair each of the three below returned 200 with
@@ -876,19 +978,31 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
         &base,
         "/v1/evaluations/gates/g5-blind/evaluations",
         &human_id,
-        &json!({}),
+        &json!({
+            "reason": "the suite records an evaluation site act", "scores": {  } }),
     )
     .await;
+    // ⚠️ 403 since `SIGNOFF-REPAIR.8.2.5.3`, and the neighbours below are still
+    // 400 — which is the whole point of `.8.2.5.2`. *Compares no case* is a fact
+    // about the BASELINE's intersection with these scores, so only the stored
+    // row can answer it and the answer is a domain refusal inside the site act.
+    // A malformed or out-of-range score needs no row, so it is refused by the
+    // pre-gate validator and keeps its typed 400.
     assert_eq!(
-        status, 400,
+        status, 403,
         "an evaluation that compares NO case refuses: {refused}"
+    );
+    assert!(
+        refused["audit_id"].is_string(),
+        "an in-gate refusal carries its audit id: {refused}"
     );
     let (status, refused) = post(
         &client,
         &base,
         "/v1/evaluations/gates/g5-blind/evaluations",
         &human_id,
-        &json!({ "c1": 0.95, "c2": "oops" }),
+        &json!({
+            "reason": "the suite records an evaluation site act", "scores": { "c1": 0.95, "c2": "oops" } }),
     )
     .await;
     assert_eq!(
@@ -900,7 +1014,8 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
         &base,
         "/v1/evaluations/gates/g5-blind/evaluations",
         &human_id,
-        &json!({ "c1": 0.95, "c2": 5.0 }),
+        &json!({
+            "reason": "the suite records an evaluation site act", "scores": { "c1": 0.95, "c2": 5.0 } }),
     )
     .await;
     assert_eq!(
@@ -916,7 +1031,8 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
         &base,
         "/v1/evaluations/gates/g5-blind/evaluations",
         &human_id,
-        &json!({ "c1": 0.95 }),
+        &json!({
+            "reason": "the suite records an evaluation site act", "scores": { "c1": 0.95 } }),
     )
     .await;
     assert_eq!(
@@ -933,7 +1049,8 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
         &base,
         "/v1/evaluations/gates/g5-blind/evaluations",
         &human_id,
-        &json!({ "c1": 1.0, "c2": 0.0 }),
+        &json!({
+            "reason": "the suite records an evaluation site act", "scores": { "c1": 1.0, "c2": 0.0 } }),
     )
     .await;
     assert_eq!(status, 200, "the closed range accepts 0.0 and 1.0: {edges}");
@@ -961,6 +1078,7 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
         "/v1/evaluations/corpora",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "corpus_id": "cal-corpus-faulted",
             "version": 1,
             "cases_digest": DIGEST_A,
@@ -990,6 +1108,15 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
         json!("invalid_command"),
         "a store fault must never be reported as a bad request: {faulted_body}"
     );
+    // ⛔ AND UNDER THE SITE GATE IT MUST NOT BE AUDITED AS A REFUSAL EITHER
+    // (`SIGNOFF-REPAIR.8.2.5.3`). `authorized`'s closure has two levels: the
+    // OUTER error rolls the act back with nothing recorded, because nothing was
+    // decided. A permanent site-audit row asserting a denial nobody made would
+    // be worse than the 400 this repair replaced.
+    assert!(
+        faulted_body["audit_id"].is_null(),
+        "a store fault decides nothing, so it is not audited as a refusal: {faulted_body}"
+    );
 
     // ⭐ NEGATIVE 1: the repair did not turn every refusal into a 500. A
     // GENUINE duplicate is still the caller's error, and it is the exact
@@ -1000,6 +1127,7 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
         "/v1/evaluations/corpora",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "corpus_id": "cal-corpus",
             "version": 1,
             "cases_digest": DIGEST_A,
@@ -1008,11 +1136,21 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
         }),
     )
     .await;
+    // ⚠️ 403 since `SIGNOFF-REPAIR.8.2.5.3`: whether a coordinate is taken is a
+    // question about the DATABASE, answered inside the gate. ⛔ What `.8.2.2`
+    // established is UNCHANGED and is what the next two lines assert — a real
+    // duplicate is still the CALLER's refusal, told apart from a store fault,
+    // and it is audited rather than returned as a 500.
     assert_eq!(
-        dup_status, 400,
-        "a real duplicate is still the caller's error: {dup_body}"
+        dup_status, 403,
+        "a real duplicate is still the caller's refusal: {dup_body}"
     );
-    assert_eq!(dup_body["code"], json!("invalid_command"), "{dup_body}");
+    assert_eq!(
+        dup_body["code"],
+        json!("that corpus version is already registered"),
+        "{dup_body}"
+    );
+    assert!(dup_body["audit_id"].is_string(), "{dup_body}");
     // ⭐ NEGATIVE 2: and so is a genuinely unregistered corpus, which reaches
     // the caller through the existence BOOLEAN rather than through the query's
     // error arm — the distinction this repair rests on.
@@ -1022,6 +1160,7 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
         "/v1/evaluations/runs",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "run_id": "cal-run-ghost",
             "workflow": "blind",
             "corpus_id": "cal-corpus-absent",
@@ -1033,11 +1172,115 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
         }),
     )
     .await;
+    // ⚠️ 403 since `.8.2.5.3`, for the same reason: existence is a question
+    // about the database. ⛔ The DISTINCTION `.8.2.2` rests on survives and is
+    // asserted here — this reaches the caller through the existence BOOLEAN, so
+    // it is a refusal with an audit id and not a `dependency_unavailable` 500.
     assert_eq!(
-        ghost_status, 400,
-        "an unregistered corpus is still the caller's error: {ghost_body}"
+        ghost_status, 403,
+        "an unregistered corpus is still the caller's refusal: {ghost_body}"
     );
-    assert_eq!(ghost_body["code"], json!("invalid_command"), "{ghost_body}");
+    assert_eq!(
+        ghost_body["code"],
+        json!("the named corpus version is not registered"),
+        "{ghost_body}"
+    );
+    assert_ne!(
+        ghost_body["code"],
+        json!("dependency_unavailable"),
+        "{ghost_body}"
+    );
+
+    // `SIGNOFF-REPAIR.8.2.5.3` — THE GATE ITSELF, in both directions and with
+    // the two capabilities told apart.
+    //
+    // 🔴 Before this repair every one of these returned 200: the seven
+    // `evaluation_*` tables carry no tenant column and each write admitted on
+    // bare enrolment, so any enrolled principal in the deployment set the
+    // standard the whole site measured against.
+    let (status, stranger) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "cal-stranger" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the stranger enrolls: {stranger}");
+    let stranger_id = stranger["principal_id"].as_str().unwrap().to_string();
+
+    // 1. ENROLLED but ungranted: refused, and the refusal is audited.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/evaluations/corpora",
+        &stranger_id,
+        &json!({
+            "reason": "a caller with no site grant tries to set the standard",
+            "corpus_id": "cal-corpus-stranger",
+            "version": 1,
+            "cases_digest": DIGEST_A,
+            "prompts_digest": DIGEST_B,
+            "cases": { "cases": [] },
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 403,
+        "an enrolled principal with no site grant registers no corpus: {refused}"
+    );
+    assert!(
+        refused["audit_id"].is_string(),
+        "a refused site act is audited: {refused}"
+    );
+
+    // 2. ⭐ THE TWO CAPABILITIES ARE SEPARATE, which is this repair's derived
+    // claim rather than a convenience: ROADMAP §4.1's charter names
+    // separation-of-duties, and a party that MEASURES against a standard must
+    // not be able to MOVE the standard. A holder of `gate_evaluate` alone runs
+    // a gate and cannot register one.
+    site_fixture::provision(
+        &pool,
+        &stranger_id,
+        &[reasonbraid_server::site_authority::Action::GateEvaluate],
+    )
+    .await;
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/evaluations/gates",
+        &stranger_id,
+        &json!({
+            "reason": "a measurer tries to move the standard",
+            "gate_id": "g5-stranger",
+            "corpus_id": "cal-corpus",
+            "corpus_version": 1,
+            "workflow": "blind",
+            "baseline": { "c1": 0.9 },
+            "threshold": 0.1,
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 403,
+        "gate_evaluate does NOT carry evaluation_record: {refused}"
+    );
+    // 3. ⭐ NEGATIVE: and the same holder CAN run a gate, so the grant is real
+    // rather than the refusal being universal.
+    let (status, evaluated) = post(
+        &client,
+        &base,
+        "/v1/evaluations/gates/g5-blind/evaluations",
+        &stranger_id,
+        &json!({
+            "reason": "the measurer measures",
+            "scores": { "c1": 0.95, "c2": 0.85 },
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "gate_evaluate alone still evaluates a gate: {evaluated}"
+    );
+    assert_eq!(evaluated["passed"], json!(true), "{evaluated}");
 
     // 7. The lists.
     let (status, calibrations) =
@@ -1064,6 +1307,7 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
         "/v1/evaluations/gates",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "gate_id": "g5-unbound",
             "corpus_id": "cal-corpus-absent",
             "corpus_version": 1,
@@ -1074,8 +1318,13 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
     )
     .await;
     assert_eq!(
-        status, 400,
+        status, 403,
         "a gate against an unregistered corpus refuses: {refused}"
+    );
+    assert_eq!(
+        refused["code"],
+        json!("the named corpus version is not registered"),
+        "{refused}"
     );
     // A run that EXISTS but belongs to another workflow is not eligible, and
     // the refusal must NAME what disagreed rather than saying no.
@@ -1085,6 +1334,7 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
         "/v1/evaluations/runs",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "run_id": "cal-run-other-workflow",
             "workflow": "sighted",
             "corpus_id": "cal-corpus",
@@ -1103,6 +1353,7 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
         "/v1/evaluations/calibrations",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "calibration_id": "cal-ineligible",
             "corpus_id": "cal-corpus",
             "corpus_version": 1,
@@ -1114,13 +1365,19 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
     )
     .await;
     assert_eq!(
-        status, 400,
+        status, 403,
         "a calibration over an ineligible run refuses: {refused}"
     );
-    let message = refused["message"].as_str().unwrap_or_default();
+    assert_eq!(refused["code"], json!("a named run is not registered, or was taken against another corpus version or workflow"), "{refused}");
+    // ⛔ THE DETAIL MOVED, AND `.8.2.4`'s POINT SURVIVES THE MOVE. A site act
+    // renders its refusal by CLASS, so the run's name and the scope that
+    // disagreed are no longer on the wire — they are in the audit record this
+    // id resolves. The class still tells the caller WHICH question failed, and
+    // `.8.2.4`'s repair (returning the run's own scope instead of a boolean, so
+    // the refusal can name what disagreed) is what makes that audit row useful.
     assert!(
-        message.contains("cal-run-other-workflow") && message.contains("sighted"),
-        "the refusal names the run AND what disagreed: {refused}"
+        refused["audit_id"].is_string(),
+        "the refusal is audited, and the audit carries which run disagreed: {refused}"
     );
     // ⭐ NEGATIVE: a check that refuses everything is this defect mirrored. A
     // gate against the REGISTERED corpus and a calibration over ELIGIBLE runs
@@ -1131,6 +1388,7 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
         "/v1/evaluations/gates",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "gate_id": "g5-bound",
             "corpus_id": "cal-corpus",
             "corpus_version": 1,
@@ -1150,6 +1408,7 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
         "/v1/evaluations/calibrations",
         &human_id,
         &json!({
+            "reason": "the suite records an evaluation site act",
             "calibration_id": "cal-eligible",
             "corpus_id": "cal-corpus",
             "corpus_version": 1,

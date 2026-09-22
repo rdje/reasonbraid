@@ -5,6 +5,7 @@
 //! This intentionally serializes the small administrative registry, including
 //! revocation, without depending on a particular grant-selection query plan.
 
+pub mod evaluation;
 mod operator;
 mod policies;
 mod registry;

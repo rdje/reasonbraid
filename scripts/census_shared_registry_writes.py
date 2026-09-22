@@ -881,9 +881,17 @@ def self_test() -> int:
     # site-global table and is meant to be — DOC-0071 decided the governance
     # library is shared by design — so what left this population is the route's
     # unguarded ADMISSION, never the table's reach.
-    arms.append(("the published 25/16 are derived from the rows, not stored",
+    # ⛔ 25/16 → 25/9 at `SIGNOFF-REPAIR.8.2.5.3`, and the movement again has one
+    # cause: all SEVEN evaluation writes were repaired into site acts in a
+    # single change (`evaluation_record` for the six that set the standard,
+    # `gate_evaluate` for the one that measures against it). ⚠️ The FIRST number
+    # did not move, and that is the informative half — the seven tables are
+    # still site-global and are meant to be, because DOC-0029 rules the harness
+    # site-wide by design. What left this population is the routes' unguarded
+    # ADMISSION, never the tables' reach.
+    arms.append(("the published 25/9 are derived from the rows, not stored",
                  len(precise) == 25
-                 and sum(1 for r in precise if r["admission"] == "identity only") == 16))
+                 and sum(1 for r in precise if r["admission"] == "identity only") == 9))
 
     # ── The OTHER two published figures (`SIGNOFF-REPAIR.7.1.2.2.3`) ─────────
     # ⛔ `N tables` and `residue N` were restated four times each and produced by
@@ -898,8 +906,12 @@ def self_test() -> int:
     # tenanted) → **17/0** here, where the drop in residue is the DEFINITION
     # widening from DOC-0029 alone to the three records that adjudicate this
     # population, not a table changing.
-    arms.append(("the published 17 tables are derived from the rows, not stored",
-                 len(enrolment_tables(live_rows)) == 17))
+    # → **10** at `SIGNOFF-REPAIR.8.2.5.3`: the seven `evaluation_*` tables left
+    # the enrolment-only set together, because their seven writes became site
+    # acts in one change. ⚠️ They remain site-global tables; it is the admission
+    # that moved, not the reach.
+    arms.append(("the published 10 tables are derived from the rows, not stored",
+                 len(enrolment_tables(live_rows)) == 10))
     # ⭐ residue 0 is a REAL statement and not an empty one: every site-global
     #    table still written on enrolment alone is named by an adjudicating
     #    record. Measured against DOC-0029 alone it would read 5, which is what

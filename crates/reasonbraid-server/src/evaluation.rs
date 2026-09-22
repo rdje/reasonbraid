@@ -26,6 +26,10 @@ pub struct CorpusRegistration {
     pub cases_digest: String,
     pub prompts_digest: String,
     pub cases: Value,
+    /// The site act's audit reason (`SIGNOFF-REPAIR.8.2.5.3`). ⚠️ A documented
+    /// wire ADDITION: every `evaluation_*` write is a site act now, and a site
+    /// act records why it was performed.
+    pub reason: crate::site_authority::Reason,
 }
 
 /// The run-row shape a client submits (`.4.2`): the workflow arm, the corpus
@@ -43,6 +47,10 @@ pub struct RunRecord {
     pub deterministic: bool,
     pub trial_count: i64,
     pub results: Value,
+    /// The site act's audit reason (`SIGNOFF-REPAIR.8.2.5.3`). ⚠️ A documented
+    /// wire ADDITION: every `evaluation_*` write is a site act now, and a site
+    /// act records why it was performed.
+    pub reason: crate::site_authority::Reason,
 }
 
 /// The register verb's outcome: the row as stored.
@@ -88,6 +96,16 @@ pub enum EvaluationError {
     UndeclaredSeed,
     /// The trial count is not positive.
     InvalidTrialCount(i64),
+    /// A record this act NAMED is not registered.
+    ///
+    /// 🔴 **`SIGNOFF-REPAIR.8.2.5.3` found these modelled as
+    /// [`EvaluationError::Duplicate`]** — `ghost_run`, `ghost_gate` and the
+    /// absent-trial refusal all returned the *already exists* variant, so one
+    /// enum arm meant both *this identity is taken* and *this identity does not
+    /// exist*. ⛔ In prose that was merely confusing; under the site gate, which
+    /// renders a refusal by its CLASS, it became a caller being told *that
+    /// calibration id already exists* when the defect was a run that does not.
+    NotRegistered(String),
     /// The store itself failed. ⛔ A database fault proves NOTHING about the
     /// caller's input and must never be reported as though it did
     /// (`SIGNOFF-REPAIR.8.2.2`). Every arm here used to collapse into
@@ -125,6 +143,9 @@ impl std::fmt::Display for EvaluationError {
                     "{what} already exists — the record's identity is its content, \
                      register a new version or run id instead of overwriting"
                 )
+            }
+            EvaluationError::NotRegistered(what) => {
+                write!(f, "{what} is not registered")
             }
             EvaluationError::UnknownCorpus(c) => {
                 write!(f, "corpus `{c}` at that version is not registered")
@@ -189,23 +210,37 @@ pub fn validate_corpus(registration: &CorpusRegistration) -> Result<(), Evaluati
 
 /// Register one corpus version (the content-addressed registry row).
 pub async fn register_corpus(
-    pool: &PgPool,
+    conn: &mut sqlx::PgConnection,
     registration: &CorpusRegistration,
 ) -> Result<RegisteredCorpus, EvaluationError> {
     validate_corpus(registration)?;
     let inserted = sqlx::query(
         "INSERT INTO evaluation_corpora \
          (corpus_id, version, cases_digest, prompts_digest, cases) \
-         VALUES ($1, $2, $3, $4, $5)",
+         VALUES ($1, $2, $3, $4, $5) \
+         ON CONFLICT (corpus_id, version) DO NOTHING",
     )
     .bind(&registration.corpus_id)
     .bind(registration.version)
     .bind(&registration.cases_digest)
     .bind(&registration.prompts_digest)
     .bind(&registration.cases)
-    .execute(pool)
+    .execute(&mut *conn)
     .await;
+    // ⭐ THE CONSTRAINT STILL ARBITRATES, THROUGH `rows_affected` RATHER THAN
+    // THROUGH AN ERROR (`SIGNOFF-REPAIR.8.2.5.3`): zero rows is the coordinate
+    // already being taken, and nothing else produces zero. ⚠️ `write_failure`'s
+    // duplicate branch is therefore UNREACHABLE at this site now, and it is kept
+    // rather than simplified away: it is what stops an `Err` being assumed to be
+    // a duplicate again if the `ON CONFLICT` clause is ever removed, which is the
+    // defect `SIGNOFF-REPAIR.8.2.2` repaired.
     match inserted {
+        Ok(done) if done.rows_affected() == 0 => Err(EvaluationError::Duplicate({
+            format!(
+                "corpus `{}` version {}",
+                registration.corpus_id, registration.version
+            )
+        })),
         Ok(_) => Ok(RegisteredCorpus {
             corpus_id: registration.corpus_id.clone(),
             version: registration.version,
@@ -236,7 +271,10 @@ pub fn validate_run(run: &RunRecord) -> Result<(), EvaluationError> {
 }
 
 /// Record one experiment run (the seed-declaring record).
-pub async fn record_run(pool: &PgPool, run: &RunRecord) -> Result<StoredRun, EvaluationError> {
+pub async fn record_run(
+    conn: &mut sqlx::PgConnection,
+    run: &RunRecord,
+) -> Result<StoredRun, EvaluationError> {
     validate_run(run)?;
     let corpus_exists: Option<bool> = sqlx::query_scalar(
         "SELECT EXISTS (SELECT 1 FROM evaluation_corpora \
@@ -244,7 +282,7 @@ pub async fn record_run(pool: &PgPool, run: &RunRecord) -> Result<StoredRun, Eva
     )
     .bind(&run.corpus_id)
     .bind(run.corpus_version)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await
     .map_err(EvaluationError::Storage)?;
     if !corpus_exists.unwrap_or(false) {
@@ -253,7 +291,8 @@ pub async fn record_run(pool: &PgPool, run: &RunRecord) -> Result<StoredRun, Eva
     let inserted = sqlx::query(
         "INSERT INTO evaluation_runs \
          (run_id, workflow, corpus_id, corpus_version, seed, deterministic, trial_count, results) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
+         ON CONFLICT (run_id) DO NOTHING",
     )
     .bind(&run.run_id)
     .bind(&run.workflow)
@@ -263,9 +302,19 @@ pub async fn record_run(pool: &PgPool, run: &RunRecord) -> Result<StoredRun, Eva
     .bind(run.deterministic)
     .bind(run.trial_count)
     .bind(&run.results)
-    .execute(pool)
+    .execute(&mut *conn)
     .await;
+    // ⭐ THE CONSTRAINT STILL ARBITRATES, THROUGH `rows_affected` RATHER THAN
+    // THROUGH AN ERROR (`SIGNOFF-REPAIR.8.2.5.3`): zero rows is the coordinate
+    // already being taken, and nothing else produces zero. ⚠️ `write_failure`'s
+    // duplicate branch is therefore UNREACHABLE at this site now, and it is kept
+    // rather than simplified away: it is what stops an `Err` being assumed to be
+    // a duplicate again if the `ON CONFLICT` clause is ever removed, which is the
+    // defect `SIGNOFF-REPAIR.8.2.2` repaired.
     match inserted {
+        Ok(done) if done.rows_affected() == 0 => {
+            Err(EvaluationError::Duplicate(format!("run `{}`", run.run_id)))
+        }
         Ok(_) => Ok(StoredRun {
             run_id: run.run_id.clone(),
             workflow: run.workflow.clone(),
@@ -374,6 +423,10 @@ pub struct TrialSubmission {
     #[serde(default)]
     pub cohorts: Vec<CohortRecord>,
     pub case_ids: Vec<String>,
+    /// The site act's audit reason (`SIGNOFF-REPAIR.8.2.5.3`). ⚠️ A documented
+    /// wire ADDITION: every `evaluation_*` write is a site act now, and a site
+    /// act records why it was performed.
+    pub reason: crate::site_authority::Reason,
 }
 
 /// The stored trial (the computed assignment rides it).
@@ -455,7 +508,7 @@ pub fn validate_trial(submission: &TrialSubmission) -> Result<(), EvaluationErro
 /// Create the shadow trial: the seeded assignment is SERVER-computed (the
 /// record alone reproduces it — the client never supplies a draw).
 pub async fn create_trial(
-    pool: &PgPool,
+    conn: &mut sqlx::PgConnection,
     submission: &TrialSubmission,
 ) -> Result<StoredTrial, EvaluationError> {
     validate_trial(submission)?;
@@ -465,7 +518,7 @@ pub async fn create_trial(
     )
     .bind(&submission.corpus_id)
     .bind(submission.corpus_version)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await
     .map_err(EvaluationError::Storage)?;
     if !corpus_exists.unwrap_or(false) {
@@ -486,7 +539,8 @@ pub async fn create_trial(
     let inserted = sqlx::query(
         "INSERT INTO evaluation_trials \
          (trial_id, corpus_id, corpus_version, seed, arms, cohorts, case_ids, assignment) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
+         ON CONFLICT (trial_id) DO NOTHING",
     )
     .bind(&submission.trial_id)
     .bind(&submission.corpus_id)
@@ -496,9 +550,19 @@ pub async fn create_trial(
     .bind(serde_json::to_value(&submission.cohorts).expect("the cohorts serialize"))
     .bind(serde_json::to_value(&submission.case_ids).expect("the case ids serialize"))
     .bind(serde_json::to_value(&assignment).expect("the assignment serializes"))
-    .execute(pool)
+    .execute(&mut *conn)
     .await;
+    // ⭐ THE CONSTRAINT STILL ARBITRATES, THROUGH `rows_affected` RATHER THAN
+    // THROUGH AN ERROR (`SIGNOFF-REPAIR.8.2.5.3`): zero rows is the coordinate
+    // already being taken, and nothing else produces zero. ⚠️ `write_failure`'s
+    // duplicate branch is therefore UNREACHABLE at this site now, and it is kept
+    // rather than simplified away: it is what stops an `Err` being assumed to be
+    // a duplicate again if the `ON CONFLICT` clause is ever removed, which is the
+    // defect `SIGNOFF-REPAIR.8.2.2` repaired.
     match inserted {
+        Ok(done) if done.rows_affected() == 0 => Err(EvaluationError::Duplicate({
+            format!("trial `{}`", submission.trial_id)
+        })),
         Ok(_) => Ok(StoredTrial {
             trial_id: submission.trial_id.clone(),
             corpus_id: submission.corpus_id.clone(),
@@ -517,25 +581,25 @@ pub async fn create_trial(
 
 /// Append one per-arm results row (append-only — never an overwrite).
 pub async fn record_trial_results(
-    pool: &PgPool,
+    conn: &mut sqlx::PgConnection,
     trial_id: &str,
     results: &Value,
 ) -> Result<(), EvaluationError> {
     let trial_exists: Option<bool> =
         sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM evaluation_trials WHERE trial_id = $1)")
             .bind(trial_id)
-            .fetch_one(pool)
+            .fetch_one(&mut *conn)
             .await
             .map_err(EvaluationError::Storage)?;
     if !trial_exists.unwrap_or(false) {
-        return Err(EvaluationError::Duplicate(format!(
+        return Err(EvaluationError::NotRegistered(format!(
             "trial `{trial_id}` (the results append to a REGISTERED trial)"
         )));
     }
     sqlx::query("INSERT INTO evaluation_trial_results (trial_id, results) VALUES ($1, $2)")
         .bind(trial_id)
         .bind(results)
-        .execute(pool)
+        .execute(&mut *conn)
         .await
         .map_err(|error| write_failure(error, || "trial result".to_string()))?;
     Ok(())
@@ -598,6 +662,10 @@ pub struct CalibrationSubmission {
     pub run_ids: Vec<String>,
     pub brier: Option<f64>,
     pub confidence: Value,
+    /// The site act's audit reason (`SIGNOFF-REPAIR.8.2.5.3`). ⚠️ A documented
+    /// wire ADDITION: every `evaluation_*` write is a site act now, and a site
+    /// act records why it was performed.
+    pub reason: crate::site_authority::Reason,
 }
 
 /// The gate submission (`.4.4`): the recorded baseline (case → score) + the
@@ -611,6 +679,10 @@ pub struct GateSubmission {
     pub workflow: String,
     pub baseline: Value,
     pub threshold: f64,
+    /// The site act's audit reason (`SIGNOFF-REPAIR.8.2.5.3`). ⚠️ A documented
+    /// wire ADDITION: every `evaluation_*` write is a site act now, and a site
+    /// act records why it was performed.
+    pub reason: crate::site_authority::Reason,
 }
 
 impl EvaluationError {
@@ -627,7 +699,7 @@ impl EvaluationError {
         ))
     }
     fn ghost_run(run_id: &str) -> Self {
-        EvaluationError::Duplicate(format!(
+        EvaluationError::NotRegistered(format!(
             "run `{run_id}` (the calibration accumulates REGISTERED runs only)"
         ))
     }
@@ -635,7 +707,7 @@ impl EvaluationError {
         EvaluationError::MalformedDigest(format!("{field} {value} is outside [0, 1]"))
     }
     fn ghost_gate(gate_id: &str) -> Self {
-        EvaluationError::Duplicate(format!(
+        EvaluationError::NotRegistered(format!(
             "gate `{gate_id}` (the evaluation targets a REGISTERED gate)"
         ))
     }
@@ -660,7 +732,7 @@ pub fn validate_calibration(submission: &CalibrationSubmission) -> Result<(), Ev
 
 /// Record one calibration (the accumulation over the named runs).
 pub async fn record_calibration(
-    pool: &PgPool,
+    conn: &mut sqlx::PgConnection,
     submission: &CalibrationSubmission,
 ) -> Result<Value, EvaluationError> {
     validate_calibration(submission)?;
@@ -676,7 +748,7 @@ pub async fn record_calibration(
             "SELECT corpus_id, corpus_version, workflow FROM evaluation_runs WHERE run_id = $1",
         )
         .bind(run_id)
-        .fetch_optional(pool)
+        .fetch_optional(&mut *conn)
         .await
         .map_err(EvaluationError::Storage)?;
         let Some((corpus_id, corpus_version, workflow)) = row else {
@@ -699,7 +771,8 @@ pub async fn record_calibration(
     let inserted = sqlx::query(
         "INSERT INTO evaluation_calibrations \
          (calibration_id, corpus_id, corpus_version, workflow, run_ids, brier, confidence) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+         VALUES ($1, $2, $3, $4, $5, $6, $7) \
+         ON CONFLICT (calibration_id) DO NOTHING",
     )
     .bind(&submission.calibration_id)
     .bind(&submission.corpus_id)
@@ -708,9 +781,19 @@ pub async fn record_calibration(
     .bind(serde_json::to_value(&submission.run_ids).expect("the run ids serialize"))
     .bind(submission.brier)
     .bind(&submission.confidence)
-    .execute(pool)
+    .execute(&mut *conn)
     .await;
+    // ⭐ THE CONSTRAINT STILL ARBITRATES, THROUGH `rows_affected` RATHER THAN
+    // THROUGH AN ERROR (`SIGNOFF-REPAIR.8.2.5.3`): zero rows is the coordinate
+    // already being taken, and nothing else produces zero. ⚠️ `write_failure`'s
+    // duplicate branch is therefore UNREACHABLE at this site now, and it is kept
+    // rather than simplified away: it is what stops an `Err` being assumed to be
+    // a duplicate again if the `ON CONFLICT` clause is ever removed, which is the
+    // defect `SIGNOFF-REPAIR.8.2.2` repaired.
     match inserted {
+        Ok(done) if done.rows_affected() == 0 => Err(EvaluationError::Duplicate({
+            format!("calibration `{}`", submission.calibration_id)
+        })),
         Ok(_) => Ok(json!({
             "calibration_id": submission.calibration_id,
             "corpus_id": submission.corpus_id,
@@ -762,7 +845,7 @@ pub fn validate_gate(submission: &GateSubmission) -> Result<(), EvaluationError>
 
 /// Record the gate (the baseline + the threshold).
 pub async fn record_gate(
-    pool: &PgPool,
+    conn: &mut sqlx::PgConnection,
     submission: &GateSubmission,
 ) -> Result<Value, EvaluationError> {
     validate_gate(submission)?;
@@ -777,7 +860,7 @@ pub async fn record_gate(
     )
     .bind(&submission.corpus_id)
     .bind(submission.corpus_version)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await
     .map_err(EvaluationError::Storage)?;
     if !corpus_exists.unwrap_or(false) {
@@ -786,7 +869,8 @@ pub async fn record_gate(
     let inserted = sqlx::query(
         "INSERT INTO evaluation_gates \
          (gate_id, corpus_id, corpus_version, workflow, baseline, threshold) \
-         VALUES ($1, $2, $3, $4, $5, $6)",
+         VALUES ($1, $2, $3, $4, $5, $6) \
+         ON CONFLICT (gate_id) DO NOTHING",
     )
     .bind(&submission.gate_id)
     .bind(&submission.corpus_id)
@@ -794,9 +878,19 @@ pub async fn record_gate(
     .bind(&submission.workflow)
     .bind(&submission.baseline)
     .bind(submission.threshold)
-    .execute(pool)
+    .execute(&mut *conn)
     .await;
+    // ⭐ THE CONSTRAINT STILL ARBITRATES, THROUGH `rows_affected` RATHER THAN
+    // THROUGH AN ERROR (`SIGNOFF-REPAIR.8.2.5.3`): zero rows is the coordinate
+    // already being taken, and nothing else produces zero. ⚠️ `write_failure`'s
+    // duplicate branch is therefore UNREACHABLE at this site now, and it is kept
+    // rather than simplified away: it is what stops an `Err` being assumed to be
+    // a duplicate again if the `ON CONFLICT` clause is ever removed, which is the
+    // defect `SIGNOFF-REPAIR.8.2.2` repaired.
     match inserted {
+        Ok(done) if done.rows_affected() == 0 => Err(EvaluationError::Duplicate({
+            format!("gate `{}`", submission.gate_id)
+        })),
         Ok(_) => Ok(json!({
             "gate_id": submission.gate_id,
             "corpus_id": submission.corpus_id,
@@ -849,7 +943,7 @@ pub fn validate_gate_scores(scores: &Value) -> Result<(), EvaluationError> {
 /// the baseline minus the threshold — a drop below it is the typed FAILURE.
 /// The result APPENDS (the gate never rewrites a result).
 pub async fn evaluate_gate(
-    pool: &PgPool,
+    conn: &mut sqlx::PgConnection,
     gate_id: &str,
     scores: &Value,
 ) -> Result<Value, EvaluationError> {
@@ -857,7 +951,7 @@ pub async fn evaluate_gate(
     let row: Option<(Value, f64)> =
         sqlx::query_as("SELECT baseline, threshold FROM evaluation_gates WHERE gate_id = $1")
             .bind(gate_id)
-            .fetch_optional(pool)
+            .fetch_optional(&mut *conn)
             .await
             .map_err(EvaluationError::Storage)?;
     let Some((baseline, threshold)) = row else {
@@ -910,7 +1004,7 @@ pub async fn evaluate_gate(
     .bind(gate_id)
     .bind(passed)
     .bind(serde_json::to_value(&failures).expect("the failures serialize"))
-    .execute(pool)
+    .execute(&mut *conn)
     .await;
     if let Err(error) = appended {
         return Err(write_failure(error, || {

@@ -3070,19 +3070,28 @@ async fn list_workflow_profiles(
 async fn register_evaluation_corpus(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(registration): Json<crate::evaluation::CorpusRegistration>,
-) -> Result<Json<crate::evaluation::RegisteredCorpus>, ControlApiError> {
+    request: Result<
+        Json<crate::evaluation::CorpusRegistration>,
+        axum::extract::rejection::JsonRejection,
+    >,
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
-        return Err(ControlApiError::unauthorized(
-            "an unenrolled principal registers no corpus",
-        ));
-    }
-    match crate::evaluation::register_corpus(&state.pool, &registration).await {
-        Ok(row) => Ok(Json(row)),
-        Err(error) => Err(error.into()),
-    }
+    let registration = site_request(request)?;
+    // ⛔ BEFORE THE GATE (`SIGNOFF-REPAIR.8.2.5.2`): a site refusal renders as an
+    // authorization reason, so validating inside the act turns a 400 about input
+    // into a 403 about authority. The write re-validates regardless.
+    crate::evaluation::validate_corpus(&registration)
+        .map_err(|error| ControlApiError::invalid_command(error.to_string()))?;
+    site_receipt_response(
+        site::evaluation::register_corpus(
+            &state.pool,
+            &principal,
+            &registration,
+            &registration.reason,
+        )
+        .await,
+        "a current site grant for this action and its actual boundary are required",
+    )
 }
 
 /// `GET /v1/evaluations/corpora` — the registry rows.
@@ -3105,19 +3114,16 @@ async fn list_evaluation_corpora(
 async fn record_evaluation_run(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(run): Json<crate::evaluation::RunRecord>,
-) -> Result<Json<crate::evaluation::StoredRun>, ControlApiError> {
+    request: Result<Json<crate::evaluation::RunRecord>, axum::extract::rejection::JsonRejection>,
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
-        return Err(ControlApiError::unauthorized(
-            "an unenrolled principal records no run",
-        ));
-    }
-    match crate::evaluation::record_run(&state.pool, &run).await {
-        Ok(row) => Ok(Json(row)),
-        Err(error) => Err(error.into()),
-    }
+    let run = site_request(request)?;
+    crate::evaluation::validate_run(&run)
+        .map_err(|error| ControlApiError::invalid_command(error.to_string()))?;
+    site_receipt_response(
+        site::evaluation::record_run(&state.pool, &principal, &run, &run.reason).await,
+        "a current site grant for this action and its actual boundary are required",
+    )
 }
 
 /// `GET /v1/evaluations/runs` — the recorded runs, newest first.
@@ -3141,19 +3147,20 @@ async fn list_evaluation_runs(
 async fn create_evaluation_trial(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(submission): Json<crate::evaluation::TrialSubmission>,
-) -> Result<Json<crate::evaluation::StoredTrial>, ControlApiError> {
+    request: Result<
+        Json<crate::evaluation::TrialSubmission>,
+        axum::extract::rejection::JsonRejection,
+    >,
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
-        return Err(ControlApiError::unauthorized(
-            "an unenrolled principal creates no trial",
-        ));
-    }
-    match crate::evaluation::create_trial(&state.pool, &submission).await {
-        Ok(row) => Ok(Json(row)),
-        Err(error) => Err(error.into()),
-    }
+    let submission = site_request(request)?;
+    crate::evaluation::validate_trial(&submission)
+        .map_err(|error| ControlApiError::invalid_command(error.to_string()))?;
+    site_receipt_response(
+        site::evaluation::create_trial(&state.pool, &principal, &submission, &submission.reason)
+            .await,
+        "a current site grant for this action and its actual boundary are required",
+    )
 }
 
 /// `GET /v1/evaluations/trials` — the trials, newest first.
@@ -3171,25 +3178,51 @@ async fn list_evaluation_trials(
     Ok(Json(crate::evaluation::list_trials(&state.pool).await?))
 }
 
+/// `POST /v1/evaluations/trials/{id}/results`' body (`SIGNOFF-REPAIR.8.2.5.3`).
+///
+/// ⚠️ **A DOCUMENTED WIRE CHANGE.** The route took a BARE results object, and a
+/// site act requires a reason for its audit record — so the results move under
+/// their own key rather than a field being added beside them. `deny_unknown_fields`
+/// makes the old shape a typed 400 rather than a silently ignored body.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TrialResultsSubmission {
+    pub results: serde_json::Value,
+    pub reason: crate::site_authority::Reason,
+}
+
+/// `POST /v1/evaluations/gates/{id}/evaluations`' body (`SIGNOFF-REPAIR.8.2.5.3`).
+/// The same documented wire change as [`TrialResultsSubmission`], for the scores.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GateEvaluation {
+    pub scores: serde_json::Value,
+    pub reason: crate::site_authority::Reason,
+}
+
 /// `POST /v1/evaluations/trials/{id}/results` — append one per-arm results
 /// row (append-only — the record's identity is its content).
 async fn record_trial_results(
     State(state): State<Arc<ApiState>>,
     Path(trial_id): Path<String>,
     headers: HeaderMap,
-    Json(results): Json<serde_json::Value>,
-) -> Result<Json<serde_json::Value>, ControlApiError> {
+    request: Result<Json<TrialResultsSubmission>, axum::extract::rejection::JsonRejection>,
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
-        return Err(ControlApiError::unauthorized(
-            "an unenrolled principal records no results",
-        ));
-    }
-    match crate::evaluation::record_trial_results(&state.pool, &trial_id, &results).await {
-        Ok(()) => Ok(Json(json!({ "trial_id": trial_id, "appended": true }))),
-        Err(error) => Err(error.into()),
-    }
+    let body = site_request(request)?;
+    // ⚠️ Nothing to validate ahead of the gate: this route's only check is that
+    // the trial exists, which needs the database (`SIGNOFF-REPAIR.8.2.5.2`).
+    site_receipt_response(
+        site::evaluation::record_trial_results(
+            &state.pool,
+            &principal,
+            &trial_id,
+            &body.results,
+            &body.reason,
+        )
+        .await,
+        "a current site grant for this action and its actual boundary are required",
+    )
 }
 
 /// `GET /v1/evaluations/trials/{id}/results` — the recorded per-arm results.
@@ -3215,19 +3248,25 @@ async fn list_trial_results(
 async fn record_evaluation_calibration(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(submission): Json<crate::evaluation::CalibrationSubmission>,
-) -> Result<Json<serde_json::Value>, ControlApiError> {
+    request: Result<
+        Json<crate::evaluation::CalibrationSubmission>,
+        axum::extract::rejection::JsonRejection,
+    >,
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
-        return Err(ControlApiError::unauthorized(
-            "an unenrolled principal records no calibration",
-        ));
-    }
-    match crate::evaluation::record_calibration(&state.pool, &submission).await {
-        Ok(row) => Ok(Json(row)),
-        Err(error) => Err(error.into()),
-    }
+    let submission = site_request(request)?;
+    crate::evaluation::validate_calibration(&submission)
+        .map_err(|error| ControlApiError::invalid_command(error.to_string()))?;
+    site_receipt_response(
+        site::evaluation::record_calibration(
+            &state.pool,
+            &principal,
+            &submission,
+            &submission.reason,
+        )
+        .await,
+        "a current site grant for this action and its actual boundary are required",
+    )
 }
 
 /// `GET /v1/evaluations/calibrations` — the calibration rows, newest first.
@@ -3252,19 +3291,20 @@ async fn list_evaluation_calibrations(
 async fn record_evaluation_gate(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(submission): Json<crate::evaluation::GateSubmission>,
-) -> Result<Json<serde_json::Value>, ControlApiError> {
+    request: Result<
+        Json<crate::evaluation::GateSubmission>,
+        axum::extract::rejection::JsonRejection,
+    >,
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
-        return Err(ControlApiError::unauthorized(
-            "an unenrolled principal records no gate",
-        ));
-    }
-    match crate::evaluation::record_gate(&state.pool, &submission).await {
-        Ok(row) => Ok(Json(row)),
-        Err(error) => Err(error.into()),
-    }
+    let submission = site_request(request)?;
+    crate::evaluation::validate_gate(&submission)
+        .map_err(|error| ControlApiError::invalid_command(error.to_string()))?;
+    site_receipt_response(
+        site::evaluation::record_gate(&state.pool, &principal, &submission, &submission.reason)
+            .await,
+        "a current site grant for this action and its actual boundary are required",
+    )
 }
 
 /// `GET /v1/evaluations/gates` — the gate rows, newest first.
@@ -3289,19 +3329,23 @@ async fn evaluate_gate_endpoint(
     State(state): State<Arc<ApiState>>,
     Path(gate_id): Path<String>,
     headers: HeaderMap,
-    Json(scores): Json<serde_json::Value>,
-) -> Result<Json<serde_json::Value>, ControlApiError> {
+    request: Result<Json<GateEvaluation>, axum::extract::rejection::JsonRejection>,
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
-    if !enrolled {
-        return Err(ControlApiError::unauthorized(
-            "an unenrolled principal evaluates no gate",
-        ));
-    }
-    match crate::evaluation::evaluate_gate(&state.pool, &gate_id, &scores).await {
-        Ok(row) => Ok(Json(row)),
-        Err(error) => Err(error.into()),
-    }
+    let body = site_request(request)?;
+    crate::evaluation::validate_gate_scores(&body.scores)
+        .map_err(|error| ControlApiError::invalid_command(error.to_string()))?;
+    site_receipt_response(
+        site::evaluation::evaluate_gate(
+            &state.pool,
+            &principal,
+            &gate_id,
+            &body.scores,
+            &body.reason,
+        )
+        .await,
+        "a current site grant for this action and its actual boundary are required",
+    )
 }
 
 /// `GET /v1/evaluations/gates/{id}/evaluations` — the gate's results.

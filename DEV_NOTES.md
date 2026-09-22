@@ -1,5 +1,21 @@
 # DEV_NOTES.md
 
+## 2026-09-22 — The evaluation harness is site-operator gated, and gating it exposed three defects nothing else could reach (`SIGNOFF-REPAIR.8.2.5.3`, closing `.8.2.5`)
+
+`REASONBRAID-REPAIR-0392`. Item 1 of the sequence is complete: the only live exposure of the five gaps is closed.
+
+- ✅ **ALL SEVEN WRITES ARE SITE ACTS.** Authorization, the effect and the audit are one ordered transaction, in the shape DOC-0029 ruled and four existing site surfaces already use. Until now each admitted on bare enrolment across seven tenant-less tables, so any enrolled principal in the deployment set the standard the whole site measured against.
+- ⭐ **TWO CAPABILITIES, DERIVED RATHER THAN PREFERRED**: `evaluation_record` sets the standard and `gate_evaluate` measures against it, because §4.1's charter names separation-of-duties and a party that measures must not be able to move the standard.
+- ✅ **FALSIFIED IN BOTH DIRECTIONS.** Removing the gate from one route returns the pre-repair `400 invalid_command` — the exposure itself. Collapsing the two actions into one refuses a `gate_evaluate` holder who should be able to evaluate. Both sources restored byte-identical.
+- 🔴 **THREE DEFECTS THE GATE MADE VISIBLE, none reachable before, which is the argument for gating rather than merely auditing.** A failed INSERT **aborted the audit transaction**, so a duplicate returned 500 rather than an audited refusal — `policy::register`'s own comment records the identical trap and its remedy. `ghost_run`, `ghost_gate` and the absent-trial refusal were all modelled as `Duplicate`, so one enum arm meant both *taken* and *does not exist*, and a caller was told *that calibration id already exists* when the defect was a run that does not. And the first refusal strings were one coarse class for the whole module, now a per-act pair.
+- ⚠️ **TWO REFUSALS MOVE 400 → 403, deliberately.** Whether a coordinate is taken, or a named run or gate exists, is a question about the database, answered inside the gate as an audited refusal. Answering it earlier would hand a caller with no site authority an existence oracle over a registry it may not write. ✅ Input validation is untouched and still returns its typed 400 — exactly what `.8.2.5.2` was built to preserve, and the suite now asserts the two side by side.
+- ⚠️ **A documented wire change on two routes**, whose bare bodies move under `results` / `scores` beside `reason`; the other five gain a `reason` field.
+- ✅ **READS STAY ON ENROLMENT, STATED RATHER THAN CHANGED BY OMISSION**: the tables are site-wide by design and §19.7's gate manifest is meant to be auditable. Gating them is a separate confidentiality decision and is explicitly not taken here.
+- ✅ **AN INDEPENDENT INSTRUMENT MEASURED THE REPAIR WITHOUT BEING ASKED.** `SHARED-REGISTRY-WRITES` refused the commit because its baseline pins the SET, not the count: all seven evaluation routes moved from `identity only` to `site authority`, printed line by line. Site-global writers stay **25**; those on **identity alone fall 16 → 9**, and the tables reached by an enrolment-only write **17 → 10**. ⭐ The first number not moving is the informative half — the tables are still site-global and are meant to be; what left is the routes' unguarded admission.
+- ⛔ **The dated records that restate the old figures are NOT rewritten**, and `.7.1.2.1` set that precedent for this exact situation when it gated `workflow_profiles`. Only the live baseline and the census's own pinned arms are updated, each with the one change that caused the movement — that instrument's established practice, and its `--self-test` returns 45/45.
+
+- ✅ `evaluation` **3/3** with six new controls, `policy` **26/26**, `site_authority` **11/11**, `migration_upgrade` **8/8**; clippy 0 warnings; fmt, book and the doctrine gate rc=0.
+
 ## 2026-09-22 — Validation moves ahead of the gate, and no test had to change (`SIGNOFF-REPAIR.8.2.5.2`)
 
 `REASONBRAID-REPAIR-0391`. A seam the gate turned out to need, found by implementing the one before it.

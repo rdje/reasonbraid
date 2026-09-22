@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-22 — All 21 rows carry a verdict, and 38 rows are 36 distinct deferrals (`SIGNOFF-REPAIR.11.4.7.2.1.4.3`, closing `.4`)
+
+`REASONBRAID-DOC-0122`. Tranche 3 of 3, and the pass corrects a population this lane published two commits ago.
+
+- ✅ **FOUR MORE `discharged`**: the adapter conformance kit (`tests/adapter_conformance.rs`, `tests/conformance/`, an 11-entry fixture corpus with its permanent-failure cases, and a third-party certification suite); the Phase-3 directory row, a superset of the gate record's #1 whose every added noun lands too; resource acquisition, including `migrations/0029_derivations.sql` — the derivation graph, the one noun a reader would expect to be missing; and the Phase-6 policy stack. ⚠️ That last one is discharged as MACHINERY: what a publication actually writes is `.9.3.5`'s open question, and the two are not the same claim.
+- ⚠️ **TWO MORE SPLITS.** Row 18 is **3 of 6**: the workflow engine, minority reports and the synthesizer half landed; decision rules and expected-artifact semantics are `.11.4.7.2.1.2`, the moderator half is `.11.4.7.2.1.3`. Row 20 is **2 of 3**: federation and the A2A/MCP gateways shipped, and Internet hardening is not met and says so — `.14` owns the exposure profile under a standing prohibition on deploying it.
+- 🔴 **ONE FRESH ABSENCE, AND THE SUPERSET IS WHY IT SURFACED: votes/abstentions.** `vote` exists as a workflow STEP in `TERMINAL_KINDS` and in the `policy_proposal` profile, so any census keyed on the word returns hits — but there is no ballot table and `abstain` appears **nowhere** in `crates` or `migrations`. The step exists; the ballot does not. ⛔ The gate record's narrower *decision-rule create fields* would never have led a reader here; the subtraction record's wider row did.
+- ✅ **THE POPULATION, CORRECTED BY THE PASS ITSELF.** **38 deferral rows** is exact and was measured by command. There are **36 distinct deferral statements**: rows 9 and 21 are verbatim restatements of the gate record's #4 and #6. ⛔ Two further rows CONTAIN an already-graded gate row and are deliberately NOT collapsed — a containment is not a duplicate, and folding them in would erase the extra nouns, one of which is the absence above.
+- ⭐ **THE PASS IS COMPLETE.** 13 discharged, 3 splits, 2 fired and superseded, 2 not yet triggered, 1 fired and open — and every open half names an executable owner with its own acceptance. None is parked.
+
 ## 2026-09-22 — Tranche 2's seven verdicts, and the first proof that the deferral population double-counts (`SIGNOFF-REPAIR.11.4.7.2.1.4.2`)
 
 `REASONBRAID-DOC-0121`. The Phase-1 subtraction record's Phase-2 rows, graded one command each.

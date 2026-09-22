@@ -241,6 +241,7 @@
 - [`2026-09-22_a-moderator-is-a-seat-restricted-to-the-moderation-vocabulary.md`](docs/decisions/2026-09-22_a-moderator-is-a-seat-restricted-to-the-moderation-vocabulary.md)
 - [`2026-09-22_a-policy-decision-is-its-threads-counted-close-and-an-approval-copies-it.md`](docs/decisions/2026-09-22_a-policy-decision-is-its-threads-counted-close-and-an-approval-copies-it.md)
 - [`2026-09-22_a-publication-records-its-git-operation-before-attempting-it.md`](docs/decisions/2026-09-22_a-publication-records-its-git-operation-before-attempting-it.md)
+- [`2026-09-22_a-thread-that-declared-no-rule-cannot-close-on-a-count.md`](docs/decisions/2026-09-22_a-thread-that-declared-no-rule-cannot-close-on-a-count.md)
 - [`2026-09-22_a-verdict-applies-its-threads-rule-and-cannot-claim-a-count.md`](docs/decisions/2026-09-22_a-verdict-applies-its-threads-rule-and-cannot-claim-a-count.md)
 - [`2026-09-22_an-incident-is-an-open-incident-review-thread-and-a-backup-is-reported-by-its-receipts.md`](docs/decisions/2026-09-22_an-incident-is-an-open-incident-review-thread-and-a-backup-is-reported-by-its-receipts.md)
 - [`2026-09-22_health-is-read-without-authority-and-says-only-state-and-age.md`](docs/decisions/2026-09-22_health-is-read-without-authority-and-says-only-state-and-age.md)

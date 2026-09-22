@@ -7888,7 +7888,10 @@ async fn a_policy_decision_is_its_threads_counted_close() {
     let (status, value) = decide("pdc-open", json!({})).await;
     refused(status, &value, "not closed", "an open thread");
 
-    // A RULE-LESS thread's close is the closer's claim.
+    // A RULE-LESS thread's close is the closer's claim. It asserted
+    // `accepted_unanimously` until `SIGNOFF-REPAIR.8.1.1.5` made that word a
+    // refusal on a thread that counted nothing; `accepted_by_rule` is still the
+    // closer's claim, which is what this control needs.
     let ruleless = thread("pdc-ruleless", None).await;
     let (status, closed) = post(
         &client,
@@ -7901,7 +7904,7 @@ async fn a_policy_decision_is_its_threads_counted_close() {
             "request_id": reasonbraid_core::RequestId::new().to_string(),
             "idempotency_key": "pdc-ruleless-close",
             "body": { "tenant_id": tenant_id, "reason": "asserted",
-                      "outcome": "accepted_unanimously" },
+                      "outcome": "accepted_by_rule" },
             "client_context": {},
         }),
     )

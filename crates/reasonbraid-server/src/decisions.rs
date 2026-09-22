@@ -234,6 +234,11 @@ pub enum CloseRefusal {
         asserted: &'static str,
         counted: &'static str,
     },
+    /// A ballot word on a thread that declared no rule, so nothing was counted
+    /// (`SIGNOFF-REPAIR.8.1.1.5`).
+    NoRuleDeclared {
+        asserted: &'static str,
+    },
     /// A ballot word under a family that counts no ballots.
     NothingCounted {
         asserted: &'static str,
@@ -263,6 +268,12 @@ impl std::fmt::Display for CloseRefusal {
                 "the close asserts `{asserted}` and the counted ballot is `{counted}` — \
                  under this thread's decision rule the outcome is derived; omit it to \
                  close with the count"
+            ),
+            Self::NoRuleDeclared { asserted } => write!(
+                f,
+                "`{asserted}` names a ballot result, and this thread declared no decision \
+                 rule, so nothing was counted — declare a counted rule at creation \
+                 (`decision_rule`) to close on a count"
             ),
             Self::NothingCounted { asserted, rule } => write!(
                 f,
@@ -341,10 +352,20 @@ pub fn classify_close(
     closer_is_owner: bool,
     asserted: Option<CloseOutcome>,
 ) -> Result<ClosedAs, CloseRefusal> {
-    // §6: a thread that declares no rule closes exactly as before — and the
-    // caller-asserted provenance is now recorded rather than implicit.
+    // §6: a thread that declares no rule closes on its closer's word, and the
+    // caller-asserted provenance is recorded rather than implicit — EXCEPT for
+    // the three words that name a count (`SIGNOFF-REPAIR.8.1.1.5`). Nothing was
+    // counted on a rule-less thread, which is exactly why `owner_decides` and
+    // `advisory_synthesis` already refuse them; a thread that declared less
+    // than those may not claim more.
     let Some(rule) = rule else {
-        return Ok(caller_asserted(asserted.unwrap_or_default()));
+        let asserted = asserted.unwrap_or_default();
+        if crate::threads::names_a_count(asserted) {
+            return Err(CloseRefusal::NoRuleDeclared {
+                asserted: asserted.canonical(),
+            });
+        }
+        return Ok(caller_asserted(asserted));
     };
     if let Some(process) = asserted.filter(|a| is_process_terminal(*a)) {
         return Ok(caller_asserted(process));
@@ -690,10 +711,15 @@ mod tests {
             let word = asserted.canonical();
             let process = is_process_terminal(asserted);
 
-            // No rule: everything caller-asserted, exactly as before.
+            // No rule: caller-asserted, except the three words that name a
+            // count, which nothing counted (`SIGNOFF-REPAIR.8.1.1.5`).
             assert_eq!(
                 cell(classify_close(None, None, &box3, false, Some(asserted))),
-                Cell::Caller,
+                if crate::threads::names_a_count(asserted) {
+                    Cell::Refused
+                } else {
+                    Cell::Caller
+                },
                 "no rule / {word}"
             );
 

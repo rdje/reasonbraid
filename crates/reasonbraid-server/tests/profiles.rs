@@ -8740,6 +8740,31 @@ async fn the_twelve_terminals_and_the_minority_report_ride_the_close() {
             .send()
             .await
             .expect("close request");
+        // `SIGNOFF-REPAIR.8.1.1.5`: these threads declare no rule, so the three
+        // words that name a COUNT are refused — nothing was counted. Where a
+        // count exists they are derived: all three under every counted family
+        // in `decisions.rs`'s `every_terminal_is_classified_under_every_rule`,
+        // and a derived `accepted_unanimously` persists live in
+        // `a_moderator_moderates_and_is_refused_everything_else`. Re-derived,
+        // not relaxed: the walk still visits all twelve words.
+        if [
+            "accepted_unanimously",
+            "accepted_with_recorded_objections",
+            "no_quorum",
+        ]
+        .contains(outcome)
+        {
+            assert_eq!(response.status().as_u16(), 400, "close {outcome}");
+            let refused: Value = response.json().await.unwrap();
+            assert!(
+                refused["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("declared no decision rule, so nothing was counted"),
+                "{outcome}: {refused}"
+            );
+            continue;
+        }
         assert_eq!(response.status().as_u16(), 200, "close {outcome}");
         let closed: Value = response.json().await.unwrap();
         assert_eq!(
@@ -8866,10 +8891,14 @@ async fn the_twelve_terminals_and_the_minority_report_ride_the_close() {
             "operation": "thread.close",
             "request_id": reasonbraid_core::RequestId::new().to_string(),
             "idempotency_key": "tw-refusal-close",
+            // `SIGNOFF-REPAIR.8.1.1.5`: this control is about a DECISION word
+            // with a non-empty unresolved register. It used
+            // `accepted_unanimously`, which a rule-less thread may no longer
+            // claim at all; `accepted_by_rule` keeps it testing that rule.
             "body": {
                 "tenant_id": tenant_id,
                 "reason": "dishonest",
-                "outcome": "accepted_unanimously",
+                "outcome": "accepted_by_rule",
                 "unresolved": ["an objection stands"],
             },
             "client_context": {},
@@ -13136,6 +13165,32 @@ async fn a_declared_rule_is_checked_against_the_charter_after_authorization() {
     .await;
     assert_eq!(status, 200, "{created}");
     let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    // `SIGNOFF-REPAIR.8.1.1.5`: a rule-less close may not claim a count. This
+    // control asserted `accepted_unanimously` and expected it accepted; it now
+    // asserts the refusal, then closes with a word the closer CAN state, which
+    // is what the provenance checks below are about.
+    let (status, refused) = thread_command(
+        &client,
+        &base,
+        &thread_id,
+        &human_id,
+        "dr-ruleless-count",
+        "thread.close",
+        json!({
+            "tenant_id": tenant_id,
+            "reason": "asserted",
+            "outcome": "accepted_unanimously",
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("declared no decision rule"),
+        "{refused}"
+    );
     let (status, closed) = thread_command(
         &client,
         &base,
@@ -13146,7 +13201,7 @@ async fn a_declared_rule_is_checked_against_the_charter_after_authorization() {
         json!({
             "tenant_id": tenant_id,
             "reason": "asserted",
-            "outcome": "accepted_unanimously",
+            "outcome": "accepted_by_rule",
         }),
     )
     .await;

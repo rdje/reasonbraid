@@ -382,7 +382,9 @@ enum ThreadCommand {
         /// canonical name, the default), `advisory_answer_only`, `deadlocked` (the
         /// `inconclusive` alias's canonical name), `no_quorum`, `insufficient_evidence`,
         /// `budget_exhausted`, `expired`, `cancelled`, `human_decision_required`,
-        /// `unsafe_to_continue`. A decision terminal refuses `--unresolved`.
+        /// `unsafe_to_continue`. A decision terminal refuses `--unresolved`. The three that
+        /// name a vote count (`accepted_unanimously`, `accepted_with_recorded_objections`,
+        /// `no_quorum`) are refused on a thread that declared no decision rule.
         #[arg(long)]
         outcome: Option<String>,
         /// An item that prevented a decision (repeatable; refused on a decided close).

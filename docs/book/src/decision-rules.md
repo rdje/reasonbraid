@@ -149,10 +149,10 @@ server fills in the outcome it works out.
 
 | The close states | no rule | `owner_decides` | counted rule | `advisory_synthesis` |
 | --- | --- | --- | --- | --- |
-| `accepted_unanimously` | accepted as stated | refused | must match the count | refused |
-| `accepted_with_recorded_objections` | accepted as stated | refused | must match the count | refused |
+| `accepted_unanimously` | **refused** — nothing was counted | refused | must match the count | refused |
+| `accepted_with_recorded_objections` | **refused** — nothing was counted | refused | must match the count | refused |
 | `accepted_by_rule` (or `decided`) | accepted as stated | only the creator may state it | must match the count | refused |
-| `no_quorum` | accepted as stated | refused | must match the count | refused |
+| `no_quorum` | **refused** — nothing was counted | refused | must match the count | refused |
 | `deadlocked` (or `inconclusive`) | accepted as stated | accepted as stated | must match the count | accepted as stated |
 | `advisory_answer_only` | accepted as stated | refused | refused | worked out by the rule |
 | `insufficient_evidence`, `budget_exhausted`, `expired`, `cancelled`, `human_decision_required`, `unsafe_to_continue` | accepted as stated | accepted as stated | accepted as stated | accepted as stated |
@@ -172,16 +172,32 @@ tally and charter digest rather than anything the request says.
 
 ## A thread that declares no rule
 
-A thread without a `decision_rule` closes exactly as before, and the close states
-the outcome. The difference is that the record now says so:
+A thread without a `decision_rule` closes on the closer's word, and the record
+says so:
 
 ```json
-{ "outcome": "accepted_unanimously", "outcome_provenance": "caller_asserted",
+{ "outcome": "accepted_by_rule", "outcome_provenance": "caller_asserted",
   "decision_rule": null, "tally": null }
 ```
 
-⚠️ An outcome like that is the closer's claim, not a count. The path to requiring
-a rule is tracked in [Blockers and known gaps](blockers.md).
+**It cannot claim a count** (`SIGNOFF-REPAIR.8.1.1.5`). `accepted_unanimously`,
+`accepted_with_recorded_objections` and `no_quorum` each describe a vote count,
+and nothing was counted, so a rule-less close stating one is refused:
+
+```text
+400 invalid_command — `accepted_unanimously` names a ballot result, and this thread
+    declared no decision rule, so nothing was counted — declare a counted rule at
+    creation (`decision_rule`) to close on a count
+```
+
+This matches what `owner_decides` and `advisory_synthesis` already did: a thread
+that declared less than those may not claim more. Every other outcome is still
+accepted as stated, and marked `caller_asserted`.
+
+⚠️ Declaring a rule is still **optional**. Every existing enrollment boundary
+names a label charter, which refuses every rule, so a mandatory rule would refuse
+every thread in every existing deployment. That step waits until deployments
+have registered charters (tracked in [Blockers and known gaps](blockers.md)).
 
 ## What is not implemented yet
 

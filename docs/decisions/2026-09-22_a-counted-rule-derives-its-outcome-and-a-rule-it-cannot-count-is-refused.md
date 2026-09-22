@@ -192,3 +192,7 @@ ending it.
 3. **Refusing the three count words on rule-less threads today.** Rejected: that edits
    the twelve-terminal walk's assertions, which `.8.1.1`'s acceptance forbids, and it
    cannot be made mandatory while charters fail closed (§6).
+   > 🔴 **Reversed by `docs/decisions/2026-09-22_a-thread-that-declared-no-rule-cannot-close-on-a-count.md`
+   > (`.8.1.1.5`, REPAIR-0414).** The walk constraint was this leaf's, and refusing a word
+   > does not make a rule mandatory. §5's rule-less column now refuses the three count
+   > words, as its `owner_decides` column always did.

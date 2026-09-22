@@ -152,6 +152,21 @@ pub enum Action {
     /// tenant — so the repair is the authority the write always needed, and it
     /// is deliberately the same shape [`Self::WorkflowRegister`] took.
     PolicyRegister,
+    /// Setting the evaluation STANDARD (`SIGNOFF-REPAIR.8.2.5`): registering a
+    /// corpus, recording a run, creating a trial, recording its results,
+    /// recording a calibration and recording a gate. All seven `evaluation_*`
+    /// tables carry no tenant column and every write admitted on bare
+    /// enrolment, so any enrolled principal set the standard the whole site
+    /// measured against. DOC-0029 rules the family site-wide and
+    /// site-operator gated; this is that gate.
+    EvaluationRecord,
+    /// MEASURING against the standard (`SIGNOFF-REPAIR.8.2.5`): running a gate.
+    /// ⭐ Separate from [`Self::EvaluationRecord`] by derivation, not by taste —
+    /// ROADMAP §4.1's charter names separation-of-duties, and §19's release flow
+    /// has two parties: one maintains the corpus and the baselines, while CI
+    /// evaluates gates continuously. A party that measures against a standard
+    /// must not be able to move the standard.
+    GateEvaluate,
 }
 
 impl Action {
@@ -166,6 +181,8 @@ impl Action {
             Self::EvidenceExpire => "evidence_expire",
             Self::WorkflowRegister => "workflow_register",
             Self::PolicyRegister => "policy_register",
+            Self::EvaluationRecord => "evaluation_record",
+            Self::GateEvaluate => "gate_evaluate",
         }
     }
 }

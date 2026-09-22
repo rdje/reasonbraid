@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-22 — The two evaluation site actions land before anything constructs them (`SIGNOFF-REPAIR.8.2.5.1`)
+
+`REASONBRAID-REPAIR-0390`. Item 1 of the sequence begins, in `.9.3.4`'s measured decomposition.
+
+- ⭐ **THE DIFF REACHES NOTHING, WHICH IS THE POINT.** `Action::EvaluationRecord` and `Action::GateEvaluate` with their wire names, plus one additive migration widening both `CHECK` constraints. No handler, no test, no other module — a variant nothing constructs changes no behaviour, and a widened constraint admits names no row holds.
+- ⭐ **TWO ACTIONS, NOT ONE, AND THE SPLIT IS DERIVED RATHER THAN PREFERRED.** ROADMAP §4.1's charter names *separation-of-duties and conflict-of-interest constraints*, and §19's release flow has two parties: one maintains the corpus, the runs and the gate baselines, while CI evaluates gates continuously. ⛔ **A party that measures against a standard must not be able to move the standard**, so `evaluation_record` covers the six standard-setting writes and `gate_evaluate` covers running a gate.
+- ⛔ **THE MIGRATION CANNOT FAIL AGAINST EXISTING DATA AND SAYS SO.** The action set lives in two `CHECK` constraints rather than a lookup table, so widening it is a migration by construction, and no row can already hold either name.
+- 🔎 **THE SCOPE WAS NARROWED MID-IMPLEMENTATION, BY THE LEAF'S OWN ACCEPTANCE.** It first also owned converting the seven evaluation writes from a pool to a connection. The compiler refused that seven times, because a handler holding a pool cannot pass it where a connection is wanted — and the clause *no handler changes, because a seam that changes a caller is not a seam* made that a scope error rather than a compile error to route around. ⭐ The churn would also have been scaffolding: `.2` puts the handlers back on a pool, since `authorized()` supplies the connection from inside.
+- ✅ **VERIFIED BY THE SUITES THAT WOULD NOTICE**, not the cheap ones: `migration_upgrade` **8/8** (the constraint replacement applies over a populated schema), `site_authority` **11/11**, `evaluation` **3/3**, no test edited. Clippy 0 warnings, fmt and the doctrine gate rc=0.
+- ⛔ **The book is deliberately unchanged**: no route behaves differently yet, and documenting a gate that does not gate is the drift the mdBook rule exists to prevent.
+
 ## 2026-09-22 — Every remaining roadmap gap is owned by an executable leaf, and the order is a rule rather than a preference (`SIGNOFF-REPAIR.15`)
 
 `REASONBRAID-DOC-0123`. The director's instruction: own, track and work all five, and sequence the whole of it here.

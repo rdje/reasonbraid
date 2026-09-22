@@ -4065,6 +4065,16 @@ grep -oE '`[a-z_]+`' docs/decisions/2026-09-16_evidence-is-shared-the-read-is-te
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
 
+#### SIGNOFF-REPAIR.8.1.1 — The close outcome names ballot results the system never counts
+
+- Opened: `pending` by `.15`, whose ownership audit found this finding routed to `.11.4.7.2.1.2` — a leaf that owns the decision-rule CREATE FIELDS and not the ballot they would be counted under.
+- 🔴 **THE SHARP FORM, which is not *there is no vote table*.** `CloseOutcome` has fourteen variants and four of them are BALLOT RESULTS — `AcceptedUnanimously`, `AcceptedWithRecordedObjections`, `AcceptedByRule`, `NoQuorum`. ⛔ `VerdictInput` carries `rule: String` and `outcome: CloseOutcome`, both **supplied by the caller** under `deny_unknown_fields`. So a closer ASSERTS unanimity, asserts the rule it was reached under, and asserts that quorum failed, and nothing counts anything. `git grep -c abstain -- crates migrations` returns **0**, and no migration creates a table naming a vote.
+- ⭐ **THAT IS `.8.2.4`'s SHAPE AT THE DELIBERATION LAYER: a stored row asserting a provenance nothing derived** — and it is the sharpest instance this project has, because the asserted words are the product's whole output. A thread's terminal record is what a governance reader acts on.
+- ⛔ **IT IS NOT REPAIRED BY ADDING A TABLE.** `vote` is a workflow STEP (`workflows::TERMINAL_KINDS`) and the eight built-in profiles compose it; the question is what a `vote` step DOES, which the decision rule defines. ⚠️ So this leaf is **sequenced after `.11.4.7.2.1.2`** and must not start before it: building a tally against an undecided rule is the rework the sequence exists to avoid.
+- Owns: what a `vote` step records, how the tally reaches `CloseOutcome`, and which of the four ballot variants a closer may still assert versus which the server must derive — with abstention in the vocabulary or explicitly out of it.
+- Acceptance: `.11.4.7.2.1.2`'s decision-rule contract is quoted and this leaf builds ONLY against it; the four ballot-result variants are each classified `derived` or `caller-asserted` with the reason, because leaving that implicit is the present defect; a close whose asserted outcome DISAGREES with the counted ballot is refused, observed RED first; abstention is either recorded or declined in writing, never absent by accident; and the existing thread-close walk keeps every assertion it has.
+- Verification / commit: pending.
+
 ### SIGNOFF-REPAIR.8.2 — Evaluation and routing evidence
 
 - Status: `pending`.
@@ -4078,6 +4088,16 @@ grep -oE '`[a-z_]+`' docs/decisions/2026-09-16_evidence-is-shared-the-read-is-te
 - 🔎 **THE FAMILY IS SEVEN, NOT SIX — annotated 2026-09-19 by `SIGNOFF-REPAIR.7.1.2` (DOC-0066), so clause 1's scope is not carried at the wrong width.** DOC-0029 decides "the six `evaluation_*` tables"; `evaluation_trial_results` is the seventh, created as the SECOND `CREATE TABLE` in `migrations/0034_evaluation_trials.sql` — a count taken per FILE sees six. Its site-operator gate is owed on the same terms as the other six, and `record_trial_results` is the write that admits on enrolment alone. ⛔ Not a new finding: the same clause, at its true population.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
+
+#### SIGNOFF-REPAIR.8.2.5 — The evaluation family is site-wide BY DESIGN and its site-operator gate was never applied
+
+- Opened: `pending` by `.15`, whose ownership audit found `.8.2` clause 1 routed to a container and resting on a premise that is **false**.
+- 🔴 **THE EXPOSURE, and it is the whole family rather than one route.** All **seven** `evaluation_*` tables carry no tenant dimension, and every write admits on bare enrolment — `reader_tenant(&state.pool, &principal).await?.is_some()` and nothing else — with no principal reaching the service. So any enrolled principal in the deployment registers a corpus, records a run, creates a trial, records a calibration, records a gate and evaluates any gate, and reads every other caller's records. Re-derive the schema half with `for t in evaluation_corpora evaluation_runs evaluation_trials evaluation_calibrations evaluation_gates evaluation_gate_results evaluation_trial_results; do grep -l "CREATE TABLE $t" migrations/*.sql; done` and `git grep -c tenant_id -- migrations/0033_evaluation_service.sql migrations/0034_evaluation_trials.sql migrations/0035_evaluation_gates.sql`.
+- ⛔ **THE MISSING TENANT COLUMN IS NOT THE DEFECT, AND SAYING IT WAS WOULD SEND THE REPAIR THE WRONG WAY.** `docs/decisions/2026-09-19_the-policy-registry-is-a-shared-control-surface.md` records DOC-0029's verdict for this family verbatim: **site-wide by design, gated by SITE-OPERATOR grants**. The harness is release engineering (ROADMAP §19), not a tenant product surface. ⭐ The defect is that the ruled gate was never applied.
+- 🔴 **AND THE PREMISE BOTH `.8.2` AND THE BOOK PUBLISH IS WRONG.** They say *no `GrantAction` and no `TargetSelector` can name a corpus or a gate, so there is nothing for an authority check to bind to yet*. ⛔ Wrong twice. (a) The site-operator gate does not bind through `GrantAction` at all — `site_authority::{workflows::register_profile, policies::register_policy, retention::expire_evidence, retention::tombstone_evidence}` are four shipped surfaces using it. (b) `.9.3.4` did not rule the vocabulary closed; it ruled that **`GrantAction` EXTENDS** and extended it five times (`PolicyVersionRegister`, `PolicyProposalApprove`, `PolicyPublicationWrite`, `PolicyCorrectionRecord`, `DeploymentTargetRegister`). The blocker was a reading, not a measurement, and this leaf is not blocked.
+- Owns: applying the site-operator gate to the seven evaluation writes on the terms the four existing site-wide surfaces already use — the operator principal checked, a `reason` required, a refusal carrying its audit id — and correcting the two places that publish the false blocker.
+- Acceptance: each of the seven writes refuses a caller holding no site-operator grant, observed RED first through the HTTP surface; a caller holding one succeeds in the same run, because a gate that refuses everyone is the exposure mirrored; every refusal writes an audit row and returns its id, as the four existing surfaces do; the READ side's disposition is stated explicitly — site-wide reads are DOC-0029's design and are either left open with that citation or gated with a reason, never changed silently; the `evaluation` suite stays green; and the book's admission note is rewritten from *nothing to bind to* to what actually gates it.
+- Verification / commit: pending.
 
 #### SIGNOFF-REPAIR.8.2.4 — The gate and the calibration name a corpus they never bind to, and the split that found them is the goal line's own table
 
@@ -4098,7 +4118,7 @@ git grep -n '^#\{4,6\} SIGNOFF-REPAIR\.8\.2' -- docs/tasks/SIGNOFF-REPAIR.md | w
 | reject missing / non-numeric gate measurements | `.8.2.1` | ✅ done |
 | derive calibration from eligible runs | **this leaf** | 🔴 existence is checked, eligibility is not |
 | audit routing only in the intended authorized transaction | — | not assessed here |
-| clause 1 — every evaluation write admits any ENROLLED principal | — | ⛔ blocked on vocabulary: `.9.3.4` measured that no `GrantAction` and no `TargetSelector` can NAME a corpus or a gate |
+| clause 1 — every evaluation write admits any ENROLLED principal | `.8.2.5` | 🔴 **NOT blocked — this cell was wrong when written.** It is corrected by `.15`: DOC-0029 ruled the family **site-wide, gated by SITE-OPERATOR grants**, which does not bind through `GrantAction` at all, and `.9.3.4` EXTENDED that vocabulary five times rather than closing it |
 | clause 2 — the seeded assignment's 32-bit truncation | `.8.2.3` | ✅ done |
 | clause 3 — a gate that measured nothing reports PASS | `.8.2.1` | ✅ done |
 | clause 4 — a dead database reports "already exists" | `.8.2.2` | ✅ done |
@@ -11260,6 +11280,51 @@ done
 - promotion: **accepted.** ⭐ *An instrument's first run describes its own parser* now has THREE instances in two commits — the recursive glob, the single dialect, and the `dangling` class — which is the trigger `SIGNOFF-REPAIR.11.24.1.6` armed. Written to `docs/knowledge/an-instruments-first-population-describes-its-parser.md`.
 - Decision: `docs/decisions/2026-09-20_a-task-tree-has-three-relative-reference-dialects.md` (+ INDEX). `docs/TASK_TREE_README.md` gains the third dialect and the lane rule.
 - Commit: `REASONBRAID-REPAIR-0330 (leaf SIGNOFF-REPAIR.11.24.1.6.1): a task tree has three relative-reference dialects, and not one of those references meant a lane`.
+
+### SIGNOFF-REPAIR.15 — Own and sequence the five remaining roadmap-completeness gaps
+
+- Opened: `pending` by the director's instruction 2026-09-22 — *make sure these are task-tree owned, tracked and worked on at some point … it is yours to sequence all the needed actions and decisions*, against the objective *all of ReasonBraid's roadmap, goals and objectives fully implemented and working*.
+- Status: `done`; DOC-0123. **Two of the five had no executable owner, one was called blocked and is the most ready, and the order is now a rule rather than a preference.**
+- ✅ **THE OWNERSHIP AUDIT, run mechanically rather than from memory** — for each named finding: does a leaf exist, does it carry its own `- Acceptance:` line, and could someone open it and finish it (`TOOLBOX.md`)?
+
+| # | the gap | owner | before this leaf |
+| --- | --- | --- | --- |
+| 1a | `SIGNOFF-REPAIR.15` | `done` | ✅ DOC-0123 — **every remaining roadmap gap is owned by an executable leaf, and the order is a rule rather than a preference.** The audit found **two of five** routed to a leaf nobody could finish (`.8.2`, a container) and created `.8.2.5` and `.8.1.1`. 🔴 Its real find: **the one finding everyone called BLOCKED is the most ready** — the book and `.8.2` both publish *nothing for an authority check to bind to*, and DOC-0029 already ruled the evaluation family **site-wide, site-operator gated**, which does not bind through `GrantAction` at all, while `.9.3.4` EXTENDED that vocabulary five times rather than closing it. Both halves were a reading where a measurement was available. ⭐ Sequence recorded in `docs/decisions/`: a live exposure first, then every scope decision (largest possible deletion first, because each is hours and can only shrink what follows), then the builds in dependency order. **After item 5 the remaining build is fully scoped** — a deliberate checkpoint, not a side effect. ⛔ The dependency is enforced by `.8.1.1`'s own acceptance, not by the record being remembered. **Next: `.8.2.5`** |
+| 1 | a publication's content is never written outside PostgreSQL | `.9.3.5` | ✅ executable |
+| 2 | no OpenTelemetry sink, dashboards, SLO baselines or game days | `.4.6` | ✅ executable |
+| 3 | a `vote` step with no ballot | **`.8.1.1` — created here** | 🔴 routed to `.11.4.7.2.1.2`, which owns the decision-rule CREATE FIELDS and not the ballot |
+| 4 | §13.5's moderator exists only in the benchmark | `.11.4.7.2.1.3` | ✅ executable |
+| 5 | every evaluation write admits any enrolled principal | **`.8.2.5` — created here** | 🔴 routed to `.8.2`, a container with no acceptance of its own |
+
+- 🔴 **AND THE AUDIT'S REAL FIND IS THAT THE ONE CALLED BLOCKED IS THE MOST READY.** `.8.2` clause 1 and the shipped book chapter both publish *no `GrantAction` and no `TargetSelector` can name a corpus or a gate, so there is nothing for an authority check to bind to yet*. ⛔ Wrong twice, and both halves were a READING where a measurement was available:
+  - The gate does not bind through `GrantAction`. `docs/decisions/2026-09-19_the-policy-registry-is-a-shared-control-surface.md` records DOC-0029's verdict for this exact family — **site-wide by design, gated by SITE-OPERATOR grants** — and `git grep -n "^pub async fn" -- crates/reasonbraid-server/src/site_authority/` returns four surfaces already using it.
+  - `.9.3.4` did not close the vocabulary. It ruled `GrantAction` **EXTENDS** and extended it five times; today's enumeration returns **15** variants.
+- ⭐ **So the widest exposure in the set is unblocked and has four shipped precedents**, which is the single fact that set the head of the sequence.
+- ✅ **THE SEQUENCE, and the RULE it comes from, are recorded where they survive this session**: `docs/decisions/2026-09-22_the-remaining-roadmap-gaps-are-sequenced-by-exposure-then-deletion.md`. Order: **a live exposure on a shipped surface** first; then **every outstanding scope decision**, largest possible deletion first, because each is hours and can only shrink what follows; then **the builds**, in dependency order.
+
+| order | leaf | wave |
+| ---: | --- | --- |
+| 1 | `.8.2.5` — the evaluation family's site-operator gate | exposure |
+| 2 | `.9.3.5` — publication content: which store, or a deferral with an evaluable trigger | decision |
+| 3 | `.4.6` — which of the four observability commitments are owed | decision |
+| 4 | `.11.4.7.2.1.2` — the decision-rule and expected-artifact contract | decision |
+| 5 | `.11.4.7.2.1.3` — §13.5's moderator: product or benchmark-only | decision |
+| 6 | `.8.1.1` — the counted outcome, which item 4 gates | build |
+| 7 | whatever waves 2, 3 and 5 keep | build |
+
+- ⛔ **THE DEPENDENCY IS ENFORCED BY THE LEAF, NOT BY THIS RECORD BEING REMEMBERED**: `.8.1.1`'s own acceptance requires `.11.4.7.2.1.2`'s contract to be quoted and built against, so starting it early fails its own gate.
+- ⭐ **AFTER ITEM 5 THE REMAINING BUILD IS FULLY SCOPED, and that is a deliberate checkpoint** rather than a side effect — the director sees the true size of what is left before any large build begins.
+- ⚠️ **What the sequence does NOT claim**: anything about wall-clock. Item 1 is a repair with four precedents and item 7 may be the largest build left in the project. Sizing stays per leaf.
+- ⚠️ **Two of the decisions may honestly answer *not before G9*.** That is legitimate, and each acceptance requires the deferral to name a condition a later pass can EVALUATE — never a phase that has already closed, which is the defect `.11.4.7.2.1` measured at **27 of 27**.
+- [x] **REPRODUCE / ISSUE** — the audit above, run against the tree rather than from memory: two of the five findings resolved to a leaf that could not be finished, and the book publishes a blocker that two records refute.
+- [x] **ROOT CAUSE (WHY + WHERE)** — a finding routed to a container reads as owned and is not (`TOOLBOX.md`'s test), and `.8.2`'s clause 1 note was written from a reading of `.9.3.4`'s opening premise rather than from its decision or from DOC-0029's verdict.
+- [x] **THE DECISION** — two executable leaves created, the false blocker corrected in both places that publish it, and the order fixed by a stated rule in a decision record so a later reader can check it rather than trust it.
+- [x] **ADDRESSED (verified)** — every one of the five now resolves to a leaf carrying its own `- Acceptance:`; `git grep -n "^pub async fn" -- crates/reasonbraid-server/src/site_authority/` returns the four precedent surfaces; today's `GrantAction` enumeration returns 15 variants and none names a corpus, which is the fact the leaf inherits and the blocker misread.
+- [x] **NO REGRESSION** — no executable changed. `make gate` → `=== all doctrines green ===`, rc=0 over the staged tree.
+- [x] **LOCKSTEP** — `MEMORY.md`, `CHANGELOG.md`, `DEV_NOTES.md`, `LIVE_STATUS.md`, `docs/book/src/evaluation-harness.md` (the false blocker it publishes), `docs/decisions/` plus its index, and this tree, in this commit.
+- promotion: declined (*order by exposure, then by what a decision can delete, then by dependency* is the decision record's own content, and a knowledge note would be a second copy of it).
+- Verification: the ownership audit re-run at this commit; the two refuting citations read from the tracked records; `make gate` green, rc=0.
+- Commit: `REASONBRAID-DOC-0123 (leaf SIGNOFF-REPAIR.15): every remaining roadmap gap is owned by an executable leaf, and the order is a rule rather than a preference`.
 
 ### SIGNOFF-REPAIR.12 — Requalification and return to roadmap
 

@@ -1,5 +1,19 @@
 # DEV_NOTES.md
 
+## 2026-09-22 — Every remaining roadmap gap is owned by an executable leaf, and the order is a rule rather than a preference (`SIGNOFF-REPAIR.15`)
+
+`REASONBRAID-DOC-0123`. The director's instruction: own, track and work all five, and sequence the whole of it here.
+
+- 🔴 **TWO OF THE FIVE HAD NO OWNER ANYONE COULD FINISH.** A finding routed to a container reads as owned and is not — `TOOLBOX.md`'s test is *can someone open that leaf and finish it*, and `.8.2` carries a goal line naming five mechanisms with no acceptance of its own. `.8.2.5` (the evaluation gate) and `.8.1.1` (the ballot) were created, each with its own acceptance.
+- 🔴 **AND THE AUDIT'S REAL FIND: THE ONE FINDING EVERYONE CALLED BLOCKED IS THE MOST READY.** `.8.2` clause 1 and the shipped book chapter both publish *no `GrantAction` and no `TargetSelector` can name a corpus or a gate, so there is nothing for an authority check to bind to yet*. Wrong twice, and both halves were a reading where a measurement was available:
+  - The gate does not bind through `GrantAction`. `docs/decisions/` already records DOC-0029's verdict for this exact family — **site-wide by design, gated by SITE-OPERATOR grants** — and four site-wide surfaces already use that mechanism.
+  - `.9.3.4` did not close the vocabulary. It ruled `GrantAction` **EXTENDS**, and extended it five times.
+- ⛔ **Both places that published it are corrected in this commit**, the task tree and the book, rather than the correction living only here.
+- ⭐ **THE SEQUENCE COMES FROM A STATED RULE, so a later reader can check it rather than trust it**: a live exposure on a shipped surface first; then every outstanding scope decision, largest possible deletion first, because each is hours and a build against an undecided contract is rework by construction; then the builds in dependency order. Recorded in `docs/decisions/2026-09-22_the-remaining-roadmap-gaps-are-sequenced-by-exposure-then-deletion.md` with its alternatives and what would make it wrong.
+- **The order**: the evaluation family's site-operator gate; the publication store decision; the observability scope; the decision-rule contract; the moderator's scope; then the counted outcome, then whatever the decisions keep.
+- ⛔ **The dependency is enforced by the leaf, not by the record being remembered.** `.8.1.1`'s acceptance requires `.11.4.7.2.1.2`'s contract to be quoted and built against, so starting the ballot early fails its own gate.
+- ⭐ **After the fifth item the remaining build is fully scoped**, which is a deliberate checkpoint: the true size of what is left is visible before any large build starts.
+
 ## 2026-09-22 — The gate binds its corpus and the calibration binds its runs, and the split's own table is what found them (`SIGNOFF-REPAIR.8.2.4`)
 
 `REASONBRAID-REPAIR-0389`. `TOOLBOX.md` says to enumerate a goal line's mechanisms against the children a split produces. It paid on first use.

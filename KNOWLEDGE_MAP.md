@@ -234,6 +234,7 @@
 - [`2026-09-21_the-routing-closure-is-anchored-at-one-link-graph.md`](docs/decisions/2026-09-21_the-routing-closure-is-anchored-at-one-link-graph.md)
 - [`2026-09-21_the-second-ledgers-record-boundary-is-quoted-not-chosen.md`](docs/decisions/2026-09-21_the-second-ledgers-record-boundary-is-quoted-not-chosen.md)
 - [`2026-09-21_the-second-ledgers-threshold-is-the-first-ledgers-window.md`](docs/decisions/2026-09-21_the-second-ledgers-threshold-is-the-first-ledgers-window.md)
+- [`2026-09-22_the-remaining-roadmap-gaps-are-sequenced-by-exposure-then-deletion.md`](docs/decisions/2026-09-22_the-remaining-roadmap-gaps-are-sequenced-by-exposure-then-deletion.md)
 
 ## Promoted lessons
 

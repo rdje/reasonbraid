@@ -37,10 +37,18 @@ column, and no handler passes a tenant or a principal into the service. So any
 enrolled principal can register a corpus, record a run, or evaluate any gate in
 the deployment, and can read every other caller's records.
 
-⚠️ This is a **recorded finding with an owning repair**, not an accepted design:
-`SIGNOFF-REPAIR.8.2` clause 1 holds it, and its note records why the obvious fix
-is not yet available — no `GrantAction` and no `TargetSelector` can name a corpus
-or a gate, so there is nothing for an authority check to bind to yet.
+⚠️ **The missing tenant column is the DESIGN; the missing gate is the defect.**
+`docs/decisions/` records the verdict for this family: the seven tables are
+site-wide by design and gated by **site-operator** grants, because the harness is
+release engineering rather than a tenant product surface. What was never applied
+is that gate.
+
+⛔ **An earlier version of this page said the fix was unavailable — *no
+`GrantAction` and no `TargetSelector` can name a corpus or a gate, so there is
+nothing for an authority check to bind to yet*. That was wrong twice**, and
+`SIGNOFF-REPAIR.15` withdrew it: a site-operator gate does not bind through
+`GrantAction` at all, and four site-wide surfaces already use it. Owned by
+`SIGNOFF-REPAIR.8.2.5`, and not blocked.
 
 ## Corpora
 

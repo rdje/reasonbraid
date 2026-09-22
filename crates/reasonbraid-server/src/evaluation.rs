@@ -69,7 +69,13 @@ pub struct StoredRun {
 }
 
 /// The typed refusal reasons — the caller maps them to an HTTP error.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// ⛔ **`Debug` ONLY, and `#[non_exhaustive]`** (`SIGNOFF-REPAIR.8.2.2`, following
+/// `.7.4.2`'s contract): [`EvaluationError::Storage`] carries an `sqlx::Error`,
+/// which is neither `Clone` nor `Eq`, and preserving the store's own cause
+/// matters more than deriving equality nothing in this crate used.
+#[derive(Debug)]
+#[non_exhaustive]
 pub enum EvaluationError {
     /// The digest is not a 64-hex string (the harness's shape).
     MalformedDigest(String),
@@ -82,6 +88,29 @@ pub enum EvaluationError {
     UndeclaredSeed,
     /// The trial count is not positive.
     InvalidTrialCount(i64),
+    /// The store itself failed. ⛔ A database fault proves NOTHING about the
+    /// caller's input and must never be reported as though it did
+    /// (`SIGNOFF-REPAIR.8.2.2`). Every arm here used to collapse into
+    /// [`EvaluationError::Duplicate`] or [`EvaluationError::UnknownCorpus`], so
+    /// a connection loss reached the caller as *already exists* or *the corpus
+    /// is not registered* — with an HTTP 400 blaming them for it.
+    Storage(sqlx::Error),
+}
+
+/// Classify a failed write: the database's own **unique violation** is the
+/// caller's duplicate; anything else is the store failing.
+///
+/// ⛔ The old code took `Err(_)` for granted as a duplicate, which is true of
+/// exactly one `sqlx::Error` variant out of all of them.
+fn write_failure(error: sqlx::Error, duplicate: impl FnOnce() -> String) -> EvaluationError {
+    let is_duplicate = error
+        .as_database_error()
+        .is_some_and(|db| db.is_unique_violation());
+    if is_duplicate {
+        EvaluationError::Duplicate(duplicate())
+    } else {
+        EvaluationError::Storage(error)
+    }
 }
 
 impl std::fmt::Display for EvaluationError {
@@ -110,6 +139,21 @@ impl std::fmt::Display for EvaluationError {
             EvaluationError::InvalidTrialCount(n) => {
                 write!(f, "the trial count {n} is not positive")
             }
+            // ⛔ The wire message says nothing about the caller's input,
+            // because the store's failure is not about it. The cause travels
+            // through `source` for the server-side log.
+            EvaluationError::Storage(_) => {
+                write!(f, "the evaluation store is unavailable")
+            }
+        }
+    }
+}
+
+impl std::error::Error for EvaluationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            EvaluationError::Storage(cause) => Some(cause),
+            _ => None,
         }
     }
 }
@@ -154,10 +198,12 @@ pub async fn register_corpus(
             prompts_digest: registration.prompts_digest.clone(),
             cases: registration.cases.clone(),
         }),
-        Err(_) => Err(EvaluationError::Duplicate(format!(
-            "corpus `{}` version {}",
-            registration.corpus_id, registration.version
-        ))),
+        Err(error) => Err(write_failure(error, || {
+            format!(
+                "corpus `{}` version {}",
+                registration.corpus_id, registration.version
+            )
+        })),
     }
 }
 
@@ -177,7 +223,7 @@ pub async fn record_run(pool: &PgPool, run: &RunRecord) -> Result<StoredRun, Eva
     .bind(run.corpus_version)
     .fetch_one(pool)
     .await
-    .map_err(|_| EvaluationError::UnknownCorpus(run.corpus_id.clone()))?;
+    .map_err(EvaluationError::Storage)?;
     if !corpus_exists.unwrap_or(false) {
         return Err(EvaluationError::UnknownCorpus(run.corpus_id.clone()));
     }
@@ -207,7 +253,7 @@ pub async fn record_run(pool: &PgPool, run: &RunRecord) -> Result<StoredRun, Eva
             trial_count: run.trial_count,
             results: run.results.clone(),
         }),
-        Err(_) => Err(EvaluationError::Duplicate(format!("run `{}`", run.run_id))),
+        Err(error) => Err(write_failure(error, || format!("run `{}`", run.run_id))),
     }
 }
 
@@ -373,7 +419,7 @@ pub async fn create_trial(
     .bind(submission.corpus_version)
     .fetch_one(pool)
     .await
-    .map_err(|_| EvaluationError::UnknownCorpus(submission.corpus_id.clone()))?;
+    .map_err(EvaluationError::Storage)?;
     if !corpus_exists.unwrap_or(false) {
         return Err(EvaluationError::UnknownCorpus(submission.corpus_id.clone()));
     }
@@ -413,10 +459,9 @@ pub async fn create_trial(
             case_ids: submission.case_ids.clone(),
             assignment,
         }),
-        Err(_) => Err(EvaluationError::Duplicate(format!(
-            "trial `{}`",
-            submission.trial_id
-        ))),
+        Err(error) => Err(write_failure(error, || {
+            format!("trial `{}`", submission.trial_id)
+        })),
     }
 }
 
@@ -431,7 +476,7 @@ pub async fn record_trial_results(
             .bind(trial_id)
             .fetch_one(pool)
             .await
-            .map_err(|_| EvaluationError::Duplicate(trial_id.to_string()))?;
+            .map_err(EvaluationError::Storage)?;
     if !trial_exists.unwrap_or(false) {
         return Err(EvaluationError::Duplicate(format!(
             "trial `{trial_id}` (the results append to a REGISTERED trial)"
@@ -442,7 +487,7 @@ pub async fn record_trial_results(
         .bind(results)
         .execute(pool)
         .await
-        .map_err(|_| EvaluationError::Duplicate("trial result".to_string()))?;
+        .map_err(|error| write_failure(error, || "trial result".to_string()))?;
     Ok(())
 }
 
@@ -555,7 +600,7 @@ pub async fn record_calibration(
                 .bind(run_id)
                 .fetch_one(pool)
                 .await
-                .map_err(|_| EvaluationError::ghost_run(run_id))?;
+                .map_err(EvaluationError::Storage)?;
         if !exists.unwrap_or(false) {
             return Err(EvaluationError::ghost_run(run_id));
         }
@@ -584,10 +629,9 @@ pub async fn record_calibration(
             "brier": submission.brier,
             "confidence": submission.confidence,
         })),
-        Err(_) => Err(EvaluationError::Duplicate(format!(
-            "calibration `{}`",
-            submission.calibration_id
-        ))),
+        Err(error) => Err(write_failure(error, || {
+            format!("calibration `{}`", submission.calibration_id)
+        })),
     }
 }
 
@@ -645,10 +689,9 @@ pub async fn record_gate(
             "baseline": submission.baseline,
             "threshold": submission.threshold,
         })),
-        Err(_) => Err(EvaluationError::Duplicate(format!(
-            "gate `{}`",
-            submission.gate_id
-        ))),
+        Err(error) => Err(write_failure(error, || {
+            format!("gate `{}`", submission.gate_id)
+        })),
     }
 }
 
@@ -665,7 +708,7 @@ pub async fn evaluate_gate(
             .bind(gate_id)
             .fetch_optional(pool)
             .await
-            .map_err(|_| EvaluationError::ghost_gate(gate_id))?;
+            .map_err(EvaluationError::Storage)?;
     let Some((baseline, threshold)) = row else {
         return Err(EvaluationError::ghost_gate(gate_id));
     };
@@ -738,10 +781,10 @@ pub async fn evaluate_gate(
     .bind(serde_json::to_value(&failures).expect("the failures serialize"))
     .execute(pool)
     .await;
-    if appended.is_err() {
-        return Err(EvaluationError::Duplicate(format!(
-            "gate result for `{gate_id}`"
-        )));
+    if let Err(error) = appended {
+        return Err(write_failure(error, || {
+            format!("gate result for `{gate_id}`")
+        }));
     }
     Ok(json!({
         "gate_id": gate_id,

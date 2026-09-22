@@ -226,11 +226,17 @@ and published `compared` / `unmeasured`. ⚠️ **Partial coverage is still the
 caller's to own**, which is a contract and not a defect: read `compared` before
 treating any green gate as evidence.
 
-🔴 **A storage failure is reported as the caller's mistake.** Six write paths
-turn any database error into "already exists — register a new version or run id
-instead of overwriting", and three read paths turn one into "the corpus is not
-registered" / "no such run" / "no such gate". So an outage is indistinguishable
-from a duplicate. Recorded as `SIGNOFF-REPAIR.8.2` clause 4.
+✅ **Repaired: a storage failure used to be reported as the caller's mistake.**
+Every write path turned any database error into "already exists — register a new
+version or run id instead of overwriting", and every existence check turned one
+into "the corpus is not registered" — each as an HTTP **400**, so an outage was
+indistinguishable from a bad request. `SIGNOFF-REPAIR.8.2.2` converted **12**
+sites: an existence check's error arm is always a store fault, because the
+BOOLEAN beside it carries the genuine refusal, and a failed write is the
+caller's duplicate only when the database reports a unique violation. A store
+fault is now **500 `dependency_unavailable`** with the cause logged server-side,
+and every genuine refusal — a real duplicate, an unregistered corpus, a ghost
+run or gate — stays a 400.
 
 ⛔ **A recorded result is a claim by whoever posted it.** The server checks
 shapes, references and vocabularies. It does not run the workflow, does not

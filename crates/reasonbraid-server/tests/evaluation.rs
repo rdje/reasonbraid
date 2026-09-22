@@ -939,6 +939,106 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
     assert_eq!(status, 200, "the closed range accepts 0.0 and 1.0: {edges}");
     assert_eq!(edges["compared"], json!(2), "{edges}");
 
+    // 6c. `SIGNOFF-REPAIR.8.2.2` — a store fault is the SERVER's problem.
+    // Before this repair every storage failure in `evaluation.rs` collapsed
+    // into `Duplicate` or `UnknownCorpus`, so a connection loss reached the
+    // caller as HTTP 400 "already exists" or "the corpus is not registered".
+    // ⛔ The trigger is dropped BEFORE the assertions run, so a failing
+    // expectation cannot leave this shared database rejecting corpus writes
+    // (`.7.4.2`'s discipline, which this control copies deliberately).
+    sqlx::raw_sql(
+        "CREATE FUNCTION public.evaluation_test_gate() RETURNS trigger LANGUAGE plpgsql AS $$ \
+         BEGIN RAISE EXCEPTION 'injected evaluation storage failure'; END; $$; \
+         CREATE TRIGGER evaluation_test_gate BEFORE INSERT ON public.evaluation_corpora \
+         FOR EACH ROW EXECUTE FUNCTION public.evaluation_test_gate()",
+    )
+    .execute(&pool)
+    .await
+    .expect("install the injected storage fault");
+    let (faulted_status, faulted_body) = post(
+        &client,
+        &base,
+        "/v1/evaluations/corpora",
+        &human_id,
+        &json!({
+            "corpus_id": "cal-corpus-faulted",
+            "version": 1,
+            "cases_digest": DIGEST_A,
+            "prompts_digest": DIGEST_B,
+            "cases": { "cases": [] },
+        }),
+    )
+    .await;
+    sqlx::raw_sql(
+        "DROP TRIGGER IF EXISTS evaluation_test_gate ON public.evaluation_corpora; \
+         DROP FUNCTION IF EXISTS public.evaluation_test_gate()",
+    )
+    .execute(&pool)
+    .await
+    .expect("remove the injected storage fault");
+    assert_eq!(
+        faulted_status, 500,
+        "a store fault is the server's, not the caller's: {faulted_body}"
+    );
+    assert_eq!(
+        faulted_body["code"],
+        json!("dependency_unavailable"),
+        "the store fault names itself: {faulted_body}"
+    );
+    assert_ne!(
+        faulted_body["code"],
+        json!("invalid_command"),
+        "a store fault must never be reported as a bad request: {faulted_body}"
+    );
+
+    // ⭐ NEGATIVE 1: the repair did not turn every refusal into a 500. A
+    // GENUINE duplicate is still the caller's error, and it is the exact
+    // message the store fault used to borrow.
+    let (dup_status, dup_body) = post(
+        &client,
+        &base,
+        "/v1/evaluations/corpora",
+        &human_id,
+        &json!({
+            "corpus_id": "cal-corpus",
+            "version": 1,
+            "cases_digest": DIGEST_A,
+            "prompts_digest": DIGEST_B,
+            "cases": { "cases": [] },
+        }),
+    )
+    .await;
+    assert_eq!(
+        dup_status, 400,
+        "a real duplicate is still the caller's error: {dup_body}"
+    );
+    assert_eq!(dup_body["code"], json!("invalid_command"), "{dup_body}");
+    // ⭐ NEGATIVE 2: and so is a genuinely unregistered corpus, which reaches
+    // the caller through the existence BOOLEAN rather than through the query's
+    // error arm — the distinction this repair rests on.
+    let (ghost_status, ghost_body) = post(
+        &client,
+        &base,
+        "/v1/evaluations/runs",
+        &human_id,
+        &json!({
+            "run_id": "cal-run-ghost",
+            "workflow": "blind",
+            "corpus_id": "cal-corpus-absent",
+            "corpus_version": 1,
+            "seed": 7,
+            "deterministic": true,
+            "trial_count": 1,
+            "results": {},
+        }),
+    )
+    .await;
+    assert_eq!(
+        ghost_status, 400,
+        "an unregistered corpus is still the caller's error: {ghost_body}"
+    );
+    assert_eq!(ghost_body["code"], json!("invalid_command"), "{ghost_body}");
+
     // 7. The lists.
     let (status, calibrations) =
         get(&client, &base, "/v1/evaluations/calibrations", &human_id).await;

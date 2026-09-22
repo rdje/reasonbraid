@@ -1,5 +1,18 @@
 # DEV_NOTES.md
 
+## 2026-09-22 — A store fault is the server's, and the caller's duplicate is the one the database says it is (`SIGNOFF-REPAIR.8.2.2`)
+
+`REASONBRAID-REPAIR-0386`. The evaluation chapter's second published limit, repaired.
+
+- 🔴 **THE DEFECT, REPRODUCED LIVE.** A PL/pgSQL trigger raising on every `evaluation_corpora` INSERT made the running server answer `{"code":"invalid_command","message":"corpus 'cal-corpus-faulted' version 1 already exists — register a new version or run id instead of overwriting"}`. A database refusing every write told the caller its input was a duplicate, with HTTP **400**.
+- ⭐ **THE CENSUS IS 12 SITES, NOT THE 9 THE CLAUSE RECORDED**, and the two it missed are a spelling: one write uses `map_err` rather than `Err(_) =>`, so a grep keyed on the code SHAPE could not see it, and its neighbouring existence check maps a store fault to `Duplicate` too. ⛔ A population keyed on a shape rather than on the call is a failure mode this project has measured before.
+- ⭐ **THE FIX IS A CLASSIFIER AND A MAPPING, AND NEITHER IS A JUDGEMENT.** `write_failure` asks the database — `is_unique_violation()` — so the caller's `Duplicate` survives for exactly the one error shape that means it, and every other becomes `Storage(sqlx::Error)` with the cause reachable through `source`. The five existence-SELECT arms convert **outright**, with no classifier, because the boolean beside each one already carries the genuine refusal.
+- ⭐ **AND THE HTTP MAPPING MOVED INTO ONE PLACE.** All seven evaluation handlers wrote `invalid_command(error.to_string())` by hand; they now write `error.into()` against a single `From` impl. Seven copies of one decision is how one ends up disagreeing with the other six.
+- ✅ **FALSIFIED TWICE, EACH MUTANT ISOLATING ONE HALF**: removing the `From` impl's `Storage` arm returns 400 with *the evaluation store is unavailable*, proving the mapping; forcing every write failure back to `Duplicate` returns the *already exists* message, proving the classifier.
+- ✅ **TWO NEGATIVE CONTROLS IN THE SAME RUN**, because a repair that turns every refusal into a 500 is this defect mirrored: a genuine duplicate still returns **400** — with the very message the store fault used to borrow, so the two are now distinguishable on the wire — and so does a genuinely unregistered corpus, which reaches the caller through the existence boolean rather than the query's error arm.
+- ⚠️ **DECLARED LIMIT.** The injected fault is on a WRITE, because a `BEFORE INSERT` trigger is the clean reversible injection this shared cluster allows. The five read arms are converted by inspection and covered only by the negative that their genuine refusal still returns 400. The write half is qualified by observation, the read half by argument, and they are not the same strength.
+- ✅ `evaluation` **3/3**, `policy` **26/26**, clippy **0 warnings**, fmt, `make book` and the doctrine gate rc=0; both sources restored byte-identical by SHA-256.
+
 ## 2026-09-22 — A gate that compares no case is refused, and the read side now obeys the write side's rules (`SIGNOFF-REPAIR.8.2.1`)
 
 `REASONBRAID-REPAIR-0385`. A product defect the book had been publishing as a limit.

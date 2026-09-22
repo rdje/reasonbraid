@@ -194,7 +194,26 @@ impl ControlApiError {
             },
         }
     }
+}
 
+impl From<crate::evaluation::EvaluationError> for ControlApiError {
+    /// ⛔ **A STORE FAULT IS THE SERVER'S, NOT THE CALLER'S**
+    /// (`SIGNOFF-REPAIR.8.2.2`). Every one of the seven evaluation handlers used
+    /// to write `invalid_command(error.to_string())` by hand, so a connection
+    /// loss reached the submitter as HTTP 400 *already exists* or *the corpus is
+    /// not registered*. ⭐ The mapping lives HERE, once: seven copies of a
+    /// decision is how one of them ends up disagreeing with the other six.
+    fn from(error: crate::evaluation::EvaluationError) -> Self {
+        match error {
+            crate::evaluation::EvaluationError::Storage(cause) => {
+                Self::internal_with_log(format!("the evaluation store failed: {cause}"))
+            }
+            refusal => Self::invalid_command(refusal.to_string()),
+        }
+    }
+}
+
+impl ControlApiError {
     pub fn internal() -> Self {
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,
@@ -3062,7 +3081,7 @@ async fn register_evaluation_corpus(
     }
     match crate::evaluation::register_corpus(&state.pool, &registration).await {
         Ok(row) => Ok(Json(row)),
-        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+        Err(error) => Err(error.into()),
     }
 }
 
@@ -3097,7 +3116,7 @@ async fn record_evaluation_run(
     }
     match crate::evaluation::record_run(&state.pool, &run).await {
         Ok(row) => Ok(Json(row)),
-        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+        Err(error) => Err(error.into()),
     }
 }
 
@@ -3133,7 +3152,7 @@ async fn create_evaluation_trial(
     }
     match crate::evaluation::create_trial(&state.pool, &submission).await {
         Ok(row) => Ok(Json(row)),
-        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+        Err(error) => Err(error.into()),
     }
 }
 
@@ -3169,7 +3188,7 @@ async fn record_trial_results(
     }
     match crate::evaluation::record_trial_results(&state.pool, &trial_id, &results).await {
         Ok(()) => Ok(Json(json!({ "trial_id": trial_id, "appended": true }))),
-        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+        Err(error) => Err(error.into()),
     }
 }
 
@@ -3207,7 +3226,7 @@ async fn record_evaluation_calibration(
     }
     match crate::evaluation::record_calibration(&state.pool, &submission).await {
         Ok(row) => Ok(Json(row)),
-        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+        Err(error) => Err(error.into()),
     }
 }
 
@@ -3244,7 +3263,7 @@ async fn record_evaluation_gate(
     }
     match crate::evaluation::record_gate(&state.pool, &submission).await {
         Ok(row) => Ok(Json(row)),
-        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+        Err(error) => Err(error.into()),
     }
 }
 
@@ -3281,7 +3300,7 @@ async fn evaluate_gate_endpoint(
     }
     match crate::evaluation::evaluate_gate(&state.pool, &gate_id, &scores).await {
         Ok(row) => Ok(Json(row)),
-        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+        Err(error) => Err(error.into()),
     }
 }
 

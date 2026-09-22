@@ -134,7 +134,7 @@ recording the repeat request's reason separately.
 | Wrong content type or oversized body | 415 or 413 `invalid_command`; no site audit |
 | No usable site grant and actual boundary for the action | 403 `site_authority_required`, with committed `audit_id` |
 | A caller that cannot even resolve `public.site_audit` | 403 `site_authority_required` — the privilege probe reads the catalogue by OID, so a missing schema `USAGE` is still answered as "not an operator", never as a dependency failure |
-| Authorized pairing names an undeclared region | 400 `undeclared_region`, with committed `audit_id` |
+| An AUTHORIZED caller's act refused on its own terms — an undeclared region, a taken coordinate, a corpus that is not registered | 400 with that reason as `code` and a committed `audit_id`; never counted as an authorization denial |
 | Database, lock-timeout or audit-insert failure | 500 `dependency_unavailable`; no receipt is fabricated |
 
 Refusal JSON contains `code`, a safe `message`, and `audit_id` only when that refusal
@@ -527,18 +527,25 @@ Like every other site act, the request body gained a required `reason`: a caller
 who chooses what the whole site reads as governance is exactly the caller who
 must be able to explain it afterwards.
 
-**Two refusals moved from `400` to `403`, and this is the only place that
-difference is visible.** Naming an owning authority that is not a live grant, and
-naming a `(policy_id, version)` that already exists, are both questions about the
-database rather than about the submitted document. Answering either one before
-the capability is checked would tell a principal with no site authority which
-grants the site holds and which coordinates the registry has taken. They are now
-answered inside the gate, as refusals of an authorized operator's request, and
-each carries an audit identifier naming which of the two it was. The five rules
-that ask only about the *document* — the digest shape, the version shape, the
-lifecycle vocabulary, a non-empty clause list and clause identifiers that do not
-repeat — are unchanged and still answer `400` to anyone, because each is a rule
-over a constant this book publishes.
+**Two refusals moved behind the gate, and they answer `400` with an audit
+identifier.** Naming an owning authority that is not a live grant, and naming a
+`(policy_id, version)` that already exists, are both questions about the database
+rather than about the submitted document. Answering either one *before* the
+capability is checked would tell a principal with no site authority which grants
+the site holds and which coordinates the registry has taken — so the gate runs
+first, and an unauthorized caller still receives `403` having learned nothing.
+
+⚠️ **They briefly answered `403` too, and that was wrong.** A caller who passes
+the gate holds the grant, so telling them *a current site grant is required*
+stated something false and counted them as an authorization denial.
+`SIGNOFF-REPAIR.16` split the two: `403` means the caller lacks the authority,
+`400` with an `audit_id` means the caller held it and the act was refused on its
+own terms. The ordering that closes the oracle is unchanged.
+
+The five rules that ask only about the *document* — the digest shape, the version
+shape, the lifecycle vocabulary, a non-empty clause list and clause identifiers
+that do not repeat — are unchanged and still answer `400` to anyone, because each
+is a rule over a constant this book publishes.
 
 **Reading the library did not change and deliberately will not.** `GET
 /v1/policies`, `POST /v1/policies/resolve`, the impact map and the MCP policy

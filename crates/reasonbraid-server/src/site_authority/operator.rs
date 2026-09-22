@@ -66,7 +66,14 @@ async fn begin_operator<'a>(
             )
             .await?;
             tx.commit().await?;
-            return Err(Error::Refused {
+            // ⛔ DENIED, not refused (`SIGNOFF-REPAIR.16`): the caller is not the
+            // database operator, so this is the CALLER lacking authority. Every
+            // other refusal in this module is a domain one — the operator holds
+            // the authority and named a boundary or a scope the site cannot
+            // honour — and there are exactly TWO reasons in the whole site layer
+            // that mean *you do not hold this authority*: this and
+            // `site_authority_required`.
+            return Err(Error::Denied {
                 reason: "operator_required",
                 audit_id,
             });

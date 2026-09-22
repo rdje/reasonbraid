@@ -61,14 +61,21 @@ roadmap makes a corpus version or a gate result confidential. Gating the reads
 would be a separate decision about confidentiality, and it is **not taken here
 by omission**.
 
-⚠️ **Two refusals changed status, and the reason is worth knowing.** Whether a
-coordinate is taken, or a named run or gate exists, is a question about the
-database — so it is answered INSIDE the gate as an audited domain refusal
-(**403** with an `audit_id`), not before it. Answering it earlier would hand a
-caller with no site authority an existence oracle over a registry it may not
-write. ✅ **Input validation is unaffected and still returns its typed 400**: a
-malformed digest, an empty arm list, an out-of-range threshold or a non-numeric
-score needs no database, so it is refused before the gate with its own message.
+**Three answers, and they are told apart on the wire.**
+
+| what happened | status | body |
+| --- | --- | --- |
+| the caller holds no site grant for this action | **403** | the grant requirement, plus an `audit_id` |
+| the caller holds it, and the request is refused on its own terms | **400** | the specific reason as `code`, plus an `audit_id` |
+| the request is malformed | **400** | the validator's own message, no audit — it never reached the gate |
+
+⭐ **Existence is answered only after authority.** Whether a coordinate is taken,
+or a named run or gate exists, is a question about the database, so the gate runs
+first and an unauthorized caller learns nothing about the registry's contents. A
+caller who passes the gate is entitled to the answer, so it comes back as a bad
+request rather than as a permission failure — `SIGNOFF-REPAIR.16` corrected that,
+after an earlier pass rendered both as 403 and told authorized callers they
+needed a grant they already held.
 
 ## Corpora
 

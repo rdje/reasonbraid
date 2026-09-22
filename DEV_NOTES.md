@@ -1,5 +1,18 @@
 # DEV_NOTES.md
 
+## 2026-09-22 — A domain refusal is not an authority denial, and the 403 shipped one commit ago told authorized callers a falsehood (`SIGNOFF-REPAIR.16`)
+
+`REASONBRAID-REPAIR-0393`. The director left the call to me; testing my own argument is what changed it.
+
+- 🔴 **THE FLAW WAS A CONFLATION, NOT A MISSING FACT.** I defended the 403 with the existence-oracle argument: answering before the gate would let an unauthorized caller probe a registry. That argument is about **ORDER**, and says nothing about **RENDERING**. A caller who has passed the gate holds the grant and is entitled to the answer, so a 400 discloses nothing.
+- 🔴 **AND WHAT SHIPPED CONTRADICTED ITSELF ON THE WIRE**: `403 {"code": "that corpus version is already registered", "message": "a current site grant for this action and its actual boundary are required"}`. The message is false of the caller who received it. An operator debugging CI reads 403 and checks their grants; the defect was a typo. It also counted input errors in `authorization_denials`, a security metric.
+- ⭐ **FOURTH INSTANCE OF ONE CLASS IN A SINGLE SESSION, AND THIS ONE WAS MINE.** `Error::Refused` carried both meanings in one variant — as `EvaluationError::Duplicate` meant *taken* and *does not exist*, and as an `Err(_)` from an INSERT meant *duplicate* and *store fault*. One name, two meanings, and the boundary renders whichever it was handed.
+- ⭐ **THE CORRECT PRINCIPLE WAS ALREADY WRITTEN DOWN — AT EXACTLY ONE CALL SITE.** `site_registry_response` hand-matched one reason string to render it as a bad request, commenting *a domain refusal, not an authority one: the caller held the grant*. That one-off is why the principle reached **one of sixteen** refusals. A rule implemented as a remembered special case holds exactly where it was remembered.
+- ✅ **THE FIX IS AT THE TYPE.** `Error::Denied` (403, and the only case counted as an authorization denial) beside `Error::Refused` (400, with its reason as `code` and the `audit_id` beside it). Splitting the variant made the compiler find every arm, including one in the operator CLI a grep would have missed. ⭐ The line is checkable: exactly **two** reasons in the whole site layer mean the caller lacks authority.
+- ⛔ **NOT A LOOSENING, and the structure guarantees it**: `authorized()` returns `Denied` before the effect closure runs, so an unauthorized caller still gets 403 having learned nothing. Only the ordering ever closed the oracle, and the ordering is unchanged. The audit is unchanged too — both are recorded `denied`, because the act did not take effect either way.
+- ⭐ **EVERY TEST CALL SITE NOW STATES WHICH CLASS IT EXPECTS.** One helper matching both is how a suite of eleven tests could not tell them apart; there are now two, each panicking if handed the other.
+- ✅ Falsified by restoring the rendering shipped one commit ago — red by name, source restored byte-identical. `evaluation` 3/3, `policy` 26/26, `site_authority` 11/11, `site_operator_cli` 3/3, `site_registry_http` 8/8, `profiles` 63/63, `mcp_write` 7/7, `allowlist` 2/2, `regions` 3/3; clippy 0 warnings; fmt, book and the doctrine gate rc=0.
+
 ## 2026-09-22 — The evaluation harness is site-operator gated, and gating it exposed three defects nothing else could reach (`SIGNOFF-REPAIR.8.2.5.3`, closing `.8.2.5`)
 
 `REASONBRAID-REPAIR-0392`. Item 1 of the sequence is complete: the only live exposure of the five gaps is closed.

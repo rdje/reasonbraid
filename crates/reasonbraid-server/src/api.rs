@@ -8175,23 +8175,10 @@ async fn site_registry_response(
     command: RegistryCommand,
 ) -> Result<Response, ControlApiError> {
     let outcome = site::execute(&state.pool, principal, &command).await;
-    if let Err(site::Error::Refused {
-        reason: "undeclared_region",
-        audit_id,
-    }) = &outcome
-    {
-        // A domain refusal, not an authority one: the caller held the grant and
-        // asked for something the registry cannot express.
-        return Ok((
-            StatusCode::BAD_REQUEST,
-            Json(json!({
-                "code": "undeclared_region",
-                "message": "both regions must be declared before pairing",
-                "audit_id": audit_id,
-            })),
-        )
-            .into_response());
-    }
+    // ⭐ The hand-matched `undeclared_region` special case that used to sit here
+    // is GONE, subsumed by `SIGNOFF-REPAIR.16`: every domain refusal now renders
+    // as a bad request because the TYPE says it is one, so the rule no longer
+    // depends on a reason string being remembered at one call site.
     site_receipt_response(
         outcome,
         "a current site grant for this action and its actual boundary are required",
@@ -8210,7 +8197,9 @@ fn site_receipt_response(
             Json(receipt.result),
         )
             .into_response()),
-        Err(site::Error::Refused { reason, audit_id }) => {
+        // ⛔ THE CALLER DID NOT HOLD THE AUTHORITY. 403, and the only case that
+        // belongs in the `authorization_denials` metric.
+        Err(site::Error::Denied { reason, audit_id }) => {
             crate::telemetry::metrics().incr("authorization_denials");
             Ok((
                 StatusCode::FORBIDDEN,
@@ -8218,6 +8207,28 @@ fn site_receipt_response(
             )
                 .into_response())
         }
+        // ⛔ THE CALLER HELD THE AUTHORITY AND THE ACT WAS REFUSED ON ITS OWN
+        // TERMS (`SIGNOFF-REPAIR.16`). Until it, this fell into the arm above
+        // and answered an authorized caller `403` with *a current site grant
+        // for this action and its actual boundary are required* — a sentence
+        // that is FALSE of someone holding the grant — and counted them as an
+        // authorization denial.
+        //
+        // ⭐ The distinction is already written down one function below, where
+        // `site_registry_response` hand-matched ONE reason string to render it
+        // as a bad request: *a domain refusal, not an authority one: the caller
+        // held the grant and asked for something the registry cannot express*.
+        // That one-off is why the principle reached one reason out of sixteen;
+        // it is now the type's job, so the compiler reaches all of them.
+        //
+        // ⚠️ The audit is UNCHANGED: a refused act is recorded `denied` either
+        // way, because the act did not take effect. What changes is only what
+        // the CALLER is told, and the `audit_id` still resolves the full reason.
+        Err(site::Error::Refused { reason, audit_id }) => Ok((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"code": reason, "message": reason, "audit_id": audit_id})),
+        )
+            .into_response()),
         Err(site::Error::InvalidInput(reason)) => Err(ControlApiError::invalid_command(reason)),
         Err(site::Error::OperatorRequired) => {
             Err(ControlApiError::unauthorized("site authority required"))

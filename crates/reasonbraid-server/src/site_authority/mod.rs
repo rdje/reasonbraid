@@ -33,6 +33,21 @@ use sqlx::{PgPool, Postgres, Transaction};
 pub enum Error {
     InvalidInput(&'static str),
     OperatorRequired,
+    /// The caller did NOT hold the authority. An AUTHORITY denial.
+    ///
+    /// ⛔ **SEPARATE FROM [`Error::Refused`] SINCE `SIGNOFF-REPAIR.16`**, and the
+    /// separation is the repair: both were one variant, so the HTTP layer
+    /// rendered both as `403` with the message *a current site grant for this
+    /// action and its actual boundary are required* — which is FALSE of a
+    /// caller who held the grant and named a corpus that does not exist, and it
+    /// counted that caller in the `authorization_denials` metric.
+    Denied {
+        reason: &'static str,
+        audit_id: String,
+    },
+    /// The caller HELD the authority and the act was refused on its own terms.
+    /// A DOMAIN refusal — audited exactly as a denial is, and rendered as the
+    /// caller's bad request rather than as a missing grant.
     Refused {
         reason: &'static str,
         audit_id: String,
@@ -45,7 +60,9 @@ impl fmt::Display for Error {
         match self {
             Self::InvalidInput(reason) => f.write_str(reason),
             Self::OperatorRequired => f.write_str("explicit database operator authority required"),
-            Self::Refused { reason, audit_id } => write!(f, "{reason} (audit {audit_id})"),
+            Self::Denied { reason, audit_id } | Self::Refused { reason, audit_id } => {
+                write!(f, "{reason} (audit {audit_id})")
+            }
             // Connection details belong in controlled diagnostics, not caller responses.
             Self::Sql(_) => f.write_str("site authority database operation failed"),
         }
@@ -403,7 +420,7 @@ where
         )
         .await?;
         tx.commit().await?;
-        return Err(Error::Refused {
+        return Err(Error::Denied {
             reason: "site_authority_required",
             audit_id,
         });

@@ -332,13 +332,19 @@ async fn the_policy_registry_validates_the_digest_pinned_document() {
     // nothing).
     let (status, refused) =
         register_policy(&client, &base, &human_id, &policy("org-baseline", "1.0.0")).await;
-    // ⚠️ 403, not the 400 this was before `SIGNOFF-REPAIR.6.1.5.4`. Whether a
-    // coordinate is taken is a question about the DATABASE, so it is answered
-    // INSIDE the site gate as a domain refusal — audited `denied` with the
-    // grant and boundary attached, because the caller did hold the authority.
-    // Answering it before the gate would have handed a caller with no site
-    // authority an existence oracle over a registry it may not write.
-    assert_eq!(status, 403, "the duplicate refuses: {refused}");
+    // ⚠️ **400 AGAIN SINCE `SIGNOFF-REPAIR.16`, WITH THE AUDIT ID BESIDE IT.**
+    // `.6.1.5.4` moved this to 403 and its reason — *answering it before the
+    // gate would hand a caller with no site authority an existence oracle* —
+    // is correct about ORDER and does not reach RENDERING. Authority is still
+    // checked first, so nothing leaks; but a caller who PASSED that check was
+    // then told *a current site grant … is required* about a grant they hold,
+    // and was counted in `authorization_denials`. ⛔ The order is unchanged;
+    // only what an authorized caller is told changed back.
+    assert_eq!(status, 400, "the duplicate refuses: {refused}");
+    assert!(
+        refused["audit_id"].is_string(),
+        "and the domain refusal is still audited: {refused}"
+    );
     assert_eq!(
         refused["code"],
         json!("that policy version is already registered"),
@@ -473,10 +479,15 @@ async fn the_policy_registry_validates_the_digest_pinned_document() {
         }),
     )
     .await;
-    // ⚠️ Also 403 since `.6.1.5.4`, and for the sharper of the two reasons:
-    // whether `grt_ghost` names a live grant is an existence question about the
-    // SITE'S OWN GRANTS, and the 400 that used to answer it answered anyone.
-    assert_eq!(status, 403, "the ghost authority refuses: {refused}");
+    // ⚠️ **400 again since `SIGNOFF-REPAIR.16`**, and this is the sharper case,
+    // so it is worth being explicit: whether `grt_ghost` names a live grant IS
+    // an existence question about the site's own grants, and `.6.1.5.4` was
+    // right that the pre-gate 400 answered anyone. ⭐ The gate still runs first
+    // and still refuses an unauthorized caller with 403 — so the oracle stays
+    // closed — and only a caller who already holds site authority reaches this
+    // answer. Telling THEM 400 discloses nothing they could not already read.
+    assert_eq!(status, 400, "the ghost authority refuses: {refused}");
+    assert!(refused["audit_id"].is_string(), "{refused}");
     assert_eq!(
         refused["code"],
         json!("the named owning authority is not an active, unexpired grant"),

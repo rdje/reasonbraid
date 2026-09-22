@@ -261,14 +261,15 @@ async fn the_evaluation_service_records_the_registry_and_the_runs() {
         }),
     )
     .await;
-    // ⚠️ 403, not the 400 this was before `SIGNOFF-REPAIR.8.2.5.3`, and for the
-    // reason `.6.1.5.4` recorded for the policy registry: whether a coordinate
-    // is taken, or a named run or gate exists, is a question about the DATABASE
-    // — so it is answered INSIDE the site gate as a domain refusal, audited
-    // `denied` with the grant attached because the caller did hold the
-    // authority. Answering it before the gate would hand a caller with no site
-    // authority an existence oracle over a registry it may not write.
-    assert_eq!(status, 403, "the duplicate refuses: {refused}");
+    // ⭐ **400, AND THE AUDIT ID BESIDE IT** (`SIGNOFF-REPAIR.16`). `.8.2.5.3`
+    // shipped these as 403 and that was wrong: the existence-oracle argument
+    // justifies checking AUTHORITY FIRST, not rendering the answer as a
+    // permission failure. A caller who passed the gate is entitled to the
+    // answer, so a 400 leaks nothing — while the 403 told them *a current site
+    // grant … is required* about a grant they hold, and counted them in
+    // `authorization_denials`. ⛔ The authority denials in this suite stay 403,
+    // and that pair is the discriminator.
+    assert_eq!(status, 400, "the duplicate refuses: {refused}");
     assert_eq!(
         refused["code"],
         json!("that corpus version is already registered"),
@@ -389,7 +390,7 @@ async fn the_evaluation_service_records_the_registry_and_the_runs() {
         }),
     )
     .await;
-    assert_eq!(status, 403, "the phantom corpus refuses: {refused}");
+    assert_eq!(status, 400, "the phantom corpus refuses: {refused}");
     assert_eq!(
         refused["code"],
         json!("the named corpus version is not registered"),
@@ -416,7 +417,7 @@ async fn the_evaluation_service_records_the_registry_and_the_runs() {
         }),
     )
     .await;
-    assert_eq!(status, 403, "the duplicate run id refuses: {refused}");
+    assert_eq!(status, 400, "the duplicate run id refuses: {refused}");
 
     // 6. The reads: the registry + the runs, newest first.
     let (status, corpora) = get(&client, &base, "/v1/evaluations/corpora", &human_id).await;
@@ -641,7 +642,7 @@ async fn the_shadow_trials_record_the_seeded_assignment_and_the_cohorts() {
         }),
     )
     .await;
-    assert_eq!(status, 403, "the phantom corpus refuses: {refused}");
+    assert_eq!(status, 400, "the phantom corpus refuses: {refused}");
     assert_eq!(
         refused["code"],
         json!("the named corpus version is not registered"),
@@ -664,7 +665,7 @@ async fn the_shadow_trials_record_the_seeded_assignment_and_the_cohorts() {
         }),
     )
     .await;
-    assert_eq!(status, 403, "the duplicate trial refuses: {refused}");
+    assert_eq!(status, 400, "the duplicate trial refuses: {refused}");
 
     // 5. The per-arm results are APPEND-ONLY: two submissions accumulate
     // (the record's identity is its content, never an overwrite).
@@ -712,7 +713,7 @@ async fn the_shadow_trials_record_the_seeded_assignment_and_the_cohorts() {
             "reason": "the suite records an evaluation site act", "results": { "single": { "mean": 0.5 } } }),
     )
     .await;
-    assert_eq!(status, 403, "the ghost trial refuses: {refused}");
+    assert_eq!(status, 400, "the ghost trial refuses: {refused}");
 
     // 7. The trials list, newest first.
     let (status, trials) = get(&client, &base, "/v1/evaluations/trials", &human_id).await;
@@ -830,7 +831,7 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
         }),
     )
     .await;
-    assert_eq!(status, 403, "the ghost run refuses: {refused}");
+    assert_eq!(status, 400, "the ghost run refuses: {refused}");
     assert_eq!(refused["code"], json!("a named run is not registered, or was taken against another corpus version or workflow"), "{refused}");
     assert!(
         refused["audit_id"].is_string(),
@@ -967,7 +968,7 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
             "reason": "the suite records an evaluation site act", "scores": { "c1": 0.9 } }),
     )
     .await;
-    assert_eq!(status, 403, "the ghost gate refuses: {refused}");
+    assert_eq!(status, 400, "the ghost gate refuses: {refused}");
 
     // 6b. `SIGNOFF-REPAIR.8.2.1` — the read side is held to the write side's
     // rules. Before the repair each of the three below returned 200 with
@@ -989,7 +990,7 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
     // A malformed or out-of-range score needs no row, so it is refused by the
     // pre-gate validator and keeps its typed 400.
     assert_eq!(
-        status, 403,
+        status, 400,
         "an evaluation that compares NO case refuses: {refused}"
     );
     assert!(
@@ -1142,7 +1143,7 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
     // duplicate is still the CALLER's refusal, told apart from a store fault,
     // and it is audited rather than returned as a 500.
     assert_eq!(
-        dup_status, 403,
+        dup_status, 400,
         "a real duplicate is still the caller's refusal: {dup_body}"
     );
     assert_eq!(
@@ -1177,7 +1178,7 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
     // asserted here — this reaches the caller through the existence BOOLEAN, so
     // it is a refusal with an audit id and not a `dependency_unavailable` 500.
     assert_eq!(
-        ghost_status, 403,
+        ghost_status, 400,
         "an unregistered corpus is still the caller's refusal: {ghost_body}"
     );
     assert_eq!(
@@ -1318,7 +1319,7 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
     )
     .await;
     assert_eq!(
-        status, 403,
+        status, 400,
         "a gate against an unregistered corpus refuses: {refused}"
     );
     assert_eq!(
@@ -1365,7 +1366,7 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
     )
     .await;
     assert_eq!(
-        status, 403,
+        status, 400,
         "a calibration over an ineligible run refuses: {refused}"
     );
     assert_eq!(refused["code"], json!("a named run is not registered, or was taken against another corpus version or workflow"), "{refused}");

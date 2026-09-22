@@ -114,9 +114,31 @@ async fn audit(pool: &PgPool, id: &str) -> Value {
         .unwrap()
 }
 
+/// A DOMAIN refusal: the caller held the authority and the act was refused on
+/// its own terms (`SIGNOFF-REPAIR.16`).
+///
+/// ⭐ Split from [`denied`] so every call site STATES which class it expects.
+/// One helper matching both is what let the HTTP layer render them identically
+/// for sixteen reasons, telling an authorized caller they lacked a grant.
 async fn refused(pool: &PgPool, result: Result<site::Receipt, Error>, expected: &str) -> Value {
     let Error::Refused { reason, audit_id } = result.unwrap_err() else {
-        panic!("expected audited refusal")
+        panic!("expected an audited DOMAIN refusal, not an authority denial")
+    };
+    assert_eq!(reason, expected);
+    let record = audit(pool, &audit_id).await;
+    assert_eq!(record["decision"], "denied");
+    assert_eq!(record["outcome"], "denied");
+    record
+}
+
+/// An AUTHORITY denial: the caller did NOT hold the authority
+/// (`SIGNOFF-REPAIR.16`). ⛔ Exactly two reasons in the whole site layer mean
+/// this — `site_authority_required` and `operator_required` — and the audit
+/// records it identically to a domain refusal, because the act did not take
+/// effect either way. What differs is what the caller is told.
+async fn denied(pool: &PgPool, result: Result<site::Receipt, Error>, expected: &str) -> Value {
+    let Error::Denied { reason, audit_id } = result.unwrap_err() else {
+        panic!("expected an audited AUTHORITY denial, not a domain refusal")
     };
     assert_eq!(reason, expected);
     let record = audit(pool, &audit_id).await;
@@ -299,7 +321,7 @@ async fn role_subjects_and_invalid_issuance_have_explicit_contracts() {
     let record = audit(&pool, &receipt.audit_id).await;
     assert_eq!(record["actor_kind"], "role");
     assert_eq!(record["actor"], actor.id_string());
-    refused(
+    denied(
         &pool,
         site::execute(&pool, &subject(), &declare("site-test-unrelated-human")).await,
         "site_authority_required",
@@ -334,7 +356,7 @@ async fn tenant_enrollment_and_read_capabilities_confer_no_site_write_rights() {
     let Some(pool) = pool().await else { return };
     for _ in 0..2 {
         let actor = tenant_admin(&pool).await;
-        let record = refused(
+        let record = denied(
             &pool,
             site::execute(&pool, &actor, &declare("site-test-tenant-denied")).await,
             "site_authority_required",
@@ -355,7 +377,7 @@ async fn tenant_enrollment_and_read_capabilities_confer_no_site_write_rights() {
     site::execute(&pool, &reader, &RegistryCommand::ListRegions)
         .await
         .unwrap();
-    refused(
+    denied(
         &pool,
         site::execute(&pool, &reader, &declare("site-test-reader-denied")).await,
         "site_authority_required",
@@ -383,7 +405,7 @@ async fn actual_parent_binding_and_every_usable_grant_are_checked() {
         .await
         .unwrap();
     let new_boundary = replacement.result["boundary_id"].as_str().unwrap();
-    refused(
+    denied(
         &pool,
         site::execute(&pool, &actor, &declare("site-test-old-parent")).await,
         "site_authority_required",
@@ -503,7 +525,7 @@ async fn suspended_revoked_future_and_expired_authority_refuses_effects() {
                     .await
                     .unwrap();
             }
-            refused(
+            denied(
                 &pool,
                 site::execute(&pool, &actor, &declare("site-test-disabled")).await,
                 "site_authority_required",
@@ -547,7 +569,7 @@ async fn suspended_revoked_future_and_expired_authority_refuses_effects() {
             sqlx::query("INSERT INTO public.site_grants (grant_id,boundary_id,issued_by,subject_kind,subject_id,actions,valid_from,expires_at,status,reason) VALUES ($1,$2,'fixture','human',$3,ARRAY['region_declare'],$4,$5,'active','aged/future fixture')")
                 .bind(format!("sgr_{}", uuid::Uuid::now_v7())).bind(fixture_boundary).bind(actor.id_string()).bind(from).bind(until)
                 .execute(&pool).await.unwrap();
-            refused(
+            denied(
                 &pool,
                 site::execute(&pool, &actor, &declare("site-test-outside-window")).await,
                 "site_authority_required",
@@ -674,7 +696,7 @@ async fn issuance_uses_database_identity_and_rechecks_membership_after_waiting()
         .execute(&pool)
         .await
         .unwrap();
-    let denied = refused(
+    let denial_record = denied(
         &pool,
         site::issue_boundary(
             &outsider_pool,
@@ -685,8 +707,8 @@ async fn issuance_uses_database_identity_and_rechecks_membership_after_waiting()
         "operator_required",
     )
     .await;
-    assert_eq!(denied["actor_kind"], "database");
-    assert_eq!(denied["actor"], outsider);
+    assert_eq!(denial_record["actor_kind"], "database");
+    assert_eq!(denial_record["actor"], outsider);
     let member_pool = role_pool(&member).await;
     let issued = site::issue_boundary(
         &member_pool,
@@ -727,7 +749,7 @@ async fn issuance_uses_database_identity_and_rechecks_membership_after_waiting()
         "revocation is visible before releasing the issuance guard"
     );
     blocker.rollback().await.unwrap();
-    refused(&pool, pending.await.unwrap(), "operator_required").await;
+    denied(&pool, pending.await.unwrap(), "operator_required").await;
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM public.site_boundaries")
         .fetch_one(&pool)
         .await
@@ -836,7 +858,7 @@ async fn revocation_and_registry_mutation_serialize_in_both_commit_orders() {
                 let second = second.await.unwrap().unwrap();
                 assert_eq!(audit(&pool, &second.audit_id).await["outcome"], "applied");
             } else {
-                refused(&pool, second.await.unwrap(), "site_authority_required").await;
+                denied(&pool, second.await.unwrap(), "site_authority_required").await;
             }
             let exists: bool = sqlx::query_scalar(
                 "SELECT EXISTS(SELECT 1 FROM public.site_regions WHERE region_id = $1)",
@@ -909,6 +931,6 @@ async fn validity_is_evaluated_after_the_guard_wait_using_database_time() {
         tokio::time::sleep(StdDuration::from_millis(20)).await;
     }
     blocker.rollback().await.unwrap();
-    refused(&pool, request.await.unwrap(), "site_authority_required").await;
+    denied(&pool, request.await.unwrap(), "site_authority_required").await;
     assert_eq!(registry_count(&pool).await, 0);
 }

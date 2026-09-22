@@ -391,8 +391,18 @@ fn main() -> ExitCode {
                 "explicit database operator authority required",
                 3,
             ),
-            Ok(Err(site::Error::Refused { reason, audit_id })) => {
+            // ⛔ THE SAME DISTINCTION THE HTTP SURFACE MAKES (`SIGNOFF-REPAIR.16`),
+            // because one rule rendered two ways is how the two drift. `3` is
+            // the authority exit, beside `operator_required`; a domain refusal
+            // is the request being refused on its own terms, so it takes `2`
+            // beside `invalid_input`. ⚠️ The exit vocabulary is not a published
+            // contract — no book page states it — and the JSON `code` named
+            // both cases distinctly before and after.
+            Ok(Err(site::Error::Denied { reason, audit_id })) => {
                 output(&json!({"error": {"code": reason, "audit_id": audit_id}}), 3)
+            }
+            Ok(Err(site::Error::Refused { reason, audit_id })) => {
+                output(&json!({"error": {"code": reason, "audit_id": audit_id}}), 2)
             }
             Ok(Err(site::Error::Sql(_))) => error(
                 "database_operation_failed",

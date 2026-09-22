@@ -264,9 +264,12 @@ async fn protected_cli_issues_uses_disables_and_audits_exact_authority() {
                 .unwrap();
         assert_eq!(record["requested_reason"], "retire access");
         assert_eq!(record["outcome"], if changed { "applied" } else { "noop" });
+        // ⭐ `Denied`, not `Refused`, since `SIGNOFF-REPAIR.16` split them: the
+        // grant was disabled, so the caller no longer HOLDS the authority — an
+        // authority denial, not the act being refused on its own terms.
         assert!(matches!(
             site::execute(&pool, &actor, &command("site-cli-after-disable")).await,
-            Err(site::Error::Refused { .. })
+            Err(site::Error::Denied { .. })
         ));
     }
     let suspended = run(
@@ -302,7 +305,11 @@ async fn protected_cli_issues_uses_disables_and_audits_exact_authority() {
         false,
     )
     .await;
-    assert_eq!(json(&denied, 3)["error"]["code"], "boundary_unavailable");
+    // ⭐ Exit **2** since `SIGNOFF-REPAIR.16`, not 3. The caller IS the database
+    // operator — they hold the authority — and the boundary they named is
+    // disabled, which is the act being refused on its own terms. 3 is reserved
+    // for the two reasons that mean the caller lacks authority.
+    assert_eq!(json(&denied, 2)["error"]["code"], "boundary_unavailable");
     run(
         &url,
         &[
@@ -366,6 +373,11 @@ async fn protected_cli_issues_uses_disables_and_audits_exact_authority() {
         "explicit database role control",
     ];
     let refused_issue = cli(Some(outsider_url.as_str()), &issuance_args, false).await;
+    // ⭐ Exit **3** is the AUTHORITY exit and this is an authority denial: the
+    // caller is not the database operator. `SIGNOFF-REPAIR.16` split the two,
+    // so a DOMAIN refusal — the operator holds the authority and named a
+    // boundary or scope the site cannot honour — now exits **2**, beside
+    // `invalid_input`, instead of borrowing this one.
     assert_eq!(
         json(&refused_issue, 3)["error"]["code"],
         "operator_required"

@@ -2373,6 +2373,49 @@ with `panicked at crates/reasonbraid-server/src/ca.rs:142:75` in the same run �
 - Owns: exposing the five, and deciding for health and backup status what PRODUCES the fact before deciding what returns it.
 - Acceptance: each of the five is reachable on the admin surface and returns the fields §18.5 names for it, health carrying the FRESHNESS §18.5 asks for rather than a bare boolean; a dependency that is down is reported as down by a control that actually stops it, never by asserting on a constructed value; the backup surface reports the age of the last restore test, which `tests/backup_restore.rs` already produces; every new route is tenant-bound on the rule the neighbouring admin routes already carry; and `SURFACE-JUDGEMENT` is re-derived green, since five new surfaces need judging. Observed RED first.
 - ⚠️ A census instrument is OWED if this leaf lands: the nine-bullet mapping is hand-derived, and `.4.6`'s verdict will decay silently without one. Decide it in the leaf rather than leaving it implied.
+- Status: `active` — split into `.4.6.1.1`–`.6` by `REASONBRAID-DOC-0131` (`docs/decisions/2026-09-22_three-of-the-five-missing-operator-surfaces-have-no-stored-fact.md`).
+- 🔴 **THE PREMISE ABOVE WAS WRONG FOR ALL THREE "VIEW-ONLY" BULLETS.** A route can only return a stored fact, and the re-derived census found NONE of bullets 4, 6 and 8 stored. The handshake builds a `NeedsAdjudication` directive and forgets it (it inserts only `node_proof_nonces` and `node_leases`). `resolve_resource` admits with `reader_tenant` alone, so it writes no authorization record, and every `AcquisitionError`/`unresolvable_now` exists only in the response; the one exception is a quota refusal in `quota_events`, which no route reads. The audit chain and its checkpoint do not exist (ADR-022: *no `prev_hash` column, no checkpoint table*). ⇒ **All five need a producer, not two.**
+- Children, in build order:
+
+##### SIGNOFF-REPAIR.4.6.1.1 — Ambiguous attempts are decided at the handshake and forgotten
+
+- Status: `pending`. Bullet 4.
+- Owns: storing each `needs_adjudication` report per node (first/last reported instants, operation, directive), closing it when a later handshake adjudicates it or no longer reports it, and a tenant-admin list route returning the open ones with the safe action the directive names.
+- Acceptance: a handshake that reports an attempt with no server receipt leaves an open row that the route returns; a later handshake holding the receipt closes it; a node of another tenant never appears; the route is admitted through `inspect_tenant_admin` like its neighbours; RED first; book (`node-channel.md`) and `SURFACE-JUDGEMENT` updated.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.4.6.1.2 — A resolver refusal is answered and forgotten
+
+- Status: `pending`. Bullet 6.
+- Owns: recording every refusal the resolve path answers (kind, message, resource, tenant, instant) and a tenant-admin list route over them, with `quota_events` denials joined into the same view rather than stored twice.
+- Acceptance: each refusal kind the handler can answer leaves a row, produced by a control that actually refuses (an SSRF-blocked address, an absent credential), never an asserted value; tenant-bound; RED first; book (`evidence.md`) and `SURFACE-JUDGEMENT` updated.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.4.6.1.3 — Audit-checkpoint age has no checkpoint to measure
+
+- Status: `blocked` — on ADR-022's revisit trigger (*the first non-loopback deployment or the G7 ops gate*), which has not fired: G6/G7 is recorded NOT MET in `LIVE_STATUS.md`. Bullet 8.
+- ⛔ A checkpoint age before a checkpoint is an invented number, and building ADR-022's chain under an operator-surface leaf is the wrong owner. When the trigger fires, the chain's leaf delivers the age as part of its surface. The verification half of the bullet is already partial (`/v1/threads/{id}/audit`, `/v1/audit/receipts`).
+
+##### SIGNOFF-REPAIR.4.6.1.4 — Nothing probes a dependency after boot
+
+- Status: `pending`. Bullet 1.
+- Owns: a probe of each runtime dependency (Postgres, the CA, the secret store, the declared publication root), each outcome carrying `observed_at`, and a route reporting it with its age.
+- ⚠️ **Design conflict to resolve first, not inherit:** the neighbouring admin routes authorize against Postgres, so a health route gated that way cannot report Postgres being down. Decide what is disclosed without authority, and what only with it.
+- Acceptance: a dependency that is down is reported down by a control that actually stops it; freshness is an age, not a boolean; RED first; book (`deployment.md`) and `SURFACE-JUDGEMENT` updated.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.4.6.1.5 — A backup or restore test leaves no record, and there is no incident
+
+- Status: `pending`. Bullet 9.
+- Owns: deciding who records a backup and a restore test (`scripts/backup.sh`, `scripts/restore.sh`, `tests/backup_restore.rs`, or a server verb), and whether an *active incident* is a new aggregate or an already-open correction/`incident_review` record; then the producer and the route.
+- Acceptance: the route reports the age of the last successful backup and of the last restore test, produced by actually running them; incidents per the decision; RED first; book and `SURFACE-JUDGEMENT` updated.
+- Verification / commit: pending.
+
+##### SIGNOFF-REPAIR.4.6.1.6 — The nine-bullet mapping is hand-derived
+
+- Status: `pending`. All nine bullets; last, so it measures the finished state.
+- Owns: a census script that re-derives §18.5's nine-bullet verdicts from the router and the migrations, so `.4.6`'s verdict cannot decay silently.
+- Acceptance: the script reproduces the verdicts recorded after `.1`–`.5` land, and turns red when one of their routes is removed.
 - Verification / commit: pending.
 
 ### SIGNOFF-REPAIR.5.1 — Directory and profile isolation
@@ -12408,7 +12451,7 @@ git grep -nI -E "never run|licen[cs]e decision|license decision" -- \
 | 1a | `SIGNOFF-REPAIR.11.29` | `done` | ✅ REPAIR-0318 — **the demonstration read presence without saying who was calling, and wrote a markdown table by executing it.** 🔴 `e8db1a1` (`.3.5.5`) bound `GET /v1/nodes/presence` to the caller's tenant; the demo's three reads use a bare `curl` with no principal header, so all three checks failed — the node-channel suite passed because ITS reads send one. 🔴 And backticks inside a double-quoted `echo` made bash RUN `rb node revoke`, substituting empty output into `summary.md` — **silently corrupting the evidence bundle for as long as it has existed**, never failing a check. ✅ 44 suites + demo ALL GREEN on the exact command CI runs |
 | 1a | `SIGNOFF-REPAIR.11.28` | `done` | ✅ REPAIR-0317 — **two enrollment expectations counted quota rows, and the row that moved them was three days old.** The first push's `rust` workflow went red on `enrollment_transaction`; it **reproduces locally**, so it is a suite the four cheap gates do not run. ⭐ `git log -S` names the cause: `398ecc7` (`.11.14.3.14`, 2026-09-17) gave every tenant two acquisition defaults, taking a bootstrap from 2 quota rows to 4 and the two-principal fixture from 3 to 5. ⛔ **4 and 5 were established from the source BEFORE either number was touched** — *adjust until it passes* is how a real double-insert gets laundered green. ✅ The expectations now NAME the rows (`quota_scopes`): a count has no producer, these pairs do. 9/9 |
 | 1a | `SIGNOFF-REPAIR.11.27` | `done` | ✅ REPAIR-0316 — **a self-test that pins one host's collation is not ground truth.** `doctrines` failed on the runner and was green locally: `check_readme_stability.sh`'s extraction arm ends in `sort -u`, and `LC_ALL=C` orders `docs/book/` third where `en_US.UTF-8` puts it first. ⭐ **Reproduced locally with the SHIPPED bytes** — `git show HEAD:…` under `LC_ALL=C` prints exactly what the runner logged. ✅ `LC_ALL=C` pins every stage of the extractor and the expectation is rewritten in that order; ⛔ the INSTRUMENT is pinned rather than the comparison loosened. Self-test green under BOTH collations, gate verdict unchanged in both. ⚠️ No script in `scripts/` pins a collation — latent hazard recorded, trigger stated |
-| 1 | `SIGNOFF-REPAIR.4.6.1` | `pending` | ⭐ **Item 7 continues: five of §18.5's nine operator surfaces are not exposed.** Read the leaf and `.4.6`'s decision first |
+| 1 | `SIGNOFF-REPAIR.4.6.1.1` | `pending` | ⭐ **Item 7 continues.** DOC-0131 split `.4.6.1` into `.1`–`.6`: all five missing §18.5 surfaces need a PRODUCER, not only a view. `.1` = ambiguous attempts; then `.2` resolver denials, `.4` health, `.5` backup/incidents, `.6` census; `.3` checkpoint age `blocked` on ADR-022 |
 | 1a | `SIGNOFF-REPAIR.9.3.5.3` | `done` | ✅ DOC-0130 — **the book has a publication-store chapter**: three refs, write-once, compare-and-swap, fetch-back, every refusal, recovery — examples from a REAL run, which is how REPAIR-0404's two defects were found. `refs/rb/` in the book: 0 → 13 |
 | 1a | `SIGNOFF-REPAIR.9.3.5.3.1` | `done` | ✅ REPAIR-0404 — **a refused re-publish no longer moves the staging ref, and the CAS message reads once.** Both found by generating the book's examples from a REAL run rather than writing them by hand; the second was mine from REPAIR-0402 |
 | 1a | `SIGNOFF-REPAIR.9.3.5.2` | `done` | ✅ REPAIR-0403 — **a published bundle is served by its digest and verified on the way out.** The control tampers the STORE (re-points the immutable ref); M2 showed a tampered bundle would have been served, M3 that another tenant would have read it |

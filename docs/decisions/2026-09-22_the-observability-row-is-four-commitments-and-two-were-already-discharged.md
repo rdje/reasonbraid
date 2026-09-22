@@ -89,6 +89,11 @@ already had a domain surface to hang off; the two with no aggregate behind them 
 nobody built. ⚠️ And the three partials share another: in each, the MECHANISM ships and only
 the operator's view of it is missing.
 
+> 🔴 **Corrected by `docs/decisions/2026-09-22_three-of-the-five-missing-operator-surfaces-have-no-stored-fact.md`
+> (DOC-0131).** The MECHANISM ships, but in none of the three partials is its outcome STORED —
+> the handshake and the resolve path each decide and forget, and ADR-022's checkpoint does not
+> exist — so each needs a producer, not only a view. The *partial* verdicts themselves stand.
+
 ⇒ **§18.5 is KEPT, scoped to five bullets** (1, 4, 6, 8, 9), and owned by `.4.6.1`.
 
 ## The OpenTelemetry deferral, with a trigger a later pass can EVALUATE

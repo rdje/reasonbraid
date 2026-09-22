@@ -245,6 +245,7 @@
 - [`2026-09-22_the-observability-row-is-four-commitments-and-two-were-already-discharged.md`](docs/decisions/2026-09-22_the-observability-row-is-four-commitments-and-two-were-already-discharged.md)
 - [`2026-09-22_the-publication-store-is-built-and-the-gap-is-that-nothing-reads-or-operates-it.md`](docs/decisions/2026-09-22_the-publication-store-is-built-and-the-gap-is-that-nothing-reads-or-operates-it.md)
 - [`2026-09-22_the-remaining-roadmap-gaps-are-sequenced-by-exposure-then-deletion.md`](docs/decisions/2026-09-22_the-remaining-roadmap-gaps-are-sequenced-by-exposure-then-deletion.md)
+- [`2026-09-22_three-of-the-five-missing-operator-surfaces-have-no-stored-fact.md`](docs/decisions/2026-09-22_three-of-the-five-missing-operator-surfaces-have-no-stored-fact.md)
 
 ## Promoted lessons
 

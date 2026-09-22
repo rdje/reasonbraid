@@ -2,9 +2,9 @@
 
 ## Current state (OVERWRITE this block each update — do not append)
 
-- next_action: `SIGNOFF-REPAIR.4.6.1` — five of §18.5's nine operator surfaces are not exposed. Read the leaf and `.4.6`'s decision (DOC-0124) first; then `.11.4.7.2.1.2.2` (expected_artifact), `.11.4.7.2.1.5` (re-derive discharged verdicts — this session found two more wrong DOC-0126 verdicts), `.8.1.1.3`–`.6`.
-- active_work_unit: `SIGNOFF-REPAIR` → frontier leaf: `.4.6.1` (`pending`). This session: REPAIR-0396 … 0404, DOC-0129, DOC-0130 — `.8.1.1`, `.11.4.7.2.1.2.3`, `.11.4.7.2.1.3.1`, `.9.3.5.1`–`.3` closed.
-- latest_commit: `REASONBRAID-DOC-0130`.
+- next_action: `SIGNOFF-REPAIR.4.6.1.1` — store each ambiguous attempt the handshake reports as `needs_adjudication`, close it on a later adjudication, and list the open ones on a tenant-admin route. Read DOC-0131's decision (`2026-09-22_three-of-the-five-missing-operator-surfaces-have-no-stored-fact.md`) first. Then `.4.6.1.2`, `.4`, `.5`, `.6` (`.3` is blocked on ADR-022); then `.11.4.7.2.1.2.2`, `.11.4.7.2.1.5`, `.8.1.1.3`–`.6`.
+- active_work_unit: `SIGNOFF-REPAIR` → frontier leaf: `.4.6.1.1` (`pending`). This session: DOC-0131 split `.4.6.1` into `.1`–`.6` (the "three need only a view" premise was wrong for all three).
+- latest_commit: `REASONBRAID-DOC-0131`.
 - in_flight_uncommitted: none.
 - blockers: `SIGNOFF-REPAIR.13`. ⛔ `.8.2` clause 1's *blocked on grant vocabulary* is WITHDRAWN by `.15` — it was wrong twice and `.8.2.5` is unblocked.
 - ⭐ **THE SEQUENCE for the five remaining roadmap gaps** (`docs/decisions/2026-09-22_the-remaining-roadmap-gaps-are-sequenced-by-exposure-then-deletion.md`, leaf `.15`): ✅ **1 `.8.2.5` DONE** (REPAIR-0392; `.16` then corrected its 403 — a domain refusal is 400 with an audit id, only an AUTHORITY denial is 403) → ✅ **2 `.9.3.5` DONE** (REPAIR-0394) → ✅ **3 `.4.6` DONE** (DOC-0124) → ✅ **4 `.11.4.7.2.1.2` DONE** (DOC-0125) → ✅ **5 `.11.4.7.2.1.3` DONE** (DOC-0126) — ⭐ **WAVE B COMPLETE** → ✅ the NEW prerequisite `.11.4.7.2.1.2.1` DONE (REPAIR-0395) → **NEXT: 6** `.8.1.1` the counted outcome, now UNGATED → **7** what 2, 3 and 5 keep — now `.9.3.5.1`–`.3`, `.4.6.1` and `.11.4.7.2.1.2.1`–`.3` and `.11.4.7.2.1.3.1`. ⛔ Work them in this order; a wave-C build before its wave-B decision is the rework the rule exists to prevent.

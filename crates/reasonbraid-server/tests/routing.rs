@@ -14,6 +14,9 @@ mod pg_test_support;
 #[path = "support/cleanup.rs"]
 mod pg_cleanup;
 
+#[path = "support/site.rs"]
+mod site_fixture;
+
 use std::net::SocketAddr;
 use std::sync::OnceLock;
 
@@ -423,6 +426,17 @@ async fn the_shadow_recommendation_records_and_never_applies() {
     let human_id = human["principal_id"].as_str().unwrap().to_string();
     let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
 
+    // `SIGNOFF-REPAIR.8.2.5.4`: the evaluation writes are SITE acts since
+    // `.8.2.5.3`, so the principal seeding the evidence holds the capability
+    // explicitly and every write states its reason. This suite exercises the
+    // routing surface; the evaluation gate itself is `tests/evaluation.rs`'s.
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::EvaluationRecord],
+    )
+    .await;
+
     // The evidence: a `.4` trial (the recommendation names it).
     let digest_a = "a".repeat(64);
     let digest_b = "b".repeat(64);
@@ -432,6 +446,7 @@ async fn the_shadow_recommendation_records_and_never_applies() {
         "/v1/evaluations/corpora",
         &human_id,
         &json!({
+            "reason": "the routing suite seeds its evaluation evidence",
             "corpus_id": "rec-corpus",
             "version": 1,
             "cases_digest": digest_a,
@@ -447,6 +462,7 @@ async fn the_shadow_recommendation_records_and_never_applies() {
         "/v1/evaluations/trials",
         &human_id,
         &json!({
+            "reason": "the routing suite seeds its evaluation evidence",
             "trial_id": "rec-trial",
             "corpus_id": "rec-corpus",
             "corpus_version": 1,
@@ -681,6 +697,17 @@ async fn the_shadow_recommendations_are_read_by_their_own_tenant() {
     assert_eq!(status, 200, "bob enrols: {bob}");
     let bob_id = bob["principal_id"].as_str().unwrap().to_string();
 
+    // `SIGNOFF-REPAIR.8.2.5.4`: the evaluation writes are SITE acts since
+    // `.8.2.5.3`, so the principal seeding the evidence holds the capability
+    // explicitly and every write states its reason. This suite exercises the
+    // routing surface; the evaluation gate itself is `tests/evaluation.rs`'s.
+    site_fixture::provision(
+        &pool,
+        &alice_id,
+        &[reasonbraid_server::site_authority::Action::EvaluationRecord],
+    )
+    .await;
+
     // A recommendation must rest on real `.4` evidence, so register a corpus,
     // a run and a trial the submission can cite.
     let (status, corpus) = post(
@@ -689,6 +716,7 @@ async fn the_shadow_recommendations_are_read_by_their_own_tenant() {
         "/v1/evaluations/corpora",
         &alice_id,
         &json!({
+            "reason": "the routing suite seeds its evaluation evidence",
             "corpus_id": "rr-corpus",
             "version": 1,
             "cases_digest": "a".repeat(64),
@@ -704,6 +732,7 @@ async fn the_shadow_recommendations_are_read_by_their_own_tenant() {
         "/v1/evaluations/trials",
         &alice_id,
         &json!({
+            "reason": "the routing suite seeds its evaluation evidence",
             "trial_id": "rr-trial",
             "corpus_id": "rr-corpus",
             "corpus_version": 1,

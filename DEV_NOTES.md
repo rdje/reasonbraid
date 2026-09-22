@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-22 — A test suite broken by an earlier change today is fixed (`SIGNOFF-REPAIR.8.2.5.4`)
+
+`REPAIR-0407`. Test-only; no product behaviour changed.
+
+- 🔴 Earlier today, REPAIR-0392 made recording evaluation data an operator-level action that requires a stated reason. One test suite (`routing`) still recorded its setup data the old way, so 2 of its 4 tests had failed ever since. It was found while checking the previous change against neighbouring suites.
+- ✅ The suite now sets up its data the new way. None of its checks were changed, and all 4 pass. A search found no product code (CLI, benchmark, demo) still using the old way.
+- ⚠️ Lesson: a change to how a route works must be tested against every suite that calls that route, not only the one being edited.
+
 ## 2026-09-22 — An operator can now see every refused evidence lookup (`SIGNOFF-REPAIR.4.6.1.2`)
 
 `REASONBRAID-REPAIR-0406`.

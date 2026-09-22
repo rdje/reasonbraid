@@ -2648,6 +2648,96 @@ async fn the_publish_verb_drives_the_git_half() {
     assert_eq!(status, 200, "the publish drives the git half: {published}");
     assert_eq!(published["state"], json!("effective"));
     assert_eq!(published["repository"], json!("live"), "{published}");
+
+    // 2a. `SIGNOFF-REPAIR.9.3.5.2` — THE BUNDLE IS READABLE BY ITS MANIFEST
+    // DIGEST, AND VERIFIED ON THE WAY OUT.
+    let digest = published["manifest_digest"].as_str().unwrap().to_string();
+    let bundle_path = format!("/v1/policy-bundles/{digest}");
+    let (status, served) = get(&client, &base, &bundle_path, &human_id).await;
+    assert_eq!(status, 200, "the bundle serves: {served}");
+    let projection = reasonbraid_server::projections::load(&pool, "pu-prop-proj")
+        .await
+        .expect("the projection loads");
+    assert_eq!(
+        served["bundle"],
+        json!(projection.bytes),
+        "the bytes that were published"
+    );
+    assert_eq!(served["publication_id"], json!("pu-pub"));
+    let true_manifest = served["manifest"].as_str().unwrap().to_string();
+    let (status, v) = get(
+        &client,
+        &base,
+        &format!("/v1/policy-bundles/sha256:{}", "e".repeat(64)),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 404, "an unpublished digest: {v}");
+    let (status, v) = get(&client, &base, "/v1/policy-bundles/not-a-digest", &human_id).await;
+    assert_eq!(status, 400, "a malformed digest: {v}");
+    let (_, outsider) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "pu-outsider" }),
+    )
+    .await;
+    let (status, v) = get(
+        &client,
+        &base,
+        &bundle_path,
+        outsider["principal_id"].as_str().unwrap(),
+    )
+    .await;
+    assert_eq!(
+        status, 404,
+        "another tenant is answered as if it were absent: {v}"
+    );
+
+    // THE CONTROL: the STORED content is tampered — the immutable ref is
+    // re-pointed at a commit carrying another manifest, then at one carrying
+    // the true manifest and another bundle. Both are refused, not served.
+    let staged_at = reasonbraid_server::publications::load(&pool, "pu-pub")
+        .await
+        .unwrap()
+        .staged_at_seconds;
+    let point_at = |commit: gix::ObjectId| {
+        let repo = gix::open(&repo_dir).expect("the repository opens");
+        repo.edit_reference(gix::refs::transaction::RefEdit {
+            change: gix::refs::transaction::Change::Update {
+                log: Default::default(),
+                expected: gix::refs::transaction::PreviousValue::Any,
+                new: gix::refs::Target::Object(commit),
+            },
+            name: "refs/rb/publications/pu-pub".try_into().unwrap(),
+            deref: false,
+        })
+        .expect("the ref is re-pointed");
+    };
+    let original: gix::ObjectId = published["git_object_ids"][0]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    for (manifest, bundle, file) in [
+        ("{}", projection.bytes.as_str(), "manifest.json"),
+        (true_manifest.as_str(), "# a tampered bundle", "bundle.txt"),
+    ] {
+        let forged = reasonbraid_server::publisher::expected_commit(
+            &repo_dir, "pu-pub", manifest, bundle, staged_at,
+        )
+        .expect("the forged commit writes");
+        point_at(forged);
+        let (status, refused) = get(&client, &base, &bundle_path, &human_id).await;
+        assert_eq!(status, 409, "tampered `{file}` is refused: {refused}");
+        assert_eq!(refused["code"], json!("publication_conflict"), "{refused}");
+        assert!(
+            refused["message"].as_str().unwrap().contains(file),
+            "the refusal names the file that failed: {refused}"
+        );
+    }
+    point_at(original);
+    let (status, _) = get(&client, &base, &bundle_path, &human_id).await;
+    assert_eq!(status, 200, "the restored ref serves again");
     let object_ids = published["git_object_ids"].as_array().unwrap();
     assert_eq!(object_ids.len(), 2, "{published}");
 

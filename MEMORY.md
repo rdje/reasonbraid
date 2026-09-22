@@ -2,9 +2,9 @@
 
 ## Current state (OVERWRITE this block each update — do not append)
 
-- next_action: `SIGNOFF-REPAIR.9.3.5.2` — serve a published bundle by its manifest digest; refuse (typed error) content that does not hash to the digest it is requested under; tenant-bound like the publication rows; observe the refusal by MUTATING the stored object. Read the leaf first. Then `.9.3.5.3` (the book documents none of the publication store — partly addressed now by cli.md's new sections; re-measure), `.4.6.1`, `.11.4.7.2.1.2.2`, `.11.4.7.2.1.5`, `.8.1.1.3`–`.6`.
-- active_work_unit: `SIGNOFF-REPAIR` → frontier leaf: `.9.3.5.2` (`pending`). This session: `.8.1.1` (0396/0397), `.11.4.7.2.1.2.3` (0398/0399), `.11.4.7.2.1.3.1` (0400), `.9.3.5.1` (DOC-0129, 0401, 0402). New binary `rb-reconciler` (release).
-- latest_commit: `REASONBRAID-REPAIR-0402`.
+- next_action: `SIGNOFF-REPAIR.9.3.5.3` — the book and the publication store. RE-MEASURE the gap first: this session added three sections (cli.md: recorded Git operation, rb-reconciler; policy-lifecycle.md: bundle read). Then `.4.6.1`, `.11.4.7.2.1.2.2`, `.11.4.7.2.1.5`, `.8.1.1.3`–`.6`.
+- active_work_unit: `SIGNOFF-REPAIR` → frontier leaf: `.9.3.5.3` (`pending`). This session: `.8.1.1`, `.11.4.7.2.1.2.3`, `.11.4.7.2.1.3.1`, `.9.3.5.1`, `.9.3.5.2` closed (REPAIR-0396 … 0403, DOC-0129).
+- latest_commit: `REASONBRAID-REPAIR-0403`.
 - in_flight_uncommitted: none.
 - blockers: `SIGNOFF-REPAIR.13`. ⛔ `.8.2` clause 1's *blocked on grant vocabulary* is WITHDRAWN by `.15` — it was wrong twice and `.8.2.5` is unblocked.
 - ⭐ **THE SEQUENCE for the five remaining roadmap gaps** (`docs/decisions/2026-09-22_the-remaining-roadmap-gaps-are-sequenced-by-exposure-then-deletion.md`, leaf `.15`): ✅ **1 `.8.2.5` DONE** (REPAIR-0392; `.16` then corrected its 403 — a domain refusal is 400 with an audit id, only an AUTHORITY denial is 403) → ✅ **2 `.9.3.5` DONE** (REPAIR-0394) → ✅ **3 `.4.6` DONE** (DOC-0124) → ✅ **4 `.11.4.7.2.1.2` DONE** (DOC-0125) → ✅ **5 `.11.4.7.2.1.3` DONE** (DOC-0126) — ⭐ **WAVE B COMPLETE** → ✅ the NEW prerequisite `.11.4.7.2.1.2.1` DONE (REPAIR-0395) → **NEXT: 6** `.8.1.1` the counted outcome, now UNGATED → **7** what 2, 3 and 5 keep — now `.9.3.5.1`–`.3`, `.4.6.1` and `.11.4.7.2.1.2.1`–`.3` and `.11.4.7.2.1.3.1`. ⛔ Work them in this order; a wave-C build before its wave-B decision is the rework the rule exists to prevent.

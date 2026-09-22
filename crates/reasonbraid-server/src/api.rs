@@ -106,6 +106,17 @@ impl ControlApiError {
         }
     }
 
+    /// Stored content that does not match its record (`SIGNOFF-REPAIR.9.3.5.2`):
+    /// the §9.8 `publication_conflict` code. A server-side integrity failure —
+    /// the request was well formed and the content is refused, not served.
+    pub fn publication_conflict(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::CONFLICT,
+            code: "publication_conflict",
+            message: message.into(),
+        }
+    }
+
     pub fn not_found(message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::NOT_FOUND,
@@ -243,6 +254,7 @@ impl ControlApiError {
             "quota_exceeded" => StatusCode::TOO_MANY_REQUESTS,
             "quota_unconfigured" => StatusCode::SERVICE_UNAVAILABLE,
             "classification_unqualified" => StatusCode::CONFLICT,
+            "publication_conflict" => StatusCode::CONFLICT,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -812,6 +824,10 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
         .route(
             "/v1/policy-publications/{publication_id}/publish",
             post(publish_publication),
+        )
+        .route(
+            "/v1/policy-bundles/{manifest_digest}",
+            get(read_policy_bundle),
         )
         .route(
             "/v1/deployment-targets",
@@ -4069,6 +4085,48 @@ fn publication_repository_refused(refusal: crate::publisher::RepositoryRefusal) 
 /// (`.9.2.1.1`): `repo_path` names a location inside it and is resolved
 /// against it, and a deployment that declares no root refuses the verb.
 /// `.9.2.1.2`: the caller also names an `owning_authority` it HOLDS.
+/// `GET /v1/policy-bundles/{manifest_digest}` (`SIGNOFF-REPAIR.9.3.5.2`): an
+/// effective publication's bundle, served by its manifest digest and VERIFIED
+/// on the way out — the stored manifest must hash to the digest it is asked
+/// for, and the stored bundle to the projection digest that manifest names.
+/// Content that does not is refused (`409 publication_conflict`), never served
+/// with a warning. Tenant-bound: a foreign digest answers as an absent one.
+async fn read_policy_bundle(
+    State(state): State<Arc<ApiState>>,
+    Path(manifest_digest): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<crate::publications::ServedBundle>, ControlApiError> {
+    use crate::publications::PublicationError as E;
+    let principal = resolve_principal(&headers)?;
+    let Some(caller_tenant) = reader_tenant(&state.pool, &principal).await? else {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no bundle",
+        ));
+    };
+    match crate::publications::serve_bundle(
+        &state.pool,
+        state.publication_repo_root.as_deref(),
+        &caller_tenant,
+        &manifest_digest,
+    )
+    .await
+    {
+        Ok(served) => Ok(Json(served)),
+        Err(e @ E::MalformedDigest(_)) => Err(ControlApiError::invalid_command(e.to_string())),
+        Err(e @ (E::NotPublished(_) | E::BundleUnlocatable(_))) => {
+            Err(ControlApiError::not_found(e.to_string()))
+        }
+        Err(e @ E::BundleIntegrity { .. }) => {
+            eprintln!("control api: a published bundle failed verification: {e}");
+            Err(ControlApiError::publication_conflict(e.to_string()))
+        }
+        Err(e) => {
+            eprintln!("control api: a bundle read failed: {e}");
+            Err(ControlApiError::internal())
+        }
+    }
+}
+
 async fn publish_publication(
     State(state): State<Arc<ApiState>>,
     Path(publication_id): Path<String>,

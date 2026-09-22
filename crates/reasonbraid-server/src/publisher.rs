@@ -246,6 +246,44 @@ fn signature(now: gix::date::Time) -> String {
     )
 }
 
+/// What a publication's immutable ref names in its repository
+/// (`SIGNOFF-REPAIR.9.3.5.2`): the commit and the two files it carries, as
+/// stored — NOT verified here. The caller verifies them against the record,
+/// because only the record says what they should hash to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublishedContent {
+    pub commit: String,
+    pub manifest: Vec<u8>,
+    pub bundle: Vec<u8>,
+}
+
+/// Read a publication's content through its immutable ref. `None` when the
+/// ref is absent.
+pub fn read_publication(
+    repo_path: &Path,
+    publication_id: &str,
+) -> Result<Option<PublishedContent>, PublishError> {
+    let repo = gix::open(repo_path).map_err(|e| PublishError::Open(e.to_string()))?;
+    let name = format!("refs/rb/publications/{publication_id}");
+    let Some(commit) = current(&repo, &name) else {
+        return Ok(None);
+    };
+    let file = |path: &str| -> Result<Vec<u8>, PublishError> {
+        let id = repo
+            .rev_parse_single(format!("{name}:{path}").as_str())
+            .map_err(|e| PublishError::FetchBack(format!("`{path}`: {e}")))?;
+        let object = repo
+            .find_object(id.detach())
+            .map_err(|e| PublishError::FetchBack(format!("`{path}`: {e}")))?;
+        Ok(object.data.clone())
+    };
+    Ok(Some(PublishedContent {
+        commit: commit.to_string(),
+        manifest: file("manifest.json")?,
+        bundle: file("bundle.txt")?,
+    }))
+}
+
 /// The object a ref points at, or `None` when it is absent or unreadable.
 fn current(repo: &gix::Repository, name: &str) -> Option<gix::ObjectId> {
     repo.try_find_reference(name)

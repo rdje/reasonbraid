@@ -45,6 +45,7 @@ route-family	enrollments	covered	1:-	-	every route carries a contract line
 route-family	policy-approvals	covered	1:-	-	every route carries a contract line
 route-family	policy-corrections	covered	1:-	-	every route carries a contract line
 route-family	policy-publications	covered	4:-	-	cli.md and authority.md carry the four publication verbs
+route-family	policy-bundles	covered	1:-	-	policy-lifecycle.md lists it beside GET and gives the response, both integrity checks and every answer
 route-family	profiles	covered	6:-	-	profiles.md; its /card line is an ALIGNED contract line and read as a bare mention until REPAIR-0378
 route-family	resolvers	covered	1:-	-	every route carries a contract line
 route-family	resources	covered	3:-	-	every route carries a contract line

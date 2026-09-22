@@ -214,6 +214,20 @@ pub enum PublicationError {
     /// The publication store itself failed — the server's fault, never the
     /// caller's (`.7.4.2`'s rule).
     Storage(String),
+    /// No effective publication of the caller's tenant carries this manifest
+    /// digest. A foreign one answers exactly as an absent one does.
+    NotPublished(String),
+    /// The publication is effective but recorded no repository — it was
+    /// published before `migrations/0086` — so its bundle cannot be located.
+    BundleUnlocatable(String),
+    /// The stored content does not hash to what the record says
+    /// (`SIGNOFF-REPAIR.9.3.5.2`): refused, never served with a warning.
+    BundleIntegrity {
+        publication_id: String,
+        file: &'static str,
+        expected: String,
+        found: String,
+    },
 }
 
 impl std::fmt::Display for PublicationError {
@@ -309,6 +323,25 @@ impl std::fmt::Display for PublicationError {
                 expected_effective.as_deref().unwrap_or("none")
             ),
             PublicationError::Storage(e) => write!(f, "the publication store failed: {e}"),
+            PublicationError::NotPublished(d) => write!(
+                f,
+                "no effective publication in this tenant carries manifest digest `{d}`"
+            ),
+            PublicationError::BundleUnlocatable(id) => write!(
+                f,
+                "publication `{id}` was published before its repository was recorded, so its \
+                 bundle cannot be located"
+            ),
+            PublicationError::BundleIntegrity {
+                publication_id,
+                file,
+                expected,
+                found,
+            } => write!(
+                f,
+                "publication `{publication_id}`'s stored `{file}` hashes to `{found}`, not the \
+                 `{expected}` its record names — the content is refused, never served"
+            ),
         }
     }
 }
@@ -825,4 +858,101 @@ pub async fn list(pool: &PgPool, tenant_id: &str) -> Result<Vec<StoredPublicatio
     .fetch_all(pool)
     .await?;
     Ok(rows.into_iter().map(from_row).collect())
+}
+
+/// A published bundle, as served (`SIGNOFF-REPAIR.9.3.5.2`).
+#[derive(Debug, Clone, Serialize)]
+pub struct ServedBundle {
+    pub publication_id: String,
+    pub manifest_digest: String,
+    pub commit: String,
+    pub manifest: String,
+    pub bundle: String,
+}
+
+/// Serve an effective publication's bundle by its manifest digest, VERIFIED on
+/// the way out (`SIGNOFF-REPAIR.9.3.5.2`).
+///
+/// ⛔ Before this, the digest bound only at WRITE time — the publish verb
+/// refused a moved manifest and the publisher re-derived the digest from the
+/// blob it had just written — and nothing read the content back at all. Two
+/// checks, both against the RECORD rather than against the stored bytes' own
+/// claims: the stored manifest must hash to the digest it is requested under,
+/// and the stored bundle must hash to the projection digest that manifest
+/// names.
+///
+/// Tenant-bound on the rule the publication rows carry: a foreign digest
+/// answers as an absent one.
+pub async fn serve_bundle(
+    pool: &PgPool,
+    root: Option<&std::path::Path>,
+    tenant_id: &str,
+    manifest_digest: &str,
+) -> Result<ServedBundle, PublicationError> {
+    if !is_sha256_hex(manifest_digest) {
+        return Err(PublicationError::MalformedDigest(
+            manifest_digest.to_string(),
+        ));
+    }
+    let row: Option<(String, Option<String>)> = sqlx::query_as(
+        "SELECT publication_id, repository FROM policy_publications \
+         WHERE manifest_digest = $1 AND tenant_id = $2 AND state = 'effective'",
+    )
+    .bind(manifest_digest)
+    .bind(tenant_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| PublicationError::Storage(e.to_string()))?;
+    let Some((publication_id, repository)) = row else {
+        return Err(PublicationError::NotPublished(manifest_digest.to_string()));
+    };
+    let Some(repository) = repository else {
+        return Err(PublicationError::BundleUnlocatable(publication_id));
+    };
+    let repository = crate::publisher::resolve_repository(root, &repository)
+        .map_err(|e| PublicationError::RepositoryUnreadable(e.to_string()))?;
+    let content = crate::publisher::read_publication(repository.path(), &publication_id)
+        .map_err(|e| PublicationError::RepositoryUnreadable(e.to_string()))?
+        .ok_or_else(|| PublicationError::BundleUnlocatable(publication_id.clone()))?;
+    let integrity = |file: &'static str, expected: &str, bytes: &[u8]| {
+        let found = crate::fetcher::digest_sha256_hex(bytes);
+        if found == expected {
+            Ok(())
+        } else {
+            Err(PublicationError::BundleIntegrity {
+                publication_id: publication_id.clone(),
+                file,
+                expected: expected.to_string(),
+                found,
+            })
+        }
+    };
+    integrity("manifest.json", manifest_digest, &content.manifest)?;
+    // The manifest is now known to be the one the record names, so the
+    // projection digest it carries is trustworthy.
+    let manifest: Value = serde_json::from_slice(&content.manifest).map_err(|e| {
+        PublicationError::BundleIntegrity {
+            publication_id: publication_id.clone(),
+            file: "manifest.json",
+            expected: "a JSON manifest".to_string(),
+            found: e.to_string(),
+        }
+    })?;
+    let projection_digest = manifest["projection_digest"].as_str().unwrap_or_default();
+    integrity("bundle.txt", projection_digest, &content.bundle)?;
+    let text = |bytes: Vec<u8>, file: &'static str| {
+        String::from_utf8(bytes).map_err(|e| PublicationError::BundleIntegrity {
+            publication_id: publication_id.clone(),
+            file,
+            expected: "UTF-8".to_string(),
+            found: e.to_string(),
+        })
+    };
+    Ok(ServedBundle {
+        publication_id: publication_id.clone(),
+        manifest_digest: manifest_digest.to_string(),
+        commit: content.commit,
+        manifest: text(content.manifest, "manifest.json")?,
+        bundle: text(content.bundle, "bundle.txt")?,
+    })
 }

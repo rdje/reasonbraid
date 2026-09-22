@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-22 — A published policy can be read back, and is checked before it is sent (`SIGNOFF-REPAIR.9.3.5.2`)
+
+`REASONBRAID-REPAIR-0403`.
+
+- 🔴 **Published policy content could be written but never read back** through the product. Its fingerprint (digest) was checked only at the moment of writing.
+- ✅ **New read: `GET /v1/policy-bundles/{manifest_digest}`.** It returns exactly what was published, and first checks that the stored content still matches its recorded fingerprints — both the manifest and the policy text. If anything was altered, the answer is a refusal naming the altered file, never the altered content.
+- ✅ Only the publication's own tenant can read it; to anyone else it looks like it does not exist.
+- ✅ The test really alters the stored Git data to prove the refusal. When I deliberately disabled the checks, the altered content was served and another tenant could read it — both caught.
+- ✅ Policy 28/28; lint, format, book and the surface ledger clean. Documented in the policy chapter.
+
 ## 2026-09-22 — Interrupted publications are recovered by `rb-reconciler` (`SIGNOFF-REPAIR.9.3.5.1.2`)
 
 `REASONBRAID-REPAIR-0402`. The recovery logic the roadmap describes (§15.8) finally runs.

@@ -44,6 +44,7 @@ after §9.8 was published.
 | `version_conflict` | 409 | §9.8 | An optimistic-concurrency check failed; re-read and retry. |
 | `idempotency_mismatch` | 409 | §9.8 | The idempotency key was reused with a different payload. |
 | `dependency_unavailable` | 500 | §9.8 | A dependency this request needs did not answer. |
+| `publication_conflict` | 409 | §9.8 | Stored publication content does not match its record: `GET /v1/policy-bundles/{manifest_digest}` found a manifest or bundle that does not hash to what the record names, and refused to serve it. See [Reading a published bundle](policy-lifecycle.md#reading-a-published-bundle). |
 | `protocol_incompatible` | 400 | §9.8 | The node channel version does not match the server's. |
 | `not_found` | 404 | ext | The named resource does not exist within the caller's scope. |
 | `unknown_node` | 404 | ext | The node id is not enrolled. Distinct from `not_found` so a channel client can tell "re-enrol" from "wrong id". |
@@ -160,10 +161,13 @@ digest is a second reference. See
 
 ## Codes in the registry this build never emits
 
-Eleven §9.8 codes are registered and not emitted anywhere:
+Ten §9.8 codes are registered and not emitted anywhere:
 `rate_limited`, `budget_unavailable`, `resource_unresolvable`, `resource_denied`,
 `evidence_quarantined`, `provider_outcome_unknown`, `retry_requires_authorization`,
-`no_quorum`, `approval_expired`, `publication_conflict`, `deployment_partial`.
+`no_quorum`, `approval_expired`, `deployment_partial`. (`publication_conflict`
+left this list when the bundle read began emitting it. `no_quorum` is a thread
+*close outcome*, which [Deciding a thread](decision-rules.md) derives, but it is
+never an error code.)
 
 That is deliberate and is **not** drift. They belong to features this build has
 not reached, and a stable registry that is carved down to whatever the current

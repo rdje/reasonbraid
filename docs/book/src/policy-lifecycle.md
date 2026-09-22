@@ -45,6 +45,7 @@ POST   /v1/policy-decisions                        record a decision (draft → 
 GET    /v1/policy-decisions                        the decisions
 POST   /v1/policy-projections                      project a resolved set for a target
 GET    /v1/policy-projections                      the projections
+GET    /v1/policy-bundles/{manifest_digest}        a published bundle, verified on the way out
 POST   /v1/deployments                             assign a publication to a target
 GET    /v1/deployments                             the assignments, desired vs observed
 POST   /v1/deployments/{target_id}/{publication_id}/receipt   attest the observed digest
@@ -286,6 +287,40 @@ proposal was approved for.
 ⚠️ `resolved_policies` may be absent on rows written before `migrations/0082`.
 Absent means *the set was never recorded* — it does **not** mean the set was
 empty — and staging fails closed on it, naming which of the two it is.
+
+## Reading a published bundle
+
+`GET /v1/policy-bundles/{manifest_digest}` returns what an **effective**
+publication actually wrote, looked up by its manifest digest:
+
+```json
+{
+  "publication_id": "pub_…",
+  "manifest_digest": "sha256:…",
+  "commit": "51746fd…",
+  "manifest": "{\"approval_id\":\"…\",…,\"projection_digest\":\"sha256:…\"}",
+  "bundle": "# Policy bundle (deterministic projection)\n## c1 …"
+}
+```
+
+The server **checks the content before sending it**. The bytes are read from
+the publication's repository through its immutable ref, and two checks run
+against the record, not against what the stored bytes claim about themselves:
+
+1. the stored manifest must hash to the digest in the request;
+2. the stored bundle must hash to the projection digest that manifest names.
+
+If either fails, the answer is `409 publication_conflict`, naming the file that
+failed. The content is refused, never served with a warning. Before this route
+existed, the digest was only checked when the publication was **written**;
+nothing ever read it back.
+
+| Answer | When |
+| --- | --- |
+| `200` | the content is effective, belongs to the caller's tenant, and both hashes match |
+| `400 invalid_command` | the digest is not `sha256:<64 hex>` |
+| `404 not_found` | no effective publication in the caller's tenant has this digest — a publication of another tenant gets the same answer — or it was published before its repository was recorded |
+| `409 publication_conflict` | the stored content does not match the record |
 
 ## Deployment and receipts
 

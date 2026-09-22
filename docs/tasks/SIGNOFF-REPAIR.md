@@ -4102,11 +4102,12 @@ grep -oE '`[a-z_]+`' docs/decisions/2026-09-16_evidence-is-shared-the-read-is-te
 | this leaf's mechanism | child |
 | --- | --- |
 | the two site actions and their migration | `.1` |
-| the seven writes able to run INSIDE a site transaction | `.2` |
-| the gate itself, on all seven | `.2` |
-| the `reason` each site act requires, on seven request bodies | `.2` |
-| the READ side's stated disposition | `.2` |
-| the book | `.2` |
+| validation that runs BEFORE the gate, so an invalid input is never an authorization refusal | `.2` |
+| the seven writes able to run INSIDE a site transaction | `.3` |
+| the gate itself, on all seven | `.3` |
+| the `reason` each site act requires, on seven request bodies | `.3` |
+| the READ side's stated disposition | `.3` |
+| the book | `.3` |
 
 - ⭐ **TWO ACTIONS, NOT ONE, AND THE SPLIT IS DERIVED.** ROADMAP §4.1's `GovernanceCharter` names *separation-of-duties and conflict-of-interest constraints* as a first-class property, and §19's release flow has two parties: one maintains the corpus, the runs and the gate baselines — the STANDARD — while CI evaluates gates against it continuously. ⛔ **A party that measures against a standard must not be able to move the standard**, so `evaluation_record` covers the six standard-setting writes and `gate_evaluate` covers running a gate.
 
@@ -4132,12 +4133,36 @@ grep -oE '`[a-z_]+`' docs/decisions/2026-09-16_evidence-is-shared-the-read-is-te
 - Verification: `migration_upgrade` 8/8, `site_authority` 11/11, `evaluation` 3/3, clippy 0 warnings, fmt and the doctrine gate rc=0.
 - Commit: `REASONBRAID-REPAIR-0390 (leaf SIGNOFF-REPAIR.8.2.5.1): the two evaluation site actions land before anything constructs them`.
 
-##### SIGNOFF-REPAIR.8.2.5.2 — The gate, the reason, and the read side's stated disposition
+##### SIGNOFF-REPAIR.8.2.5.2 — Validation moves ahead of the gate, so an invalid input is never an authorization refusal
 
-- Opened: `pending` by `.8.2.5`'s split; **must not start before `.1`**.
+- Opened: `pending` by `.8.2.5`'s split, after implementing `.1` showed the gate cannot simply wrap the writes as they stand.
+- 🔴 **THE PROBLEM THE PRECEDENT ALREADY SOLVED AND THIS FAMILY HAS NOT.** `authorized()`'s closure returns a refusal as a `&'static str`, and `site_receipt_response` renders that to the caller. ⛔ So wrapping a write whose validation lives INSIDE it turns *the baseline score for `c1` is not a number* into an authorization refusal with a static reason — a **403 about authority for a 400 about input**, and it would silently undo the message quality `.8.2.1`–`.8.2.4` just built.
+- ⭐ **`site_authority::workflows` states the rule in its own doc comment, and it is the design rather than an accident**: the composition validation runs in the HTTP layer BEFORE the site call and stays a typed 400, because *a caller that fails validation learns nothing about authority, and one that passes it still meets the gate*. `crate::policy::validate` is called ahead of `site::register_policy` for the same reason, and `policy::register` re-validates regardless so the registry never stores an invalid row whatever called it.
+- Owns: extracting each write's PURE validation into a `validate_*` function the handler can call before the gate and the write still calls itself, with no behaviour change.
+- Acceptance: every pure check now reachable without a database — the digest shapes, the trial count, the declared seed, the non-empty arms and cases, the cohort kinds, the Brier and threshold ranges, the baseline and score shapes; each write calls its own validator FIRST, so the registry cannot store an invalid row whatever calls it; the refusal a caller sees is byte-identical to today's, proved by the `evaluation` suite passing with **no test edited**; and nothing else changes, because a seam that changes behaviour is not a seam.
+- Status: `done`; REPAIR-0391. **Six validators, no behaviour change, and no test edited — which is the only evidence a seam can offer.**
+- ✅ **SIX `validate_*` FUNCTIONS, each the pure head of its write, and each still called by that write first**: `validate_corpus` (the two digest shapes), `validate_run` (the trial count and the declared seed), `validate_trial` (non-empty arms and cases, the cohort kinds), `validate_calibration` (non-empty run ids, the Brier range), `validate_gate` (the threshold range, the baseline's shape, its non-emptiness, and every baseline score's type and range), `validate_gate_scores` (every measured score's type and range).
+- ⭐ **THE CONTRACT IS `site_authority::workflows`'s, COPIED DELIBERATELY**: the handler may now validate before the gate, and the write re-validates regardless, so *the registry never stores an invalid row, whatever called it*. Neither half is optional — dropping the first returns a 403 for bad input, dropping the second lets a future caller bypass validation entirely.
+- ⚠️ **`record_trial_results` HAS NO PURE VALIDATION AND GAINS NO VALIDATOR.** Its body is a raw `Value` and its only check is that the trial exists, which needs the database. ⛔ Stated rather than left as a gap in the list of seven: it will reach `.3`'s gate with nothing to run ahead of it, and that is correct rather than missing.
+- ⚠️ **ONE ORDERING MOVED, and it is named because a seam claiming *no behaviour change* owes it.** `evaluate_gate` now checks the submitted scores' shape and range BEFORE it looks the gate up, so a malformed score against a nonexistent gate now reports the malformed score rather than the ghost gate. ⛔ Both were 400s and no control covers that pair; the reorder is required, because a validation that runs after the gate lookup cannot run before the authorization gate either.
+- ⭐ **AND THE EMPTY-SCORES REFUSAL DELIBERATELY DID NOT MOVE.** *Compared no case* is a fact about the baseline's INTERSECTION with the submitted scores, so it is not decidable without the stored row. It stays inside the write, and `validate_gate_scores` says so in its own doc comment rather than leaving a reader to wonder why one check moved and its neighbour did not.
+- [x] **REPRODUCE / ISSUE** — implementing `.1` showed the gate cannot wrap these writes as they stand: `authorized()` renders a refusal as a `&'static str` authorization reason, so an input error inside a site act becomes a 403 about authority.
+- [x] **ROOT CAUSE (WHY + WHERE)** — every pure check lived inside the async write in `crates/reasonbraid-server/src/evaluation.rs`, so nothing could run it ahead of a gate.
+- [x] **THE FIX** — six pure functions extracted, each called first by its own write. No signature changed, no handler touched, no SQL moved.
+- [x] **ADDRESSED (verified)** — `git grep -c "^pub fn validate_" -- crates/reasonbraid-server/src/evaluation.rs` returns **6**, and each is reachable without a pool.
+- [x] **NO REGRESSION** — `bash scripts/run_pg_tests.sh evaluation` → **3 passed**, rc=0 and the three unit controls pass, with `git diff --stat -- crates/reasonbraid-server/tests/` **empty**: no test was edited, which is the only evidence a seam can offer. Clippy **0 warnings**; fmt rc=0; `make gate` green.
+- [x] **LOCKSTEP** — `MEMORY.md`, `CHANGELOG.md`, `DEV_NOTES.md`, `LIVE_STATUS.md` and this tree. ⛔ The book is unchanged: no route behaves differently.
+- promotion: declined (*validate before the gate, and re-validate inside it* is `site_authority::workflows`'s own documented contract, cited rather than restated).
+- Verification: `evaluation` 3/3 live and 3/3 unit, no test edited; clippy 0 warnings; fmt and the doctrine gate rc=0.
+- Commit: `REASONBRAID-REPAIR-0391 (leaf SIGNOFF-REPAIR.8.2.5.2): validation moves ahead of the gate, and no test had to change`.
+
+##### SIGNOFF-REPAIR.8.2.5.3 — The gate, the reason, and the read side's stated disposition
+
+- Opened: `pending` by `.8.2.5`'s split; **must not start before `.2`**.
 - Owns: converting the seven evaluation WRITE functions from `&PgPool` to `&mut sqlx::PgConnection` so each can run inside the site transaction `authorized()` opens; a `site_authority::evaluation` module wrapping them; the `reason` field each site act requires on the seven request bodies; the HTTP wiring; the controls; the read-side disposition; and the book. ⚠️ The READ functions stay on `&PgPool` because they stay outside the gate.
 - ⭐ **THE STORE-FAULT DISTINCTION `.8.2.2` BUILT IS WHAT MAKES THE AUDIT HONEST HERE**, and the two repairs compose rather than merely coexisting: `authorized()`'s closure returns `Result<Result<Effect, &'static str>, Error>`, where the OUTER error is *the database could not answer* and the inner is *the caller was refused*. Before `.8.2.2` every evaluation failure was one undifferentiated `Duplicate`, so a store fault would have been audited as a refusal — a permanent site-audit row asserting a decision nobody made.
-- Acceptance: each of the seven writes refuses a caller with no grant, observed RED first through HTTP, and a grant holder succeeds in the same run; a refusal carries its audit id, as the four existing site surfaces do; a store fault is NOT audited as a refusal, observed with an injected fault; the read side is stated explicitly — left on enrolment with DOC-0029 cited, or gated with its reason, never changed silently; `evaluation` and `policy` stay green; and the book documents what gates each route.
+- ⚠️ **Two routes take a bare JSON body today** — `record_trial_results` and `evaluate_gate` — so acquiring a `reason` changes their shape, not just their fields. That is a documented wire change and the book carries it.
+- Acceptance: each of the seven writes refuses a caller with no grant, observed RED first through HTTP, and a grant holder succeeds in the same run; a refusal carries its audit id, as the four existing site surfaces do; an INVALID input from an authorized caller still returns its typed 400 and never an authorization refusal, which is what `.2` exists to make possible; a store fault is NOT audited as a refusal, observed with an injected fault; the read side is stated explicitly — left on enrolment with DOC-0029 cited, or gated with its reason, never changed silently; `evaluation` and `policy` stay green; and the book documents what gates each route.
 - Verification / commit: pending.
 
 #### SIGNOFF-REPAIR.8.2.4 — The gate and the calibration name a corpus they never bind to, and the split that found them is the goal line's own table
@@ -11307,6 +11332,7 @@ done
 
 | Class | Was | Now | Rises in 30 commits |
 | --- | --- | --- | --- |
+| 1a | `SIGNOFF-REPAIR.8.2.5.2` | `done` | ✅ REPAIR-0391 — **validation moves ahead of the gate, and no test had to change.** 🔴 Implementing `.1` showed the gate cannot wrap these writes as they stand: `authorized()` renders a refusal as a `&'static str` authorization reason, so *the baseline score for `c1` is not a number* would become a **403 about authority for a 400 about input**, silently undoing `.8.2.1`–`.8.2.4`. ⭐ Six `validate_*` functions extracted, each still called first by its own write — `site_authority::workflows`'s own documented contract, where the handler validates ahead of the gate and the write re-validates regardless so the registry never stores an invalid row whatever called it. ⚠️ Two honesty notes a *no behaviour change* claim owes: `record_trial_results` gains no validator because its only check needs the database, and `evaluate_gate`'s score-shape check now runs before the gate lookup, so a malformed score against a nonexistent gate reports the score. ⭐ The empty-scores refusal deliberately did NOT move — *compared no case* is a fact about the baseline's intersection and is not decidable without the row. Evidence: `evaluation` 3/3 live and unit with `git diff --stat` over the tests **empty** |
 | 1a | `SIGNOFF-REPAIR.8.2.5.1` | `done` | ✅ REPAIR-0390 — **the two evaluation site actions land before anything constructs them**, which is `.9.3.4`'s measured decomposition: a variant nothing builds changes no behaviour, and a widened `CHECK` admits names no row holds. ⭐ **Two actions, not one, derived rather than preferred**: ROADMAP §4.1's charter names separation-of-duties and §19's release flow has two parties, so `evaluation_record` sets the standard and `gate_evaluate` measures against it — **a party that measures against a standard must not be able to move it**. 🔎 The scope was NARROWED mid-implementation by the leaf's own acceptance: converting the seven writes to take a connection forces seven handler changes, and *a seam that changes a caller is not a seam* made that a scope error rather than a compile error to route around — and the churn would have been scaffolding, since `.2` puts the handlers back on a pool. Verified by the suites that would notice: `migration_upgrade` 8/8, `site_authority` 11/11, `evaluation` 3/3, no test edited |
 | `dangling` | 76 | 32 → **1** after the repair | **0** |
 | `internally-ambiguous` | 126 | 785 | **5** |

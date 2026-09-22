@@ -163,11 +163,17 @@ fn is_hex64(digest: &str) -> bool {
     digest.len() == 64 && digest.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
-/// Register one corpus version (the content-addressed registry row).
-pub async fn register_corpus(
-    pool: &PgPool,
-    registration: &CorpusRegistration,
-) -> Result<RegisteredCorpus, EvaluationError> {
+/// The pure part of [`register_corpus`]'s contract, callable without a database.
+///
+/// ⛔ It exists so the gate can run AFTER validation (`SIGNOFF-REPAIR.8.2.5.2`).
+/// A site act renders its refusal as an authorization reason, so a validation
+/// failure wrapped inside one becomes a 403 about authority for a 400 about
+/// input — and `site_authority::workflows` states the rule in its own words:
+/// validate in the HTTP layer first, because a caller that fails validation
+/// learns nothing about authority and one that passes it still meets the gate.
+/// ⚠️ [`register_corpus`] calls this itself regardless, so the registry cannot
+/// store an invalid row whatever called it.
+pub fn validate_corpus(registration: &CorpusRegistration) -> Result<(), EvaluationError> {
     if !is_hex64(&registration.cases_digest) {
         return Err(EvaluationError::MalformedDigest(
             registration.cases_digest.clone(),
@@ -178,6 +184,15 @@ pub async fn register_corpus(
             registration.prompts_digest.clone(),
         ));
     }
+    Ok(())
+}
+
+/// Register one corpus version (the content-addressed registry row).
+pub async fn register_corpus(
+    pool: &PgPool,
+    registration: &CorpusRegistration,
+) -> Result<RegisteredCorpus, EvaluationError> {
+    validate_corpus(registration)?;
     let inserted = sqlx::query(
         "INSERT INTO evaluation_corpora \
          (corpus_id, version, cases_digest, prompts_digest, cases) \
@@ -207,14 +222,22 @@ pub async fn register_corpus(
     }
 }
 
-/// Record one experiment run (the seed-declaring record).
-pub async fn record_run(pool: &PgPool, run: &RunRecord) -> Result<StoredRun, EvaluationError> {
+/// The pure part of [`record_run`]'s contract, callable without a database —
+/// `SIGNOFF-REPAIR.8.2.5.2`, so the gate runs AFTER validation. The write
+/// calls it itself regardless, so an invalid row cannot be stored.
+pub fn validate_run(run: &RunRecord) -> Result<(), EvaluationError> {
     if run.trial_count < 1 {
         return Err(EvaluationError::InvalidTrialCount(run.trial_count));
     }
     if !run.deterministic && run.seed.is_none() {
         return Err(EvaluationError::UndeclaredSeed);
     }
+    Ok(())
+}
+
+/// Record one experiment run (the seed-declaring record).
+pub async fn record_run(pool: &PgPool, run: &RunRecord) -> Result<StoredRun, EvaluationError> {
+    validate_run(run)?;
     let corpus_exists: Option<bool> = sqlx::query_scalar(
         "SELECT EXISTS (SELECT 1 FROM evaluation_corpora \
          WHERE corpus_id = $1 AND version = $2)",
@@ -411,12 +434,10 @@ fn splitmix64(seed: u64, input: &[u8]) -> u64 {
     z
 }
 
-/// Create the shadow trial: the seeded assignment is SERVER-computed (the
-/// record alone reproduces it — the client never supplies a draw).
-pub async fn create_trial(
-    pool: &PgPool,
-    submission: &TrialSubmission,
-) -> Result<StoredTrial, EvaluationError> {
+/// The pure part of [`create_trial`]'s contract, callable without a database —
+/// `SIGNOFF-REPAIR.8.2.5.2`, so the gate runs AFTER validation. The write
+/// calls it itself regardless, so an invalid row cannot be stored.
+pub fn validate_trial(submission: &TrialSubmission) -> Result<(), EvaluationError> {
     if submission.arms.is_empty() {
         return Err(EvaluationError::empty_arms());
     }
@@ -428,6 +449,16 @@ pub async fn create_trial(
             return Err(EvaluationError::bad_cohort(&cohort.label));
         }
     }
+    Ok(())
+}
+
+/// Create the shadow trial: the seeded assignment is SERVER-computed (the
+/// record alone reproduces it — the client never supplies a draw).
+pub async fn create_trial(
+    pool: &PgPool,
+    submission: &TrialSubmission,
+) -> Result<StoredTrial, EvaluationError> {
+    validate_trial(submission)?;
     let corpus_exists: Option<bool> = sqlx::query_scalar(
         "SELECT EXISTS (SELECT 1 FROM evaluation_corpora \
          WHERE corpus_id = $1 AND version = $2)",
@@ -610,11 +641,10 @@ impl EvaluationError {
     }
 }
 
-/// Record one calibration (the accumulation over the named runs).
-pub async fn record_calibration(
-    pool: &PgPool,
-    submission: &CalibrationSubmission,
-) -> Result<Value, EvaluationError> {
+/// The pure part of [`record_calibration`]'s contract, callable without a database —
+/// `SIGNOFF-REPAIR.8.2.5.2`, so the gate runs AFTER validation. The write
+/// calls it itself regardless, so an invalid row cannot be stored.
+pub fn validate_calibration(submission: &CalibrationSubmission) -> Result<(), EvaluationError> {
     if submission.run_ids.is_empty() {
         return Err(EvaluationError::MalformedDigest(
             "the calibration names at least one run".to_string(),
@@ -625,6 +655,15 @@ pub async fn record_calibration(
             return Err(EvaluationError::out_of_range("brier", brier));
         }
     }
+    Ok(())
+}
+
+/// Record one calibration (the accumulation over the named runs).
+pub async fn record_calibration(
+    pool: &PgPool,
+    submission: &CalibrationSubmission,
+) -> Result<Value, EvaluationError> {
+    validate_calibration(submission)?;
     // ⛔ ELIGIBLE, NOT MERELY PRESENT (`SIGNOFF-REPAIR.8.2.4`). This loop used
     // to ask only whether the run row existed, so a calibration could
     // accumulate runs taken against a DIFFERENT corpus version or a different
@@ -687,11 +726,10 @@ pub async fn record_calibration(
     }
 }
 
-/// Record the gate (the baseline + the threshold).
-pub async fn record_gate(
-    pool: &PgPool,
-    submission: &GateSubmission,
-) -> Result<Value, EvaluationError> {
+/// The pure part of [`record_gate`]'s contract, callable without a database —
+/// `SIGNOFF-REPAIR.8.2.5.2`, so the gate runs AFTER validation. The write
+/// calls it itself regardless, so an invalid row cannot be stored.
+pub fn validate_gate(submission: &GateSubmission) -> Result<(), EvaluationError> {
     if !(0.0..=1.0).contains(&submission.threshold) {
         return Err(EvaluationError::out_of_range(
             "threshold",
@@ -719,6 +757,15 @@ pub async fn record_gate(
             ));
         }
     }
+    Ok(())
+}
+
+/// Record the gate (the baseline + the threshold).
+pub async fn record_gate(
+    pool: &PgPool,
+    submission: &GateSubmission,
+) -> Result<Value, EvaluationError> {
+    validate_gate(submission)?;
     // ⛔ THE GATE NAMES A CORPUS, SO IT BINDS TO ONE (`SIGNOFF-REPAIR.8.2.4`).
     // `record_run` and `create_trial` have asked this question since they were
     // written; `record_gate` carried `corpus_id` and `corpus_version` and
@@ -764,26 +811,14 @@ pub async fn record_gate(
     }
 }
 
-/// The gate evaluation (`.4.4`): each measured case score is compared against
-/// the baseline minus the threshold — a drop below it is the typed FAILURE.
-/// The result APPENDS (the gate never rewrites a result).
-pub async fn evaluate_gate(
-    pool: &PgPool,
-    gate_id: &str,
-    scores: &Value,
-) -> Result<Value, EvaluationError> {
-    let row: Option<(Value, f64)> =
-        sqlx::query_as("SELECT baseline, threshold FROM evaluation_gates WHERE gate_id = $1")
-            .bind(gate_id)
-            .fetch_optional(pool)
-            .await
-            .map_err(EvaluationError::Storage)?;
-    let Some((baseline, threshold)) = row else {
-        return Err(EvaluationError::ghost_gate(gate_id));
-    };
-    let baseline = baseline.as_object().ok_or_else(|| {
-        EvaluationError::MalformedDigest("the stored baseline is corrupt".to_string())
-    })?;
+/// The pure part of [`evaluate_gate`]'s contract, callable without a database —
+/// `SIGNOFF-REPAIR.8.2.5.2`, so the gate runs AFTER validation. `evaluate_gate`
+/// calls it itself regardless.
+///
+/// ⚠️ An EMPTY score object passes here and is refused later, inside the write:
+/// *compared no case* is a fact about the BASELINE's intersection with these
+/// scores, so it is not decidable without the stored row.
+pub fn validate_gate_scores(scores: &Value) -> Result<(), EvaluationError> {
     let scores = scores.as_object().ok_or_else(|| {
         EvaluationError::MalformedDigest("the scores are a case→score object".to_string())
     })?;
@@ -807,6 +842,33 @@ pub async fn evaluate_gate(
             ));
         }
     }
+    Ok(())
+}
+
+/// The gate evaluation (`.4.4`): each measured case score is compared against
+/// the baseline minus the threshold — a drop below it is the typed FAILURE.
+/// The result APPENDS (the gate never rewrites a result).
+pub async fn evaluate_gate(
+    pool: &PgPool,
+    gate_id: &str,
+    scores: &Value,
+) -> Result<Value, EvaluationError> {
+    validate_gate_scores(scores)?;
+    let row: Option<(Value, f64)> =
+        sqlx::query_as("SELECT baseline, threshold FROM evaluation_gates WHERE gate_id = $1")
+            .bind(gate_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(EvaluationError::Storage)?;
+    let Some((baseline, threshold)) = row else {
+        return Err(EvaluationError::ghost_gate(gate_id));
+    };
+    let baseline = baseline.as_object().ok_or_else(|| {
+        EvaluationError::MalformedDigest("the stored baseline is corrupt".to_string())
+    })?;
+    let scores = scores.as_object().ok_or_else(|| {
+        EvaluationError::MalformedDigest("the scores are a case→score object".to_string())
+    })?;
     let mut failures = Vec::new();
     let mut compared = 0_u64;
     for (case_id, expected) in baseline {

@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-22 — Validation moves ahead of the gate, and no test had to change (`SIGNOFF-REPAIR.8.2.5.2`)
+
+`REASONBRAID-REPAIR-0391`. A seam the gate turned out to need, found by implementing the one before it.
+
+- 🔴 **THE GATE CANNOT WRAP THESE WRITES AS THEY STAND.** `authorized()` renders a refusal as a `&'static str` authorization reason, and `site_receipt_response` sends that to the caller — so an input error inside a site act becomes a **403 about authority for a 400 about input**, silently undoing the message quality `.8.2.1` through `.8.2.4` had just built.
+- ⭐ **THE CONTRACT IS ALREADY WRITTEN DOWN, in `site_authority::workflows`'s own doc comment**: validate in the HTTP layer BEFORE the site call and keep it a typed 400, because *a caller that fails validation learns nothing about authority, and one that passes it still meets the gate* — and the write re-validates regardless, so the registry never stores an invalid row whatever called it. `crate::policy::validate` is called ahead of `site::register_policy` for the same reason.
+- ✅ **SIX `validate_*` FUNCTIONS EXTRACTED**, each the pure head of its write and each still called first by it: the two digest shapes, the trial count and declared seed, the non-empty arms and cases with their cohort kinds, the run ids and Brier range, the threshold with the baseline's shape and every baseline score, and every measured score.
+- ⚠️ **TWO HONESTY NOTES A *NO BEHAVIOUR CHANGE* CLAIM OWES.** `record_trial_results` gains no validator, because its only check is that the trial exists and that needs the database — so it will reach the gate with nothing to run ahead of it, which is correct rather than missing. And `evaluate_gate` now checks the submitted scores before it looks the gate up, so a malformed score against a nonexistent gate reports the score rather than the ghost gate; both were 400s and no control covers that pair.
+- ⭐ **THE EMPTY-SCORES REFUSAL DELIBERATELY DID NOT MOVE.** *Compared no case* is a fact about the baseline's intersection with the submitted scores, so it is not decidable without the stored row. It stays inside the write, and the validator's doc comment says so rather than leaving a reader to wonder why one check moved and its neighbour did not.
+- ✅ **THE EVIDENCE A SEAM CAN OFFER**: `evaluation` 3/3 live and 3/3 unit, with `git diff --stat` over the test directory **empty**. No test was edited. Clippy 0 warnings, fmt and the doctrine gate rc=0.
+
 ## 2026-09-22 — The two evaluation site actions land before anything constructs them (`SIGNOFF-REPAIR.8.2.5.1`)
 
 `REASONBRAID-REPAIR-0390`. Item 1 of the sequence begins, in `.9.3.4`'s measured decomposition.

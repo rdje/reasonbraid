@@ -31,7 +31,7 @@
 //! the full content. `inspect` reconstructs the timeline from the log — never from
 //! SQLite/psql surgery (the `.6.1` acceptance).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use reasonbraid_core::{
@@ -41,6 +41,9 @@ use reasonbraid_core::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::Postgres;
+
+use crate::charters::DecisionRule;
+use crate::decisions::{BallotChoice, Tally};
 
 pub const AGGREGATE_TYPE: &str = "thread";
 
@@ -230,6 +233,50 @@ pub struct CreateBody {
     pub routing_class: Option<String>,
     #[serde(default)]
     pub participant_rules: Option<ParticipantRules>,
+    /// The rule the thread is decided under (`SIGNOFF-REPAIR.8.1.1.2`, ROADMAP
+    /// §3.2 + §13.3). Typed, so a name outside §13.3's seven families is the
+    /// deserialization refusal; the create boundary then refuses a family
+    /// nothing can evaluate, and the command transaction checks the tenant's
+    /// charter after authorization. Absent → the thread declares no rule and
+    /// its close stays caller-asserted, visibly
+    /// (`docs/decisions/2026-09-22_a-counted-rule-derives-its-outcome-and-a-rule-it-cannot-count-is-refused.md` §6).
+    #[serde(default)]
+    pub decision_rule: Option<DecisionRule>,
+}
+
+/// The rule a thread was created under, as the charter answered for it: the
+/// family, its threshold when it has one, and the content address of the
+/// charter that allowed it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeclaredRule {
+    pub rule: DecisionRule,
+    pub threshold: Option<f64>,
+    pub charter_digest: String,
+}
+
+/// The create boundary's PURE checks on a declared rule — the ones that need no
+/// tenant data, so they run before authorization and reveal nothing.
+///
+/// ⛔ A family nothing can evaluate is refused rather than accepted and then
+/// closed on the closer's word, which would be the declared-but-unread rule
+/// `.11.4.7.2.1.2` decision 2 forbids. ⛔ A counted family on a profile with no
+/// `vote` step could only ever count an empty ballot box.
+pub fn validate_declared_rule(rule: DecisionRule, steps: &[String]) -> Result<(), ThreadError> {
+    match crate::decisions::evaluation(rule) {
+        crate::decisions::Evaluation::Uncountable => Err(ThreadError::InvalidCommand(format!(
+            "the decision rule `{}` has no bar the server can evaluate yet \
+             (SIGNOFF-REPAIR.8.1.1.4), so a thread cannot be decided under it",
+            rule.as_str()
+        ))),
+        crate::decisions::Evaluation::Counted if !steps.iter().any(|s| s == "vote") => {
+            Err(ThreadError::InvalidCommand(format!(
+                "the decision rule `{}` is counted from ballots, and this workflow profile has \
+                 no `vote` step to cast them in",
+                rule.as_str()
+            )))
+        }
+        _ => Ok(()),
+    }
 }
 
 /// A budget specification for a new thread; unspecified dimensions take the
@@ -337,6 +384,11 @@ pub enum ContributionKind {
     /// payload; before it existed, `assess` was a step two shipped profiles
     /// declared and nothing could execute on.
     Assessment,
+    /// `SIGNOFF-REPAIR.8.1.1.2` (ROADMAP §13.2 step 10): one electorate
+    /// member's ballot under the thread's declared rule — legal on the `vote`
+    /// step only, once per member. The close counts these; nobody asserts the
+    /// count.
+    Ballot,
     /// `.3.2` (ADR-030): the moderation kinds — the CLOSED vocabulary. A
     /// moderation action is a contribution, never a new authority: the
     /// capability-shaped fields (verdict/claims/evidence_refs/target) are
@@ -437,6 +489,19 @@ pub struct ContributeBody {
     /// `summary`-kind contribution during the `synthesize` step.
     #[serde(default)]
     pub synthesis: Option<SynthesisInput>,
+    /// `SIGNOFF-REPAIR.8.1.1.2`: the ballot — legal only on a `ballot`-kind
+    /// contribution.
+    #[serde(default)]
+    pub ballot: Option<BallotInput>,
+}
+
+/// One ballot (`SIGNOFF-REPAIR.8.1.1.2`). The choice is the whole record: the
+/// voter is the contribution's author, and the electorate it counts against
+/// was fixed when the `vote` step opened.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BallotInput {
+    pub choice: BallotChoice,
 }
 
 /// The synthesis record (`.3.3`, ADR-030): derived content, auditable by
@@ -641,16 +706,21 @@ pub struct MinorityReportInput {
 
 /// `thread.close` body: the scope, the stop reason (preserved for the audit
 /// view), the outcome (the §13.4 terminal; `decided`/`inconclusive` stay
-/// accepted aliases, default `decided`), the unresolved register (the items
-/// that prevented a decision — refused on a decision-family terminal), and
-/// the minority report (`.2.4.1`).
+/// accepted aliases), the unresolved register (the items that prevented a
+/// decision — refused on a decision-family terminal), and the minority report
+/// (`.2.4.1`).
+///
+/// The outcome is OPTIONAL (`SIGNOFF-REPAIR.8.1.1.2`): under a declared rule an
+/// omitted outcome closes with the one the server derives, and an asserted one
+/// must agree with it. A thread that declares no rule reads an omitted outcome
+/// as `decided`, exactly as before.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CloseBody {
     pub tenant_id: TenantId,
     pub reason: String,
     #[serde(default)]
-    pub outcome: CloseOutcome,
+    pub outcome: Option<CloseOutcome>,
     #[serde(default)]
     pub unresolved: Vec<String>,
     #[serde(default)]
@@ -732,6 +802,22 @@ pub struct ThreadProjection {
     /// the CURRENT round; `thread.advance_round` is the only mover.
     #[serde(default = "default_round")]
     pub current_round: u64,
+    /// `SIGNOFF-REPAIR.8.1.1.2`: the declared rule, its charter threshold and
+    /// the charter's content address (additive — a projection written before
+    /// them is a thread that declared no rule).
+    #[serde(default)]
+    pub decision_rule: Option<DecisionRule>,
+    #[serde(default)]
+    pub approval_threshold: Option<f64>,
+    #[serde(default)]
+    pub charter_digest: Option<String>,
+    /// The electorate, fixed when the thread entered its `vote` step (§13.2
+    /// step 10); `None` until then.
+    #[serde(default)]
+    pub electorate: Option<BTreeSet<String>>,
+    /// Electorate member → the ballot they cast. At most one each.
+    #[serde(default)]
+    pub ballots: BTreeMap<String, BallotChoice>,
     pub ceiling_id: String,
     pub budget: BudgetDimensions,
 }
@@ -876,10 +962,11 @@ pub fn prepare_create(
     principal: &str,
     body: &CreateBody,
     workflow_steps: Vec<String>,
+    declared: Option<DeclaredRule>,
 ) -> PreparedCommand {
     let budget = ceiling_for(body.budget.as_ref());
     let ceiling_id = format!("ceil_{thread_id}");
-    let projection = ThreadProjection {
+    let mut projection = ThreadProjection {
         invitations: BTreeMap::new(),
         current_round: default_round(),
         schema: 1,
@@ -904,9 +991,17 @@ pub fn prepare_create(
         workflow_step: 0,
         participant_rules: body.participant_rules.clone().unwrap_or_default(),
         cancel_reason: None,
+        decision_rule: declared.as_ref().map(|d| d.rule),
+        approval_threshold: declared.as_ref().and_then(|d| d.threshold),
+        charter_digest: declared.map(|d| d.charter_digest),
+        electorate: None,
+        ballots: BTreeMap::new(),
         ceiling_id: ceiling_id.clone(),
         budget,
     };
+    // A profile whose FIRST step is `vote` opens the ballot at creation, when
+    // the creator is the only accepted participant.
+    open_vote_if_entered(&mut projection);
     let event_id = EventId::new();
     let event_body = json!({
         "operation": OP_CREATE,
@@ -920,6 +1015,10 @@ pub fn prepare_create(
         "workflow_profile": projection.workflow_profile,
         "workflow_steps": projection.workflow_steps,
         "participant_rules": projection.participant_rules,
+        "decision_rule": projection.decision_rule,
+        "approval_threshold": projection.approval_threshold,
+        "charter_digest": projection.charter_digest,
+        "electorate": projection.electorate,
     });
     PreparedCommand {
         event_id,
@@ -961,6 +1060,43 @@ fn ensure_participant(projection: &ThreadProjection, principal: &str) -> Result<
             principal: principal.to_string(),
         }),
     }
+}
+
+/// Whether this thread's declared rule is counted from ballots.
+fn counts_ballots(projection: &ThreadProjection) -> bool {
+    projection.decision_rule.is_some_and(|rule| {
+        crate::decisions::evaluation(rule) == crate::decisions::Evaluation::Counted
+    })
+}
+
+/// Fix the electorate when the thread stands on its `vote` step for the first
+/// time (§13.2 step 10, *snapshot electorate*): the participants who have
+/// ACCEPTED at that moment. A participant who joins later is not in it, and a
+/// thread whose rule counts no ballots records none.
+fn open_vote_if_entered(projection: &mut ThreadProjection) {
+    let on_vote = projection
+        .workflow_steps
+        .get(projection.workflow_step)
+        .is_some_and(|step| step == "vote");
+    if on_vote && projection.electorate.is_none() && counts_ballots(projection) {
+        projection.electorate = Some(
+            projection
+                .participants
+                .iter()
+                .filter(|(_, state)| **state == ParticipationState::Accepted)
+                .map(|(principal, _)| principal.clone())
+                .collect(),
+        );
+    }
+}
+
+/// The ballot box as it stands: the electorate's size and the ballots cast. A
+/// vote that never opened has an empty electorate, which counts as `no_quorum`.
+fn tally_of(projection: &ThreadProjection) -> Tally {
+    Tally::of(
+        projection.electorate.as_ref().map_or(0, |e| e.len() as u64),
+        projection.ballots.values(),
+    )
 }
 
 /// The derived expiry predicate (`.1.3.1`): a pending invitation whose recorded
@@ -1435,6 +1571,12 @@ where
             projection.current_round += 1;
             projection.workflow_step = (projection.workflow_step + 1)
                 .min(projection.workflow_steps.len().saturating_sub(1));
+            // `SIGNOFF-REPAIR.8.1.1.2`: entering `vote` fixes the electorate,
+            // and the event names it, so the count is re-derivable from the log.
+            let opened = projection.electorate.is_none();
+            open_vote_if_entered(&mut projection);
+            let electorate =
+                (opened && projection.electorate.is_some()).then(|| projection.electorate.clone());
             (
                 EVENT_ROUND_ADVANCED,
                 json!({
@@ -1444,6 +1586,7 @@ where
                     "actor_principal_id": principal,
                     "round": projection.current_round,
                     "blind_committed": commits_blind,
+                    "electorate": electorate.flatten(),
                 }),
                 serde_json::to_value(&projection).expect("projection serializes"),
             )
@@ -1474,14 +1617,15 @@ where
             // it references, never rewrites).
             if body.kind.is_moderation_kind() {
                 if body.verdict.is_some()
+                    || body.ballot.is_some()
                     || body.assessment.is_some()
                     || !body.claims.is_empty()
                     || !body.evidence_refs.is_empty()
                     || body.target_claim_digest.is_some()
                 {
                     return Err(ThreadError::InvalidCommand(
-                        "a moderation action carries no verdict, assessment, claims, evidence \
-                         references, or claim target — the prohibition is the vocabulary's \
+                        "a moderation action carries no verdict, ballot, assessment, claims, \
+                         evidence references, or claim target — the prohibition is the vocabulary's \
                          negative space"
                             .to_string(),
                     ));
@@ -1571,6 +1715,58 @@ where
                     step.unwrap_or("none")
                 )));
             }
+            // `SIGNOFF-REPAIR.8.1.1.2`: a ballot is cast on the `vote` step,
+            // under a rule that counts ballots, by a member of the electorate
+            // fixed when voting opened — once.
+            if body.ballot.is_some() && body.kind != ContributionKind::Ballot {
+                return Err(ThreadError::InvalidCommand(
+                    "the ballot rides a `ballot`-kind contribution only".to_string(),
+                ));
+            }
+            let cast = if body.kind == ContributionKind::Ballot {
+                let Some(ballot) = body.ballot.as_ref() else {
+                    return Err(ThreadError::InvalidCommand(
+                        "a `ballot` contribution requires `ballot`".to_string(),
+                    ));
+                };
+                if !counts_ballots(&projection) {
+                    return Err(ThreadError::InvalidCommand(
+                        match projection.decision_rule {
+                            Some(rule) => format!(
+                                "this thread's decision rule `{}` counts no ballots",
+                                rule.as_str()
+                            ),
+                            None => "this thread declares no decision rule, so there is no ballot \
+                                 to cast"
+                                .to_string(),
+                        },
+                    ));
+                }
+                if step != Some("vote") {
+                    return Err(ThreadError::InvalidCommand(format!(
+                        "a ballot requires the current step to be `vote` (it is `{}`)",
+                        step.unwrap_or("none")
+                    )));
+                }
+                if !projection
+                    .electorate
+                    .as_ref()
+                    .is_some_and(|e| e.contains(principal))
+                {
+                    return Err(ThreadError::InvalidCommand(format!(
+                        "principal `{principal}` is not in the electorate fixed when this \
+                         thread's vote opened"
+                    )));
+                }
+                if projection.ballots.contains_key(principal) {
+                    return Err(ThreadError::InvalidCommand(format!(
+                        "principal `{principal}` has already cast a ballot, and a ballot is final"
+                    )));
+                }
+                Some(ballot.choice)
+            } else {
+                None
+            };
             // `.3.3` (ADR-030): the synthesis rides a `summary`-kind
             // contribution on the `synthesize` step — derived content whose
             // input range must name events that EXIST (the transformation is
@@ -1812,6 +2008,9 @@ where
                 .collect();
             projection.structured_claims += claims.len() as u64;
             projection.contributions += 1;
+            if let Some(choice) = cast {
+                projection.ballots.insert(principal.to_string(), choice);
+            }
             // `.2.3` (ADR-029): a contribution posted while the CURRENT step is
             // `blind_solicit` is blind — the marker rides the event; the read
             // surface defers its content until the commitment point.
@@ -1835,6 +2034,7 @@ where
                     "target_claim_digest": body.target_claim_digest,
                     "ref_event_id": body.ref_event_id,
                     "synthesis": body.synthesis,
+                    "ballot": cast.map(|choice| json!({ "choice": choice })),
                     "verdict": body.verdict.as_ref().map(|v| json!({
                         "target_digest": v.target_digest,
                         "rule": v.rule,
@@ -1982,11 +2182,25 @@ where
         OP_CLOSE => {
             let body: CloseBody = serde_json::from_value(body.clone())
                 .map_err(|e| ThreadError::InvalidCommand(e.to_string()))?;
+            // `SIGNOFF-REPAIR.8.1.1.2` (§13.2 step 11): under a declared rule
+            // the outcome is DERIVED — counted from the ballots, or from who
+            // closes — and an asserted outcome that disagrees is refused. With
+            // no rule it stays the closer's word, and the event now says so.
+            let tally = tally_of(&projection);
+            let closed = crate::decisions::classify_close(
+                projection.decision_rule,
+                projection.approval_threshold,
+                &tally,
+                principal == projection.created_by,
+                body.outcome,
+            )
+            .map_err(|refusal| ThreadError::InvalidCommand(refusal.to_string()))?;
+            let outcome = closed.outcome;
             // `.2.4.1` (the `.1.5.3` refusal, generalized to the family): a
             // DECISION-family terminal must not carry an unresolved register —
             // listing the items that prevented a decision while claiming one
             // would be dishonest. The failure family accepts it.
-            if body.outcome.is_decision_family() && !body.unresolved.is_empty() {
+            if outcome.is_decision_family() && !body.unresolved.is_empty() {
                 return Err(ThreadError::InvalidCommand(
                     "a decision terminal cannot carry unresolved items — name a failure terminal                      (deadlocked, no_quorum, insufficient_evidence, budget_exhausted, expired,                      cancelled, human_decision_required, unsafe_to_continue)"
                         .to_string(),
@@ -2002,7 +2216,7 @@ where
                     ThreadState::Open
                         .apply(ThreadTransition::BeginClose)
                         .map_err(ThreadError::InvalidTransition)?;
-                    if body.outcome.is_decision_family() {
+                    if outcome.is_decision_family() {
                         ThreadState::Closing
                             .apply(ThreadTransition::FinalizeClose)
                             .expect("finalize_close from closing is deterministic")
@@ -2013,7 +2227,7 @@ where
                     }
                 }
                 ThreadState::Closing => {
-                    if body.outcome.is_decision_family() {
+                    if outcome.is_decision_family() {
                         ThreadState::Closing
                             .apply(ThreadTransition::FinalizeClose)
                             .expect("finalize_close from closing is deterministic")
@@ -2034,7 +2248,7 @@ where
             projection.state = terminal;
             projection.close_reason = Some(body.reason.clone());
             // The canonical terminal persists; the legacy words never do.
-            projection.close_outcome = Some(body.outcome.canonical().to_string());
+            projection.close_outcome = Some(outcome.canonical().to_string());
             // The profile's terminal step (the ADR-016 sequence's last).
             projection.workflow_step = projection.workflow_steps.len().saturating_sub(1);
             (
@@ -2045,7 +2259,10 @@ where
                     "tenant_id": tenant_id.to_string(),
                     "actor_principal_id": principal,
                     "reason": body.reason,
-                    "outcome": body.outcome.canonical(),
+                    "outcome": outcome.canonical(),
+                    "outcome_provenance": closed.provenance,
+                    "decision_rule": projection.decision_rule,
+                    "tally": counts_ballots(&projection).then_some(tally),
                     "unresolved": body.unresolved,
                     "minority_report": body.minority_report,
                 }),
@@ -2177,8 +2394,10 @@ mod tests {
                 workflow_profile: None,
                 routing_class: None,
                 participant_rules: None,
+                decision_rule: None,
             },
             default_workflow_steps(),
+            None,
         );
         let projection: ThreadProjection =
             serde_json::from_value(prepared.next_state).expect("projection parses");
@@ -2278,6 +2497,86 @@ mod tests {
         assert_eq!(
             super::first_citation_of_each_pair(&repeated).len(),
             repeated.len()
+        );
+    }
+
+    fn steps(names: &[&str]) -> Vec<String> {
+        names.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    /// `SIGNOFF-REPAIR.8.1.1.2`: the create boundary's pure refusals.
+    #[test]
+    fn a_declared_rule_is_refused_when_nothing_could_evaluate_it() {
+        for rule in [DecisionRule::RoleWeighted, DecisionRule::HumanCommittee] {
+            let err = validate_declared_rule(rule, &steps(&["vote"])).unwrap_err();
+            assert!(
+                err.to_string().contains("SIGNOFF-REPAIR.8.1.1.4"),
+                "the refusal names the leaf that owns the gap: {err}"
+            );
+        }
+        let err = validate_declared_rule(DecisionRule::Unanimity, &steps(&["solicit", "decide"]))
+            .unwrap_err();
+        assert!(err.to_string().contains("no `vote` step"), "{err}");
+        assert!(
+            validate_declared_rule(DecisionRule::Unanimity, &steps(&["solicit", "vote"])).is_ok()
+        );
+        assert!(
+            validate_declared_rule(DecisionRule::OwnerDecides, &steps(&["solicit", "decide"]))
+                .is_ok(),
+            "a rule that counts no ballots needs no vote step"
+        );
+    }
+
+    /// A profile whose first step is `vote` fixes the electorate at creation,
+    /// and only under a rule that counts ballots.
+    #[test]
+    fn the_electorate_is_fixed_when_the_vote_step_is_entered() {
+        let tenant: TenantId = "ten_00000000-0000-7000-8000-000000000001".parse().unwrap();
+        let thread: ThreadId = "thr_00000000-0000-7000-8000-000000000001".parse().unwrap();
+        let creator = "hpr_00000000-0000-7000-8000-000000000001";
+        let body = |rule| CreateBody {
+            tenant_id: tenant,
+            subject: "s".into(),
+            objective: "o".into(),
+            budget: None,
+            classification: None,
+            workflow_profile: None,
+            routing_class: None,
+            participant_rules: None,
+            decision_rule: rule,
+        };
+        let declared = |rule| DeclaredRule {
+            rule,
+            threshold: None,
+            charter_digest: "sha256:00".into(),
+        };
+        let projection = |prepared: PreparedCommand| -> ThreadProjection {
+            serde_json::from_value(prepared.next_state).unwrap()
+        };
+        let counted = projection(prepare_create(
+            &tenant,
+            &thread,
+            creator,
+            &body(Some(DecisionRule::Unanimity)),
+            steps(&["vote"]),
+            Some(declared(DecisionRule::Unanimity)),
+        ));
+        assert_eq!(
+            counted.electorate,
+            Some(BTreeSet::from([creator.to_owned()]))
+        );
+        assert_eq!(counted.charter_digest.as_deref(), Some("sha256:00"));
+        let uncounted = projection(prepare_create(
+            &tenant,
+            &thread,
+            creator,
+            &body(Some(DecisionRule::OwnerDecides)),
+            steps(&["vote"]),
+            Some(declared(DecisionRule::OwnerDecides)),
+        ));
+        assert_eq!(
+            uncounted.electorate, None,
+            "owner_decides counts no ballots"
         );
     }
 }

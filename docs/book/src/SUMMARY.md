@@ -16,6 +16,7 @@
 - [Recruitment and automatic initiation](recruitment.md)
 - [Site authority](site-authority.md)
 - [The governance charter](governance-charter.md)
+- [Deciding a thread: rules, ballots and the counted close](decision-rules.md)
 - [The policy lifecycle](policy-lifecycle.md)
 - [The evaluation harness](evaluation-harness.md)
 - [Budgets](budget.md)

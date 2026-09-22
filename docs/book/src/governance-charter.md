@@ -147,13 +147,14 @@ The fourth row is deliberate too. A refusal names the rule the caller asked
 about and never enumerates the charter's set, because listing it would answer a
 question the caller did not ask.
 
-## What a charter does not do yet
+## How a thread uses the charter
 
-A charter records which rules a tenant *may* decide under. Nothing yet binds a
-thread to one: a thread carries no `decision_rule` at creation, and a close still
-names its rule as free text beside an outcome the caller declares. Those arrive
-together — a rule that nothing evaluates would be a declaration rather than a
-control. See [Blockers and known gaps](blockers.md).
+A thread declares its `decision_rule` at creation, and the create checks that rule
+against this charter. The thread then records the charter's digest, and its close
+reports the result the server works out from that rule. See
+[Deciding a thread](decision-rules.md). `role_weighted` and `human_committee` can
+be allowed here but cannot yet be declared on a thread, because nothing can
+evaluate them.
 
 `role_weighted`'s weighting is charter-defined by §13.3 and has no schema here
 yet; today the family can be allowed but its weights have no home.

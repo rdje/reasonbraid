@@ -323,7 +323,9 @@ The contribute verb takes the structured body (`.1.5.1`):
 
 `thread.close` takes the honest outcome (`.1.5.3`):
 
-- `--outcome` — `decided` (default) | `inconclusive`: the honest terminal for a
+- `--outcome` — omitted, the server decides: a thread that [declares a decision
+  rule](decision-rules.md) closes with the outcome it works out, and one that
+  declares none closes `decided`. `inconclusive` is the honest terminal for a
   thread that ends WITHOUT a decision — state `inconclusive`, distinct from
   `closed` and from the `cancelled` abandonment terminal.
 - `--unresolved` (repeatable) — the items that prevented the decision; they ride

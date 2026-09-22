@@ -361,14 +361,32 @@ fn row_to_charter(
 
 /// Read one charter by its digest.
 pub async fn load(pool: &PgPool, charter_digest: &str) -> Result<StoredCharter, CharterError> {
+    let mut conn = acquire(pool).await?;
+    load_on(&mut conn, charter_digest).await
+}
+
+fn storage(e: sqlx::Error) -> CharterError {
+    CharterError::Storage(e.to_string())
+}
+
+async fn acquire(
+    pool: &PgPool,
+) -> Result<sqlx::pool::PoolConnection<sqlx::Postgres>, CharterError> {
+    pool.acquire().await.map_err(storage)
+}
+
+async fn load_on(
+    conn: &mut sqlx::PgConnection,
+    charter_digest: &str,
+) -> Result<StoredCharter, CharterError> {
     let row: Option<(String, String, Value, Value)> = sqlx::query_as(
         "SELECT charter_digest, tenant_id, allowed_decision_rules, approval_thresholds \
          FROM governance_charters WHERE charter_digest = $1",
     )
     .bind(charter_digest)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await
-    .map_err(|e| CharterError::Storage(e.to_string()))?;
+    .map_err(storage)?;
     let (d, t, r, th) = row.ok_or_else(|| CharterError::Unknown(charter_digest.to_owned()))?;
     Ok(row_to_charter(d, t, r, th))
 }
@@ -381,18 +399,26 @@ pub async fn load(pool: &PgPool, charter_digest: &str) -> Result<StoredCharter, 
 /// ceiling, so the charter a tenant is bound by is the one its ISSUER named —
 /// not the newest one anybody registered for that tenant id.
 pub async fn for_tenant(pool: &PgPool, tenant_id: &str) -> Result<StoredCharter, CharterError> {
+    let mut conn = acquire(pool).await?;
+    for_tenant_on(&mut conn, tenant_id).await
+}
+
+async fn for_tenant_on(
+    conn: &mut sqlx::PgConnection,
+    tenant_id: &str,
+) -> Result<StoredCharter, CharterError> {
     let named: Option<(String,)> = sqlx::query_as(
         "SELECT charter_digest FROM enrollment_boundaries \
          WHERE tenant_id = $1 AND status = 'active'",
     )
     .bind(tenant_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await
-    .map_err(|e| CharterError::Storage(e.to_string()))?;
+    .map_err(storage)?;
     let digest = named
         .map(|(d,)| d)
         .ok_or_else(|| CharterError::NoBoundary(tenant_id.to_owned()))?;
-    match load(pool, &digest).await {
+    match load_on(conn, &digest).await {
         Ok(charter) => Ok(charter),
         Err(CharterError::Unknown(_)) => Err(CharterError::BoundaryCharterUnknown {
             tenant_id: tenant_id.to_owned(),
@@ -413,11 +439,38 @@ pub async fn allows(
 ) -> Result<(DecisionRule, Option<f64>), CharterError> {
     let parsed =
         DecisionRule::parse(rule).ok_or_else(|| CharterError::UnknownRule(rule.to_owned()))?;
-    let charter = for_tenant(pool, tenant_id).await?;
-    if !charter.allowed_decision_rules.contains(&parsed) {
-        return Err(CharterError::NotAllowed(rule.to_owned()));
+    let mut conn = acquire(pool).await?;
+    let granted = allows_on(&mut conn, tenant_id, parsed).await?;
+    Ok((parsed, granted.threshold))
+}
+
+/// What a tenant's charter says about one rule it allows: the family's
+/// threshold, and the digest of the charter that said so.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Allowed {
+    pub threshold: Option<f64>,
+    /// The content address of the charter the answer came from. A thread
+    /// records it, so what it was created under stays readable after the
+    /// tenant's charter changes (decision 1 of the charter record).
+    pub charter_digest: String,
+}
+
+/// [`allows`] on a caller's connection — the thread-create path asks INSIDE
+/// its command transaction, after authorization, so a caller who may not
+/// create in a tenant learns nothing about that tenant's charter.
+pub async fn allows_on(
+    conn: &mut sqlx::PgConnection,
+    tenant_id: &str,
+    rule: DecisionRule,
+) -> Result<Allowed, CharterError> {
+    let charter = for_tenant_on(conn, tenant_id).await?;
+    if !charter.allowed_decision_rules.contains(&rule) {
+        return Err(CharterError::NotAllowed(rule.as_str().to_owned()));
     }
-    Ok((parsed, charter.approval_thresholds.get(rule).copied()))
+    Ok(Allowed {
+        threshold: charter.approval_thresholds.get(rule.as_str()).copied(),
+        charter_digest: charter.charter_digest,
+    })
 }
 
 #[cfg(test)]

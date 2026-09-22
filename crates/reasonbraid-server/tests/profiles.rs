@@ -50,6 +50,7 @@ async fn pool() -> Option<PgPool> {
         &pool,
         &[
             "site_audit",
+            "governance_charters",
             "profile_versions",
             "agent_profiles",
             "outbox_delivery",
@@ -12444,4 +12445,488 @@ async fn the_r3_render_persists_the_document_and_one_edge_per_chunk() {
     reasonbraid_server::sync_gated_entries(&pool, false)
         .await
         .expect("close the R3 gate");
+}
+
+// ── The counted close (`SIGNOFF-REPAIR.8.1.1.2`) ─────────────────────────────────
+
+/// Register a charter for `tenant` and point its ACTIVE boundary at it — the
+/// state a site operator reaches by registering a charter and reissuing the
+/// boundary (`SIGNOFF-REPAIR.11.4.7.2.1.2.1`). The registration is called
+/// directly because the site gate is that leaf's control, not this one's.
+async fn govern(pool: &PgPool, tenant: &str, rules: &[&str]) -> String {
+    let stored = reasonbraid_server::charters::register(
+        pool,
+        &reasonbraid_server::charters::CharterInput {
+            tenant_id: tenant.to_owned(),
+            allowed_decision_rules: rules.iter().map(|r| (*r).to_owned()).collect(),
+            approval_thresholds: Default::default(),
+            charter_digest: None,
+            reason: reasonbraid_server::site_authority::Reason::new("a counted-close control")
+                .unwrap(),
+        },
+    )
+    .await
+    .expect("the charter registers");
+    let bound = sqlx::query(
+        "UPDATE enrollment_boundaries SET charter_digest = $1 \
+         WHERE tenant_id = $2 AND status = 'active'",
+    )
+    .bind(&stored.charter_digest)
+    .bind(tenant)
+    .execute(pool)
+    .await
+    .expect("rebind the boundary")
+    .rows_affected();
+    assert_eq!(bound, 1, "the tenant has exactly one active boundary");
+    stored.charter_digest
+}
+
+/// One thread command; a non-JSON body comes back as `{"raw": …}`.
+async fn thread_command(
+    client: &reqwest::Client,
+    base: &str,
+    thread_id: &str,
+    principal: &str,
+    key: &str,
+    operation: &str,
+    body: Value,
+) -> (u16, Value) {
+    let response = client
+        .post(format!("{base}/v1/threads/{thread_id}/commands"))
+        .header(PRINCIPAL_HEADER, principal)
+        .json(&json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": operation,
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": key,
+            "body": body,
+            "client_context": {},
+        }))
+        .send()
+        .await
+        .expect("command request");
+    let status = response.status().as_u16();
+    let text = response.text().await.expect("command body");
+    (
+        status,
+        serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text })),
+    )
+}
+
+async fn create_with(
+    client: &reqwest::Client,
+    base: &str,
+    principal: &str,
+    key: &str,
+    body: Value,
+) -> (u16, Value) {
+    post(
+        client,
+        base,
+        "/v1/threads",
+        principal,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": key,
+            "body": body,
+            "client_context": {},
+        }),
+    )
+    .await
+}
+
+async fn close_event(
+    client: &reqwest::Client,
+    base: &str,
+    thread_id: &str,
+    tenant_id: &str,
+    principal: &str,
+) -> Value {
+    let (status, timeline) = get(
+        client,
+        base,
+        &format!("/v1/threads/{thread_id}/events?tenant_id={tenant_id}"),
+        principal,
+    )
+    .await;
+    assert_eq!(status, 200, "the timeline reads: {timeline}");
+    timeline["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["event_type"] == json!("thread.closed"))
+        .cloned()
+        .expect("the close event is in the timeline")
+}
+
+/// §13.2 steps 10–11 through the product surface: the electorate is fixed when
+/// the `vote` step opens, ballots are counted, and a close that asserts what the
+/// count refutes is refused.
+#[tokio::test]
+async fn a_counted_close_derives_its_outcome_and_refuses_one_that_disagrees() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human_a) =
+        enroll(&client, &base, json!({ "kind": "human", "name": "cc-a" })).await;
+    assert_eq!(status, 200, "A enrolls: {human_a}");
+    let a_id = human_a["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = human_a["tenant_id"].as_str().unwrap().to_string();
+    let (status, role_b) = enroll(
+        &client,
+        &base,
+        json!({
+            "kind": "role",
+            "name": "cc-b",
+            "tenant_id": tenant_id,
+            "actions": ["thread_contribute", "thread_inspect", "thread_invitation_respond"],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "B enrolls: {role_b}");
+    let b_id = role_b["principal_id"].as_str().unwrap().to_string();
+    let digest = govern(&pool, &tenant_id, &["unanimity"]).await;
+
+    // `policy_proposal` is solicit → revise → assess → vote → approve.
+    let (status, created) = create_with(
+        &client,
+        &base,
+        &a_id,
+        "cc-create",
+        json!({
+            "tenant_id": tenant_id,
+            "subject": "cc",
+            "objective": "decide under unanimity",
+            "workflow_profile": "policy_proposal",
+            "decision_rule": "unanimity",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the create succeeds: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    let cmd = |who: &str, key: &str, op: &str, body: Value| {
+        let principal = if who == "A" {
+            a_id.clone()
+        } else {
+            b_id.clone()
+        };
+        let (client, base, thread_id, key, op) = (
+            client.clone(),
+            base.clone(),
+            thread_id.clone(),
+            key.to_owned(),
+            op.to_owned(),
+        );
+        async move { thread_command(&client, &base, &thread_id, &principal, &key, &op, body).await }
+    };
+    let ballot = |choice: &str| {
+        json!({
+            "tenant_id": tenant_id,
+            "content": "my ballot",
+            "kind": "ballot",
+            "ballot": { "choice": choice },
+        })
+    };
+
+    let (status, state) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}?tenant_id={tenant_id}"),
+        &a_id,
+    )
+    .await;
+    assert_eq!(status, 200, "{state}");
+    assert_eq!(state["state"]["decision_rule"], json!("unanimity"));
+    assert_eq!(
+        state["state"]["charter_digest"],
+        json!(digest),
+        "the thread records the charter it was created under"
+    );
+    assert_eq!(
+        state["state"]["electorate"],
+        Value::Null,
+        "no vote has opened"
+    );
+
+    let (status, _) = cmd(
+        "A",
+        "cc-invite",
+        "thread.invite",
+        json!({ "tenant_id": tenant_id, "agent_role": b_id }),
+    )
+    .await;
+    assert_eq!(status, 200, "A invites B");
+    let (status, _) = cmd(
+        "B",
+        "cc-accept",
+        "thread.accept_invitation",
+        json!({ "tenant_id": tenant_id }),
+    )
+    .await;
+    assert_eq!(status, 200, "B accepts");
+
+    // A ballot before the vote step is refused.
+    let (status, early) = cmd("A", "cc-early", "thread.contribute", ballot("approve")).await;
+    assert_eq!(status, 400, "the early ballot refuses: {early}");
+    assert!(
+        early["message"].as_str().unwrap().contains("`vote`"),
+        "{early}"
+    );
+
+    // Three advances reach `vote`; the third opens it and fixes the electorate.
+    for round in 0..3 {
+        let (status, advanced) = cmd(
+            "A",
+            &format!("cc-advance-{round}"),
+            "thread.advance_round",
+            json!({ "tenant_id": tenant_id }),
+        )
+        .await;
+        assert_eq!(status, 200, "advance {round}: {advanced}");
+    }
+    let (_, state) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread_id}?tenant_id={tenant_id}"),
+        &a_id,
+    )
+    .await;
+    let mut expected = vec![a_id.clone(), b_id.clone()];
+    expected.sort();
+    assert_eq!(state["state"]["electorate"], json!(expected), "{state}");
+
+    let (status, cast) = cmd("A", "cc-a-votes", "thread.contribute", ballot("approve")).await;
+    assert_eq!(status, 200, "A votes: {cast}");
+    let (status, again) = cmd("A", "cc-a-again", "thread.contribute", ballot("reject")).await;
+    assert_eq!(status, 400, "a second ballot refuses: {again}");
+    assert!(
+        again["message"].as_str().unwrap().contains("final"),
+        "{again}"
+    );
+    let (status, cast) = cmd("B", "cc-b-votes", "thread.contribute", ballot("reject")).await;
+    assert_eq!(status, 200, "B votes: {cast}");
+
+    // THE CONTROL: the closer asserts unanimity, and the count says otherwise.
+    let (status, refused) = cmd(
+        "A",
+        "cc-close-lie",
+        "thread.close",
+        json!({
+            "tenant_id": tenant_id,
+            "reason": "we agreed",
+            "outcome": "accepted_unanimously",
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "the disagreeing close refuses: {refused}");
+    let message = refused["message"].as_str().unwrap();
+    assert!(
+        message.contains("accepted_unanimously") && message.contains("deadlocked"),
+        "the refusal names both words: {refused}"
+    );
+
+    // An omitted outcome closes with the count.
+    let (status, closed) = cmd(
+        "A",
+        "cc-close",
+        "thread.close",
+        json!({ "tenant_id": tenant_id, "reason": "the vote is in" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the close succeeds: {closed}");
+    assert_eq!(closed["thread_state"], json!("inconclusive"));
+    let event = close_event(&client, &base, &thread_id, &tenant_id, &a_id).await;
+    let body = &event["body"];
+    assert_eq!(body["outcome"], json!("deadlocked"), "{event}");
+    assert_eq!(body["outcome_provenance"], json!("derived"), "{event}");
+    assert_eq!(body["decision_rule"], json!("unanimity"), "{event}");
+    assert_eq!(
+        body["tally"],
+        json!({ "electorate": 2, "approve": 1, "reject": 1, "abstain": 0 }),
+        "{event}"
+    );
+}
+
+/// The create boundary: a family nothing can evaluate, a counted family with no
+/// vote step, a rule the charter does not allow and a charter nobody registered
+/// are all refused — and a caller without authority is refused by AUTHORITY,
+/// before any charter is read. A rule-less close stays the closer's word, and
+/// now says so.
+#[tokio::test]
+async fn a_declared_rule_is_checked_against_the_charter_after_authorization() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(&client, &base, json!({ "kind": "human", "name": "dr-a" })).await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+    let body = |rule: &str, profile: Option<&str>| {
+        let mut body = json!({
+            "tenant_id": tenant_id,
+            "subject": "dr",
+            "objective": "probe",
+            "decision_rule": rule,
+        });
+        if let Some(profile) = profile {
+            body["workflow_profile"] = json!(profile);
+        }
+        body
+    };
+    let refused = |status: u16, value: &Value, needle: &str, what: &str| {
+        assert_eq!(status, 400, "{what}: {value}");
+        assert!(
+            value["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains(needle),
+            "{what} names `{needle}`: {value}"
+        );
+    };
+
+    // The enrolment boundary names a label charter: FAIL CLOSED.
+    let (status, value) = create_with(
+        &client,
+        &base,
+        &human_id,
+        "dr-label",
+        body("unanimity", Some("policy_proposal")),
+    )
+    .await;
+    refused(status, &value, "cannot be answered", "a label charter");
+
+    govern(&pool, &tenant_id, &["consensus"]).await;
+    let (status, value) = create_with(
+        &client,
+        &base,
+        &human_id,
+        "dr-unallowed",
+        body("unanimity", Some("policy_proposal")),
+    )
+    .await;
+    refused(
+        status,
+        &value,
+        "does not allow `unanimity`",
+        "an unallowed rule",
+    );
+    assert!(
+        !value["message"].as_str().unwrap().contains("consensus"),
+        "a refusal never enumerates the charter: {value}"
+    );
+
+    let (status, value) = create_with(
+        &client,
+        &base,
+        &human_id,
+        "dr-no-vote",
+        body("consensus", None),
+    )
+    .await;
+    refused(
+        status,
+        &value,
+        "no `vote` step",
+        "a counted rule on quick_advice",
+    );
+
+    let (status, value) = create_with(
+        &client,
+        &base,
+        &human_id,
+        "dr-uncountable",
+        body("role_weighted", Some("policy_proposal")),
+    )
+    .await;
+    refused(
+        status,
+        &value,
+        "SIGNOFF-REPAIR.8.1.1.4",
+        "an uncountable family",
+    );
+
+    let (status, value) = create_with(
+        &client,
+        &base,
+        &human_id,
+        "dr-unknown",
+        body("benevolent_dictator", Some("policy_proposal")),
+    )
+    .await;
+    refused(status, &value, "benevolent_dictator", "an unknown family");
+
+    // A caller with no authority here is refused by AUTHORITY, and learns
+    // nothing about the charter.
+    let (status, value) = create_with(
+        &client,
+        &base,
+        STRANGER,
+        "dr-stranger",
+        body("unanimity", Some("policy_proposal")),
+    )
+    .await;
+    assert_ne!(status, 200, "{value}");
+    assert_ne!(
+        status, 400,
+        "an authority refusal, not a domain one: {value}"
+    );
+    let text = value.to_string();
+    assert!(
+        !text.contains("allow") && !text.contains("charter"),
+        "the stranger learns nothing about the charter: {value}"
+    );
+
+    // The allowed rule creates.
+    let (status, value) = create_with(
+        &client,
+        &base,
+        &human_id,
+        "dr-allowed",
+        body("consensus", Some("policy_proposal")),
+    )
+    .await;
+    assert_eq!(status, 200, "the allowed rule creates: {value}");
+
+    // A rule-less thread: the close stays the closer's word, and says so.
+    let (status, created) = create_with(
+        &client,
+        &base,
+        &human_id,
+        "dr-ruleless",
+        json!({ "tenant_id": tenant_id, "subject": "dr", "objective": "probe" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    let (status, closed) = thread_command(
+        &client,
+        &base,
+        &thread_id,
+        &human_id,
+        "dr-ruleless-close",
+        "thread.close",
+        json!({
+            "tenant_id": tenant_id,
+            "reason": "asserted",
+            "outcome": "accepted_unanimously",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "{closed}");
+    let event = close_event(&client, &base, &thread_id, &tenant_id, &human_id).await;
+    assert_eq!(
+        event["body"]["outcome_provenance"],
+        json!("caller_asserted"),
+        "{event}"
+    );
+    assert_eq!(event["body"]["decision_rule"], Value::Null, "{event}");
+    assert_eq!(event["body"]["tally"], Value::Null, "{event}");
 }

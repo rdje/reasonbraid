@@ -7057,6 +7057,31 @@ pub(crate) async fn run_thread_command(
             body,
             workflow_steps,
         } => {
+            // `SIGNOFF-REPAIR.8.1.1.2`: may this tenant decide under the
+            // declared rule? Asked AFTER authorization, so a caller who may not
+            // create here learns nothing about this tenant's charter, and on
+            // this transaction, so the thread records the charter it was
+            // actually created under. A boundary naming no registered charter
+            // FAILS CLOSED (`charters::for_tenant`).
+            let declared = match body.decision_rule {
+                None => None,
+                Some(rule) => {
+                    let allowed = crate::charters::allows_on(&mut tx, &tenant_id.to_string(), rule)
+                        .await
+                        .map_err(|e| match e {
+                            crate::charters::CharterError::Storage(detail) => {
+                                eprintln!("control api: charter read failed: {detail}");
+                                ControlApiError::internal()
+                            }
+                            refusal => ControlApiError::invalid_command(refusal.to_string()),
+                        })?;
+                    Some(threads::DeclaredRule {
+                        rule,
+                        threshold: allowed.threshold,
+                        charter_digest: allowed.charter_digest,
+                    })
+                }
+            };
             let thread_id = ThreadId::new();
             let prepared = threads::prepare_create(
                 tenant_id,
@@ -7064,6 +7089,7 @@ pub(crate) async fn run_thread_command(
                 &principal.id_string(),
                 body,
                 workflow_steps.clone(),
+                declared,
             );
             (thread_id, prepared)
         }
@@ -7652,6 +7678,12 @@ async fn create_thread(
         .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
     let workflow_steps = resolved.steps;
     body.workflow_profile = Some(resolved.profile_id);
+    // `SIGNOFF-REPAIR.8.1.1.2`: the declared rule's PURE checks run here, where
+    // they reveal nothing about the tenant. Its charter is read inside the
+    // command transaction, after authorization.
+    if let Some(rule) = body.decision_rule {
+        threads::validate_declared_rule(rule, &workflow_steps)?;
+    }
     let tenant_id = body.tenant_id;
     // `None`: a creation has no thread to bind. Its target is the TENANT, which
     // is already the first column of `idempotency`'s primary key, so two creates

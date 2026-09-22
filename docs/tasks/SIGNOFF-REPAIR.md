@@ -5995,6 +5995,28 @@ PY
 - Acceptance: a moderator principal may perform the five shipped acts and is REFUSED each of the six prohibited ones by a typed error; the two prohibitions that need `.8.1.1` and `.2.3` are observed RED against the real mechanisms rather than against constructed values; *suppress a visible dissent* is asserted as structurally impossible with the census that shows it, not as a passing test over an absent verb; *enforce format/length* is NOT implemented, per `.11.4.7.2.1.3`'s decision, and the leaf says so rather than omitting it; and `SURFACE-JUDGEMENT` is re-derived green.
 - Verification / commit: pending.
 
+##### SIGNOFF-REPAIR.11.4.7.2.1.5 — The adjudication pass's `discharged` verdicts have never been re-derived, and that is the dangerous direction
+
+- Opened: `pending` by `SIGNOFF-REPAIR.9.3.5`, `.4.6`, `.11.4.7.2.1.2` and `.11.4.7.2.1.3`, which between them re-derived FOUR of `.11.4.7.2.1.4`'s twenty-one verdicts and found TWO of the four wrong.
+- 🔴 **THE MEASUREMENT, AND IT IS ABOUT THIS PROJECT'S OWN AUDIT RATHER THAN ITS CODE.** Of the four rows whose verdicts have now been independently re-derived: tranche 1's **row 4** was graded `fired and open` and both its halves had shipped **fourteen days earlier** (`.9.3.5`); tranche 2's **row 14** was graded as one open thing and was **1 open · 1 partial · 2 discharged** (`.4.6`); two held (`.11.4.7.2.1.2`, `.11.4.7.2.1.3`). ⭐ **Twice it shrank, once it grew, once it held — so the lesson is *re-derive in EITHER direction*, not *the pass is unreliable*.**
+- ⛔ **BUT EVERY ONE OF THOSE FOUR WAS A ROW SOMETHING LATER OPENED A LEAF AGAINST.** A row graded `discharged` opens no leaf, is read by nobody again, and its failure mode is the one that matters: **a gap called closed stays closed.** ✅ **THE CENSUS:** of the twenty-one rows, **thirteen** now carry `discharged` and **twelve of those thirteen have never been re-derived by anyone** — only row 4 has, and it moved. Derive it with:
+  ```
+  python3 - <<'PY'
+  import re, collections
+  t = open('docs/tasks/SIGNOFF-REPAIR.md').read().splitlines()
+  rows = [(i, int(m.group(1)), m.group(3).strip())
+          for i, l in enumerate(t, 1)
+          if (m := re.match(r'^\|\s*(\d+)\s*\|([^|]*)\|([^|]*)\|', l)) and 5880 < i < 6070]
+  print(collections.Counter(v.split('—')[0].strip() for _, _, v in rows if 1 <= _ <= 21))
+  PY
+  ```
+- ⚠️ **NOT a claim that any `discharged` verdict IS wrong.** It is a claim about EXPOSURE: the two errors found so far were both produced by the same method — a verdict taken from one grep or over several nouns at once — and that method was applied to all twenty-one rows equally. The `fired and open` rows were audited only because each opened a leaf someone had to work.
+- ⭐ **AND THE TWO KNOWN ERRORS HAVE THE SAME SHAPE AS THE TWO THE PASS FOUND IN ITSELF** — `.11.4.7.2.1.4.2` caught its own population double-counting, and `.11.4.7.2.1.4.3`'s roll-up asserted 13/1 where its tables counted 12/2. This pass has now been wrong about itself four times and right about itself twice, which is the argument for finishing the job rather than for distrusting it.
+- Owns: re-deriving each of the twelve unverified `discharged` verdicts by a route structurally different from the one that produced it, and correcting any that moves.
+- Acceptance: each of the twelve is re-derived with the command recorded beside it, and the command is NOT the one the original verdict used — a grep repeated is not a second question (`docs/CLAIM_VERIFICATION.md` leg 1); a verdict that moves is corrected AT the row and its work is given an executable owner, never just noted; the pass-level tally is re-derived MECHANICALLY from the tables afterwards rather than restated, because that roll-up has already been wrong once; and the leaf states how many held, so the pass's reliability becomes a measured number instead of an impression.
+- ⛔ Sequenced AFTER `.8.1.1`: this is an audit of records, while `.8.1.1` is a live governance surface that publishes a claim it never derived. `.15`'s first ordering rule — a live exposure outranks everything — applies here as written.
+- Verification / commit: pending.
+
 ##### SIGNOFF-REPAIR.11.4.7.2.1.4 — The twenty-one phase-triggered deferrals no record has ever adjudicated
 
 - Opened: `pending` by `.11.4.7.2.1`, whose census found the Phase-1 gate record's six are the only deferrals anyone has graded.

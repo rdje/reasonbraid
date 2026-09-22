@@ -1,5 +1,17 @@
 # DEV_NOTES.md
 
+## 2026-09-22 — Four of the adjudication pass's verdicts have been re-derived, two were wrong, and twelve `discharged` ones never have (`SIGNOFF-REPAIR.11.4.7.2.1.5`)
+
+`REASONBRAID-DOC-0127`. A task-tree ownership slice: the finding this batch produced about its OWN audit, given an executable owner rather than a note.
+
+- 🔴 **FOUR OF THE TWENTY-ONE VERDICTS HAVE NOW BEEN INDEPENDENTLY RE-DERIVED AND TWO WERE WRONG.** Tranche 1's **row 4** was graded `fired and open` and both its halves had shipped **fourteen days before the audit** (`.9.3.5`); tranche 2's **row 14** was graded as one open thing and is **1 open · 1 partial · 2 discharged** (`.4.6`); two held (`.11.4.7.2.1.2`, `.11.4.7.2.1.3`).
+- ⭐ **Twice it shrank, once it grew, once it held — so the lesson is *re-derive in EITHER direction*, not *the pass is unreliable*.**
+- ⛔ **BUT ALL FOUR WERE ROWS SOMETHING LATER OPENED A LEAF AGAINST.** A row graded `discharged` opens no leaf, is read by nobody again, and its failure mode is the one that matters: **a gap called closed stays closed.** ✅ Of the twenty-one rows, **thirteen** carry `discharged` and **twelve have never been re-derived by anyone** — only row 4 has, and it moved.
+- ⚠️ **Not a claim that any `discharged` verdict IS wrong** — a claim about EXPOSURE. Both known errors came from the same method (a verdict taken from one grep, or over several nouns at once), and that method was applied to all twenty-one rows equally.
+- ⭐ **The pass has now been wrong about itself four times and right about itself twice** — it caught its own population double-counting, and its roll-up asserted 13 discharged / 1 open where its own tables counted 12 / 2. That is the argument for finishing the job, not for distrusting it.
+- ⛔ **Sequenced AFTER `.8.1.1`**, on `.15`'s own first ordering rule: this is an audit of records, while `.8.1.1` is a live governance surface publishing a claim it never derived, and a live exposure outranks everything.
+- ✅ Task-tree only; no code, no book, no behaviour. Doctrine gate **26/26 green**.
+
 ## 2026-09-22 — The charter has a home for the decision rules §4.1 says it defines, and it is content-addressed (`SIGNOFF-REPAIR.11.4.7.2.1.2.1`)
 
 `REASONBRAID-REPAIR-0395`. The first BUILD after `.15`'s five wave-B decisions, and the prerequisite `.11.4.7.2.1.2` found.

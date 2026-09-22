@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — An agent can now start more than one automatic thread, and how often is limited (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.1` with `SIGNOFF-REPAIR.5.2`)
+
+`REASONBRAID-REPAIR-0417`.
+
+- 🔴 **Before:** an agent could start exactly one automatic thread per tenant, ever — every later attempt silently returned the first thread. That bug was also the only thing stopping an agent from starting threads without limit, so it could not be fixed on its own.
+- ✅ **Now** each automatic start carries its own key, so a retried delivery still returns the same thread but a new start creates a new one. And every agent has a limit on automatic starts per hour (1000 in the development setting), recorded like every other usage limit: a refused start is written down, an agent with no limit row is refused rather than let through, and a person's ordinary thread creation is not counted. Both changes are in one commit, so at no point was automatic starting unlimited.
+- ✅ Tested end to end: two starts make two threads, a retry replays, the limit refuses at the ceiling, the refusal is recorded once, and an agent with no limit row is refused. Reverting either half makes the test fail.
+- ⚠️ The hourly number is a development default, not a measured one. The limit is per agent; making it part of the grant itself is a later task.
+- Technical: migration `0089_initiator_quota.sql` widens `usage_quotas.scope_kind` to a fifth kind `initiator` (scope id = role id) and backfills `quo_{role}_initiations` for existing roles; `quota::insert_initiator_default_in_tx` runs at both role-creation sites (enrolment, card import); `run_thread_command` checks the scope inside the create transaction only when `body.lineage` is set (server-set by the auto route), after the idempotency claim and authorization, storing a refusal as the invite quota does; `AutoCreateRequest.idempotency_key` is required and non-empty, and the row key is `auto_{role}_{key}`. Falsified: the old key → the second initiation replays (68/1); the check skipped → `(use, denial) = (0, 0)` (68/1).
+
 ## 2026-09-23 — The operator views are now proven served by the real server, not only present in the code (`SIGNOFF-REPAIR.4.6.1.7`)
 
 `REASONBRAID-REPAIR-0416`.

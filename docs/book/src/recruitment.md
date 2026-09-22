@@ -98,6 +98,7 @@ curl -s -X POST localhost:4310/v1/threads/auto \
   -H 'content-type: application/json' \
   -d '{
         "tenant_id": "ten_0192…",
+        "idempotency_key": "init-4471-1",
         "subject": "retention dispute 4471",
         "objective": "decide whether the evidence may be deleted",
         "topics": ["retention", "evidence"],
@@ -110,6 +111,13 @@ Only an **enrolled role** may call it — a human principal is refused — and i
 takes the **explicit `thread:create:auto` grant**. Holding the ordinary
 thread-creation authority is not enough: initiating without being asked is a
 separate permission.
+
+`idempotency_key` names **this** initiation. Sending the same key again — a
+retried delivery — returns the thread the first delivery created, marked
+`"replayed": true`, and a refused initiation is replayed the same way. A new
+initiation carries a new key. An empty key is refused (`400 invalid_command`),
+because a shared key would make every later initiation a replay of the first —
+which is exactly what happened until `SIGNOFF-REPAIR.5.2` was repaired.
 
 Before the initiation lands, the server evaluates the wake checklist itself:
 
@@ -154,15 +162,49 @@ Three things are refused before anything is written:
 | comes from a role already on the chain | `429 storm_control` — *autonomous initiation cycle* (ROADMAP §10.7) |
 | would be deeper than **3** | `429 storm_control` — *autonomous initiation depth 4 exceeds the maximum of 3* |
 
-⚠️ **Why this matters now.** Until this check existed, the only thing stopping a
+⚠️ **Why this check came first.** Before it existed, the only thing stopping a
 chain from running on (A starts a thread that wakes B, B starts one that wakes
 C, and so on) was a defect: a role could auto-initiate only once per tenant,
-because every later attempt replayed the first thread. That defect is owned by
-`SIGNOFF-REPAIR.5.2`, and its repair is locked behind this check.
+because every later attempt replayed the first thread. That defect
+(`SIGNOFF-REPAIR.5.2`) is repaired — the key is per initiation now — and the
+repair landed together with the initiation quota below, so that at no point was
+autonomous initiation bounded by nothing.
 
 ⚠️ **Causation is declared.** A role that names no cause starts a new chain at
 depth 1, and the server cannot tell a genuinely spontaneous wake from an
-omitted cause. The limit on how often a role may start a chain is the rate
-check, which is owned by `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2`. The maximum depth is a
-development-profile constant; §14.1 makes it a budget dimension that a tenant
-profile will own.
+omitted cause. What bounds how often a role may do that is the initiation quota
+below. The maximum depth is a development-profile constant; §14.1 makes it a
+budget dimension that a tenant profile will own.
+
+### How often a role may initiate
+
+Every role carries an **initiation quota** from the moment it is enrolled or
+imported from a card: a windowed ceiling on `POST /v1/threads/auto`, the
+`initiator` scope of the same usage-quota machinery that bounds invitations, MCP
+writes and acquisitions (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.1`, ROADMAP §11.5's
+*rate* bound). The development default is 1000 initiations per hour per role —
+the shape of the bound, not a measured figure.
+
+| the initiation | answer |
+| --- | --- |
+| within the window's ceiling | `200`; one `use` is recorded against the role's quota |
+| at the ceiling | `429 quota_exceeded` — *the quota is exhausted: 1000 uses within 3600s — the denial is recorded* |
+| from a role with no `initiator` quota row | `503 quota_unconfigured` — the surface fails closed rather than admitting an unbounded role |
+
+The check runs inside the creation's own transaction, after the idempotency
+claim and the authorization: a replayed key consumes nothing, a refused grant
+consumes nothing, and a recorded `use` always has a thread behind it. A refused
+initiation is stored under its key like any other refusal, so redelivering it
+replays the `429` without recording a second denial. A person's ordinary
+`thread.create` is not counted — the bound is on autonomous initiation only.
+
+The bound is a row in `usage_quotas`, like the other four scopes, and an
+operator changes it there:
+
+```sql
+UPDATE usage_quotas SET ceiling = 60
+ WHERE scope_kind = 'initiator' AND scope_id = 'rol_0192…';
+```
+
+Roles that existed before this bound received the default row when the server
+was upgraded, so no role is left without one.

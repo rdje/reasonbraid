@@ -1215,6 +1215,16 @@ async fn enroll_in_guard(
                 .bind(&req.name)
                 .execute(tx.connection(tenant_id, GuardMode::Exclusive)?)
                 .await?;
+            // A role is also an INITIATOR (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.1`):
+            // its identity row implies its initiation bound, which
+            // `POST /v1/threads/auto` checks fail-closed. Only a role gets the
+            // row — a human cannot initiate autonomously.
+            crate::quota::insert_initiator_default_in_tx(
+                tx.connection(tenant_id, GuardMode::Exclusive)?,
+                &tenant_id.to_string(),
+                &r.to_string(),
+            )
+            .await?;
         }
     }
 
@@ -5459,6 +5469,12 @@ struct AutoCreateRequest {
     /// its causation chain: its depth, and the roles already on it.
     #[serde(default)]
     caused_by: Option<String>,
+    /// The caller's key for THIS initiation (`SIGNOFF-REPAIR.5.2` clause 1):
+    /// a transport redelivery carrying the same key replays the stored answer;
+    /// a new initiation carries a new key. Required, and never empty. Until
+    /// this field existed the key was `auto_{role}_{tenant}`, so a role could
+    /// initiate exactly once per tenant, ever.
+    idempotency_key: String,
 }
 
 /// `POST /v1/threads/auto` — the node-initiated thread creation (`.3.5.3`):
@@ -5466,7 +5482,10 @@ struct AutoCreateRequest {
 /// wake checklist evaluates server-side BEFORE the initiation lands — the
 /// topic gate (the declared interests cover the topics), the confidentiality
 /// match, the concurrency gate, and the grant's spend bound. Replies do NOT
-/// inherit the permission (a child thread needs its own grant).
+/// inherit the permission (a child thread needs its own grant). The RATE
+/// bound (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.1`) is the `initiator` quota, checked
+/// inside the create transaction by `run_thread_command` where it can commit
+/// with the thread it admits.
 async fn create_thread_auto(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -5482,6 +5501,14 @@ async fn create_thread_auto(
         .tenant_id
         .parse()
         .map_err(|_| ControlApiError::invalid_command("tenant_id is malformed"))?;
+    // `SIGNOFF-REPAIR.5.2` clause 1: the key is the CALLER's, per initiation.
+    // An empty one would collapse every initiation onto `auto_{role}_` — the
+    // once-per-tenant defect in a new spelling — so it is refused outright.
+    if req.idempotency_key.is_empty() {
+        return Err(ControlApiError::invalid_command(
+            "idempotency_key must name this initiation",
+        ));
+    }
 
     // 1. THE grant: the explicit `thread:create:auto` authority (audited).
     let authz = CommandAuthz {
@@ -5561,9 +5588,12 @@ async fn create_thread_auto(
     }
 
     // 3. The initiation rides the SAME create flow (the auto grant authorizes
-    //    it — the command machinery does the rest). The idempotency key is the
-    //    server-assigned creation key (the auto-initiation is NOT a client
-    //    replay surface).
+    //    it — the command machinery does the rest). The idempotency key is
+    //    the caller's, namespaced to the role (`SIGNOFF-REPAIR.5.2` clause 1):
+    //    a redelivery replays, a new initiation lands. ⛔ It used to be
+    //    `auto_{role}_{tenant}`, so a role could initiate once per tenant,
+    //    ever — and that replay was the only bound on autonomous initiation
+    //    until the `initiator` quota `run_thread_command` now checks.
     // §10.7's depth and cycle controls (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.1`),
     // decided from STORED facts before anything is written — and before the
     // create flow's idempotency path, so a refused chain is never answered
@@ -5655,7 +5685,7 @@ async fn create_thread_auto(
         .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
     let workflow_steps = resolved.steps;
     body.workflow_profile = Some(resolved.profile_id);
-    let key = format!("auto_{}_{}", role, tenant_id);
+    let key = format!("auto_{}_{}", role, req.idempotency_key);
     let response = run_thread_command(
         &state.pool,
         &tenant_id,
@@ -7577,6 +7607,32 @@ pub(crate) async fn run_thread_command(
             body,
             workflow_steps,
         } => {
+            // The INITIATOR quota (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.1`, ROADMAP
+            // §11.5's rate bound): an AUTONOMOUS creation — one carrying a
+            // lineage, which only `POST /v1/threads/auto` can set — counts
+            // against the role's windowed ceiling. It rides THIS transaction,
+            // after the idempotency claim and the authorization, so a replay
+            // consumes nothing, a denied caller consumes nothing, and a `use`
+            // commits with the thread it admitted. A refusal follows the
+            // recorded-denial pattern the invite quota established: the
+            // rejection is stored and committed, never rolled back silently.
+            if body.lineage.is_some() {
+                if let Err(refusal) = crate::quota::check_in_tx(
+                    &mut *tx,
+                    &tenant_id.to_string(),
+                    crate::quota::SCOPE_INITIATOR,
+                    &principal.id_string(),
+                    now,
+                )
+                .await
+                {
+                    let err = ControlApiError::from(threads::ThreadError::QuotaRefused(refusal));
+                    store_rejection(&mut *tx, tenant_id, idempotency_key, &err.failure_result())
+                        .await?;
+                    tx.commit().await?;
+                    return Err(err);
+                }
+            }
             // `SIGNOFF-REPAIR.8.1.1.2`: may this tenant decide under the
             // declared rule? Asked AFTER authorization, so a caller who may not
             // create here learns nothing about this tenant's charter, and on

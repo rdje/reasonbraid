@@ -1,8 +1,8 @@
 //! The quota/abuse machinery (`PHASE-7.1.3.2`, ADR-034, §16.11): the per-key
 //! WINDOWED ceilings — the tenant, the principal, the resolver, the
-//! destination — riding the Phase-2 budget pattern: the check runs in the
-//! caller's transaction (the use/denial events commit WITH the guarded
-//! action), and a refusal is a RECORDED event, never silent.
+//! destination, the initiator — riding the Phase-2 budget pattern: the check
+//! runs in the caller's transaction (the use/denial events commit WITH the
+//! guarded action), and a refusal is a RECORDED event, never silent.
 //!
 //! The shipped binding: the per-tenant INVITE bound (the invitation-storm
 //! surface). The check is FAIL-CLOSED — a scope with no configured quota is
@@ -17,13 +17,21 @@ pub const SCOPE_TENANT: &str = "tenant";
 pub const SCOPE_PRINCIPAL: &str = "principal";
 pub const SCOPE_RESOLVER: &str = "resolver";
 pub const SCOPE_DESTINATION: &str = "destination";
+/// A ROLE as the initiator of threads nobody asked it to start
+/// (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.1`, ROADMAP §11.5's rate bound): the
+/// `initiator` scope counts `POST /v1/threads/auto` initiations, keyed by the
+/// role id. ⛔ Its own scope rather than a second reader of `principal`, because
+/// a quota row's scope has ONE meaning per surface and `principal` already
+/// counts MCP write calls.
+pub const SCOPE_INITIATOR: &str = "initiator";
 
 /// The complete vocabulary (the check validates its argument against it).
-pub const SCOPE_KINDS: [&str; 4] = [
+pub const SCOPE_KINDS: [&str; 5] = [
     SCOPE_TENANT,
     SCOPE_PRINCIPAL,
     SCOPE_RESOLVER,
     SCOPE_DESTINATION,
+    SCOPE_INITIATOR,
 ];
 
 /// The dev-profile default bound (the invite-storm quota): 1000 per hour.
@@ -42,6 +50,14 @@ pub const DEV_DEFAULT_PRINCIPAL_CEILING: i64 = 1000;
 /// proposing one before the population is measured. What this leaf decided is
 /// the SHAPE of the bound, not its number.
 pub const DEV_DEFAULT_ACQUISITION_CEILING: i64 = 1000;
+
+/// The dev-profile default bound for the `initiator` scope
+/// (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.1`): 1000 autonomous initiations per
+/// hour, per role. The same shape and the same honesty as the four above — ⛔
+/// not a measured figure; what the leaf decided is that the bound exists and
+/// what it counts. `migrations/0089` backfills the row for roles that existed
+/// before this binding.
+pub const DEV_DEFAULT_INITIATION_CEILING: i64 = 1000;
 
 /// The wildcard scope id: a tenant's DEFAULT bound for a scope whose member
 /// space the server does not control (`SIGNOFF-REPAIR.11.14.3.14`).
@@ -171,6 +187,37 @@ where
     .bind(SCOPE_PRINCIPAL)
     .bind(principal_id)
     .bind(DEV_DEFAULT_PRINCIPAL_CEILING)
+    .bind(DEV_DEFAULT_WINDOW_SECS)
+    .execute(&mut *tx)
+    .await?;
+    Ok(())
+}
+
+/// Insert the dev-profile default `initiator` quota for a NEW role
+/// (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.1`). The two role-creation paths — the
+/// enrolment and the card import — call this in the identity-insert
+/// transaction, beside [`insert_principal_default_in_tx`]: a role exists with
+/// its initiation bound, because `POST /v1/threads/auto` checks the scope
+/// fail-closed and an unbound role is the typed `quota_unconfigured` refusal.
+/// Only a role gets the row — a human cannot initiate autonomously.
+pub(crate) async fn insert_initiator_default_in_tx<'e, E>(
+    mut tx: E,
+    tenant_id: &str,
+    role_id: &str,
+) -> Result<(), sqlx::Error>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
+    sqlx::query(
+        "INSERT INTO usage_quotas (quota_id, tenant_id, scope_kind, scope_id, ceiling, window_seconds) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(format!("quo_{role_id}_initiations"))
+    .bind(tenant_id)
+    .bind(SCOPE_INITIATOR)
+    .bind(role_id)
+    .bind(DEV_DEFAULT_INITIATION_CEILING)
     .bind(DEV_DEFAULT_WINDOW_SECS)
     .execute(&mut *tx)
     .await?;

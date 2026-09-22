@@ -527,6 +527,10 @@ async fn import_after_admission(
     }
     // The identity row implies its quota row (the fail-closed write gate, `.3.5.1`).
     crate::quota::insert_principal_default_in_tx(&mut *conn, &importing, &role_id).await?;
+    // And its initiation bound (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.1`): an imported
+    // role may hold `thread:create:auto` like any other, and that surface checks
+    // the `initiator` scope fail-closed.
+    crate::quota::insert_initiator_default_in_tx(&mut *conn, &importing, &role_id).await?;
     let enrolled: Option<String> = sqlx::query_scalar(
         "INSERT INTO enrollments (principal_id, tenant_id, kind, name) \
          VALUES ($1, $2, 'role', $3) \

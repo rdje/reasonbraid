@@ -1893,6 +1893,9 @@ async fn an_autonomous_chain_is_bounded_by_depth_and_refuses_a_cycle() {
                 "subject": "a chained initiation",
                 "objective": "probe",
                 "topics": ["parser trivia"],
+                // Each call here is its own initiation (`SIGNOFF-REPAIR.5.2`
+                // clause 1): a fresh key, never a replay of an earlier one.
+                "idempotency_key": reasonbraid_core::RequestId::new().to_string(),
             });
             if let Some(cause) = cause {
                 body["caused_by"] = json!(cause);
@@ -2040,6 +2043,10 @@ async fn the_auto_initiation_lands_under_the_grant_and_the_checklist() {
         let base = base.clone();
         let role_id = role_id.clone();
         async move {
+            // Every probe is a distinct initiation (`SIGNOFF-REPAIR.5.2`
+            // clause 1), so each carries its own key.
+            let mut body = body;
+            body["idempotency_key"] = json!(reasonbraid_core::RequestId::new().to_string());
             let response = client
                 .post(format!("{base}/v1/threads/auto"))
                 .header(PRINCIPAL_HEADER, &role_id)
@@ -2150,6 +2157,223 @@ async fn the_auto_initiation_lands_under_the_grant_and_the_checklist() {
         403,
         "the plain create stays denied — no inherited permission"
     );
+}
+
+/// `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.1` with `SIGNOFF-REPAIR.5.2` clause 1, which
+/// ship together: a role may initiate MORE THAN ONCE — the key is per
+/// initiation now — and how often is bounded by the `initiator` quota:
+/// windowed, fail-closed, every use and every denial recorded in
+/// `quota_events`, inside the creation's own transaction.
+///
+/// The defect pair, both observed on the running server (DOC-0136): the key
+/// was `auto_{role}_{tenant}`, so the second initiation replayed the first
+/// thread — and that replay was the ONLY bound on autonomous initiation
+/// (DOC-0134), which is why neither half may land without the other.
+#[tokio::test]
+async fn a_role_initiates_repeatedly_and_the_initiator_quota_bounds_it() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "rate-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrols: {human}");
+    let tenant = human["tenant_id"].as_str().unwrap().to_string();
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let boundary_id = human["boundary_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "rate-agent", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "the role enrols: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &human_id, &tenant, &role_id).await;
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &role_id,
+        &visibility_profile(),
+    )
+    .await;
+    assert_eq!(status, 200, "the role writes its profile");
+    sqlx::query(
+        "UPDATE enrollment_boundaries \
+         SET permitted_actions = permitted_actions || '[\"thread_create_auto\"]'::jsonb \
+         WHERE boundary_id = $1",
+    )
+    .bind(&boundary_id)
+    .execute(&pool)
+    .await
+    .expect("the boundary permits the auto action");
+    sqlx::query(
+        "INSERT INTO authority_grants \
+         (grant_id, boundary_id, tenant_id, issuer, subject_kind, subject_id, actions, selector, \
+          risk_ceiling, spend_limits, delegable, valid_from, expires_at, status) \
+         VALUES ('grt_auto_rate', $1, $2, $3, 'role', $4, '[\"thread_create_auto\"]', \
+                 '{\"kind\":\"tenant_wide\"}', 'low', '{\"amount\": 100.0}', false, \
+                 now(), now() + interval '1 day', 'active')",
+    )
+    .bind(&boundary_id)
+    .bind(&tenant)
+    .bind(&human_id)
+    .bind(&role_id)
+    .execute(&pool)
+    .await
+    .expect("seed the auto grant");
+
+    // The bound exists from the role's ENROLMENT, before any initiation: a
+    // fail-closed check needs the row to precede the surface.
+    let (quota_id, ceiling, window): (String, i64, i64) = sqlx::query_as(
+        "SELECT quota_id, ceiling, window_seconds FROM usage_quotas \
+         WHERE tenant_id = $1 AND scope_kind = 'initiator' AND scope_id = $2",
+    )
+    .bind(&tenant)
+    .bind(&role_id)
+    .fetch_one(&pool)
+    .await
+    .expect("the enrolment seeded the role's initiator quota");
+    assert_eq!((ceiling, window), (1000, 3600), "the dev-profile default");
+    let events = |kind: &'static str| {
+        let pool = pool.clone();
+        let quota_id = quota_id.clone();
+        async move {
+            sqlx::query_scalar::<_, i64>(
+                "SELECT count(*) FROM quota_events WHERE quota_id = $1 AND kind = $2",
+            )
+            .bind(&quota_id)
+            .bind(kind)
+            .fetch_one(&pool)
+            .await
+            .expect("count the quota events")
+        }
+    };
+    let auto = |key: &'static str, subject: &'static str| {
+        let client = client.clone();
+        let base = base.clone();
+        let role_id = role_id.clone();
+        let tenant = tenant.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/threads/auto"))
+                .header(PRINCIPAL_HEADER, &role_id)
+                .json(&json!({
+                    "tenant_id": tenant,
+                    "subject": subject,
+                    "objective": "probe",
+                    "topics": ["parser trivia"],
+                    "idempotency_key": key,
+                }))
+                .send()
+                .await
+                .expect("auto request");
+            let status = response.status().as_u16();
+            (status, response.json::<Value>().await.expect("auto json"))
+        }
+    };
+
+    // 1. Two initiations under two keys are TWO threads — the `.5.2` repair.
+    //    Same body on purpose: before the repair the second call replayed the
+    //    first thread whenever the bodies matched.
+    let (status, first) = auto("init-1", "the same subject").await;
+    assert_eq!(status, 200, "{first}");
+    let first_id = first["thread_id"].as_str().unwrap().to_string();
+    assert!(first.get("replayed").is_none(), "{first}");
+    let (status, second) = auto("init-2", "the same subject").await;
+    assert_eq!(status, 200, "the second initiation lands: {second}");
+    let second_id = second["thread_id"].as_str().unwrap().to_string();
+    assert_ne!(
+        second_id, first_id,
+        "a new key is a new thread, not a replay: {second}"
+    );
+    assert!(second.get("replayed").is_none(), "{second}");
+
+    // 2. A redelivery of a key replays ITS thread — the transport property
+    //    is kept — and consumes nothing.
+    let (status, again) = auto("init-1", "the same subject").await;
+    assert_eq!(status, 200, "{again}");
+    assert_eq!(again["thread_id"], json!(first_id), "{again}");
+    assert_eq!(again["replayed"], json!(true), "{again}");
+    assert_eq!((events("use").await, events("denial").await), (2, 0));
+
+    // 3. At the ceiling the initiation is refused, typed, and the denial is
+    //    recorded. The ceiling is lowered to what has been used rather than
+    //    used up: the arithmetic is the same and the test stays short.
+    sqlx::query("UPDATE usage_quotas SET ceiling = 2 WHERE quota_id = $1")
+        .bind(&quota_id)
+        .execute(&pool)
+        .await
+        .expect("lower the ceiling to the two uses");
+    let (status, refused) = auto("init-3", "one too many").await;
+    assert_eq!(status, 429, "{refused}");
+    assert_eq!(refused["code"], json!("quota_exceeded"), "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("2 uses within 3600s"),
+        "{refused}"
+    );
+    assert_eq!((events("use").await, events("denial").await), (2, 1));
+    // A redelivery of the refused key replays the refusal — stored under its
+    // key like any rejection — without counting a second denial.
+    let (status, refused_again) = auto("init-3", "one too many").await;
+    assert_eq!(status, 429, "{refused_again}");
+    assert_eq!(refused_again["replayed"], json!(true), "{refused_again}");
+    assert_eq!(
+        refused_again["error"]["code"],
+        json!("quota_exceeded"),
+        "{refused_again}"
+    );
+    assert_eq!((events("use").await, events("denial").await), (2, 1));
+
+    // 4. The bound is on AUTONOMOUS initiation only: a person's ordinary
+    //    thread.create in the same tenant counts nothing against it.
+    let response = client
+        .post(format!("{base}/v1/threads"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "key-rate-plain",
+            "body": { "tenant_id": tenant, "subject": "a person's thread", "objective": "probe" },
+            "client_context": {},
+        }))
+        .send()
+        .await
+        .expect("plain create");
+    assert_eq!(response.status().as_u16(), 200, "the person's create lands");
+    assert_eq!((events("use").await, events("denial").await), (2, 1));
+
+    // 5. An empty key is refused rather than becoming a shared key again.
+    let (status, empty) = auto("", "an empty key").await;
+    assert_eq!(status, 400, "{empty}");
+    assert_eq!(empty["code"], json!("invalid_command"), "{empty}");
+
+    // 6. FAIL-CLOSED: a role with no `initiator` row is refused, not admitted
+    //    unbounded. The events go first — they reference the row.
+    sqlx::query("DELETE FROM quota_events WHERE quota_id = $1")
+        .bind(&quota_id)
+        .execute(&pool)
+        .await
+        .expect("clear the role's quota events");
+    sqlx::query("DELETE FROM usage_quotas WHERE quota_id = $1")
+        .bind(&quota_id)
+        .execute(&pool)
+        .await
+        .expect("remove the role's initiator quota");
+    let (status, closed) = auto("init-4", "with no bound at all").await;
+    assert_eq!(status, 503, "{closed}");
+    assert_eq!(closed["code"], json!("quota_unconfigured"), "{closed}");
 }
 
 /// The workflow-profile registry + the validation (PHASE-5.1.2, ADR-016):

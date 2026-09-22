@@ -48,7 +48,7 @@ after §9.8 was published.
 | `protocol_incompatible` | 400 | §9.8 | The node channel version does not match the server's. |
 | `not_found` | 404 | ext | The named resource does not exist within the caller's scope. |
 | `unknown_node` | 404 | ext | The node id is not enrolled. Distinct from `not_found` so a channel client can tell "re-enrol" from "wrong id". |
-| `quota_exceeded` | 429 | ext | A declared usage quota for this scope is exhausted. The window slides; retry later. Emitted by `thread.invite` (tenant scope), the MCP write gate (principal scope), and `POST /v1/resources/{id}/resolve` (resolver and destination scopes). |
+| `quota_exceeded` | 429 | ext | A declared usage quota for this scope is exhausted. The window slides; retry later. Emitted by `thread.invite` (tenant scope), the MCP write gate (principal scope), `POST /v1/resources/{id}/resolve` (resolver and destination scopes), and `POST /v1/threads/auto` (initiator scope — see [how often a role may initiate](recruitment.md#how-often-a-role-may-initiate)). |
 | `quota_unconfigured` | 503 | ext | The scope has **no** configured quota, and the surface fails closed rather than admitting an unbounded caller. Retrying will not help until an operator declares a bound. ⚠️ For the two acquisition scopes this means neither a specific bound **nor** the tenant's default one exists — see [what an acquisition costs](deployment.md#what-an-acquisition-costs-the-caller). |
 | `storm_control` | 429 | ext | A fan-out or invitation-rate breaker tripped. |
 | `classification_unqualified` | 409 | ext | The thread's classification requires a qualified evaluator profile and the deployment registers none. |

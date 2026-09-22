@@ -443,12 +443,13 @@ async fn concurrent_same_name_enrollment_has_one_new_identity_and_one_honest_rep
     assert_eq!(role_count(&f.pool, &a, "same-name").await, 1);
     let counts: (i64,i64,i64)=sqlx::query_as("SELECT (SELECT count(*) FROM authority_grants WHERE tenant_id = $1), (SELECT count(*) FROM enrollments WHERE tenant_id = $1), (SELECT count(*) FROM usage_quotas WHERE tenant_id = $1)")
         .bind(a["tenant_id"].as_str().unwrap()).fetch_one(&f.pool).await.unwrap();
-    // 5 quota rows, and they are NAMED rather than counted: one tenant-scoped
-    // invite ceiling, the two acquisition defaults `.11.14.3.14` added, and one
-    // write ceiling per principal — two principals here.
+    // 6 quota rows, and they are NAMED rather than counted: one tenant-scoped
+    // invite ceiling, the two acquisition defaults `.11.14.3.14` added, one
+    // write ceiling per principal — two principals here — and the role's
+    // initiation ceiling `.11.4.7.2.1.5.3.2.1` added (a human gets none).
     assert_eq!(
         counts,
-        (2, 2, 5),
+        (2, 2, 6),
         "quota scopes: {:?}",
         quota_scopes(&f.pool, a["tenant_id"].as_str().unwrap()).await
     );
@@ -459,12 +460,13 @@ async fn concurrent_same_name_enrollment_has_one_new_identity_and_one_honest_rep
         kinds,
         vec![
             "destination",
+            "initiator",
             "principal",
             "principal",
             "resolver",
             "tenant"
         ],
-        "the five rows are one per acquisition scope, one per principal, one tenant: {scopes:?}"
+        "the six rows are one per acquisition scope, one per principal, one for the role's initiations, one tenant: {scopes:?}"
     );
     for (kind, id) in &scopes {
         match kind.as_str() {
@@ -473,6 +475,10 @@ async fn concurrent_same_name_enrollment_has_one_new_identity_and_one_honest_rep
             }
             "tenant" => assert_eq!(id, &tenant_id),
             "principal" => assert!(id.starts_with("rol_") || id.starts_with("hpr_"), "{id}"),
+            "initiator" => assert!(
+                id.starts_with("rol_"),
+                "an initiation bound is a role's: {id}"
+            ),
             other => panic!("unexpected quota scope `{other}`"),
         }
     }

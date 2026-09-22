@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-23 — The operator views are now proven served by the real server, not only present in the code (`SIGNOFF-REPAIR.4.6.1.7`)
+
+`REASONBRAID-REPAIR-0416`.
+
+- 🔴 The automatic check I added yesterday only proved each operator view was *written in the code*. Two views live in separate parts that the server must plug in at start-up, and forgetting to plug one in would have gone unnoticed.
+- ✅ The server's parts are now assembled by one shared function. A new test assembles the server the same way and calls every operator view. Unplugging the backup view makes that test fail at once, while the old check stayed green, which was exactly the gap.
+
 ## 2026-09-23 — This session's findings re-checked against the real running server (DOC-0136)
 
 `REASONBRAID-DOC-0136`. Verification; no code changed.

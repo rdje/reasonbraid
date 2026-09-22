@@ -13,7 +13,8 @@ facts (`SIGNOFF-REPAIR.4.6.1.6`).
     python3 -B scripts/census_operator_surfaces.py --self-test
 
 ⭐ THE MAPPING IS A JUDGEMENT; THE ROUTES ARE DERIVED. Which route answers which
-bullet is written below, once, with the leaf that made it true. Whether each
+bullet is written once, in `.doctrine/operator_surfaces.tsv`, with the leaf that
+made it true. Whether each
 route EXISTS is read from the server's routers every run, through
 `census_route_documentation.product_routes` — imported, not copied, so there is
 one parser for "a route this server registers", and a route inside a
@@ -39,38 +40,32 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SERVER_SRC = "crates/reasonbraid-server/src"
 
-# §18.5, bullet by bullet: the routes that expose it, the leaf that made the
-# mapping true, and — for a part not yet buildable — what blocks it.
-SURFACES: list[dict] = [
-    {"bullet": 1, "surface": "service and dependency health with freshness",
-     "routes": ["/v1/health"], "owner": "SIGNOFF-REPAIR.4.6.1.4"},
-    {"bullet": 2, "surface": "node leases, versions, capabilities, last reconciliation, and quarantine state",
-     "routes": ["/v1/admin/nodes/presence", "/v1/admin/incarnations", "/v1/nodes/quarantine",
-                "/v1/directory/presence"], "owner": "SIGNOFF-REPAIR.4.6"},
-    {"bullet": 3, "surface": "thread lifecycle, stop reason, budget, unresolved blockers, and pending humans",
-     "routes": ["/v1/threads/{thread_id}", "/v1/threads/{thread_id}/budget",
-                "/v1/threads/{thread_id}/events", "/v1/threads/{thread_id}/commands"],
-     "owner": "SIGNOFF-REPAIR.4.6"},
-    {"bullet": 4, "surface": "ambiguous attempts and safe resolution actions",
-     "routes": ["/v1/admin/nodes/ambiguous-attempts"], "owner": "SIGNOFF-REPAIR.4.6.1.1"},
-    {"bullet": 5, "surface": "outbox/inbox/dead-letter queues with authorized replay",
-     "routes": ["/v1/nodes/inbox", "/v1/nodes/replay", "/v1/nodes/inbox/prune"],
-     "owner": "SIGNOFF-REPAIR.4.6"},
-    {"bullet": 6, "surface": "evidence acquisitions and resolver denials",
-     "routes": ["/v1/snapshots", "/v1/resources/{resource_id}/resolve", "/v1/resolvers",
-                "/v1/admin/resolution-refusals"], "owner": "SIGNOFF-REPAIR.4.6.1.2"},
-    {"bullet": 7, "surface": "policy publication/deployment/drift state",
-     "routes": ["/v1/policy-publications", "/v1/deployments", "/v1/policy-drift"],
-     "owner": "SIGNOFF-REPAIR.4.6"},
-    {"bullet": 8, "surface": "audit-chain verification and checkpoint age",
-     "routes": ["/v1/audit/receipts", "/v1/threads/{thread_id}/audit"],
-     "owner": "SIGNOFF-REPAIR.4.6.1.3",
-     "blocked": "checkpoint age: the audit hash chain and its checkpoints are deferred by "
-                "docs/adr/022-audit-hash-chain-groundwork.md until the first non-loopback "
-                "deployment or the G7 gate"},
-    {"bullet": 9, "surface": "backup/restore status and active incidents",
-     "routes": ["/v1/admin/backups", "/v1/admin/incidents"], "owner": "SIGNOFF-REPAIR.4.6.1.5"},
-]
+MAPPING = ROOT / ".doctrine/operator_surfaces.tsv"
+
+
+def load_surfaces(path: Path | None = None) -> list[dict]:
+    """§18.5, bullet by bullet: the routes that expose it, the leaf that made
+    the mapping true, and — for a part not yet buildable — what blocks it.
+
+    ⭐ Read from `.doctrine/operator_surfaces.tsv`, which
+    `crates/reasonbraid-server/tests/operator_surfaces.rs` reads too
+    (`SIGNOFF-REPAIR.4.6.1.7`): this census proves each route is REGISTERED,
+    that test proves the running app SERVES it, and neither keeps a copy.
+    """
+    rows = []
+    for line in (path or MAPPING).read_text(encoding="utf-8").splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
+        bullet, owner, routes, blocked, surface = line.split("\t")
+        row = {"bullet": int(bullet), "surface": surface, "routes": routes.split(),
+               "owner": owner}
+        if blocked != "-":
+            row["blocked"] = blocked
+        rows.append(row)
+    return rows
+
+
+SURFACES: list[dict] = load_surfaces()
 
 
 def _route_census():
@@ -164,6 +159,12 @@ def self_test() -> int:
     outside = probe.replace("#[cfg(test)]\n", "")
     arms.append(("the same route outside #[cfg(test)] counts",
                  census.product_routes(outside) == ["/v1/admin/backups"]))
+    # ⛔ the mapping file is the ONE list: nine bullets, numbered 1-9, every
+    # route written as a path, and nothing silently dropped by the parser.
+    arms.append(("the shared mapping holds the nine §18.5 bullets in order",
+                 [r["bullet"] for r in SURFACES] == list(range(1, 10))
+                 and all(r["routes"] and all(x.startswith("/v1/") for x in r["routes"])
+                         for r in SURFACES)))
     failed = [name for name, ok in arms if not ok]
     for name, ok in arms:
         print(f"census_operator_surfaces: arm {'ok' if ok else 'FAILED'} — {name}")

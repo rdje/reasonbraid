@@ -1946,10 +1946,15 @@ procedure ran, not proof against a hostile operator
   | --- | --- | --- |
   | audit-chain checkpoint age | there is no checkpoint yet: the audit hash chain is deferred by ADR-022 until the first non-loopback deployment or the G7 gate | `.4.6.1.3` (blocked) |
 
-  The mapping from each §18.5 item to the routes that show it is checked on
-  every commit: `python3 -B scripts/census_operator_surfaces.py` prints it, and
-  the `OPERATOR-SURFACES` gate refuses a commit that removes or renames one of
-  those routes without updating the mapping (`SIGNOFF-REPAIR.4.6.1.6`).
+  The mapping from each §18.5 item to the routes that show it lives in
+  `.doctrine/operator_surfaces.tsv`, and two checks read it:
+  - `python3 -B scripts/census_operator_surfaces.py` prints it, and the
+    `OPERATOR-SURFACES` gate refuses a commit that removes or renames one of
+    those routes in the source (`SIGNOFF-REPAIR.4.6.1.6`).
+  - `tests/operator_surfaces.rs` builds the app exactly as `rb-server` does,
+    through `control_plane_app`, and calls every mapped route, so a route that
+    exists in the code but is not wired into the server fails
+    (`SIGNOFF-REPAIR.4.6.1.7`).
 
 - **Runbook:** node lost/replaced (`docs/runbooks/node-lost-replaced.md`)
   covers detection through closure tests; its closure tests are the demo's

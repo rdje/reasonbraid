@@ -27,6 +27,7 @@
 
 pub mod agg;
 mod api;
+pub mod app;
 mod authority;
 pub mod backups;
 pub mod broker;

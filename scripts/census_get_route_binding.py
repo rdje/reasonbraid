@@ -20,9 +20,11 @@ population, and nothing in the repository could re-derive it.
   - It left no producer. The number is prose in a leaf; no script derives it, so
     the only way to find the error was to re-count by hand — which is the
     `a-restated-number-needs-a-producer` lesson, one layer down.
-  - And `api.rs` is not the surface. `rb-server.rs` merges THREE routers:
-    `api_router_with_publication_root`, `node_router` and `ui_router`. A census
-    of one file cannot see the other two.
+  - And `api.rs` is not the surface. The served app merges FIVE routers —
+    `api_router_with_publication_root`, `node_router`, `ui_router`,
+    `health_router` and `backup_router` — composed in ONE place since
+    `SIGNOFF-REPAIR.4.6.1.7` (`src/app.rs`, which `rb-server`'s `main` calls).
+    A census of one file cannot see the others.
 
 ⚠️ This instrument is a LOCATOR, not a classifier, and that is deliberate
 (`TOOLBOX.md`: measure before proposing a rule over the result). "Binds" is a
@@ -57,14 +59,19 @@ from census_route_documentation import test_block_spans  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# The routers `crates/reasonbraid-server/src/bin/rb-server.rs` actually merges.
-# Named rather than discovered, because "every file with a `.route(`" also
-# reaches `fetcher.rs` and `git.rs`, whose routes are `#[cfg(test)]` origin
-# fixtures. The mounting is asserted by `mounted_routers` below, so this list
-# cannot quietly fall out of step with the binary.
+# The files whose routers the served app merges. Named rather than discovered,
+# because "every file with a `.route(`" also reaches `fetcher.rs` and `git.rs`,
+# whose routes are `#[cfg(test)]` origin fixtures. The mounting is asserted by
+# `mounted_routers` below, so this list cannot quietly fall out of step with the
+# app. `backup_router` lives in `api.rs`; `health_router` in `health.rs`.
 SERVER_SRC = ROOT / "crates/reasonbraid-server/src"
-ROUTER_FILES = ("api.rs", "node_channel.rs", "ui.rs")
-BINARY = SERVER_SRC / "bin/rb-server.rs"
+ROUTER_FILES = ("api.rs", "node_channel.rs", "ui.rs", "health.rs")
+# ⛔ The composition, not the binary: `rb-server`'s `main` builds its app through
+# `app::control_plane_app` (`SIGNOFF-REPAIR.4.6.1.7`), and this instrument
+# first caught that move by failing its own self-test on the old path.
+COMPOSITION = SERVER_SRC / "app.rs"
+MOUNTED = ("api_router_with_publication_root", "node_router", "ui_router",
+           "health_router", "backup_router")
 
 # What a handler can take FROM THE CALLER. `State` is server-side and `HeaderMap`
 # carries the principal, so neither is a caller-supplied *identifier*; they are
@@ -226,13 +233,13 @@ def balanced(text: str, start: int, open_ch: str = "(", close_ch: str = ")") -> 
 
 
 def mounted_routers() -> set[str]:
-    """The router functions `rb-server.rs` actually serves.
+    """The router functions the served app composes.
 
     ⛔ Asserted, not assumed. `.3.5.3` censused one file because one file looked
-    like the surface; this fails loudly the day a fourth router is merged or one
-    of these three stops being.
+    like the surface; this fails loudly the day a router is added to or dropped
+    from the composition.
     """
-    text = read(BINARY)
+    text = read(COMPOSITION)
     return set(re.findall(r"\b([a-z_][a-z_0-9]*router[a-z_0-9]*)\s*\(", text))
 
 
@@ -510,7 +517,7 @@ def report(rows: list[dict], only_unauthenticated: bool) -> int:
 
     mounted = mounted_routers()
     print(f"GET-ROUTE BINDING census — {len(rows)} product GET routes across {len(routers)} routers")
-    print(f"  routers merged by rb-server.rs: {', '.join(sorted(mounted))}")
+    print(f"  routers merged by app.rs: {', '.join(sorted(mounted))}")
     print()
 
     naked = [r for r in rows if r.get("resolved") and not r["authz"]]
@@ -758,12 +765,13 @@ def self_test() -> int:
     if eps["sql"]:
         failures.append(f"the method's SQL was attributed to the handler: {eps['sql']}")
 
-    # (8) The mounting assertion reads the real binary.
-    if BINARY.exists():
+    # (8) The mounting assertion reads the real composition — every router in
+    # MOUNTED, so ROUTER_FILES and the served app cannot drift apart silently.
+    if COMPOSITION.exists():
         merged = mounted_routers()
-        for required in ("node_router", "ui_router"):
+        for required in MOUNTED:
             if required not in merged:
-                failures.append(f"rb-server.rs no longer merges {required}; ROUTER_FILES is stale")
+                failures.append(f"app.rs no longer merges {required}; ROUTER_FILES is stale")
 
     if failures:
         for f in failures:
@@ -778,7 +786,7 @@ def self_test() -> int:
         "a same-named method does not shadow its handler, a GENERIC wrapper is entered, "
         "a qualified call's tail does not enter a local function, "
         "both tenant spellings counted and a tenant-free statement not, "
-        "rb-server mounting asserted"
+        "the app composition's five routers asserted"
     )
     return 0
 

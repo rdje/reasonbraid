@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use clap::Parser;
 use reasonbraid_server::{
-    api_router_with_publication_root, backup_router, ca::ensure_server_ca_with_store, health,
-    node_router, publisher, r5r3rx_enabled, secret_store, sync_gated_entries, ui_router,
+    app, ca::ensure_server_ca_with_store, health, publisher, r5r3rx_enabled, secret_store,
+    sync_gated_entries,
 };
 
 #[derive(Debug, Parser)]
@@ -128,12 +128,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let monitor = health::HealthMonitor::new(&dependencies, health::PROBE_INTERVAL * 3);
     health::spawn_prober(monitor.clone(), dependencies, health::PROBE_INTERVAL).await;
 
-    let pool_for_backups = pool.clone();
-    let app = api_router_with_publication_root(pool.clone(), publication_repo_root)
-        .merge(node_router(pool, ca))
-        .merge(ui_router())
-        .merge(health::health_router(monitor))
-        .merge(backup_router(pool_for_backups, args.backup_dir));
+    // The whole surface, composed ONCE (`SIGNOFF-REPAIR.4.6.1.7`): the same
+    // function `tests/operator_surfaces.rs` builds the app with, so a router
+    // left out here is a router that test finds missing.
+    let app = app::control_plane_app(app::ControlPlane {
+        pool,
+        ca,
+        publication_repo_root,
+        health: monitor,
+        backup_dir: args.backup_dir,
+    });
     let listener = tokio::net::TcpListener::bind(addr).await?;
     // The startup line NAMES the exposure it has taken. It used to say
     // "(Phase 0 dev profile)" for every bind, so a log could not tell a

@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use clap::Parser;
 use reasonbraid_server::{
-    api_router_with_publication_root, ca::ensure_server_ca_with_store, health, node_router,
-    publisher, r5r3rx_enabled, secret_store, sync_gated_entries, ui_router,
+    api_router_with_publication_root, backup_router, ca::ensure_server_ca_with_store, health,
+    node_router, publisher, r5r3rx_enabled, secret_store, sync_gated_entries, ui_router,
 };
 
 #[derive(Debug, Parser)]
@@ -44,6 +44,13 @@ struct Args {
     /// within this root, never a path the server will open on its word.
     #[arg(long)]
     publication_repo_root: Option<std::path::PathBuf>,
+
+    /// The backup directory (`SIGNOFF-REPAIR.4.6.1.5.2`): where
+    /// `scripts/backup.sh` writes its dumps and receipts (its `BACKUP_DIR`).
+    /// `GET /v1/admin/backups` reports it; left unset, that route says no
+    /// backup can be reported rather than implying there is none.
+    #[arg(long)]
+    backup_dir: Option<std::path::PathBuf>,
 }
 
 #[tokio::main]
@@ -121,10 +128,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let monitor = health::HealthMonitor::new(&dependencies, health::PROBE_INTERVAL * 3);
     health::spawn_prober(monitor.clone(), dependencies, health::PROBE_INTERVAL).await;
 
+    let pool_for_backups = pool.clone();
     let app = api_router_with_publication_root(pool.clone(), publication_repo_root)
         .merge(node_router(pool, ca))
         .merge(ui_router())
-        .merge(health::health_router(monitor));
+        .merge(health::health_router(monitor))
+        .merge(backup_router(pool_for_backups, args.backup_dir));
     let listener = tokio::net::TcpListener::bind(addr).await?;
     // The startup line NAMES the exposure it has taken. It used to say
     // "(Phase 0 dev profile)" for every bind, so a log could not tell a

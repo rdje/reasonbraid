@@ -8696,14 +8696,19 @@ async fn get_events(
     .await
 }
 
-/// `GET /v1/admin/metrics` — the operational metrics surface (`.5.2`; ADR-023:
-/// OPERATIONAL counters, never audit facts — the audit record is the durable
-/// table row). tenant_admin-gated, read-only.
-async fn admin_metrics(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-) -> Result<Response, ControlApiError> {
-    let principal = resolve_principal(&headers)?;
+/// Admit an administrator of the caller's OWN tenant to a process-wide read,
+/// and return the committed authorization record's id (the receipt the
+/// response carries). Shared by `GET /v1/admin/metrics` and
+/// `GET /v1/admin/backups` (`SIGNOFF-REPAIR.4.6.1.5.2`): both report on the
+/// process rather than on a tenant's aggregate, so neither takes a `tenant_id`.
+async fn admit_own_tenant_admin(
+    pool: &PgPool,
+    principal: &GrantSubject,
+    refusal: &'static str,
+) -> Result<String, ControlApiError> {
+    // ⚠️ The reasoning below was written for the metrics read, whose leaf
+    // (`.3.5.2.1`) introduced this admission; it applies unchanged to every
+    // process-wide read that shares it.
     // `SIGNOFF-REPAIR.3.5.2.1`: this read is AUDITED, and the tenant its record
     // binds to is the caller's OWN — not one the request names.
     //
@@ -8733,32 +8738,89 @@ async fn admin_metrics(
     // card import — both create the principal in the grant's own tenant, so no
     // reachable caller loses access. The deliberate half of the width is intact:
     // an admin still sees ALL the process's counters, not a per-tenant slice.
-    let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
-        return Err(ControlApiError::unauthorized(
-            "the metrics surface is tenant_admin-gated",
-        ));
+    let Some(tenant) = reader_tenant(pool, principal).await? else {
+        return Err(ControlApiError::unauthorized(refusal));
     };
     let tenant_id: TenantId = tenant.parse().map_err(|_| {
         ControlApiError::internal_with_log(format!(
-            "the metrics caller's stored tenant `{tenant}` is malformed"
+            "the caller's stored tenant `{tenant}` is malformed"
         ))
     })?;
     let authz = CommandAuthz {
-        actor: actor_handle_for_subject(&principal),
+        actor: actor_handle_for_subject(principal),
         principal: principal.clone(),
         delegation: None,
         action: GrantAction::TenantAdmin,
         target: ResourceTarget::Tenant { tenant_id },
     };
-    let receipt = match authority::authorize_guarded(&state.pool, &authz).await? {
+    match authority::authorize_guarded(pool, &authz).await? {
         AuthorizationOutcome::Denied { reason, record_id } => {
             crate::telemetry::metrics().incr("authorization_denials");
-            return Err(ControlApiError::unauthorized(format!(
+            Err(ControlApiError::unauthorized(format!(
                 "authorization denied ({record_id}): {reason}"
-            )));
+            )))
         }
-        AuthorizationOutcome::Allowed { record_id, .. } => record_id,
-    };
+        AuthorizationOutcome::Allowed { record_id, .. } => Ok(record_id),
+    }
+}
+
+/// What `GET /v1/admin/backups` reads: the store its admission is recorded in,
+/// and the declared backup directory (`None` when `rb-server` was started
+/// without `--backup-dir`).
+struct BackupState {
+    pool: PgPool,
+    backup_dir: Option<std::path::PathBuf>,
+}
+
+/// `GET /v1/admin/backups` — backup/restore status from the receipts the
+/// backup scripts write (`SIGNOFF-REPAIR.4.6.1.5.2`; ROADMAP §18.5 and §17.5).
+/// The report and its `recovery_control` verdict are `crate::backups::report`'s;
+/// this handler admits the caller and reads the directory off the async
+/// runtime. Process-wide, like the metrics read, so it shares that admission.
+async fn admin_backups(
+    State(state): State<Arc<BackupState>>,
+    headers: HeaderMap,
+) -> Result<Response, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let receipt = admit_own_tenant_admin(
+        &state.pool,
+        &principal,
+        "the backup status is tenant_admin-gated",
+    )
+    .await?;
+    let dir = state.backup_dir.clone();
+    let body =
+        tokio::task::spawn_blocking(move || crate::backups::report(dir.as_deref(), Utc::now()))
+            .await
+            .map_err(|e| {
+                ControlApiError::internal_with_log(format!("the backup report failed: {e}"))
+            })?;
+    Ok(([("x-reasonbraid-authorization", receipt)], Json(body)).into_response())
+}
+
+/// The backup-status route over `backup_dir` (`SIGNOFF-REPAIR.4.6.1.5.2`). A
+/// router of its own, like `node_router`, so the directory reaches it without
+/// widening every `ApiState` constructor.
+pub fn backup_router(pool: PgPool, backup_dir: Option<std::path::PathBuf>) -> Router {
+    Router::new()
+        .route("/v1/admin/backups", get(admin_backups))
+        .with_state(Arc::new(BackupState { pool, backup_dir }))
+}
+
+/// `GET /v1/admin/metrics` — the operational metrics surface (`.5.2`; ADR-023:
+/// OPERATIONAL counters, never audit facts — the audit record is the durable
+/// table row). tenant_admin-gated, read-only.
+async fn admin_metrics(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Response, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let receipt = admit_own_tenant_admin(
+        &state.pool,
+        &principal,
+        "the metrics surface is tenant_admin-gated",
+    )
+    .await?;
     let snapshot: serde_json::Map<String, Value> = crate::telemetry::metrics()
         .snapshot()
         .into_iter()

@@ -28,6 +28,7 @@
 pub mod agg;
 mod api;
 mod authority;
+pub mod backups;
 pub mod broker;
 pub mod browse;
 mod budget;
@@ -162,7 +163,8 @@ pub mod workflows;
 
 pub use api::{
     api_router, api_router_gated, api_router_with_acquisition, api_router_with_publication_root,
-    r5r3rx_enabled, ApiState, ControlApiError, EnrollRequest, EnrollResponse, PRINCIPAL_HEADER,
+    backup_router, r5r3rx_enabled, ApiState, ControlApiError, EnrollRequest, EnrollResponse,
+    PRINCIPAL_HEADER,
 };
 pub use authority::{
     apply_authorized_command, authorize, create_boundary, create_grant, load_authorization_record,

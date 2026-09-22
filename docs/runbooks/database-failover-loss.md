@@ -35,7 +35,10 @@
 
 ## Diagnostic queries
 
-- `scripts/backup.sh` — the dump (when the cluster still runs).
+- `scripts/backup.sh` — the dump (when the cluster still runs), with its receipt.
+- `GET /v1/admin/backups` — which dumps exist, whether each is intact, and
+  whether any has passed a restore test (`recovery_control`). Pick the newest
+  one with a matching `restore_test` (`SIGNOFF-REPAIR.4.6.1.5.2`).
 - The guard's restore exercise logs (the last good restore's before/after).
 
 ## Containment

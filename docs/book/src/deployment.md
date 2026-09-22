@@ -1748,6 +1748,59 @@ pass: the `backup_restore` suite seeds rows, takes a real `pg_dump`, mutates
 the live database, restores into an isolated database, and asserts the
 pre-mutation state came back.
 
+### Receipts, and what the server reports (`SIGNOFF-REPAIR.4.6.1.5.2`)
+
+Each script leaves a **receipt** beside the dump, written only after its own
+step succeeded. The server reads the receipts, so it can report on backups it
+never took:
+
+| step | what it checks | what it writes |
+| --- | --- | --- |
+| `backup.sh` | `pg_dump` succeeded; it refuses to overwrite an existing dump | `<dump>.backup.json`: size, SHA-256, time taken, database name |
+| `restore.sh` | **before restoring**, the dump matches its receipt byte for byte (a truncated or altered dump is refused); **after**, the restored database carries the applied migrations | `<dump>.restore.json`: time restored, target database, migrations present |
+
+`BACKUP_DIR` chooses the directory (default `target/backups/`). ⛔ Neither a
+receipt nor the scripts' own output contains a password: a database URL is
+reduced to its database name, and printed without its user information.
+`backup.sh` used to print `$DATABASE_URL` verbatim.
+
+Start the server with the same directory, `rb-server --backup-dir <dir>`, and a
+tenant administrator can read the status:
+
+```text
+GET /v1/admin/backups
+```
+
+```json
+{"declared":true,"recovery_control":"accepted",
+ "reason":"at least one intact backup has passed a restore test",
+ "newest_backup_age_ms":…,"newest_restore_tested_backup_age_ms":…,
+ "backups":[{"dump":"reasonbraid-20260922-210339.dump","database":"…",
+   "taken_at":"…","age_ms":…,"bytes":173215,"file":"intact",
+   "restore_test":{"restored_at":"…","age_ms":…,"target_database":"…",
+                   "migrations":88,"matches_backup":true}}],
+ "unreceipted_dumps":[],"unreadable_receipts":[]}
+```
+
+- `recovery_control` is `accepted` only when at least one backup is **intact**
+  (its file is still there, at the recorded size) **and** has a restore receipt
+  for the same bytes. This is §17.5's rule: a backup that was never
+  test-restored is listed, but does not count.
+- `file` is `intact`, `size_mismatch` or `missing`, re-checked on every read.
+- `unreceipted_dumps` names dump files with no receipt, which is what a failed
+  `pg_dump` leaves behind. `unreadable_receipts` names receipts that cannot be
+  used.
+- Without `--backup-dir` the answer is `"declared": false`, meaning no backup
+  can be reported. It does not mean there are none.
+
+The route is process-wide, like `GET /v1/admin/metrics`, and uses the same
+check: an administrator of the caller's own tenant, with no `tenant_id`, and a
+recorded authorization (`x-reasonbraid-authorization`).
+
+⚠️ A receipt is a file the operator's own tools wrote. It is evidence that the
+procedure ran, not proof against a hostile operator
+(`docs/decisions/2026-09-22_an-incident-is-an-open-incident-review-thread-and-a-backup-is-reported-by-its-receipts.md`).
+
 ## Observability, SLOs, and the runbook (`.5`)
 
 - **Metrics:** `GET /v1/admin/metrics` exposes the seven process-wide
@@ -1881,21 +1934,18 @@ pre-mutation state came back.
   this incident over?"
   (`docs/decisions/2026-09-22_an-incident-is-an-open-incident-review-thread-and-a-backup-is-reported-by-its-receipts.md`).
 - **What an operator cannot see yet** (`SIGNOFF-REPAIR.4.6.1`). The roadmap
-  (§18.5) lists nine things the admin surface must show. Seven are shown, and two
-  are not. Health, with freshness, was added in `.4.6.1.4` (above). Ambiguous attempts were added in `SIGNOFF-REPAIR.4.6.1.1`
+  (§18.5) lists nine things the admin surface must show. Eight are shown, and one
+  is not. Health, with freshness, was added in `.4.6.1.4` (above), and backup/restore
+  status in `.4.6.1.5.2` ([receipts](#receipts-and-what-the-server-reports-signoff-repair46152)). Ambiguous attempts were added in `SIGNOFF-REPAIR.4.6.1.1`
   ([node channel](node-channel.md#ambiguous-attempts-on-the-operator-surface)),
   and resolver denials in `.4.6.1.2`
   ([every refused resolution is recorded](#every-refused-resolution-is-recorded-and-an-operator-can-list-them)).
-  The two still missing are:
+  The one still missing is:
 
   | what §18.5 asks for | today | owner |
   | --- | --- | --- |
   | audit-chain checkpoint age | there is no checkpoint yet: the audit hash chain is deferred by ADR-022 until the first non-loopback deployment or the G7 gate | `.4.6.1.3` (blocked) |
-  | backup/restore status | `scripts/backup.sh` and the restore test run, but leave no record the server can report (active incidents are shown, above) | `.4.6.1.5.2` |
 
-  ⚠️ In the backup row, the system does the work but does not store the
-  result, so it needs something that records the result before a route can
-  report it; adding a route alone would not be enough.
 - **Runbook:** node lost/replaced (`docs/runbooks/node-lost-replaced.md`)
   covers detection through closure tests; its closure tests are the demo's
   SIGKILL beat, the revoke beat, the replay suites, and the restore exercise.

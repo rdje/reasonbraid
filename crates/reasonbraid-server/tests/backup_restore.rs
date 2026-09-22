@@ -195,3 +195,164 @@ async fn a_backup_restores_into_an_isolated_database() {
         .expect("drop the isolated restore database on the verified server");
     std::fs::remove_file(&file).ok();
 }
+
+/// Run one of the backup scripts from the repository, returning (success, output).
+fn run_script(script: &str, env: &[(&str, &str)]) -> (bool, String) {
+    let root = pg_test_support::repository_root().expect("repository root");
+    let output = Command::new("bash")
+        .arg(root.join("scripts").join(script))
+        .envs(env.iter().copied())
+        .output()
+        .expect("the script runs");
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    (output.status.success(), text)
+}
+
+/// THE `SIGNOFF-REPAIR.4.6.1.5.2` acceptance: §18.5's backup/restore status is
+/// reported from what RUNNING the two scripts leaves behind — never from a
+/// receipt written by hand — and §17.5's rule decides the verdict.
+///
+/// The sequence is the procedure itself: back up, see the backup listed but
+/// NOT accepted (it has never been restored); restore-test it, see it
+/// accepted; then damage the dump and see both the restore test refuse it and
+/// the report stop counting it.
+#[tokio::test]
+async fn the_backup_status_is_reported_from_what_the_scripts_leave_behind() {
+    let _g = guard().await;
+    let Some(pool) = pg_test_support::pool().await else {
+        return;
+    };
+    let url = std::env::var("DATABASE_URL").expect("validated DATABASE_URL remains present");
+    if !have_pg_tools() {
+        eprintln!("SKIP: pg_dump/pg_restore not on PATH");
+        return;
+    }
+    sqlx::migrate!("../../migrations")
+        .run(&pool)
+        .await
+        .expect("migrate");
+    let fixture = reasonbraid_core::fixture::Fixture::create("backup-restore-tests", "receipts")
+        .expect("fixture");
+    let backups = fixture.join("backups");
+    let backup_dir = backups.to_str().expect("a UTF-8 fixture path");
+
+    // A real server: enrolment mints the administrator the report requires.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let router = reasonbraid_server::api_router(pool.clone()).merge(
+        reasonbraid_server::backup_router(pool.clone(), Some(backups.clone())),
+    );
+    let server = tokio::spawn(async move {
+        axum::serve(listener, router).await.expect("serve");
+    });
+    let client = reqwest::Client::new();
+    let admin: serde_json::Value = client
+        .post(format!("{base}/v1/enrollments"))
+        .json(&json!({ "kind": "human", "name": "backup-admin" }))
+        .send()
+        .await
+        .expect("enrol")
+        .json()
+        .await
+        .expect("enrol json");
+    let admin = admin["principal_id"].as_str().unwrap().to_string();
+    let status = || {
+        let client = client.clone();
+        let base = base.clone();
+        let admin = admin.clone();
+        async move {
+            let response = client
+                .get(format!("{base}/v1/admin/backups"))
+                .header(reasonbraid_server::PRINCIPAL_HEADER, &admin)
+                .send()
+                .await
+                .expect("status request");
+            assert_eq!(response.status().as_u16(), 200);
+            assert!(response
+                .headers()
+                .contains_key("x-reasonbraid-authorization"));
+            response
+                .json::<serde_json::Value>()
+                .await
+                .expect("status json")
+        }
+    };
+
+    // (1) Back up. Listed, intact — and NOT a recovery control yet.
+    let (ok, out) = run_script(
+        "backup.sh",
+        &[("DATABASE_URL", &url), ("BACKUP_DIR", backup_dir)],
+    );
+    assert!(ok, "backup.sh: {out}");
+    let body = status().await;
+    assert_eq!(body["declared"], json!(true));
+    let listed = body["backups"].as_array().expect("the backup list");
+    assert_eq!(listed.len(), 1, "{body}");
+    let dump = listed[0]["dump"].as_str().unwrap().to_string();
+    assert_eq!(listed[0]["file"], json!("intact"));
+    assert_eq!(listed[0]["restore_test"], json!(null));
+    assert_eq!(
+        body["recovery_control"],
+        json!("not_accepted"),
+        "a backup never restored is not a recovery control: {body}"
+    );
+
+    // (2) Restore-test it into an ISOLATED database. Now it counts.
+    let target = format!("reasonbraid_restore_receipt_{}", std::process::id());
+    sqlx::query(&format!("CREATE DATABASE {target}"))
+        .execute(&pool)
+        .await
+        .expect("create the isolated restore database on the verified server");
+    let options = pool.connect_options();
+    let target_url = format!(
+        "postgres://{}@{}:{}/{target}",
+        options.get_username(),
+        options.get_host(),
+        options.get_port()
+    );
+    let dump_path = backups.join(&dump);
+    let dump_arg = dump_path.to_str().unwrap();
+    let (ok, out) = run_script(
+        "restore.sh",
+        &[
+            ("BACKUP_FILE", dump_arg),
+            ("RESTORE_DATABASE_URL", &target_url),
+        ],
+    );
+    assert!(ok, "restore.sh: {out}");
+    let body = status().await;
+    assert_eq!(body["recovery_control"], json!("accepted"), "{body}");
+    let restore = &body["backups"][0]["restore_test"];
+    assert_eq!(restore["matches_backup"], json!(true), "{body}");
+    assert_eq!(restore["target_database"], json!(target));
+    assert!(restore["migrations"].as_u64().unwrap() > 0, "{body}");
+
+    // (3) Damage the dump. The restore test refuses it before restoring
+    // anything, and the report stops counting it.
+    let bytes = std::fs::read(&dump_path).unwrap();
+    std::fs::write(&dump_path, &bytes[..bytes.len() / 2]).unwrap();
+    let (ok, out) = run_script(
+        "restore.sh",
+        &[
+            ("BACKUP_FILE", dump_arg),
+            ("RESTORE_DATABASE_URL", &target_url),
+        ],
+    );
+    assert!(!ok, "a truncated dump must not restore-test: {out}");
+    assert!(out.contains("its receipt recorded"), "{out}");
+    let body = status().await;
+    assert_eq!(body["backups"][0]["file"], json!("size_mismatch"), "{body}");
+    assert_eq!(body["recovery_control"], json!("not_accepted"), "{body}");
+
+    server.abort();
+    sqlx::query(&format!("DROP DATABASE {target} WITH (FORCE)"))
+        .execute(&pool)
+        .await
+        .expect("drop the isolated restore database");
+}

@@ -38,7 +38,7 @@ the command that produces its verdict.
 | --- | --- | --- | --- |
 | 1 | OpenTelemetry sink (§18.2) | ⏸️ **DEFERRED**, on the trigger below | `grep -riE "opentelemetry\|prometheus\|otlp\|statsd" crates/*/Cargo.toml` → **none**; `git grep -cniE "span!\|tracing::span\|#\[instrument\]" -- crates/*/src` → **none** |
 | 2 | operator dashboards (§18.5) | ⚠️ **PARTIAL — KEPT and scoped**: 4 of 9 covered, 3 partial, 2 absent | the nine-bullet census below |
-| 3 | SLO baselines (§18.4) | ✅ **DISCHARGED** | `docs/decisions/2026-09-07_phase2-slo-hypotheses.md` carries §18.4's **exact nine fields** — population, exclusions, window, statistic, target, error budget, owner, consequence — over SLO-1…SLO-5 |
+| 3 | SLO baselines (§18.4) | ✅ **DISCHARGED** | `docs/decisions/2026-09-07_phase2-slo-hypotheses.md` carries §18.4's **exact eight fields** — population, exclusions, window, statistic, target, error budget, owner, consequence — over SLO-1…SLO-5 |
 | 4 | game days (§18.6) | ✅ **DISCHARGED** | `docs/decisions/2026-09-08_game-days-pentest.md` maps **eight shipped exercises** to runbook closure tests; `ls docs/runbooks/` → **13 runbooks**, one per §18.6 family |
 
 ⭐ **Two of the four delete outright, and neither needed building** — they were discharged by

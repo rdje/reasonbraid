@@ -1946,6 +1946,11 @@ procedure ran, not proof against a hostile operator
   | --- | --- | --- |
   | audit-chain checkpoint age | there is no checkpoint yet: the audit hash chain is deferred by ADR-022 until the first non-loopback deployment or the G7 gate | `.4.6.1.3` (blocked) |
 
+  The mapping from each §18.5 item to the routes that show it is checked on
+  every commit: `python3 -B scripts/census_operator_surfaces.py` prints it, and
+  the `OPERATOR-SURFACES` gate refuses a commit that removes or renames one of
+  those routes without updating the mapping (`SIGNOFF-REPAIR.4.6.1.6`).
+
 - **Runbook:** node lost/replaced (`docs/runbooks/node-lost-replaced.md`)
   covers detection through closure tests; its closure tests are the demo's
   SIGKILL beat, the revoke beat, the replay suites, and the restore exercise.

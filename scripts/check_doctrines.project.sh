@@ -433,4 +433,18 @@ if ! python3 -B scripts/census_surface_judgement.py --check >/dev/null 2>&1; the
     exit 1
 fi
 
+# OPERATOR-SURFACES (`SIGNOFF-REPAIR.4.6.1.6`): ROADMAP §18.5's nine operator
+# surfaces stay mapped to routes the server still registers. `.4.6` graded the
+# nine by hand and `.4.6.1` built the missing five; a route renamed or removed
+# since would leave that grade standing while the surface is gone. The mapping is
+# a judgement written once in the census; whether each route EXISTS is derived
+# from the routers every run, through the same parser `SURFACE-JUDGEMENT` uses.
+# ⛔ A blocked part (bullet 8's checkpoint age, ADR-022) is reported `partial`,
+# never counted exposed.
+# ⚠️ Priced before registering: 0.06 s over three runs.
+if ! python3 -B scripts/census_operator_surfaces.py --check >/dev/null 2>&1; then
+    python3 -B scripts/census_operator_surfaces.py --check >&2
+    exit 1
+fi
+
 exit 0

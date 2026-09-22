@@ -286,6 +286,25 @@ pub fn leaf_not_after(cert_der: &[u8]) -> Result<chrono::DateTime<chrono::Utc>, 
         .ok_or_else(|| "the leaf validity window is not representable".to_string())
 }
 
+/// A certificate's validity window, `[not_before, not_after)`, as signed into
+/// it (`SIGNOFF-REPAIR.4.6.1.4`: the health probe of the server CA reads the
+/// window the certificate itself carries, like [`leaf_not_after`]).
+pub fn validity_window(
+    cert_der: &[u8],
+) -> Result<(chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>), String> {
+    let (_, x509) = x509_parser::parse_x509_certificate(cert_der)
+        .map_err(|e| format!("certificate unparsable: {e}"))?;
+    let validity = x509.validity();
+    let instant = |t: i64| {
+        chrono::DateTime::from_timestamp(t, 0)
+            .ok_or_else(|| "the validity window is not representable".to_string())
+    };
+    Ok((
+        instant(validity.not_before.timestamp())?,
+        instant(validity.not_after.timestamp())?,
+    ))
+}
+
 /// Verify an ECDSA P-256 (ASN.1) signature over `message` against the leaf.s
 /// EC point (see extract_point).
 pub fn verify_signature(point: &[u8], message: &[u8], signature: &[u8]) -> Result<(), String> {

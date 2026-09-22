@@ -46,6 +46,7 @@ pub mod extraction_input;
 pub mod federation;
 pub mod fetcher;
 pub mod git;
+pub mod health;
 pub mod lifecycle;
 mod matching;
 mod mcp_listen;

@@ -1799,17 +1799,68 @@ pre-mutation state came back.
   demo's 34 checks, the restore exercise, and the reconcile-after-kill beats
   all target 100 % with a ZERO error budget — a red pass halts the frontier.
   Unmeasured latency families are named with their triggers, not numbers.
+- **Health** (`SIGNOFF-REPAIR.4.6.1.4`; ROADMAP §18.5). `rb-server` probes each
+  dependency every 10 seconds, and `GET /v1/health` reports what it last saw:
+
+  ```text
+  GET /v1/health          200 when every dependency is up and fresh, 503 otherwise
+  ```
+
+  | dependency | what `up` means |
+  | --- | --- |
+  | `postgres` | `SELECT 1` answers within 2 s |
+  | `secret_store` | the declared store answers for the CA material — the read the server makes at start-up |
+  | `server_ca` | the CA certificate is inside its validity window, so the node certificates it signs will be accepted |
+  | `publication_root` | the declared `--publication-repo-root` is still a usable directory (listed only when one is declared) |
+
+  Each entry carries `observed_at` (when it was last probed), `age_ms` (how old
+  that is), and `last_up_at`. An entry older than `stale_after_ms` (30 s:
+  three missed probes) reads **`stale`** whatever it last said, and a
+  dependency not yet probed reads `unobserved`. Neither counts as up. The first
+  probe round finishes before the server starts listening. The probes in a
+  round run at the same time, so one dependency that hangs does not delay news
+  about the others.
+
+  This is a real run: the server was started, then its PostgreSQL was stopped.
+
+  ```json
+  {"status":"ok","stale_after_ms":30000,"checked_at":"2026-09-22T20:34:58.791204+00:00",
+   "dependencies":[
+    {"name":"postgres","state":"up","age_ms":233,"observed_at":"2026-09-22T20:34:58.557474+00:00","last_up_at":"2026-09-22T20:34:58.557474+00:00"},
+    {"name":"secret_store","state":"up","age_ms":231,…},
+    {"name":"server_ca","state":"up","age_ms":231,…}]}
+  ```
+
+  ```json
+  {"status":"degraded","stale_after_ms":30000,"checked_at":"2026-09-22T20:35:10.922161+00:00",
+   "dependencies":[
+    {"name":"postgres","state":"down","age_ms":356,"observed_at":"2026-09-22T20:35:10.566105+00:00","last_up_at":"2026-09-22T20:34:58.557474+00:00"},
+    …]}
+  ```
+
+  The reason for a failure is written to the server log, not the response:
+
+  ```text
+  {"dependency":"postgres","event":"dependency_health_changed","reason":"no answer within 2000 ms","state":"down","ts":"…"}
+  ```
+
+  ⚠️ **The route needs no authority, on purpose.** Every other operator read
+  checks permissions in PostgreSQL, so a health read gated that way could never
+  report that PostgreSQL is down. What it says is limited to match: dependency
+  names, states and times. It never includes error text, which can contain a
+  host, a database name or a path. At a non-loopback bind, this exposure must
+  be reconsidered
+  (`docs/decisions/2026-09-22_health-is-read-without-authority-and-says-only-state-and-age.md`).
 - **What an operator cannot see yet** (`SIGNOFF-REPAIR.4.6.1`). The roadmap
-  (§18.5) lists nine things the admin surface must show. Six are shown, and three
-  are not. Ambiguous attempts were added in `SIGNOFF-REPAIR.4.6.1.1`
+  (§18.5) lists nine things the admin surface must show. Seven are shown, and two
+  are not. Health, with freshness, was added in `.4.6.1.4` (above). Ambiguous attempts were added in `SIGNOFF-REPAIR.4.6.1.1`
   ([node channel](node-channel.md#ambiguous-attempts-on-the-operator-surface)),
   and resolver denials in `.4.6.1.2`
   ([every refused resolution is recorded](#every-refused-resolution-is-recorded-and-an-operator-can-list-them)).
-  The three still missing are:
+  The two still missing are:
 
   | what §18.5 asks for | today | owner |
   | --- | --- | --- |
-  | service and dependency health, with how fresh it is | no health route; nothing checks a dependency after start-up | `.4.6.1.4` |
   | audit-chain checkpoint age | there is no checkpoint yet: the audit hash chain is deferred by ADR-022 until the first non-loopback deployment or the G7 gate | `.4.6.1.3` (blocked) |
   | backup/restore status and active incidents | `scripts/backup.sh` and the restore test run, but leave no record the server can report; there is no incident record | `.4.6.1.5` |
 

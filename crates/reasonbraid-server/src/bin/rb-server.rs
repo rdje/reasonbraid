@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use clap::Parser;
 use reasonbraid_server::{
-    api_router_with_publication_root, ca::ensure_server_ca_with_store, node_router, publisher,
-    r5r3rx_enabled, secret_store, sync_gated_entries, ui_router,
+    api_router_with_publication_root, ca::ensure_server_ca_with_store, health, node_router,
+    publisher, r5r3rx_enabled, secret_store, sync_gated_entries, ui_router,
 };
 
 #[derive(Debug, Parser)]
@@ -99,9 +99,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // disabled pack — the disabled pack has no row).
     sync_gated_entries(&pool, r5r3rx_enabled()).await?;
 
+    // §18.5's service and dependency health (`SIGNOFF-REPAIR.4.6.1.4`): every
+    // runtime dependency, probed now and then every `PROBE_INTERVAL`. The first
+    // round completes before the listener binds, so `GET /v1/health` never
+    // answers for a server that has not looked yet.
+    let mut dependencies = vec![
+        health::Dependency::Postgres(pool.clone()),
+        health::Dependency::SecretStore {
+            store,
+            pool: pool.clone(),
+        },
+        health::Dependency::ServerCa {
+            cert_der: Arc::new(ca.cert_der.clone()),
+        },
+    ];
+    if let Some(root) = &publication_repo_root {
+        dependencies.push(health::Dependency::PublicationRoot(root.clone()));
+    }
+    // Three missed probes make an observation stale: one late round is noise,
+    // three is a prober that has stopped.
+    let monitor = health::HealthMonitor::new(&dependencies, health::PROBE_INTERVAL * 3);
+    health::spawn_prober(monitor.clone(), dependencies, health::PROBE_INTERVAL).await;
+
     let app = api_router_with_publication_root(pool.clone(), publication_repo_root)
         .merge(node_router(pool, ca))
-        .merge(ui_router());
+        .merge(ui_router())
+        .merge(health::health_router(monitor));
     let listener = tokio::net::TcpListener::bind(addr).await?;
     // The startup line NAMES the exposure it has taken. It used to say
     // "(Phase 0 dev profile)" for every bind, so a log could not tell a

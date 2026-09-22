@@ -14,6 +14,11 @@
   (the dependency-unavailable shape) — every write path fails closed.
 - **The operator's check:** the server log + the PostgreSQL state (the
   cluster down / the disk loss / the corruption).
+- **The health read:** `GET /v1/health` answers `503` with `postgres` `down`
+  within one probe round (10 s), and `last_up_at` is when it was last reachable.
+  It needs no authority, so it still answers while the authority store is gone
+  (`SIGNOFF-REPAIR.4.6.1.4`). The failure reason is in the server log
+  (`dependency_health_changed`).
 
 ## Authority
 

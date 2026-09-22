@@ -246,27 +246,27 @@ fn signature(now: gix::date::Time) -> String {
     )
 }
 
-/// Publish one publication into the bare repository (the §15.7 steps 5–8's
-/// Git half):
+/// The object a ref points at, or `None` when it is absent or unreadable.
+fn current(repo: &gix::Repository, name: &str) -> Option<gix::ObjectId> {
+    repo.try_find_reference(name)
+        .ok()
+        .flatten()
+        .map(|r| r.id().detach())
+}
+
+/// The publication's objects — its two blobs, its tree and its root commit —
+/// written into `repo`, returning the commit id and the manifest blob id.
 ///
-/// 1. write the manifest + the bundle as the blobs (`manifest.json` +
-///    `bundle.txt`), the tree, and the ROOT commit (the message = the
-///    publication id);
-/// 2. the staging branch `refs/rb/staging/<id>` (the idempotent re-write);
-/// 3. the fetch-back verification (the re-derived digest must match);
-/// 4. the IMMUTABLE ref `refs/rb/publications/<id>` (the written-once rule);
-/// 5. the EFFECTIVE channel `refs/rb/effective` via the compare-and-swap
-///    (the expected old id — `None` means the channel must not exist yet).
-pub fn publish(
-    repo_path: &Path,
+/// ⭐ ONE definition, shared by [`publish`] and [`expected_commit`], so the
+/// reconciler's expected id and the id a publish writes cannot diverge. Git
+/// objects are content-addressed, so writing them again is harmless.
+fn write_commit(
+    repo: &gix::Repository,
     publication_id: &str,
     manifest: &str,
     bundle: &str,
-    expected_effective: Option<gix::ObjectId>,
     staged_at_seconds: i64,
-) -> Result<PublishedRefs, PublishError> {
-    let repo = gix::open(repo_path).map_err(|e| PublishError::Open(e.to_string()))?;
-
+) -> Result<(gix::ObjectId, gix::ObjectId), PublishError> {
     // The blobs + the tree + the root commit.
     let manifest_blob = repo
         .write_object(gix::objs::BlobRef {
@@ -318,6 +318,45 @@ pub fn publish(
     let commit_id = repo
         .write_object(&commit)
         .map_err(|e| PublishError::Write(e.to_string()))?;
+    Ok((commit_id.detach(), manifest_blob.detach()))
+}
+
+/// The commit a publication's content commits to (`SIGNOFF-REPAIR.9.3.5.1.2`):
+/// what §15.8's matrix compares the observed immutable ref against. Writes the
+/// objects (content-addressed, so harmless) and NO ref.
+pub fn expected_commit(
+    repo_path: &Path,
+    publication_id: &str,
+    manifest: &str,
+    bundle: &str,
+    staged_at_seconds: i64,
+) -> Result<gix::ObjectId, PublishError> {
+    let repo = gix::open(repo_path).map_err(|e| PublishError::Open(e.to_string()))?;
+    write_commit(&repo, publication_id, manifest, bundle, staged_at_seconds).map(|(id, _)| id)
+}
+
+/// Publish one publication into the bare repository (the §15.7 steps 5–8's
+/// Git half):
+///
+/// 1. write the manifest + the bundle as the blobs (`manifest.json` +
+///    `bundle.txt`), the tree, and the ROOT commit (the message = the
+///    publication id);
+/// 2. the staging branch `refs/rb/staging/<id>` (the idempotent re-write);
+/// 3. the fetch-back verification (the re-derived digest must match);
+/// 4. the IMMUTABLE ref `refs/rb/publications/<id>` (the written-once rule);
+/// 5. the EFFECTIVE channel `refs/rb/effective` via the compare-and-swap
+///    (the expected old id — `None` means the channel must not exist yet).
+pub fn publish(
+    repo_path: &Path,
+    publication_id: &str,
+    manifest: &str,
+    bundle: &str,
+    expected_effective: Option<gix::ObjectId>,
+    staged_at_seconds: i64,
+) -> Result<PublishedRefs, PublishError> {
+    let repo = gix::open(repo_path).map_err(|e| PublishError::Open(e.to_string()))?;
+    let (commit_id, manifest_blob) =
+        write_commit(&repo, publication_id, manifest, bundle, staged_at_seconds)?;
     let commit_hex = commit_id.to_string();
 
     // The fetch-back verification: the re-read bytes must hash identically.
@@ -342,7 +381,7 @@ pub fn publish(
         change: gix::refs::transaction::Change::Update {
             log: Default::default(),
             expected: gix::refs::transaction::PreviousValue::Any,
-            new: gix::refs::Target::Object(commit_id.detach()),
+            new: gix::refs::Target::Object(commit_id),
         },
         name: staging_ref,
         deref: false,
@@ -357,16 +396,18 @@ pub fn publish(
         change: gix::refs::transaction::Change::Update {
             log: Default::default(),
             expected: gix::refs::transaction::PreviousValue::MustNotExist,
-            new: gix::refs::Target::Object(commit_id.detach()),
+            new: gix::refs::Target::Object(commit_id),
         },
         name: publication_ref,
         deref: false,
     })
     .map_err(|e| {
-        if e.to_string().contains("not supposed to exist") {
-            PublishError::ImmutableExists
-        } else {
-            PublishError::Write(e.to_string())
+        // Classified by observed state, like the compare-and-swap below: the
+        // ref holding ANOTHER commit is the written-once rule refusing; anything
+        // else is a write failure. (The same commit is a no-op, not an error.)
+        match current(&repo, &publication_ref_name) {
+            Some(existing) if existing != commit_id => PublishError::ImmutableExists,
+            _ => PublishError::Write(e.to_string()),
         }
     })?;
 
@@ -383,14 +424,24 @@ pub fn publish(
         change: gix::refs::transaction::Change::Update {
             log: Default::default(),
             expected: previous,
-            new: gix::refs::Target::Object(commit_id.detach()),
+            new: gix::refs::Target::Object(commit_id),
         },
         name: effective_ref,
         deref: false,
     })
     .map_err(|e| {
-        if e.to_string().contains("should have content") {
-            PublishError::CasMismatch(e.to_string())
+        // ⛔ CLASSIFIED BY THE REF'S OBSERVED STATE, not by the error's words
+        // (`SIGNOFF-REPAIR.9.3.5.1.2`). This matched the phrase "should have
+        // content", which gix uses only when the ref EXISTS with another value;
+        // an expected ref that is ABSENT fails with different words, so that
+        // compare-and-swap failure was reported as a write failure.
+        let found = current(&repo, "refs/rb/effective");
+        if found != expected_effective {
+            PublishError::CasMismatch(format!(
+                "expected `{}`, found `{}`",
+                expected_effective.map_or("no effective ref".to_string(), |id| id.to_string()),
+                found.map_or("no effective ref".to_string(), |id| id.to_string()),
+            ))
         } else {
             PublishError::Write(e.to_string())
         }

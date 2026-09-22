@@ -74,6 +74,7 @@ route	/style.css	internal	1:/style.css	-	an asset the console page loads, not a 
 binary	rb	covered	cli.md::Phase 0 ships a command-line surface for the vertical slice: `rb` (the	-	the CLI has its own chapter, plus cli-state.md and cli-bootstrap-state.md beneath it
 binary	rb-server	covered	deployment.md::| `rb-server` | the control plane — API + node channel + the embedded console at `/` (one listener, one binary) |	-	role row in deployment.md, started in cli.md, its console in web-ui.md
 binary	rb-site	covered	site-authority.md::python3 -B scripts/project_env.py target/debug/rb-site --help	-	site-authority.md builds it, runs it and shows rb-site audit list
+binary	rb-reconciler	covered	cli.md::$ rb-reconciler --database-url postgres://… --publication-repo-root /srv/rb/publications	-	cli.md gives the invocation, sample output, the action table and the exit codes; deployment.md lists its role
 binary	rb-bench	covered	benchmark.md::target/debug/rb-bench --agent scripted	-	benchmark.md shows both agent modes with their invocation
 binary	rb-mcp	covered	mcp.md::## Connecting a client: `rb-mcp` over stdio	-	mcp.md carries the stdio invocation and a client configuration block
 binary	rb-node	covered	node-channel.md::rb-node --enroll-token … --node-secret …	-	node-channel.md gives the enrolment invocation; two-host-demo.md runs it on a real host

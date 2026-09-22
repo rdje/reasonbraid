@@ -83,3 +83,21 @@ pub fn reconcile(
         }
     }
 }
+
+/// Read a publication's three refs from its repository
+/// (`SIGNOFF-REPAIR.9.3.5.1.2`) — the observation [`reconcile`] consumes.
+/// An absent ref is `None`; a repository that does not open is an error, never
+/// an "everything absent" observation, which would read as `RetryStagedWrite`.
+pub fn observe(repo_path: &std::path::Path, publication_id: &str) -> Result<GitState, String> {
+    let repo = gix::open(repo_path).map_err(|e| e.to_string())?;
+    let read = |name: String| -> Result<Option<gix::ObjectId>, String> {
+        repo.try_find_reference(name.as_str())
+            .map(|found| found.map(|r| r.id().detach()))
+            .map_err(|e| e.to_string())
+    };
+    Ok(GitState {
+        immutable: read(format!("refs/rb/publications/{publication_id}"))?,
+        effective: read("refs/rb/effective".to_string())?,
+        staging: read(format!("refs/rb/staging/{publication_id}"))?,
+    })
+}

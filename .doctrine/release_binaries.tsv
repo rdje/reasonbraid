@@ -32,3 +32,4 @@ reasonbraid-browse	release	the R3 acquisition worker, and the sharpest case in t
 reasonbraid-extract	release	the R2 acquisition worker — the same resolution, the same argument
 rb-bench	tool	the WP7 deliberation benchmark runner. It produces measurements for a report; nothing in a deployment executes it, and it is not part of what an operator installs
 rb-release-manifest	tool	the signer itself, and the reason is circularity rather than convenience: a manifest cannot meaningfully verify the tool that produced it, because checking that entry would require trusting the binary under examination. It is a build-host tool and is verified by being built from this source
+rb-reconciler	release	the §15.8 publication reconciler — a deployment runs it against its own database and publication root to recover interrupted publishes (ROADMAP §7.2's reasonbraid-reconciler)

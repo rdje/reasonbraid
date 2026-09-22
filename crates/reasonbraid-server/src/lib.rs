@@ -99,6 +99,7 @@ pub mod publisher;
 mod quota;
 mod receipts;
 pub mod reconciler;
+pub mod reconciliation;
 mod recruitment;
 mod resolvers;
 mod resources;

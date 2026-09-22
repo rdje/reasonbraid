@@ -474,3 +474,47 @@ fn the_same_publication_commits_to_the_same_id() {
         fixture.finish().expect("the fixture cleans up");
     }
 }
+
+/// `SIGNOFF-REPAIR.9.3.5.1.2`, MEASURED before it was relied on: a retried
+/// publish of the SAME publication rewrites the identical commit, and a ref
+/// edit to an identical value is a no-op — whether the retry expects no
+/// effective channel (what the first attempt recorded) or the one it set. This
+/// is what makes §15.8's `RetryStagedWrite` idempotent. The immutable ref still
+/// cannot MOVE: `the_stale_cas_expectation_refuses_and_the_immutable_never_moves`
+/// refuses different content under the same id.
+#[test]
+fn a_retried_publish_of_the_same_publication_is_a_no_op() {
+    let fixture = Fixture::new();
+    let dir = &fixture.path;
+    gix::init_bare(dir).expect("the bare repo inits");
+    let first = publish(dir, "pub-r", "{}", "# b", None, STAGED_AT).expect("first");
+    let retry = publish(dir, "pub-r", "{}", "# b", None, STAGED_AT).expect("the retry succeeds");
+    assert_eq!(retry, first, "the retry writes nothing new");
+    let old: gix::ObjectId = first.effective_ref_id.parse().unwrap();
+    let again = publish(dir, "pub-r", "{}", "# b", Some(old), STAGED_AT).expect("so does this one");
+    assert_eq!(again, first);
+    assert_eq!(
+        effective_id(dir),
+        Some(old),
+        "the effective channel did not move"
+    );
+    fixture.finish().expect("owned fixture cleanup completes");
+}
+
+/// `SIGNOFF-REPAIR.9.3.5.1.2`: a compare-and-swap that expects an effective
+/// channel which does not exist is a CAS mismatch, not a write failure. The
+/// classification used to match gix's wording for the OTHER case only.
+#[test]
+fn a_cas_against_an_absent_effective_channel_is_a_cas_mismatch() {
+    let fixture = Fixture::new();
+    let dir = &fixture.path;
+    gix::init_bare(dir).expect("the bare repo inits");
+    let expected: gix::ObjectId = "1111111111111111111111111111111111111111".parse().unwrap();
+    let error = publish(dir, "pub-cas", "{}", "# b", Some(expected), STAGED_AT)
+        .expect_err("the channel does not exist");
+    assert!(
+        matches!(error, PublishError::CasMismatch(ref found) if found.contains("no effective ref")),
+        "{error:?}"
+    );
+    fixture.finish().expect("owned fixture cleanup completes");
+}

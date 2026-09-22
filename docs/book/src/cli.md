@@ -78,6 +78,43 @@ recomputed from the record.
 ⚠️ Publications staged before this rule carry no `repository`. Nothing recorded
 where they were written, and they are not guessed at.
 
+### Recovering an interrupted publish: `rb-reconciler`
+
+`rb-reconciler` is the §15.8 reconciler. It makes one pass over every
+publication that has recorded a Git operation. For each one it reads the
+publication's refs from the recorded repository, compares them with what the
+row says, and then either recovers the publication or reports it. Point it at
+the same database and publication root as `rb-server`:
+
+```text
+$ rb-reconciler --database-url postgres://… --publication-repo-root /srv/rb/publications
+pub_a: applied RetryStagedWrite
+pub_b: applied VerifyAndAdvance
+pub_c: requires a human: StopSecurityAlert — the immutable ref holds a commit this publication's content does not commit to — never pick a side
+pub_f: cannot be reconciled: no recorded Git operation — …
+```
+
+`--publication <id>` reconciles one publication. The reconciler never changes
+the database schema; migrating is `rb-server`'s job.
+
+| What it finds | What it does |
+| --- | --- |
+| staged, nothing written to Git | **recovers**: writes the recorded operation and marks the row `effective` |
+| staged, the Git write happened but the row never heard | **recovers**: verifies the commit and marks the row `effective` |
+| staged, but the immutable ref holds a different commit | **reports** — never picks a side |
+| `failed`, but its write appeared later | **reports** — quarantine and adjudicate; the row stays `failed` |
+| `effective`, but its ref is missing or moved | **reports** — freeze and repair through the authorized path |
+| the recorded compare-and-swap can no longer hold | **reports** — advancing would overwrite a publication the record does not know about |
+| database and Git agree | nothing |
+| no recorded Git operation | nothing to observe, so nothing is guessed |
+
+Recovery is **idempotent**. The commit is reproducible and rewriting an
+identical ref is a no-op, so a second pass over a recovered publication
+reports `consistent` and writes nothing.
+
+Exit status: `0` when every publication is consistent or recovered, `3` when at
+least one needs a human, and `1` when the pass itself failed.
+
 ### A recorded Git object id must exist
 
 `POST /v1/policy-publications/{id}/effective` is the record half of the same

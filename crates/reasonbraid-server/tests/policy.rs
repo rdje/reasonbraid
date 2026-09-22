@@ -7932,3 +7932,307 @@ async fn a_policy_decision_is_its_threads_counted_close() {
         "an underived decision",
     );
 }
+
+/// `SIGNOFF-REPAIR.9.3.5.1.2` (ROADMAP §15.8): the reconciler recovers the two
+/// states a machine may recover, reports the rest, and changes nothing on a
+/// second pass. Each kill point is the real sequence STOPPED at the named step:
+/// the operation recorded and the Git write never made (killed before the
+/// write), or the Git write made and `mark_effective` never run (killed after
+/// it). Every case has its own bare repository, so one case's effective channel
+/// cannot answer for another's.
+#[tokio::test]
+async fn the_reconciler_recovers_what_it_may_and_reports_the_rest() {
+    use reasonbraid_server::reconciler::Action;
+    use reasonbraid_server::reconciliation::Outcome;
+
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let repo_root = reasonbraid_core::repository_root()
+        .expect("the tests run inside the repository")
+        .join("target/policy-publish-tests");
+    let _ = std::fs::remove_dir_all(&repo_root);
+    for case in ["rc-a", "rc-b", "rc-c", "rc-d", "rc-e"] {
+        let dir = repo_root.join(case);
+        std::fs::create_dir_all(&dir).expect("the dir creates");
+        gix::init_bare(&dir).expect("the bare repo inits");
+    }
+    let server = TestServer::start_with_publication_root(&pool, &repo_root).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "rc-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+    allow_owner_decides(&pool, &tenant_id).await;
+    let grant_id = format!("grt_{human_id}");
+    let (status, _) = register_policy(
+        &client,
+        &base,
+        &human_id,
+        &json!({
+            "policy_id": "rc-policy", "version": "1.0.0", "digest": DIGEST,
+            "lifecycle": "draft", "title": "rc", "owning_authority": grant_id,
+            "clauses": [ { "id": "c1", "statement": "the reconciled clause" } ],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the policy registers");
+    let (_, created) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &human_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "rc-create",
+            "body": { "tenant_id": tenant_id, "subject": "rc", "objective": "probe",
+                      "decision_rule": "owner_decides" },
+            "client_context": {},
+        }),
+    )
+    .await;
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    close_as_owner(&client, &base, &human_id, &tenant_id, &thread_id).await;
+
+    // One staged publication per case: rc-pub-<x>.
+    for x in ["a", "b", "c", "d", "e", "f"] {
+        let prop = format!("rc-prop-{x}");
+        let calls: [(&str, Value); 5] = [
+            (
+                "/v1/policy-proposals",
+                json!({ "proposal_id": prop, "policy_id": "rc-policy",
+                "policy_version": "1.0.0", "thread_id": thread_id }),
+            ),
+            (
+                "/v1/policy-decisions",
+                json!({ "decision_id": format!("rc-dec-{x}"),
+                "proposal_id": prop }),
+            ),
+            (
+                "/v1/policy-approvals",
+                json!({ "approval_id": format!("rc-app-{x}"),
+                "proposal_id": prop, "decision_id": format!("rc-dec-{x}"),
+                "approver": human_id, "grant_id": grant_id }),
+            ),
+            (
+                "/v1/policy-projections",
+                json!({ "projection_id": format!("rc-proj-{x}"),
+                "target": "generic", "resolution": {
+                    "policies": [ { "policy_id": "rc-policy", "version": "1.0.0" } ],
+                    "target": { "layer": "organization", "target": "*" } } }),
+            ),
+            (
+                "/v1/policy-publications",
+                json!({ "publication_id": format!("rc-pub-{x}"),
+                "proposal_id": prop, "decision_id": format!("rc-dec-{x}"),
+                "approval_id": format!("rc-app-{x}"), "projection_id": format!("rc-proj-{x}"),
+                "owning_authority": grant_id }),
+            ),
+        ];
+        for (path, body) in calls {
+            let (status, value) = post(&client, &base, path, &human_id, &body).await;
+            assert_eq!(status, 200, "{path} for {x}: {value}");
+        }
+    }
+
+    let reconcile = |id: &'static str| {
+        let (pool, root) = (pool.clone(), repo_root.clone());
+        async move {
+            reasonbraid_server::reconciliation::reconcile_publication(&pool, Some(&root), id)
+                .await
+                .expect("the pass itself does not fail")
+        }
+    };
+    let refs = |dir: &str, id: &str| {
+        reasonbraid_server::reconciler::observe(&repo_root.join(dir), id).expect("observes")
+    };
+    let state = |id: &'static str| {
+        let pool = pool.clone();
+        async move {
+            reasonbraid_server::publications::load(&pool, id)
+                .await
+                .expect("the publication loads")
+        }
+    };
+    let record = |id: &'static str, dir: &'static str, expected: Option<&'static str>| {
+        let (pool, tenant) = (pool.clone(), tenant_id.clone());
+        async move {
+            reasonbraid_server::publications::record_git_operation(
+                &pool, &tenant, id, dir, expected,
+            )
+            .await
+            .expect("the operation records")
+        }
+    };
+    // The Git half a publish performs, run directly — exactly what exists when
+    // the process dies after it and before `mark_effective`.
+    let write_git_half = |id: &'static str, dir: &'static str| {
+        let (pool, root) = (pool.clone(), repo_root.clone());
+        async move {
+            let publication = reasonbraid_server::publications::load(&pool, id)
+                .await
+                .unwrap();
+            let projection =
+                reasonbraid_server::projections::load(&pool, &publication.projection_id)
+                    .await
+                    .unwrap();
+            let manifest = reasonbraid_server::publications::manifest(
+                &publication.publication_id,
+                &publication.proposal_id,
+                &publication.decision_id,
+                &publication.approval_id,
+                &publication.projection_id,
+                &projection.digest,
+            );
+            reasonbraid_server::publisher::publish(
+                &root.join(dir),
+                id,
+                &manifest,
+                &projection.bytes,
+                None,
+                publication.staged_at_seconds,
+            )
+            .expect("the Git half writes")
+        }
+    };
+
+    // A — killed BEFORE the Git write: the reconciler retries it.
+    record("rc-pub-a", "rc-a", None).await;
+    assert_eq!(
+        refs("rc-a", "rc-pub-a").immutable,
+        None,
+        "nothing was written"
+    );
+    assert_eq!(
+        reconcile("rc-pub-a").await,
+        Outcome::Applied(Action::RetryStagedWrite)
+    );
+    assert_eq!(state("rc-pub-a").await.state, "effective");
+    let settled = refs("rc-a", "rc-pub-a");
+    assert!(settled.immutable.is_some());
+    // …and a second pass over it changes nothing (§15.8's idempotence).
+    assert_eq!(reconcile("rc-pub-a").await, Outcome::Consistent);
+    assert_eq!(refs("rc-a", "rc-pub-a"), settled, "the refs did not move");
+    assert_eq!(state("rc-pub-a").await.state, "effective");
+
+    // B — killed AFTER the Git write, before `mark_effective`: verify and advance.
+    record("rc-pub-b", "rc-b", None).await;
+    let written = write_git_half("rc-pub-b", "rc-b").await;
+    assert_eq!(
+        state("rc-pub-b").await.state,
+        "staged",
+        "the row never heard"
+    );
+    assert_eq!(
+        reconcile("rc-pub-b").await,
+        Outcome::Applied(Action::VerifyAndAdvance)
+    );
+    let advanced = state("rc-pub-b").await;
+    assert_eq!(advanced.state, "effective");
+    assert_eq!(
+        advanced.git_object_ids[0], written.publication_ref_id,
+        "the SAME commit"
+    );
+    assert_eq!(reconcile("rc-pub-b").await, Outcome::Consistent);
+
+    // C — a DIFFERENT commit already holds the immutable ref: stop, never pick.
+    record("rc-pub-c", "rc-c", None).await;
+    let foreign = reasonbraid_server::publisher::publish(
+        &repo_root.join("rc-c"),
+        "rc-pub-c",
+        "{}",
+        "# not this publication",
+        None,
+        0,
+    )
+    .expect("the foreign write lands");
+    assert!(matches!(
+        reconcile("rc-pub-c").await,
+        Outcome::RequiresHuman {
+            action: Action::StopSecurityAlert,
+            ..
+        }
+    ));
+    assert_eq!(
+        state("rc-pub-c").await.state,
+        "staged",
+        "nothing was adjudicated"
+    );
+    assert_eq!(
+        refs("rc-c", "rc-pub-c").immutable.map(|id| id.to_string()),
+        Some(foreign.publication_ref_id),
+        "the conflicting ref was not touched"
+    );
+
+    // D — failed, and its write appeared later: quarantine, NEVER promote.
+    record("rc-pub-d", "rc-d", None).await;
+    reasonbraid_server::publications::mark_failed(
+        &pool,
+        &tenant_id,
+        "rc-pub-d",
+        "the publisher died",
+    )
+    .await
+    .expect("the publication fails");
+    write_git_half("rc-pub-d", "rc-d").await;
+    assert!(matches!(
+        reconcile("rc-pub-d").await,
+        Outcome::RequiresHuman {
+            action: Action::QuarantineAndAdjudicate,
+            ..
+        }
+    ));
+    assert_eq!(
+        state("rc-pub-d").await.state,
+        "failed",
+        "never silently promoted"
+    );
+
+    // E — the recorded compare-and-swap can no longer hold: reported, not forced.
+    record(
+        "rc-pub-e",
+        "rc-e",
+        Some("1111111111111111111111111111111111111111"),
+    )
+    .await;
+    assert!(matches!(
+        reconcile("rc-pub-e").await,
+        Outcome::RequiresHuman {
+            action: Action::RetryStagedWrite,
+            ..
+        }
+    ));
+    assert_eq!(state("rc-pub-e").await.state, "staged");
+
+    // F — no recorded operation: nothing to observe, and nothing guessed.
+    assert!(matches!(
+        reconcile("rc-pub-f").await,
+        Outcome::Unreconcilable(_)
+    ));
+
+    // One pass visits exactly the publications that recorded an operation.
+    let mut visited = reasonbraid_server::reconciliation::candidates(&pool)
+        .await
+        .unwrap();
+    visited.sort();
+    assert_eq!(
+        visited,
+        ["rc-pub-a", "rc-pub-b", "rc-pub-c", "rc-pub-d", "rc-pub-e"]
+    );
+
+    let _ = std::fs::remove_dir_all(&repo_root);
+}

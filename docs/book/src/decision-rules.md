@@ -163,6 +163,13 @@ thread whose vote carried can still close `unsafe_to_continue`. §13.4 forbids t
 other direction — *rewriting disagreement as consensus* — and a counted rule now
 blocks that direction.
 
+## Policy decisions read this close
+
+A [policy decision](policy-lifecycle.md#decisions) is the record of its proposal
+thread's counted close. It can only be recorded once the thread has closed with
+a **derived** binding acceptance, and it stores the thread's rule, electorate,
+tally and charter digest rather than anything the request says.
+
 ## A thread that declares no rule
 
 A thread without a `decision_rule` closes exactly as before, and the close states

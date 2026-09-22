@@ -148,27 +148,65 @@ reference something that does not.
 
 ## Decisions
 
-`POST /v1/policy-decisions` performs the **draft → decided** transition. It
-carries the decision rule, the **frozen electorate** the decision was taken
-under, and the id of the verdict event in the thread:
+`POST /v1/policy-decisions` performs the **draft → decided** transition. A
+policy decision is not a second vote. It is the record of the proposal thread's
+**counted close** — the *deterministic decision* step of ROADMAP §15.6. The
+server reads it from the thread; the request only names the proposal:
 
 ```bash
 curl -s -X POST localhost:4310/v1/policy-decisions \
   -H 'x-reasonbraid-principal: hpr_0192…' \
   -H 'content-type: application/json' \
-  -d '{
-        "decision_id": "dec_0192…",
-        "proposal_id": "prp_0192…",
-        "rule": "supermajority",
-        "electorate": {"members": ["rol_a", "rol_b", "rol_c"]},
-        "verdict_event_id": "evt_0192…"
-      }'
+  -d '{ "decision_id": "dec_0192…", "proposal_id": "prp_0192…" }'
 ```
 
-The electorate is stored as given, so the decision keeps the membership it was
-taken under even after the roster changes. An **empty** electorate is refused,
-and so is a proposal that is not in the `draft` stage — a decision cannot be
-recorded twice against the same proposal.
+```json
+{
+  "decision_id": "dec_0192…",
+  "proposal_id": "prp_0192…",
+  "rule": "majority_of_electorate",
+  "electorate": { "participants": ["hpr_a", "rol_b", "rol_c"], "denominator": 3, "abstentions": [] },
+  "verdict_event_id": null,
+  "derivation": {
+    "thread_id": "thr_0192…",
+    "outcome": "accepted_with_recorded_objections",
+    "approval_threshold": 0.6,
+    "charter_digest": "sha256:…",
+    "tally": { "electorate": 3, "approve": 2, "reject": 1, "abstain": 0 }
+  }
+}
+```
+
+For that to work, the proposal's thread must:
+
+- **declare a decision rule** when it is created — see
+  [Deciding a thread](decision-rules.md). A thread with no rule closes on the
+  closer's word, and a binding policy decision may not rest on a claim;
+- be **closed**, with an outcome the server **derived**;
+- have ended in a **binding acceptance**: `accepted_unanimously`,
+  `accepted_with_recorded_objections` or `accepted_by_rule`. A `deadlocked` or
+  `no_quorum` thread has nothing to approve, and `advisory_synthesis` binds
+  nothing.
+
+Each of these is refused with `400 invalid_command`, and the message says which.
+
+`rule` and `electorate` may still be sent. They are **assertions**: each must
+equal the derived value, or the request is refused with both values named. An
+electorate may name `participants`, `denominator` and `abstentions` only.
+Under `owner_decides`, which counts no ballot, the electorate is the thread's
+owner alone.
+
+`verdict_event_id` is optional. If named, it must be a `verdict` contribution
+of the proposal's thread; it is kept as supporting evidence, not as the
+decision.
+
+The electorate is stored as the thread fixed it, so the decision keeps the
+membership it was taken under even after the roster changes. A decision cannot
+be recorded twice against the same proposal.
+
+⚠️ **Decisions recorded before this rule** carry `"derivation": null`. Their
+`rule` and `electorate` are what the caller sent, and they are kept as written
+rather than rewritten.
 
 ## Projections
 

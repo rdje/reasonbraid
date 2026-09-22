@@ -818,6 +818,12 @@ pub struct ThreadProjection {
     /// Electorate member → the ballot they cast. At most one each.
     #[serde(default)]
     pub ballots: BTreeMap<String, BallotChoice>,
+    /// Where the close outcome came from (`SIGNOFF-REPAIR.8.1.1.2`). Recorded
+    /// rather than inferred, because a policy decision rests on it
+    /// (`SIGNOFF-REPAIR.11.4.7.2.1.2.3.1`); `None` on a thread closed before it
+    /// existed, which a policy decision therefore refuses.
+    #[serde(default)]
+    pub close_provenance: Option<crate::decisions::Provenance>,
     pub ceiling_id: String,
     pub budget: BudgetDimensions,
 }
@@ -996,6 +1002,7 @@ pub fn prepare_create(
         charter_digest: declared.map(|d| d.charter_digest),
         electorate: None,
         ballots: BTreeMap::new(),
+        close_provenance: None,
         ceiling_id: ceiling_id.clone(),
         budget,
     };
@@ -1092,7 +1099,7 @@ fn open_vote_if_entered(projection: &mut ThreadProjection) {
 
 /// The ballot box as it stands: the electorate's size and the ballots cast. A
 /// vote that never opened has an empty electorate, which counts as `no_quorum`.
-fn tally_of(projection: &ThreadProjection) -> Tally {
+pub(crate) fn tally_of(projection: &ThreadProjection) -> Tally {
     Tally::of(
         projection.electorate.as_ref().map_or(0, |e| e.len() as u64),
         projection.ballots.values(),
@@ -2249,6 +2256,7 @@ where
             projection.close_reason = Some(body.reason.clone());
             // The canonical terminal persists; the legacy words never do.
             projection.close_outcome = Some(outcome.canonical().to_string());
+            projection.close_provenance = Some(closed.provenance);
             // The profile's terminal step (the ADR-016 sequence's last).
             projection.workflow_step = projection.workflow_steps.len().saturating_sub(1);
             (

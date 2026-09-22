@@ -49,6 +49,7 @@ async fn pool() -> Option<PgPool> {
             // so this suite now writes the site trail. Ahead of the policy tables
             // because the audit row outlives the act it records.
             "site_audit",
+            "governance_charters",
             "policy_reviews",
             "policy_outcomes",
             "policy_corrections",
@@ -817,6 +818,7 @@ async fn the_proposal_and_the_decision_stay_separate_records() {
     )
     .await;
     let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+    allow_owner_decides(&pool, &tenant_id).await;
     let grant_id = format!("grt_{human_id}");
 
     // The policy the proposal targets.
@@ -854,6 +856,7 @@ async fn the_proposal_and_the_decision_stay_separate_records() {
                 "subject": "lc",
                 "objective": "probe",
                 "workflow_profile": "independent_panel",
+                "decision_rule": "owner_decides",
             },
             "client_context": {},
         }),
@@ -912,6 +915,7 @@ async fn the_proposal_and_the_decision_stay_separate_records() {
     .await;
     assert_eq!(status, 200, "the verdict contributes: {verdict}");
     let verdict_event = verdict["event_id"].as_str().unwrap().to_string();
+    close_as_owner(&client, &base, &human_id, &tenant_id, &thread_id).await;
 
     // 1. The proposal registers (the draft stage; a REFERENCE).
     let (status, proposal) = post(
@@ -970,7 +974,7 @@ async fn the_proposal_and_the_decision_stay_separate_records() {
         &json!({
             "decision_id": "lc-dec-1",
             "proposal_id": "lc-prop-1",
-            "rule": "unanimity",
+            "rule": "owner_decides",
             "electorate": {
                 "participants": [human_id],
                 "denominator": 1,
@@ -981,7 +985,14 @@ async fn the_proposal_and_the_decision_stay_separate_records() {
     )
     .await;
     assert_eq!(status, 200, "the decision records: {decision}");
-    assert_eq!(decision["rule"], json!("unanimity"));
+    // `SIGNOFF-REPAIR.11.4.7.2.1.2.3.1`: the stored rule is the THREAD's, and
+    // the record says what it was derived from.
+    assert_eq!(decision["rule"], json!("owner_decides"));
+    assert_eq!(
+        decision["derivation"]["outcome"],
+        json!("accepted_by_rule"),
+        "{decision}"
+    );
     let (status, proposals) = get(&client, &base, "/v1/policy-proposals", &human_id).await;
     assert_eq!(status, 200, "the proposals read: {proposals}");
     assert_eq!(
@@ -1000,7 +1011,7 @@ async fn the_proposal_and_the_decision_stay_separate_records() {
         &json!({
             "decision_id": "lc-dec-2",
             "proposal_id": "lc-prop-1",
-            "rule": "unanimity",
+            "rule": "owner_decides",
             "electorate": { "participants": [human_id], "denominator": 1, "abstentions": [] },
             "verdict_event_id": verdict_event,
         }),
@@ -1029,12 +1040,14 @@ async fn the_proposal_and_the_decision_stay_separate_records() {
                 "subject": "lc-other",
                 "objective": "probe",
                 "workflow_profile": "independent_panel",
+                "decision_rule": "owner_decides",
             },
             "client_context": {},
         }),
     )
     .await;
     let other_thread = created["thread_id"].as_str().unwrap().to_string();
+    close_as_owner(&client, &base, &human_id, &tenant_id, &other_thread).await;
     let (status, _) = post(
         &client,
         &base,
@@ -1057,7 +1070,7 @@ async fn the_proposal_and_the_decision_stay_separate_records() {
         &json!({
             "decision_id": "lc-dec-3",
             "proposal_id": "lc-prop-2",
-            "rule": "unanimity",
+            "rule": "owner_decides",
             "electorate": { "participants": [human_id], "denominator": 1, "abstentions": [] },
             "verdict_event_id": verdict_event,
         }),
@@ -1078,7 +1091,7 @@ async fn the_proposal_and_the_decision_stay_separate_records() {
         &json!({
             "decision_id": "lc-dec-4",
             "proposal_id": "lc-prop-2",
-            "rule": "unanimity",
+            "rule": "owner_decides",
             "electorate": { "participants": [], "denominator": 0, "abstentions": [] },
             "verdict_event_id": verdict_event,
         }),
@@ -1118,6 +1131,7 @@ async fn the_approval_carries_its_authority_proof() {
     )
     .await;
     let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+    allow_owner_decides(&pool, &tenant_id).await;
     let grant_id = format!("grt_{human_id}");
 
     // The chain: the policy → the thread + the verdict → the proposal →
@@ -1153,6 +1167,7 @@ async fn the_approval_carries_its_authority_proof() {
                 "subject": "ap",
                 "objective": "probe",
                 "workflow_profile": "independent_panel",
+                "decision_rule": "owner_decides",
             },
             "client_context": {},
         }),
@@ -1204,6 +1219,7 @@ async fn the_approval_carries_its_authority_proof() {
     )
     .await;
     let verdict_event = verdict["event_id"].as_str().unwrap().to_string();
+    close_as_owner(&client, &base, &human_id, &tenant_id, &thread_id).await;
 
     let register_proposal = |proposal_id: &'static str| {
         let client = client.clone();
@@ -1240,7 +1256,7 @@ async fn the_approval_carries_its_authority_proof() {
                 &json!({
                     "decision_id": decision_id,
                     "proposal_id": proposal_id,
-                    "rule": "majority",
+                    "rule": "owner_decides",
                     "electorate": { "participants": [human_id], "denominator": 1, "abstentions": [] },
                     "verdict_event_id": verdict_event,
                 }),
@@ -1717,6 +1733,7 @@ async fn the_publication_stages_and_marks_its_typed_state() {
     )
     .await;
     let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+    allow_owner_decides(&pool, &tenant_id).await;
     let grant_id = format!("grt_{human_id}");
 
     // The chain: the policy → the thread + the verdict → the proposal →
@@ -1752,6 +1769,7 @@ async fn the_publication_stages_and_marks_its_typed_state() {
                 "subject": "pb",
                 "objective": "probe",
                 "workflow_profile": "independent_panel",
+                "decision_rule": "owner_decides",
             },
             "client_context": {},
         }),
@@ -1803,6 +1821,7 @@ async fn the_publication_stages_and_marks_its_typed_state() {
     )
     .await;
     let verdict_event = verdict["event_id"].as_str().unwrap().to_string();
+    close_as_owner(&client, &base, &human_id, &tenant_id, &thread_id).await;
 
     let (status, _) = post(
         &client,
@@ -1826,7 +1845,7 @@ async fn the_publication_stages_and_marks_its_typed_state() {
         &json!({
             "decision_id": "pb-dec",
             "proposal_id": "pb-prop",
-            "rule": "majority",
+            "rule": "owner_decides",
             "electorate": { "participants": [human_id], "denominator": 1, "abstentions": [] },
             "verdict_event_id": verdict_event,
         }),
@@ -2103,7 +2122,7 @@ async fn the_publication_stages_and_marks_its_typed_state() {
         &json!({
             "decision_id": "pb-dec-2",
             "proposal_id": "pb-prop-2",
-            "rule": "majority",
+            "rule": "owner_decides",
             "electorate": { "participants": [human_id], "denominator": 1, "abstentions": [] },
             "verdict_event_id": verdict_event,
         }),
@@ -2266,6 +2285,7 @@ async fn the_publish_verb_drives_the_git_half() {
     )
     .await;
     let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+    allow_owner_decides(&pool, &tenant_id).await;
     let grant_id = format!("grt_{human_id}");
 
     // The chain: the policy → the thread + the verdict → the proposal →
@@ -2301,6 +2321,7 @@ async fn the_publish_verb_drives_the_git_half() {
                 "subject": "pu",
                 "objective": "probe",
                 "workflow_profile": "independent_panel",
+                "decision_rule": "owner_decides",
             },
             "client_context": {},
         }),
@@ -2352,6 +2373,7 @@ async fn the_publish_verb_drives_the_git_half() {
     )
     .await;
     let verdict_event = verdict["event_id"].as_str().unwrap().to_string();
+    close_as_owner(&client, &base, &human_id, &tenant_id, &thread_id).await;
     for (proposal_id, decision_id, approval_id, publication_id) in
         [("pu-prop", "pu-dec", "pu-app", "pu-pub")]
     {
@@ -2377,7 +2399,7 @@ async fn the_publish_verb_drives_the_git_half() {
             &json!({
                 "decision_id": decision_id,
                 "proposal_id": proposal_id,
-                "rule": "majority",
+                "rule": "owner_decides",
                 "electorate": { "participants": [human_id], "denominator": 1, "abstentions": [] },
                 "verdict_event_id": verdict_event,
             }),
@@ -3838,6 +3860,7 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
     )
     .await;
     let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+    allow_owner_decides(&pool, &tenant_id).await;
     let grant_id = format!("grt_{human_id}");
 
     // The chain to the EFFECTIVE publication (the made-up object ids ride
@@ -3874,6 +3897,7 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
                 "subject": "dp",
                 "objective": "probe",
                 "workflow_profile": "independent_panel",
+                "decision_rule": "owner_decides",
             },
             "client_context": {},
         }),
@@ -3925,6 +3949,7 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
     )
     .await;
     let verdict_event = verdict["event_id"].as_str().unwrap().to_string();
+    close_as_owner(&client, &base, &human_id, &tenant_id, &thread_id).await;
 
     let make_chain = |suffix: &'static str, publication_id: &'static str, effective: bool| {
         let client = client.clone();
@@ -3962,7 +3987,7 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
                 &json!({
                     "decision_id": decision_id,
                     "proposal_id": proposal_id,
-                    "rule": "majority",
+                    "rule": "owner_decides",
                     "electorate": { "participants": [human_id], "denominator": 1, "abstentions": [] },
                     "verdict_event_id": verdict_event,
                 }),
@@ -4209,6 +4234,7 @@ async fn the_drift_corrections_and_outcomes_ride_the_records() {
     )
     .await;
     let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+    allow_owner_decides(&pool, &tenant_id).await;
     let grant_id = format!("grt_{human_id}");
 
     // The chain to the effective publication + the target + the assignment
@@ -4244,6 +4270,7 @@ async fn the_drift_corrections_and_outcomes_ride_the_records() {
                 "subject": "cr",
                 "objective": "probe",
                 "workflow_profile": "independent_panel",
+                "decision_rule": "owner_decides",
             },
             "client_context": {},
         }),
@@ -4295,6 +4322,7 @@ async fn the_drift_corrections_and_outcomes_ride_the_records() {
     )
     .await;
     let verdict_event = verdict["event_id"].as_str().unwrap().to_string();
+    close_as_owner(&client, &base, &human_id, &tenant_id, &thread_id).await;
     for (publication_id, effective) in [("cr-pub-1", true), ("cr-pub-2", true)] {
         let proposal_id = format!("{publication_id}-prop");
         let decision_id = format!("{publication_id}-dec");
@@ -4321,7 +4349,7 @@ async fn the_drift_corrections_and_outcomes_ride_the_records() {
             &json!({
                 "decision_id": decision_id,
                 "proposal_id": proposal_id,
-                "rule": "majority",
+                "rule": "owner_decides",
                 "electorate": { "participants": [human_id], "denominator": 1, "abstentions": [] },
                 "verdict_event_id": verdict_event,
             }),
@@ -4645,6 +4673,7 @@ async fn the_scheduled_reviews_evaluate_the_triggers() {
     )
     .await;
     let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+    allow_owner_decides(&pool, &tenant_id).await;
     let grant_id = format!("grt_{human_id}");
 
     // The chain to a STAGED publication (the outcomes only require the
@@ -4680,6 +4709,7 @@ async fn the_scheduled_reviews_evaluate_the_triggers() {
                 "subject": "rv",
                 "objective": "probe",
                 "workflow_profile": "independent_panel",
+                "decision_rule": "owner_decides",
             },
             "client_context": {},
         }),
@@ -4731,6 +4761,7 @@ async fn the_scheduled_reviews_evaluate_the_triggers() {
     )
     .await;
     let verdict_event = verdict["event_id"].as_str().unwrap().to_string();
+    close_as_owner(&client, &base, &human_id, &tenant_id, &thread_id).await;
     let proposal_id = "rv-prop";
     let (status, _) = post(
         &client,
@@ -4754,7 +4785,7 @@ async fn the_scheduled_reviews_evaluate_the_triggers() {
         &json!({
             "decision_id": "rv-dec",
             "proposal_id": proposal_id,
-            "rule": "majority",
+            "rule": "owner_decides",
             "electorate": { "participants": [human_id], "denominator": 1, "abstentions": [] },
             "verdict_event_id": verdict_event,
         }),
@@ -5360,6 +5391,7 @@ async fn an_approval_is_bound_to_the_proposals_own_tenant() {
     )
     .await;
     let alice_tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    allow_owner_decides(&pool, &alice_tenant).await;
     let alice_grant = format!("grt_{alice_id}");
 
     // ⭐ Mallory is enrolled in her OWN tenant and holds her OWN live grant, so
@@ -5413,6 +5445,7 @@ async fn an_approval_is_bound_to_the_proposals_own_tenant() {
                 "subject": "apt",
                 "objective": "probe",
                 "workflow_profile": "independent_panel",
+                "decision_rule": "owner_decides",
             },
             "client_context": {},
         }),
@@ -5466,6 +5499,7 @@ async fn an_approval_is_bound_to_the_proposals_own_tenant() {
     )
     .await;
     let verdict_event = verdict["event_id"].as_str().unwrap().to_string();
+    close_as_owner(&client, &base, &alice_id, &alice_tenant, &thread_id).await;
 
     let (status, _) = post(
         &client,
@@ -5485,7 +5519,7 @@ async fn an_approval_is_bound_to_the_proposals_own_tenant() {
         "/v1/policy-decisions",
         &alice_id,
         &json!({
-            "decision_id": "apt-dec", "proposal_id": "apt-prop", "rule": "majority",
+            "decision_id": "apt-dec", "proposal_id": "apt-prop", "rule": "owner_decides",
             "electorate": { "participants": [alice_id], "denominator": 1, "abstentions": [] },
             "verdict_event_id": verdict_event,
         }),
@@ -5589,6 +5623,7 @@ async fn the_lifecycle_verbs_refuse_a_foreign_tenants_thread() {
     )
     .await;
     let alice_tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    allow_owner_decides(&pool, &alice_tenant).await;
     let alice_grant = format!("grt_{alice_id}");
 
     let (status, mallory) = enroll(
@@ -5627,6 +5662,7 @@ async fn the_lifecycle_verbs_refuse_a_foreign_tenants_thread() {
             "body": {
                 "tenant_id": alice_tenant, "subject": "lft", "objective": "probe",
                 "workflow_profile": "independent_panel",
+                "decision_rule": "owner_decides",
             },
             "client_context": {},
         }),
@@ -5673,6 +5709,7 @@ async fn the_lifecycle_verbs_refuse_a_foreign_tenants_thread() {
     )
     .await;
     let verdict_event = verdict["event_id"].as_str().unwrap().to_string();
+    close_as_owner(&client, &base, &alice_id, &alice_tenant, &thread_id).await;
 
     // ── ARM 1: `register_proposal` — mallory names ALICE's thread ──────────────
     let (status, refused) = post(
@@ -5714,7 +5751,7 @@ async fn the_lifecycle_verbs_refuse_a_foreign_tenants_thread() {
         "/v1/policy-decisions",
         &mallory_id,
         &json!({
-            "decision_id": "lft-dec-foreign", "proposal_id": "lft-prop-own", "rule": "majority",
+            "decision_id": "lft-dec-foreign", "proposal_id": "lft-prop-own", "rule": "owner_decides",
             "electorate": { "participants": [mallory_id], "denominator": 1, "abstentions": [] },
             "verdict_event_id": verdict_event,
         }),
@@ -5732,7 +5769,7 @@ async fn the_lifecycle_verbs_refuse_a_foreign_tenants_thread() {
         "/v1/policy-decisions",
         &alice_id,
         &json!({
-            "decision_id": "lft-dec-own", "proposal_id": "lft-prop-own", "rule": "majority",
+            "decision_id": "lft-dec-own", "proposal_id": "lft-prop-own", "rule": "owner_decides",
             "electorate": { "participants": [alice_id], "denominator": 1, "abstentions": [] },
             "verdict_event_id": verdict_event,
         }),
@@ -5788,6 +5825,7 @@ async fn the_lifecycle_row_carries_the_tenant_that_owns_it() {
     )
     .await;
     let alice_tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    allow_owner_decides(&pool, &alice_tenant).await;
     let alice_grant = format!("grt_{alice_id}");
 
     let (status, mallory) = enroll(
@@ -5846,6 +5884,7 @@ async fn the_lifecycle_row_carries_the_tenant_that_owns_it() {
             "body": {
                 "tenant_id": alice_tenant, "subject": "lto", "objective": "probe",
                 "workflow_profile": "independent_panel",
+                "decision_rule": "owner_decides",
             },
             "client_context": {},
         }),
@@ -5892,6 +5931,7 @@ async fn the_lifecycle_row_carries_the_tenant_that_owns_it() {
     )
     .await;
     let verdict_event = verdict["event_id"].as_str().unwrap().to_string();
+    close_as_owner(&client, &base, &alice_id, &alice_tenant, &thread_id).await;
 
     // ── ARM 1: the four rows whose tenant is the CALLER's ─────────────────────
     let (status, _) = post(
@@ -5912,7 +5952,7 @@ async fn the_lifecycle_row_carries_the_tenant_that_owns_it() {
         "/v1/policy-decisions",
         &alice_id,
         &json!({
-            "decision_id": "lto-dec", "proposal_id": "lto-prop", "rule": "majority",
+            "decision_id": "lto-dec", "proposal_id": "lto-prop", "rule": "owner_decides",
             "electorate": { "participants": [alice_id], "denominator": 1, "abstentions": [] },
             "verdict_event_id": verdict_event,
         }),
@@ -6209,6 +6249,7 @@ async fn the_lifecycle_verbs_refuse_another_tenants_publication() {
     )
     .await;
     let alice_tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    allow_owner_decides(&pool, &alice_tenant).await;
     let alice_grant = format!("grt_{alice_id}");
 
     let (status, mallory) = enroll(
@@ -6252,6 +6293,7 @@ async fn the_lifecycle_verbs_refuse_another_tenants_publication() {
             "body": {
                 "tenant_id": alice_tenant, "subject": "gtn", "objective": "probe",
                 "workflow_profile": "independent_panel",
+                "decision_rule": "owner_decides",
             },
             "client_context": {},
         }),
@@ -6298,6 +6340,7 @@ async fn the_lifecycle_verbs_refuse_another_tenants_publication() {
     )
     .await;
     let verdict_event = verdict["event_id"].as_str().unwrap().to_string();
+    close_as_owner(&client, &base, &alice_id, &alice_tenant, &thread_id).await;
 
     // ⭐ THREE publications, because three of the eleven verbs consume a STAGED
     // one and a staged publication can be spent exactly once: `failed` and
@@ -6329,7 +6372,7 @@ async fn the_lifecycle_verbs_refuse_another_tenants_publication() {
             assert_eq!(status, 200, "proposal {n} registers");
             let (status, _) = post(
                 &client, &base, "/v1/policy-decisions", &alice_id,
-                &json!({ "decision_id": dec, "proposal_id": prop, "rule": "majority",
+                &json!({ "decision_id": dec, "proposal_id": prop, "rule": "owner_decides",
                          "electorate": { "participants": [alice_id], "denominator": 1, "abstentions": [] },
                          "verdict_event_id": verdict_event }),
             ).await;
@@ -6770,6 +6813,8 @@ async fn every_lifecycle_read_is_bound_to_its_own_tenant() {
     };
     let (alice_id, alice_tenant) = enrol("rdb-alice").await;
     let (mallory_id, mallory_tenant) = enrol("rdb-mallory").await;
+    allow_owner_decides(&pool, &alice_tenant).await;
+    allow_owner_decides(&pool, &mallory_tenant).await;
     // `SIGNOFF-REPAIR.6.1.5.4`: registering a policy version is a site act.
     // This fixture seeds the governance library, so it holds the capability —
     // issued through the deployment-controlled service, never by a row insert.
@@ -6821,7 +6866,8 @@ async fn every_lifecycle_read_is_bound_to_its_own_tenant() {
                     "request_id": reasonbraid_core::RequestId::new().to_string(),
                     "idempotency_key": format!("{tag}-create"),
                     "body": { "tenant_id": tenant, "subject": tag, "objective": "probe",
-                              "workflow_profile": "independent_panel" },
+                              "workflow_profile": "independent_panel",
+                              "decision_rule": "owner_decides" },
                     "client_context": {},
                 }),
             )
@@ -6865,6 +6911,12 @@ async fn every_lifecycle_read_is_bound_to_its_own_tenant() {
             )
             .await;
             let verdict_event = verdict["event_id"].as_str().unwrap().to_string();
+            let _ = command(
+                format!("{tag}-close"),
+                "thread.close",
+                json!({ "tenant_id": tenant, "reason": "the owner decides" }),
+            )
+            .await;
 
             let ids = |suffix: &str| format!("{tag}-{suffix}");
             for (path, body) in [
@@ -6877,7 +6929,7 @@ async fn every_lifecycle_read_is_bound_to_its_own_tenant() {
                 (
                     "/v1/policy-decisions",
                     json!({
-                    "decision_id": ids("dec"), "proposal_id": ids("prop"), "rule": "majority",
+                    "decision_id": ids("dec"), "proposal_id": ids("prop"), "rule": "owner_decides",
                     "electorate": { "participants": [who], "denominator": 1, "abstentions": [] },
                     "verdict_event_id": verdict_event }),
                 ),
@@ -7003,7 +7055,7 @@ async fn every_lifecycle_read_is_bound_to_its_own_tenant() {
             (
                 "/v1/policy-decisions",
                 json!({
-                "decision_id": dec, "proposal_id": prop, "rule": "majority",
+                "decision_id": dec, "proposal_id": prop, "rule": "owner_decides",
                 "electorate": { "participants": [alice_id], "denominator": 1, "abstentions": [] },
                 "verdict_event_id": alice_verdict }),
             ),
@@ -7413,4 +7465,291 @@ async fn the_policy_register_capability_still_registers_and_resolves() {
         .execute(&pool)
         .await
         .expect("drop the fixture rows");
+}
+
+/// `SIGNOFF-REPAIR.11.4.7.2.1.2.3.1`: a policy decision is its thread's COUNTED
+/// close, so every proposal thread here declares `owner_decides` — the one
+/// family that needs no ballot — and its tenant's charter must allow it. The
+/// registration is direct because the site gate is `.11.4.7.2.1.2.1`'s
+/// control, not this suite's; the boundary rebind is what a site operator's
+/// reissue does.
+async fn allow_owner_decides(pool: &PgPool, tenant: &str) {
+    allow_rules(pool, tenant, &["owner_decides"]).await;
+}
+
+async fn allow_rules(pool: &PgPool, tenant: &str, rules: &[&str]) {
+    let stored = reasonbraid_server::charters::register(
+        pool,
+        &reasonbraid_server::charters::CharterInput {
+            tenant_id: tenant.to_owned(),
+            allowed_decision_rules: rules.iter().map(|r| (*r).to_owned()).collect(),
+            approval_thresholds: Default::default(),
+            charter_digest: None,
+            reason: reasonbraid_server::site_authority::Reason::new("the policy suite's charter")
+                .unwrap(),
+        },
+    )
+    .await
+    .expect("the charter registers");
+    let bound = sqlx::query(
+        "UPDATE enrollment_boundaries SET charter_digest = $1 \
+         WHERE tenant_id = $2 AND status = 'active'",
+    )
+    .bind(&stored.charter_digest)
+    .bind(tenant)
+    .execute(pool)
+    .await
+    .expect("rebind the boundary")
+    .rows_affected();
+    assert_eq!(bound, 1, "the tenant has exactly one active boundary");
+}
+
+/// Close a proposal thread as its owner: under `owner_decides` that close is
+/// the derived `accepted_by_rule` a policy decision records.
+async fn close_as_owner(
+    client: &reqwest::Client,
+    base: &str,
+    owner: &str,
+    tenant: &str,
+    thread_id: &str,
+) {
+    let response = client
+        .post(format!("{base}/v1/threads/{thread_id}/commands"))
+        .header(PRINCIPAL_HEADER, owner)
+        .json(&json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.close",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": format!("close-{thread_id}"),
+            "body": { "tenant_id": tenant, "reason": "the owner decides" },
+            "client_context": {},
+        }))
+        .send()
+        .await
+        .expect("close request");
+    let status = response.status().as_u16();
+    let body = response.text().await.unwrap_or_default();
+    assert_eq!(status, 200, "the owner closes the proposal thread: {body}");
+}
+
+/// `SIGNOFF-REPAIR.11.4.7.2.1.2.3.1`: a policy decision is the proposal
+/// thread's counted close. A thread that is still open, one that declares no
+/// rule, and one that closed without a binding acceptance hold no decision; an
+/// asserted rule or electorate that disagrees with the derived one is refused;
+/// an omitted one records the derived record.
+#[tokio::test]
+async fn a_policy_decision_is_its_threads_counted_close() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "pdc-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
+    let tenant_id = human["tenant_id"].as_str().unwrap().to_string();
+    allow_rules(&pool, &tenant_id, &["owner_decides", "advisory_synthesis"]).await;
+    let (status, _) = register_policy(
+        &client,
+        &base,
+        &human_id,
+        &json!({
+            "policy_id": "pdc-policy",
+            "version": "1.0.0",
+            "digest": DIGEST,
+            "lifecycle": "draft",
+            "title": "pdc",
+            "owning_authority": format!("grt_{human_id}"),
+            "clauses": [ { "id": "c1", "statement": "the clause" } ],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the policy registers");
+
+    // One thread per case, each with its own proposal.
+    let thread = |key: &'static str, rule: Option<&'static str>| {
+        let (client, base, human_id, tenant_id) = (
+            client.clone(),
+            base.clone(),
+            human_id.clone(),
+            tenant_id.clone(),
+        );
+        async move {
+            let mut body = json!({ "tenant_id": tenant_id, "subject": key, "objective": "probe" });
+            if let Some(rule) = rule {
+                body["decision_rule"] = json!(rule);
+            }
+            let (status, created) = post(
+                &client,
+                &base,
+                "/v1/threads",
+                &human_id,
+                &json!({
+                    "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+                    "operation": "thread.create",
+                    "request_id": reasonbraid_core::RequestId::new().to_string(),
+                    "idempotency_key": key,
+                    "body": body,
+                    "client_context": {},
+                }),
+            )
+            .await;
+            assert_eq!(status, 200, "{key} creates: {created}");
+            let thread_id = created["thread_id"].as_str().unwrap().to_string();
+            let (status, proposal) = post(
+                &client,
+                &base,
+                "/v1/policy-proposals",
+                &human_id,
+                &json!({
+                    "proposal_id": format!("{key}-prop"),
+                    "policy_id": "pdc-policy",
+                    "policy_version": "1.0.0",
+                    "thread_id": thread_id,
+                }),
+            )
+            .await;
+            assert_eq!(status, 200, "{key}'s proposal registers: {proposal}");
+            thread_id
+        }
+    };
+    let decide = |key: &'static str, extra: Value| {
+        let (client, base, human_id) = (client.clone(), base.clone(), human_id.clone());
+        async move {
+            let mut body = json!({
+                "decision_id": format!("{key}-dec"),
+                "proposal_id": format!("{key}-prop"),
+            });
+            for (k, v) in extra.as_object().unwrap() {
+                body[k] = v.clone();
+            }
+            post(&client, &base, "/v1/policy-decisions", &human_id, &body).await
+        }
+    };
+    let refused = |status: u16, value: &Value, needle: &str, what: &str| {
+        assert_eq!(status, 400, "{what}: {value}");
+        assert!(
+            value["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains(needle),
+            "{what} names `{needle}`: {value}"
+        );
+    };
+
+    // An OPEN thread holds no decision.
+    thread("pdc-open", Some("owner_decides")).await;
+    let (status, value) = decide("pdc-open", json!({})).await;
+    refused(status, &value, "not closed", "an open thread");
+
+    // A RULE-LESS thread's close is the closer's claim.
+    let ruleless = thread("pdc-ruleless", None).await;
+    let (status, closed) = post(
+        &client,
+        &base,
+        &format!("/v1/threads/{ruleless}/commands"),
+        &human_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.close",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "pdc-ruleless-close",
+            "body": { "tenant_id": tenant_id, "reason": "asserted",
+                      "outcome": "accepted_unanimously" },
+            "client_context": {},
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "{closed}");
+    let (status, value) = decide("pdc-ruleless", json!({})).await;
+    refused(
+        status,
+        &value,
+        "declares no decision rule",
+        "a rule-less thread",
+    );
+
+    // A close that is not a binding acceptance holds no decision.
+    let deadlocked = thread("pdc-deadlocked", Some("owner_decides")).await;
+    let (status, closed) = post(
+        &client,
+        &base,
+        &format!("/v1/threads/{deadlocked}/commands"),
+        &human_id,
+        &json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.close",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "pdc-deadlocked-close",
+            "body": { "tenant_id": tenant_id, "reason": "no decision", "outcome": "deadlocked" },
+            "client_context": {},
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "{closed}");
+    let (status, value) = decide("pdc-deadlocked", json!({})).await;
+    refused(
+        status,
+        &value,
+        "`inconclusive`, not closed",
+        "a deadlocked close",
+    );
+
+    // An advisory close is closed and derived — and binds nothing.
+    let advisory = thread("pdc-advisory", Some("advisory_synthesis")).await;
+    close_as_owner(&client, &base, &human_id, &tenant_id, &advisory).await;
+    let (status, value) = decide("pdc-advisory", json!({})).await;
+    refused(
+        status,
+        &value,
+        "not a binding acceptance",
+        "an advisory close",
+    );
+
+    // THE CONTROL: a decided thread, and a decision that inflates its electorate.
+    let decided = thread("pdc-decided", Some("owner_decides")).await;
+    close_as_owner(&client, &base, &human_id, &tenant_id, &decided).await;
+    let (status, value) = decide(
+        "pdc-decided",
+        json!({ "electorate": { "participants": [human_id, "hpr_00000000-0000-7000-8000-00000000beef"] } }),
+    )
+    .await;
+    refused(status, &value, "electorate", "an inflated electorate");
+    let (status, value) = decide("pdc-decided", json!({ "rule": "unanimity" })).await;
+    refused(
+        status,
+        &value,
+        "owner_decides",
+        "a rule the thread did not declare",
+    );
+
+    // Omitted, the derived record is stored.
+    let (status, decision) = decide("pdc-decided", json!({})).await;
+    assert_eq!(status, 200, "the derived decision records: {decision}");
+    assert_eq!(decision["rule"], json!("owner_decides"));
+    assert_eq!(
+        decision["electorate"],
+        json!({ "participants": [human_id], "denominator": 1, "abstentions": [] })
+    );
+    assert_eq!(decision["verdict_event_id"], Value::Null);
+    assert_eq!(decision["derivation"]["outcome"], json!("accepted_by_rule"));
+    assert_eq!(decision["derivation"]["thread_id"], json!(decided));
+    assert!(
+        decision["derivation"]["charter_digest"]
+            .as_str()
+            .is_some_and(|d| d.starts_with("sha256:")),
+        "the decision names the charter it was taken under: {decision}"
+    );
 }

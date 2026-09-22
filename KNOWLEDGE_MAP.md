@@ -238,6 +238,7 @@
 - [`2026-09-22_a-counted-rule-derives-its-outcome-and-a-rule-it-cannot-count-is-refused.md`](docs/decisions/2026-09-22_a-counted-rule-derives-its-outcome-and-a-rule-it-cannot-count-is-refused.md)
 - [`2026-09-22_a-decision-rule-is-a-charter-scoped-vocabulary-and-never-ships-without-its-tally.md`](docs/decisions/2026-09-22_a-decision-rule-is-a-charter-scoped-vocabulary-and-never-ships-without-its-tally.md)
 - [`2026-09-22_a-domain-refusal-is-not-an-authority-denial.md`](docs/decisions/2026-09-22_a-domain-refusal-is-not-an-authority-denial.md)
+- [`2026-09-22_a-policy-decision-is-its-threads-counted-close-and-an-approval-copies-it.md`](docs/decisions/2026-09-22_a-policy-decision-is-its-threads-counted-close-and-an-approval-copies-it.md)
 - [`2026-09-22_the-moderator-is-a-role-boundary-not-a-feature-and-five-of-its-six-acts-already-ship.md`](docs/decisions/2026-09-22_the-moderator-is-a-role-boundary-not-a-feature-and-five-of-its-six-acts-already-ship.md)
 - [`2026-09-22_the-observability-row-is-four-commitments-and-two-were-already-discharged.md`](docs/decisions/2026-09-22_the-observability-row-is-four-commitments-and-two-were-already-discharged.md)
 - [`2026-09-22_the-publication-store-is-built-and-the-gap-is-that-nothing-reads-or-operates-it.md`](docs/decisions/2026-09-22_the-publication-store-is-built-and-the-gap-is-that-nothing-reads-or-operates-it.md)

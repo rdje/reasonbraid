@@ -1048,4 +1048,120 @@ async fn the_calibration_accumulates_and_the_gate_only_blocks() {
     assert_eq!(status, 200, "the gates list: {gates}");
     assert_eq!(gates.as_array().unwrap().len(), 1);
     assert_eq!(gates[0]["gate_id"], json!("g5-blind"));
+
+    // ⛔ 6d RUNS LAST, DELIBERATELY. Its negative controls REGISTER a gate and a
+    // calibration, and the list assertions above pin exact counts — so placing
+    // it earlier would have made this leaf's additions rewrite an existing
+    // expectation, which is how a walk quietly stops asserting what it did.
+    // `SIGNOFF-REPAIR.8.2.4` — a row that names a corpus BINDS to it.
+    // Before this repair both of the next two returned 200: a gate could be
+    // registered against a corpus version that does not exist, and a
+    // calibration could accumulate a run taken against a different workflow,
+    // while each stored row asserted a provenance nothing held.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/evaluations/gates",
+        &human_id,
+        &json!({
+            "gate_id": "g5-unbound",
+            "corpus_id": "cal-corpus-absent",
+            "corpus_version": 1,
+            "workflow": "blind",
+            "baseline": { "c1": 0.9 },
+            "threshold": 0.1,
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "a gate against an unregistered corpus refuses: {refused}"
+    );
+    // A run that EXISTS but belongs to another workflow is not eligible, and
+    // the refusal must NAME what disagreed rather than saying no.
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/evaluations/runs",
+        &human_id,
+        &json!({
+            "run_id": "cal-run-other-workflow",
+            "workflow": "sighted",
+            "corpus_id": "cal-corpus",
+            "corpus_version": 1,
+            "seed": 9,
+            "deterministic": true,
+            "trial_count": 1,
+            "results": {},
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the other-workflow run records");
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/evaluations/calibrations",
+        &human_id,
+        &json!({
+            "calibration_id": "cal-ineligible",
+            "corpus_id": "cal-corpus",
+            "corpus_version": 1,
+            "workflow": "blind",
+            "run_ids": ["cal-run-1", "cal-run-other-workflow"],
+            "brier": 0.2,
+            "confidence": 0.8,
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "a calibration over an ineligible run refuses: {refused}"
+    );
+    let message = refused["message"].as_str().unwrap_or_default();
+    assert!(
+        message.contains("cal-run-other-workflow") && message.contains("sighted"),
+        "the refusal names the run AND what disagreed: {refused}"
+    );
+    // ⭐ NEGATIVE: a check that refuses everything is this defect mirrored. A
+    // gate against the REGISTERED corpus and a calibration over ELIGIBLE runs
+    // both still succeed.
+    let (status, bound) = post(
+        &client,
+        &base,
+        "/v1/evaluations/gates",
+        &human_id,
+        &json!({
+            "gate_id": "g5-bound",
+            "corpus_id": "cal-corpus",
+            "corpus_version": 1,
+            "workflow": "blind",
+            "baseline": { "c1": 0.9 },
+            "threshold": 0.1,
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "a gate against a registered corpus still records: {bound}"
+    );
+    let (status, eligible) = post(
+        &client,
+        &base,
+        "/v1/evaluations/calibrations",
+        &human_id,
+        &json!({
+            "calibration_id": "cal-eligible",
+            "corpus_id": "cal-corpus",
+            "corpus_version": 1,
+            "workflow": "blind",
+            "run_ids": ["cal-run-1", "cal-run-2"],
+            "brier": 0.2,
+            "confidence": 0.8,
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "a calibration over eligible runs still records: {eligible}"
+    );
 }

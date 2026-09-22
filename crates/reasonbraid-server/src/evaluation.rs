@@ -583,6 +583,18 @@ pub struct GateSubmission {
 }
 
 impl EvaluationError {
+    /// A run that EXISTS but was taken against another corpus version or
+    /// workflow (`SIGNOFF-REPAIR.8.2.4`). ⛔ Named separately from
+    /// [`EvaluationError::ghost_run`] because the two send the caller to
+    /// different places: one run id is wrong, the other is real and in the
+    /// wrong calibration.
+    fn ineligible_run(run_id: &str, run_scope: &str, calibration_scope: &str) -> Self {
+        EvaluationError::UnknownCorpus(format!(
+            "run `{run_id}` was taken against `{run_scope}` and this calibration is \
+             `{calibration_scope}` — a calibration accumulates ELIGIBLE runs, not \
+             merely registered ones"
+        ))
+    }
     fn ghost_run(run_id: &str) -> Self {
         EvaluationError::Duplicate(format!(
             "run `{run_id}` (the calibration accumulates REGISTERED runs only)"
@@ -613,15 +625,36 @@ pub async fn record_calibration(
             return Err(EvaluationError::out_of_range("brier", brier));
         }
     }
+    // ⛔ ELIGIBLE, NOT MERELY PRESENT (`SIGNOFF-REPAIR.8.2.4`). This loop used
+    // to ask only whether the run row existed, so a calibration could
+    // accumulate runs taken against a DIFFERENT corpus version or a different
+    // workflow — while its own row asserts all three. `.8.2`'s goal line says
+    // *derive calibration from eligible runs*, and existence is not eligibility.
+    // ⭐ The query returns the run's own (corpus, version, workflow) rather than
+    // a boolean, so the refusal can NAME what disagreed instead of saying no.
     for run_id in &submission.run_ids {
-        let exists: Option<bool> =
-            sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM evaluation_runs WHERE run_id = $1)")
-                .bind(run_id)
-                .fetch_one(pool)
-                .await
-                .map_err(EvaluationError::Storage)?;
-        if !exists.unwrap_or(false) {
+        let row: Option<(String, i64, String)> = sqlx::query_as(
+            "SELECT corpus_id, corpus_version, workflow FROM evaluation_runs WHERE run_id = $1",
+        )
+        .bind(run_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(EvaluationError::Storage)?;
+        let Some((corpus_id, corpus_version, workflow)) = row else {
             return Err(EvaluationError::ghost_run(run_id));
+        };
+        if corpus_id != submission.corpus_id
+            || corpus_version != submission.corpus_version
+            || workflow != submission.workflow
+        {
+            return Err(EvaluationError::ineligible_run(
+                run_id,
+                &format!("{corpus_id}@{corpus_version}/{workflow}"),
+                &format!(
+                    "{}@{}/{}",
+                    submission.corpus_id, submission.corpus_version, submission.workflow
+                ),
+            ));
         }
     }
     let inserted = sqlx::query(
@@ -685,6 +718,23 @@ pub async fn record_gate(
                 score,
             ));
         }
+    }
+    // ⛔ THE GATE NAMES A CORPUS, SO IT BINDS TO ONE (`SIGNOFF-REPAIR.8.2.4`).
+    // `record_run` and `create_trial` have asked this question since they were
+    // written; `record_gate` carried `corpus_id` and `corpus_version` and
+    // validated neither, so a gate could be registered against a corpus version
+    // that does not exist and its row would assert a provenance nothing held.
+    let corpus_exists: Option<bool> = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM evaluation_corpora \
+         WHERE corpus_id = $1 AND version = $2)",
+    )
+    .bind(&submission.corpus_id)
+    .bind(submission.corpus_version)
+    .fetch_one(pool)
+    .await
+    .map_err(EvaluationError::Storage)?;
+    if !corpus_exists.unwrap_or(false) {
+        return Err(EvaluationError::UnknownCorpus(submission.corpus_id.clone()));
     }
     let inserted = sqlx::query(
         "INSERT INTO evaluation_gates \

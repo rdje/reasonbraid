@@ -1,5 +1,18 @@
 # DEV_NOTES.md
 
+## 2026-09-22 — The gate binds its corpus and the calibration binds its runs, and the split's own table is what found them (`SIGNOFF-REPAIR.8.2.4`)
+
+`REASONBRAID-REPAIR-0389`. `TOOLBOX.md` says to enumerate a goal line's mechanisms against the children a split produces. It paid on first use.
+
+- ⭐ **THE TABLE SURFACED TWO DEFECTS NOBODY HAD RECORDED.** Mapping `.8.2`'s five goal-line mechanisms and four attached clauses against its three closed children left two rows with no owner and no verdict — and both turned out to be live.
+- 🔴 **`record_gate` named a corpus and never asked whether it existed.** `record_run` and `create_trial`, in the same file, both run the existence check and refuse with `UnknownCorpus`; the gate was the one surface of the three that named a corpus version and validated only its threshold and baseline. With the check mutated out the server returns 200 and creates `{"gate_id":"g5-unbound","corpus_id":"cal-corpus-absent",…}`.
+- 🔴 **`record_calibration` checked each run's EXISTENCE and never its eligibility.** With the check disabled a `blind` calibration accumulates a `sighted` run and the stored row asserts a provenance its runs do not share — which is exactly what *derive calibration from eligible runs* forbids.
+- ⭐ **THE CALIBRATION'S REPAIR CHANGES THE QUESTION, NOT JUST THE ANSWER.** The loop asked for a boolean; it now selects the run's own `(corpus, version, workflow)` so the refusal NAMES what disagreed. A boolean could only have said no, and a caller holding two dozen run ids needs to know which one. `ineligible_run` is named separately from `ghost_run` because one says a run id is wrong and the other says the run is real and in the wrong calibration.
+- ✅ **TWO NEGATIVE CONTROLS**, because a check that refuses everything is this defect mirrored: a gate against the registered corpus and a calibration over eligible runs both still return 200 in the same run.
+- 🔎 **AND PLACING THEM COST A LESSON.** Written where the other refusals sit, the negatives REGISTER a gate and a calibration — and the walk's later list assertions pin exact counts, so the first green run failed at `gates.len() == 1`. Rewriting that expectation would have been this leaf quietly loosening an assertion it does not own. The block runs last instead, and the controls were re-falsified AFTER the move, because a relocated control is one whose red nobody has seen.
+- ⛔ **`.8.2` stays open and the table says why**: two mechanisms have no owner, and clause 1 is blocked on vocabulary `.9.3.4` measured as absent. Naming them unowned is the point of writing the table.
+- ✅ `evaluation` **3/3**, `policy` **26/26**, clippy **0 warnings**, fmt, `make book` and the doctrine gate rc=0; source restored byte-identical by SHA-256.
+
 ## 2026-09-22 — 179 runs, no occurrence, and the hunt is tracked so the next sample keeps its denominator (`SIGNOFF-REPAIR.11.26.3`)
 
 `REASONBRAID-REPAIR-0388`. The frontier leaf's declared next action is *wait*, and waiting had no instrument.

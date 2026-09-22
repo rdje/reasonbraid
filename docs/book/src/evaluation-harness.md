@@ -129,7 +129,10 @@ the same `(case_id, seed)` than a 64-bit host does.
 ## Calibration
 
 A calibration accumulates over **named runs**, each of which must already be
-registered:
+registered **and eligible** — a run taken against a different corpus version or
+a different workflow is refused, naming the run and what disagreed. Until
+`SIGNOFF-REPAIR.8.2.4` only existence was checked, so a calibration row could
+assert a provenance its runs did not share:
 
 ```bash
 curl -s -X POST localhost:4310/v1/evaluations/calibrations \
@@ -149,7 +152,10 @@ curl -s -X POST localhost:4310/v1/evaluations/calibrations \
 ## Gates
 
 A gate is a baseline plus a threshold. **It only blocks** — a gate never promotes
-anything, and passing one is not evidence of improvement.
+anything, and passing one is not evidence of improvement. It names a corpus
+version and is **bound** to it: an unregistered one is refused, as it already was
+for a run and a trial (`SIGNOFF-REPAIR.8.2.4` — the gate was the one surface of
+the three that named a corpus and never asked whether it existed).
 
 ```bash
 curl -s -X POST localhost:4310/v1/evaluations/gates \

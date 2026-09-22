@@ -42,6 +42,9 @@ and the development HTTP principal header remains a development assumption.
 | `evidence_expire` | Expire due evidence, or tombstone one named snapshot. |
 | `workflow_register` | Register a workflow profile version in the site-wide registry. |
 | `policy_register` | Register a policy version in the site-wide governance library. |
+| `evaluation_record` | Set the evaluation standard: register a corpus, record a run, create a trial, record its results, record a calibration, record a gate. |
+| `gate_evaluate` | Measure against that standard: run a gate. Separate from `evaluation_record` because a party that measures must not be able to move the standard. |
+| `charter_register` | Register a [governance charter](governance-charter.md) version for a tenant. |
 
 For example, Alice may administer tenant A but have no site grant. Her tenant
 grant does not authorize any of these service operations. A deployment operator

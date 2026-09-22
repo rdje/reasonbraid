@@ -50,6 +50,8 @@ route-family	resolvers	covered	1:-	-	every route carries a contract line
 route-family	resources	covered	3:-	-	every route carries a contract line
 route-family	snapshots	covered	7:-	-	deployment.md carries all seven, item and collection separately
 route-family	workflow-profiles	covered	1:-	-	every route carries a contract line
+route-family	governance-charters	covered	2:-	-	governance-charter.md documents the register verb and the tenant-bound read, with the body, the derived digest and the idempotence rule
+route-family	decision-rules	covered	1:-	-	governance-charter.md documents the allow-check, the boundary resolution and all four fail-closed answers
 route-family	admin	covered	17:-	-	authority.md: the eight own-tenant inspection GETs now carry FULL paths instead of bare suffixes, and the revocation and spend-breaker sections carry contract lines for their verbs
 route-family	audit	covered	1:-	-	authority.md: the tenant_admin-gated cross-domain receipt read, with the response shape and the oldest-first ordering, beside the federation acceptance that writes one
 route-family	calls	covered	4:-	-	recruitment.md: the initiator's side - opening with the ThreadInvite gate and the typed 429 fan-out cap, the four checks a response passes, and the panel snapshot with its selection explanation taken at close; profiles.md carries the eight response kinds once, and the new chapter links to it rather than restating them

@@ -15,6 +15,7 @@
 - [Agent profiles and portable cards](profiles.md)
 - [Recruitment and automatic initiation](recruitment.md)
 - [Site authority](site-authority.md)
+- [The governance charter](governance-charter.md)
 - [The policy lifecycle](policy-lifecycle.md)
 - [The evaluation harness](evaluation-harness.md)
 - [Budgets](budget.md)

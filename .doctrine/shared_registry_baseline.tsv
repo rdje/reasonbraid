@@ -68,6 +68,7 @@ POST /v1/evaluations/trials/{trial_id}/results	site authority	evaluation_trial_r
 POST /v1/federation-agreements	guarded transaction	recruitment_offers	module-reach
 POST /v1/federation-agreements/accept	guarded transaction	recruitment_offers	module-reach
 POST /v1/federation-agreements/revoke	guarded transaction	recruitment_offers	module-reach
+POST /v1/governance-charters	site authority	recruitment_offers	module-reach
 POST /v1/nodes/ack	not-censused	node_certificates,node_events,node_keys,node_leases,node_proof_nonces	module-reach
 POST /v1/nodes/enroll	not-censused	node_certificates,node_keys,node_leases	walk
 POST /v1/nodes/enroll-tokens	guarded transaction	node_certificates,node_events,node_keys,node_leases,node_proof_nonces,recruitment_offers,server_ca	module-reach

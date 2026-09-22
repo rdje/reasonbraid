@@ -5,6 +5,7 @@
 //! This intentionally serializes the small administrative registry, including
 //! revocation, without depending on a particular grant-selection query plan.
 
+pub mod charters;
 pub mod evaluation;
 mod operator;
 mod policies;
@@ -144,6 +145,13 @@ impl<'de> Deserialize<'de> for Reason {
 #[value(rename_all = "snake_case")]
 pub enum Action {
     RegistryInspect,
+    /// Registering a governance charter (`SIGNOFF-REPAIR.11.4.7.2.1.2.1`).
+    /// ⭐ Site rather than tenant by DERIVATION: ROADMAP §4.1 makes the charter
+    /// the document that CONSTRAINS a tenant, and §4.4 makes the enrollment
+    /// boundary naming its digest a root/parent-granted ceiling. A tenant that
+    /// could rewrite its own allowed decision rules would hold the ceiling it
+    /// is bound by — the escalation the boundary exists to prevent.
+    CharterRegister,
     AdapterAllow,
     AdapterRevoke,
     RegionDeclare,
@@ -191,6 +199,7 @@ impl Action {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::RegistryInspect => "registry_inspect",
+            Self::CharterRegister => "charter_register",
             Self::AdapterAllow => "adapter_allow",
             Self::AdapterRevoke => "adapter_revoke",
             Self::RegionDeclare => "region_declare",

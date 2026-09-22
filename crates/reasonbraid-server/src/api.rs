@@ -731,6 +731,12 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
             "/v1/resources/{resource_id}/resolve",
             post(resolve_resource),
         )
+        .route("/v1/governance-charters", post(register_governance_charter))
+        .route(
+            "/v1/governance-charters/{charter_digest}",
+            get(read_governance_charter),
+        )
+        .route("/v1/decision-rules/{rule}", get(tenant_decision_rule))
         .route(
             "/v1/workflow-profiles",
             post(register_workflow_profile).get(list_workflow_profiles),
@@ -2999,6 +3005,100 @@ struct RegisterWorkflowProfileRequest {
     profile_id: String,
     steps: Vec<String>,
     reason: Reason,
+}
+
+/// `POST /v1/governance-charters` — register a charter version
+/// (`SIGNOFF-REPAIR.11.4.7.2.1.2.1`; ROADMAP §4.1).
+///
+/// ⭐ A SITE act, by derivation rather than caution: §4.1 makes the charter the
+/// document that CONSTRAINS a tenant, and §4.4 makes the enrollment boundary
+/// naming its digest a root/parent-granted ceiling. A tenant that could rewrite
+/// its own allowed decision rules would hold the ceiling it is bound by.
+///
+/// ⛔ The digest is the SERVER's product. A body may assert one, and a
+/// disagreement is refused naming both — the `publications::stage` rule
+/// (`.9.2.1.3.1`) applied to a second content-addressed store.
+///
+/// ⚠️ Registration is IDEMPOTENT over byte-identical content: the row's
+/// identity is its content, so a second write asserts nothing new.
+async fn register_governance_charter(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    request: Result<Json<crate::charters::CharterInput>, axum::extract::rejection::JsonRejection>,
+) -> Result<Response, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let input = site_request(request)?;
+    // Before the gate, deliberately (`SIGNOFF-REPAIR.8.2.5.2`): §13.3's seven
+    // families are a published constant the book lists, so naming the rule that
+    // failed is an oracle over nothing, and a caller that fails validation
+    // learns nothing about authority.
+    crate::charters::validate(&input)
+        .map_err(|error| ControlApiError::invalid_command(error.to_string()))?;
+    site_receipt_response(
+        site::charters::register_charter(&state.pool, &principal, &input).await,
+        "a current site grant for this action and its actual boundary are required",
+    )
+}
+
+/// `GET /v1/governance-charters/{charter_digest}` — read one charter back.
+///
+/// ⛔ Tenant-bound: a charter is a tenant's governance document, so a principal
+/// of another tenant gets the SAME `unknown` answer an absent digest gets. The
+/// read surface is not an existence oracle over other tenants' charters.
+async fn read_governance_charter(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(charter_digest): Path<String>,
+) -> Result<Json<crate::charters::StoredCharter>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let Some(caller_tenant) = reader_tenant(&state.pool, &principal).await? else {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no charter",
+        ));
+    };
+    match crate::charters::load(&state.pool, &charter_digest).await {
+        Ok(charter) if charter.tenant_id == caller_tenant => Ok(Json(charter)),
+        Ok(_) | Err(crate::charters::CharterError::Unknown(_)) => {
+            Err(ControlApiError::invalid_command(
+                crate::charters::CharterError::Unknown(charter_digest).to_string(),
+            ))
+        }
+        Err(other) => Err(ControlApiError::invalid_command(other.to_string())),
+    }
+}
+
+/// `GET /v1/decision-rules/{rule}` — §4.1's read path: *may this tenant decide
+/// under this rule?*
+///
+/// Resolves the caller's tenant to its ACTIVE enrollment boundary, that
+/// boundary to the charter digest it was ISSUED under, and answers from that
+/// charter. ⛔ Through the boundary rather than by `tenant_id` directly,
+/// because §4.4 makes the boundary the ceiling: the charter a tenant is bound
+/// by is the one its issuer named, not the newest anybody registered.
+///
+/// ⛔ FAILS CLOSED. A boundary whose `charter_digest` resolves to nothing —
+/// every boundary issued before `migrations/0084` carries a label — answers
+/// *the question cannot be answered*, never *allowed*.
+async fn tenant_decision_rule(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(rule): Path<String>,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let Some(caller_tenant) = reader_tenant(&state.pool, &principal).await? else {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal asks no charter",
+        ));
+    };
+    match crate::charters::allows(&state.pool, &caller_tenant, &rule).await {
+        Ok((resolved, threshold)) => Ok(Json(json!({
+            "tenant_id": caller_tenant,
+            "decision_rule": resolved.as_str(),
+            "allowed": true,
+            "approval_threshold": threshold,
+        }))),
+        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+    }
 }
 
 /// `POST /v1/workflow-profiles` — register a profile (the operator's verb):

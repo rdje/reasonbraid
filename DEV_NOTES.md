@@ -1,5 +1,18 @@
 # DEV_NOTES.md
 
+## 2026-09-22 — The census gate could not see this project's own census family (`SIGNOFF-REPAIR.11.2.8`)
+
+`REASONBRAID-REPAIR-0382`. A doctrine gate that refused a claim its own evidence already answered.
+
+- 🔴 **THE DEFECT, read from the gate's own pattern rather than retyped.** `GAP-CLAIM-CENSUS` discharges a *nothing checks X* claim against a command-shaped token in the claim's section. Its `CENSUS_RE` listed `scripts/check_` and **not** `scripts/census_`, so every tracked instrument whose entire purpose is enumeration discharged nothing. It refused `REASONBRAID-REPAIR-0266` for a claim already answered by `python3 -B scripts/census_advertised_policies.py --readers`.
+- ⭐ **THE COST IS THE SHAPE OF THE DAMAGE, NOT ITS SIZE.** Refused, the author's cheapest route to green is a raw `git grep … | wc -l` pasted beside the instrument — a **less** durable census than the tracked, self-tested one already cited. The gate did not let a bad claim through; it **degraded a good one**, which is `SIGNOFF-REPAIR.11.9`'s bypass objection with the sign reversed.
+- ⭐ **A LOOSENING, PRICED AS ONE, AND THE PRICE STAYS DERIVABLE.** `bash scripts/check_gap_claims.sh --calibrate [N]` classifies the same rows twice, with and without the instrument spelling, so the figures are asked rather than carried. At `3dd1a11` the corpus leg reads `blocked=0 · without=0 · only-instrument=0` over 69 files and 201 claim lines, and the full history leg finds **one** blocked row — `4a5e421` — whose verdict the widening does not move.
+- ⚠️ **THE HISTORY LEG'S ZERO IS DETERRENCE, NOT COST** (`SIGNOFF-REPAIR.11.18.2`, arriving from the loosening side). This corpus was policed by the gate throughout, so the founding refusal was resolved while its leaf was being authored and cannot appear in anything that landed. ⛔ So the instance is **reproduced verbatim** as a two-sided `--self-test` arm instead of replayed, and its RED is **kept**: arm 22 asserts the discharge, arm 24 asserts the refusal under the pattern that shipped, arm 23 holds the same sentence without the instrument still blocked.
+- ⭐ **THE SPELLING IS ITS OWN VARIABLE, so the control cannot drift from the pattern.** `CENSUS_RE` is now `CENSUS_BASE_RE` + `CENSUS_INSTRUMENT_RE`; a calibration that re-spelled the old pattern by hand would be `SCAFFOLD-COVERAGE`'s defect written into the instrument that prices the change.
+- ⛔ **`.11.2.5` IS UPHELD, NOT SUPERSEDED.** It rejected widening this pattern as the remedy for a discharge test that was too **loose**, where another spelling makes the gate more inert. This is the opposite defect and the opposite direction, and a loosening's backlog is structurally empty.
+- 🔎 **AND THE LEAF'S OWN OPENING NUMBER WAS STALE, caught while closing it.** *`scripts/census_*` is 15 tracked instruments* was exact at `a29bfb0` and is **33** at `3dd1a11`, with nothing deriving it — `SIGNOFF-REPAIR.11.16`'s shape on this leaf's own sentence. Anchored to its commit, with the producer cited beside it.
+- Verification: `--self-test` **30/30** rc=0; `--all` unchanged at `201 claim line(s) across 7 file(s), 0 with no census`; `--calibrate 200` rc=0 in 91.4 s; `make gate` green over the staged tree, **26 checks**, rc=0, 34.286 s.
+
 ## 2026-09-21 — This batch's own findings, graded: eight held exactly, two moved, one is unverifiable (`SIGNOFF-REPAIR.11.26.2`)
 
 `REASONBRAID-REPAIR-0381`. The director's *ensure your findings still hold*, applied to the nine commits `20ca4e1..937993f` — each figure re-derived by a route structurally different from the one that produced it, never by a second pass.

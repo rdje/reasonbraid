@@ -73,7 +73,39 @@ CLAIM_RE='nothing (checks|checked|reads|compares|measures|measured|watches|enfor
 # and `grep -w` are in the list because they are the commonest census spelling; a BARE `grep` is
 # not, because "verified by grep" is a claim, not tool output. The FLAG is what makes it an
 # invocation.
-CENSUS_RE='git grep|grep -r|grep -c|grep -l|grep -o|grep -n|grep -w|git ls-files|git log -s|git log --grep|git log --oneline|rg -|--dump-|--report-|--self-test|--lint|scripts/check_|make |comm -|wc -l|sort -u|uniq -c|sed -n|git show|git diff|cargo |a search of|searched (the|all|every)|census:'
+# ⛔⛔ AND `scripts/census_` WAS MISSING WHILE `scripts/check_` WAS PRESENT (`SIGNOFF-REPAIR.11.2.8`),
+#   so this gate did not recognise the tracked instruments whose ENTIRE PURPOSE is enumeration.
+#   ⛔ Ask for that population rather than reading it here, because it grows:
+#   `git ls-files 'scripts/census_*.py' | wc -l`.
+# 🔴 It refused `REASONBRAID-REPAIR-0266` for a claim already discharged by
+#   `python3 -B scripts/census_advertised_policies.py --readers` — a tracked, self-tested census
+#   built for exactly that claim. ⭐ The cost is the SHAPE of the damage rather than its size: the
+#   author's cheapest route to green is a raw `git grep … | wc -l` pasted beside the instrument,
+#   i.e. a LESS durable census than the one already cited. This gate did not let a bad claim
+#   through; it degraded a good one, which is `SIGNOFF-REPAIR.11.9`'s bypass objection with the
+#   sign reversed.
+# ⭐ IT IS A LOOSENING AND IS PRICED AS ONE. Recognising one more spelling can only turn a refusal
+#   into a pass, so a backlog is structurally impossible — and it is measured rather than asserted.
+#   ⛔ Ask for the figures instead of reading them here, since they move as the corpus grows:
+#   `bash scripts/check_gap_claims.sh --calibrate [N]` prints both legs, with the population each
+#   belongs to. ⚠️ Its HISTORY leg is DETERRENCE, not cost (`SIGNOFF-REPAIR.11.18.2`): this corpus
+#   was policed by this gate throughout, so the founding refusal was resolved while its leaf was
+#   being authored and cannot appear in anything that landed — which is why that instance is
+#   reproduced verbatim as a two-sided `--self-test` arm instead of replayed.
+# ⚠️ `SIGNOFF-REPAIR.11.2.5` ruled AGAINST widening this pattern and that ruling is UPHELD, not
+#   superseded: it was rejecting a widening as the remedy for a too-LOOSE discharge test, where
+#   more spellings make the gate more inert. This is the opposite defect — a legitimate census
+#   spelling the pattern cannot see — and the opposite direction.
+# ⚠️ The DECLARED LIMIT is unchanged and is inherited, not widened: as with `scripts/check_`, a
+#   line that merely NAMES an instrument discharges as well as one that invokes it. This gate
+#   verifies a census was RECORDED, never that it was RUN.
+# ⭐ THE SPELLING IS A SEPARATE VARIABLE SO THE CALIBRATION IS STRUCTURAL. `--calibrate` prices the
+#   widening by classifying the same corpus twice, once with `CENSUS_BASE_RE` and once with the
+#   whole pattern; keeping the two as one hand-edited string would make that comparison a second
+#   copy of the pattern, which is the `SCAFFOLD-COVERAGE` defect written into a control.
+CENSUS_BASE_RE='git grep|grep -r|grep -c|grep -l|grep -o|grep -n|grep -w|git ls-files|git log -s|git log --grep|git log --oneline|rg -|--dump-|--report-|--self-test|--lint|scripts/check_|make |comm -|wc -l|sort -u|uniq -c|sed -n|git show|git diff|cargo |a search of|searched (the|all|every)|census:'
+CENSUS_INSTRUMENT_RE='scripts/census_'
+CENSUS_RE="${CENSUS_BASE_RE}|${CENSUS_INSTRUMENT_RE}"
 
 # Section boundaries are ANY ATX heading, deliberately: "nearest heading above" needs no leaf-id
 # syntax and cannot mis-parse one.
@@ -180,7 +212,9 @@ remedy() {
     echo "    1. paste the census you ran, e.g."
     echo "         git grep -n '<symbol>' -- src scripts | wc -l   # -> 0"
     echo "       Any enumerating command counts: git grep / grep -r / git ls-files / git log -S /"
-    echo "       a scripts/check_*.sh, a --self-test or a --report-/--dump- instrument invocation."
+    echo "       a scripts/check_*.sh, a scripts/census_*.py, a --self-test or a --report-/--dump-"
+    echo "       instrument invocation. ⭐ Prefer a TRACKED census instrument over an ad-hoc grep:"
+    echo "       it is the more durable evidence, and this gate recognises it."
     echo "    2. or disclose that you did not run one:"
     echo "         census: not run (<why>) — the claim is REASONED, not measured"
     echo "       An honest 'not run' is a legal answer and a useful signal; a silent claim is not."
@@ -291,6 +325,25 @@ if [ "$mode" = "--self-test" ]; then
   printf '### `.9` — a claim inside an acceptance record\n- [x] **ROOT CAUSE (WHY + WHERE)** — nothing enforces the stored value.\n- [x] **ADDRESSED (verified)** — `cargo test -p x` rc=0, 12 passed.\n' > "$work/inbox.md"; printf '2\n3\n' > "$work/inbox.nums"
   [ -z "$(classify "$work/inbox.nums" "$work/inbox.md")" ] && arm ok "NEGATIVE — a claim inside a box is discharged by a sibling box" || arm bad "an acceptance record is one unit; a sibling box must discharge a boxed claim"
 
+  # ---- `SIGNOFF-REPAIR.11.2.8`: a tracked census instrument is a census ----------
+  # 🔴 THE FOUNDING INSTANCE, VERBATIM from the sentence this gate refused at
+  #   `REASONBRAID-REPAIR-0266`. Observed RED against the shipped pattern before the
+  #   widening: the classifier returned `BLOCKED` for a claim whose own bullet cites the
+  #   tracked instrument built to enumerate it.
+  printf '##### `.7.3.6.1` — the census of every advertised policy line\n- 🔴 **FOUR OF THE SIX POLICY FIELDS ARE CONSUMED BY NOTHING, and the claim carries its enumeration in both directions** (`python3 -B scripts/census_advertised_policies.py --readers`, which classifies EVERY occurrence in tracked Rust).\n' > "$work/censusinst.md"; printf '2\n' > "$work/censusinst.nums"
+  [ -z "$(classify "$work/censusinst.nums" "$work/censusinst.md")" ] && arm ok "a scripts/census_ invocation discharges a claim" || arm bad "a tracked census instrument must discharge the claim it enumerates"
+  # ⭐ THE OTHER SIDE, so the arm above proves the SPELLING rather than the sentence: the
+  #   identical claim with the instrument removed is still BLOCKED. Without this, deleting
+  #   CENSUS_RE entirely would leave the arm above green.
+  printf '##### `.7.3.6.1` — the same claim with no instrument cited\n- 🔴 **FOUR OF THE SIX POLICY FIELDS ARE CONSUMED BY NOTHING, and the claim carries its enumeration in both directions**, which is what the verdict column records.\n' > "$work/censusnone.md"; printf '2\n' > "$work/censusnone.nums"
+  classify "$work/censusnone.nums" "$work/censusnone.md" | grep -q '^BLOCKED' && arm ok "the same claim WITHOUT the instrument is still blocked" || arm bad "the census_ arm must discriminate on the instrument, not on the sentence"
+  # ⭐ THE RED, KEPT RATHER THAN OBSERVED ONCE. The identical fixture under `CENSUS_BASE_RE` — the
+  #   pattern this gate shipped with for its first two hundred commits — is BLOCKED. That makes the
+  #   founding refusal a control that runs on every commit instead of a sentence about a past run,
+  #   and it is the same comparison `--calibrate` prices, so the two cannot disagree.
+  awk -v CLAIM_RE="$CLAIM_RE" -v CENSUS_RE="$CENSUS_BASE_RE" "$CLASSIFY_AWK" "$work/censusinst.nums" "$work/censusinst.md" | grep -q '^BLOCKED' \
+    && arm ok "RED — the founding sentence is blocked by the pattern that shipped" || arm bad "the pre-widening pattern must still block the founding sentence"
+
   # ---- `SIGNOFF-REPAIR.11.18.1`: one filter, and it reaches nested artifacts ----
   # ⭐ These arms run `governed_filter` ITSELF — the single function both the advisory and the
   #   blocker pipe through — so they cover both callers by construction. An arm that re-spelled
@@ -329,6 +382,58 @@ if [ "$mode" = "--self-test" ]; then
   [ "$parsed" = "2 3 11 " ] && arm ok "added-line numbers resolve to NEW-file positions (2 3 11)" || arm bad "hunk arithmetic yields '$parsed'"
   ok "--self-test: arms=${passed}/${arms}"
   [ "$passed" = "$arms" ] || exit 1
+  exit 0
+fi
+
+if [ "$mode" = "--calibrate" ]; then
+  # ⭐ PRICE THE `scripts/census_` SPELLING, rather than restating what it cost once
+  #   (`SIGNOFF-REPAIR.11.16` measured what happens to a number published where nothing derives
+  #   it). Both legs classify the SAME rows twice — with the whole pattern, and with the
+  #   instrument spelling removed — so `only-instrument` is the population that would be refused
+  #   if this gate went back to not knowing what a census script is.
+  # ⚠️ THE HISTORY LEG'S NUMBER IS DETERRENCE, NOT COST (`SIGNOFF-REPAIR.11.18.2`): this corpus has
+  #   been policed by this gate throughout, so a refusal was resolved while its leaf was being
+  #   authored and never reached a commit. Read `only-instrument` over the CORPUS as the live
+  #   figure; the history leg is there to show the replay cannot see the instance.
+  n_commits="${2:-200}"
+  mkdir -p "$WORK"
+  classify_two() { # <nums> <md> -> "<blocked_full>\t<blocked_base>"
+    local full base
+    full="$(awk -v CLAIM_RE="$CLAIM_RE" -v CENSUS_RE="$CENSUS_RE"      "$CLASSIFY_AWK" "$1" "$2")"
+    base="$(awk -v CLAIM_RE="$CLAIM_RE" -v CENSUS_RE="$CENSUS_BASE_RE" "$CLASSIFY_AWK" "$1" "$2")"
+    case "$full" in UNBALANCED*) printf 'skip\tskip\n'; return ;; esac
+    printf '%s\t%s\n' "$(printf '%s' "$full" | grep -c '^BLOCKED' || true)" \
+                      "$(printf '%s' "$base" | grep -c '^BLOCKED' || true)"
+  }
+  c_files=0; c_claims=0; c_full=0; c_base=0
+  for f in $(git ls-files -- 'docs/tasks/*.md' | governed_filter); do
+    [ -r "$f" ] || continue
+    seq 1 "$(wc -l < "$f")" > "$WORK/cal.nums"
+    IFS=$'\t' read -r bf bb <<< "$(classify_two "$WORK/cal.nums" "$f")"
+    [ "$bf" = skip ] && { note "$f has an unbalanced fenced block — not classified"; continue; }
+    c_files=$((c_files + 1))
+    c_claims=$((c_claims + $(awk -v CLAIM_RE="$CLAIM_RE" '{ if (tolower($0) ~ CLAIM_RE) k++ } END { print k+0 }' "$f")))
+    c_full=$((c_full + bf)); c_base=$((c_base + bb))
+  done
+  ok "corpus (every line treated as added): ${c_files} governed file(s), ${c_claims} claim line(s)"
+  ok "corpus: blocked=${c_full} · blocked without the instrument spelling=${c_base} · only-instrument=$((c_base - c_full))"
+  h_commits=0; h_full=0; h_base=0
+  for sha in $(git rev-list -n "$n_commits" HEAD -- docs/tasks); do
+    files="$(git diff-tree --no-commit-id --name-only -r "$sha" -- 'docs/tasks' 2>/dev/null | governed_filter)"
+    [ -n "$files" ] || continue
+    h_commits=$((h_commits + 1))
+    for f in $files; do
+      git show "$sha:$f" > "$WORK/cal.md" 2>/dev/null || continue
+      git diff "$sha^" "$sha" -U0 -- "$f" 2>/dev/null | added_line_numbers | sort -un > "$WORK/cal.nums"
+      [ -s "$WORK/cal.nums" ] || continue
+      IFS=$'\t' read -r bf bb <<< "$(classify_two "$WORK/cal.nums" "$WORK/cal.md")"
+      [ "$bf" = skip ] && continue
+      h_full=$((h_full + bf)); h_base=$((h_base + bb))
+    done
+  done
+  ok "history (last ${n_commits} commits touching docs/tasks): ${h_commits} replayed"
+  ok "history: blocked=${h_full} · blocked without the instrument spelling=${h_base} · only-instrument=$((h_base - h_full))"
+  ok "⚠️ the history figure is DETERRENCE — this corpus was policed throughout (SIGNOFF-REPAIR.11.18.2)"
   exit 0
 fi
 

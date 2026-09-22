@@ -2,9 +2,9 @@
 
 ## Current state (OVERWRITE this block each update — do not append)
 
-- next_action: `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2` — adjudicate each §11.5 gate `PHASE-3.5.3` named and did not build (rate, side-effect bounds, operating hours, central+local reservation, recursion/duplicate/notification controls, allowed tools, adapter health, billing route): server-side or node-side, built or triggered. RATE first — an undeclared autonomous chain is bounded only by `.5.2`'s once-per-tenant defect until it lands, and `.5.2`'s repair should land with it. Then `.5.3.3` (offline backlog), `.5.3.4` (record storm refusals).
-- active_work_unit: `SIGNOFF-REPAIR` → frontier leaf: `.11.4.7.2.1.5.3.2` (`pending`). This session (2026-09-22/23): DOC-0131, REPAIR-0405…0415, DOC-0132, DOC-0133, DOC-0134.
-- latest_commit: `REASONBRAID-REPAIR-0415`.
+- next_action: `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.1` + `SIGNOFF-REPAIR.5.2` clause 1, TOGETHER: a per-role windowed rate bound on `POST /v1/threads/auto` (new quota scope kind → migration widening `usage_quotas.scope_kind` CHECK, seeded for roles, fail-closed, recorded in `quota_events`) AND the idempotency key made per-initiation (today `auto_{role}_{tenant}` makes the 2nd initiation replay the 1st). Read DOC-0134 + DOC-0135 and `.5.2`. RED first. Then `.5.3.2.2`–`.4`, `.5.3.3`, `.5.3.4`.
+- active_work_unit: `SIGNOFF-REPAIR` → frontier leaf: `.11.4.7.2.1.5.3.2.1` (`pending`). This session (2026-09-22/23): DOC-0131, REPAIR-0405…0415, DOC-0132…0135.
+- latest_commit: `REASONBRAID-DOC-0135`.
 - in_flight_uncommitted: none.
 - blockers: `SIGNOFF-REPAIR.13`. ⛔ `.8.2` clause 1's *blocked on grant vocabulary* is WITHDRAWN by `.15` — it was wrong twice and `.8.2.5` is unblocked.
 - ⭐ **THE SEQUENCE for the five remaining roadmap gaps** (`docs/decisions/2026-09-22_the-remaining-roadmap-gaps-are-sequenced-by-exposure-then-deletion.md`, leaf `.15`): ✅ **1 `.8.2.5` DONE** (REPAIR-0392; `.16` then corrected its 403 — a domain refusal is 400 with an audit id, only an AUTHORITY denial is 403) → ✅ **2 `.9.3.5` DONE** (REPAIR-0394) → ✅ **3 `.4.6` DONE** (DOC-0124) → ✅ **4 `.11.4.7.2.1.2` DONE** (DOC-0125) → ✅ **5 `.11.4.7.2.1.3` DONE** (DOC-0126) — ⭐ **WAVE B COMPLETE** → ✅ the NEW prerequisite `.11.4.7.2.1.2.1` DONE (REPAIR-0395) → **NEXT: 6** `.8.1.1` the counted outcome, now UNGATED → **7** what 2, 3 and 5 keep — now `.9.3.5.1`–`.3`, `.4.6.1` and `.11.4.7.2.1.2.1`–`.3` and `.11.4.7.2.1.3.1`. ⛔ Work them in this order; a wave-C build before its wave-B decision is the rework the rule exists to prevent.

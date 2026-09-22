@@ -6366,9 +6366,33 @@ PY
 
 ###### SIGNOFF-REPAIR.11.4.7.2.1.5.3.2 — `PHASE-3.5.3` named the §11.5 wake checklist and built four of its gates
 
-- Status: `pending`.
+- Status: `active` — adjudicated and split by `REASONBRAID-DOC-0135` (`docs/decisions/2026-09-23_the-wake-checklist-is-a-node-gate-and-the-auto-grant-carries-six-bounds.md`).
 - Built: topic, confidentiality, concurrency, spend. Named and neither built nor deferred: operating hours (quiet hours), rate, side-effect bounds, central + local reservation, recursion/duplicate/notification controls, allowed tools, adapter health, billing route.
 - Owns: adjudicating each — server-side gate or node-side check (§11.5 says *before wake, the node evaluates*) — then building it or giving it an evaluable trigger; quiet hours against the profile's existing `operating_hours`.
+- ⚖️ **Adjudicated** from a read-only census, each claim cited file:line and verified before recording (`grep -rn "operating_hours\|wake_policy" crates/*/src` → only the declaration and a fixture; the only quota wired into thread commands is the tenant INVITE quota). §11.5 is TWO requirements: a node WAKE checklist and six GRANT bounds for initiation. `PHASE-3.5.3` answered neither fully. 🔴 **And the mode/topic and operating-hours checks were LOST in a hand-off**: `PHASE-3.5.2` named them *"with the `.5.3` trigger"*, and `.5.3`'s `Done` never mentions them.
+
+###### SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.1 — Nothing bounds how often a role initiates a thread
+
+- Status: `pending`. ⭐ Frontier. **Ships with `SIGNOFF-REPAIR.5.2`'s repeat-initiation repair**: with the per-tenant key fixed and no rate bound, an undeclared chain has no bound at all.
+- Owns: a windowed per-role ceiling on `POST /v1/threads/auto`, fail-closed and recorded like every quota event (`quota_events`), with its own scope kind (a quota row's scope has one meaning per surface: `principal` already means MCP write calls), seeded for roles; and, in the same change, `.5.2`'s key made per-initiation so a role can initiate more than once.
+- Verification / commit: pending.
+
+###### SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2 — Two wake-policy fields are declared and never read
+
+- Status: `pending`.
+- `Availability.wake_policy` and `Availability.operating_hours` (`profiles.rs`) are accepted, stored and enforced nowhere; a non-zero `concurrency` gates nothing. Owns: evaluating them before wake (§11.5: the NODE evaluates), or removing any field that cannot be given a meaning — never leaving a declared-but-unread field.
+- Verification / commit: pending.
+
+###### SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3 — The auto grant carries one of its six bounds
+
+- Status: `pending`.
+- §11.5: *topic, audience, rate, depth, spend, and side-effect bounds*. Spend is on the grant; topic rides the profile's interests and depth a constant; audience and side-effect bounds are absent. Owns: the grant carrying them (rate lands in `.2.1`).
+- Verification / commit: pending.
+
+###### SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.4 — Four node-local wake items are evaluated nowhere
+
+- Status: `pending`.
+- Notification controls, required tools/resources, adapter health, billing route. Owns: adjudicating each against the adapters that ship (`rb-node` constructs only the fake adapter), then building it or giving it an evaluable trigger.
 - Verification / commit: pending.
 
 ###### SIGNOFF-REPAIR.11.4.7.2.1.5.3.3 — An offline node's inbox grows without bound
@@ -12606,7 +12630,7 @@ git grep -nI -E "never run|licen[cs]e decision|license decision" -- \
 | 1a | `SIGNOFF-REPAIR.11.29` | `done` | ✅ REPAIR-0318 — **the demonstration read presence without saying who was calling, and wrote a markdown table by executing it.** 🔴 `e8db1a1` (`.3.5.5`) bound `GET /v1/nodes/presence` to the caller's tenant; the demo's three reads use a bare `curl` with no principal header, so all three checks failed — the node-channel suite passed because ITS reads send one. 🔴 And backticks inside a double-quoted `echo` made bash RUN `rb node revoke`, substituting empty output into `summary.md` — **silently corrupting the evidence bundle for as long as it has existed**, never failing a check. ✅ 44 suites + demo ALL GREEN on the exact command CI runs |
 | 1a | `SIGNOFF-REPAIR.11.28` | `done` | ✅ REPAIR-0317 — **two enrollment expectations counted quota rows, and the row that moved them was three days old.** The first push's `rust` workflow went red on `enrollment_transaction`; it **reproduces locally**, so it is a suite the four cheap gates do not run. ⭐ `git log -S` names the cause: `398ecc7` (`.11.14.3.14`, 2026-09-17) gave every tenant two acquisition defaults, taking a bootstrap from 2 quota rows to 4 and the two-principal fixture from 3 to 5. ⛔ **4 and 5 were established from the source BEFORE either number was touched** — *adjust until it passes* is how a real double-insert gets laundered green. ✅ The expectations now NAME the rows (`quota_scopes`): a count has no producer, these pairs do. 9/9 |
 | 1a | `SIGNOFF-REPAIR.11.27` | `done` | ✅ REPAIR-0316 — **a self-test that pins one host's collation is not ground truth.** `doctrines` failed on the runner and was green locally: `check_readme_stability.sh`'s extraction arm ends in `sort -u`, and `LC_ALL=C` orders `docs/book/` third where `en_US.UTF-8` puts it first. ⭐ **Reproduced locally with the SHIPPED bytes** — `git show HEAD:…` under `LC_ALL=C` prints exactly what the runner logged. ✅ `LC_ALL=C` pins every stage of the extractor and the expectation is rewritten in that order; ⛔ the INSTRUMENT is pinned rather than the comparison loosened. Self-test green under BOTH collations, gate verdict unchanged in both. ⚠️ No script in `scripts/` pins a collation — latent hazard recorded, trigger stated |
-| 1 | `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2` | `pending` | ✅ `.11.4.7.2.1.5.3.1` (REPAIR-0415): a declared autonomous chain is bounded at depth 3 and refuses a cycle. NEXT: the §11.5 wake-checklist gates `PHASE-3.5.3` named and did not build — the RATE gate first, because an undeclared chain is bounded only by `.5.2`'s defect until it lands. Then `.11.4.7.2.1.5.3.3`, `.11.4.7.2.1.5.3.4` |
+| 1 | `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.1` | `pending` | ✅ `.11.4.7.2.1.5.3.2` adjudicated (DOC-0135): §11.5 is a node WAKE checklist plus six GRANT bounds, and most of both are missing. ⭐ NEXT: the per-role RATE bound on `POST /v1/threads/auto`, shipped TOGETHER with `SIGNOFF-REPAIR.5.2`'s repeat-initiation repair; then `.11.4.7.2.1.5.3.2.2`–`.4`, `.11.4.7.2.1.5.3.3`, `.11.4.7.2.1.5.3.4` |
 | 1a | `SIGNOFF-REPAIR.9.3.5.3` | `done` | ✅ DOC-0130 — **the book has a publication-store chapter**: three refs, write-once, compare-and-swap, fetch-back, every refusal, recovery — examples from a REAL run, which is how REPAIR-0404's two defects were found. `refs/rb/` in the book: 0 → 13 |
 | 1a | `SIGNOFF-REPAIR.9.3.5.3.1` | `done` | ✅ REPAIR-0404 — **a refused re-publish no longer moves the staging ref, and the CAS message reads once.** Both found by generating the book's examples from a REAL run rather than writing them by hand; the second was mine from REPAIR-0402 |
 | 1a | `SIGNOFF-REPAIR.9.3.5.2` | `done` | ✅ REPAIR-0403 — **a published bundle is served by its digest and verified on the way out.** The control tampers the STORE (re-points the immutable ref); M2 showed a tampered bundle would have been served, M3 that another tenant would have read it |

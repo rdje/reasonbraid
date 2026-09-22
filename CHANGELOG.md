@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-22 — 179 runs, no occurrence, and the hunt is tracked so the next sample keeps its denominator (`SIGNOFF-REPAIR.11.26.3`)
+
+`REASONBRAID-REPAIR-0388`. The frontier leaf's declared next action is *wait*, and waiting had no instrument.
+
+- ⛔ **THE SAMPLE, WITH ITS DENOMINATOR**, because `.11.26`'s own note says an unstated one is not a measurement: **0 failures in 179 runs** of the pre-push script suite with the timing log armed and the stall watchdog in place — 40 on a quiet machine (17.8 / 19.1 / 24.8 s) and **139 while cargo builds, strict clippy, four live PostgreSQL suites and a full-history git replay ran alongside** (22.5 / 25.7 / 30.5 s).
+- ⭐ **ROUND 2 IS THE STRONGER NEGATIVE.** The suite slowed by about **35%** under that load and never failed — a third measurement against *the machine was busy*, an explanation this lane has already withdrawn twice. ⛔ No lever was tried, deliberately: `.11.26` forbids a fourth.
+- ⚠️ **AND THE PER-PHASE RECORD SURVIVES FOR ONLY 3 OF THE 179 — this leaf's own defect repeating.** `.11.26.2` lost a 240-invocation distribution to an untracked file that had been replaced; the first hunt written here bounded disk by deleting all but the last two runs, so 179 runs produced 3 runs of evidence.
+- ⭐ **THE RULE IS NOW KEYED ON THE VERDICT, NOT ON AGE**: a passing run's artefacts are disposable, a failing run's are the entire point. `scripts/hunt_gate_stall.sh` is tracked, stops on the first non-zero rc, names the log and timing file it retained, and prints `runs= failures= wall_s min/mean/max` so a sample cannot be published without its denominator. ⛔ Not a gate, and it says so.
+- ⭐ **ITS `--self-test` CAUGHT IT ON THE FIRST RUN**: arm 4 reported `prune_passing: command not found`, because the retention helper was defined BELOW the arm that calls it — so the arm asserting a passing run is pruned was testing nothing. `SELF-TEST`'s founding incident, in a new script, on day one. The retention arm is two-sided: the run the prune was not asked about must survive.
+- ⛔ **`.11.26` stays open.** Its acceptance asks for ONE occurrence caught with the instrument, and 179 runs did not produce one.
+
 ## 2026-09-22 — The modulo moves into u64, and the control is built so the defect and the repair can disagree (`SIGNOFF-REPAIR.8.2.3`)
 
 `REASONBRAID-REPAIR-0387`. The evaluation chapter's third and last published limit.

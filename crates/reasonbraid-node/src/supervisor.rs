@@ -38,7 +38,7 @@ use reasonbraid_core::{
 use serde_json::json;
 use tokio::sync::Mutex;
 
-use crate::journal::{Journal, JournalError, ProvenStatus};
+use crate::journal::{Journal, JournalError, ProvenStatus, ResultEvent};
 
 /// The node's LOCAL budget ledger (§14.3 step 4: "the node verifies a signed/
 /// authorized reservation AND local headroom before dispatch"). Development profile:
@@ -105,7 +105,14 @@ pub struct ExecutionReport {
     pub usage: Option<NormalizedUsage>,
     /// The reservation this dispatch ran under (the WP6 correlation key).
     pub reservation_id: String,
+    /// The result event journaled with the completion, when the caller asked for
+    /// one ([`execute_attempt_emitting`]): pending in the journal from the same
+    /// transaction that completed the attempt, and the caller's to deliver.
+    pub result_event: Option<ResultEvent>,
 }
+
+/// Builds the outgoing result event from a completed attempt's report.
+pub type ResultEventBuilder<'a> = &'a (dyn Fn(&ExecutionReport) -> ResultEvent + Send + Sync);
 
 /// A typed supervision error.
 #[derive(Debug)]
@@ -161,6 +168,80 @@ pub async fn execute_attempt(
     reservation: &ReservationReference,
     local: &LocalBudget,
 ) -> Result<ExecutionReport, SupervisorError> {
+    supervise(
+        journal,
+        adapter,
+        operation_id,
+        request,
+        reservation,
+        local,
+        None,
+    )
+    .await
+}
+
+/// [`execute_attempt`] for work whose result must reach the control plane
+/// (`SIGNOFF-REPAIR.4.4.4.1`). When the attempt completes, by the runtime answer or
+/// by a status-lookup proof, `result_event` builds the outgoing event from the
+/// report and the journal writes it in the SAME transaction as the completion, so
+/// no instant exists in which the attempt is complete and its result is not
+/// pending. The event comes back in [`ExecutionReport::result_event`].
+pub async fn execute_attempt_emitting(
+    journal: &Journal,
+    adapter: &impl Adapter,
+    operation_id: &str,
+    request: &RunRequest,
+    reservation: &ReservationReference,
+    local: &LocalBudget,
+    result_event: ResultEventBuilder<'_>,
+) -> Result<ExecutionReport, SupervisorError> {
+    supervise(
+        journal,
+        adapter,
+        operation_id,
+        request,
+        reservation,
+        local,
+        Some(result_event),
+    )
+    .await
+}
+
+/// Land a completed attempt: its terminal record and, when the caller asked for
+/// one, its result event, in one journal transaction. A status-lookup proof lands
+/// through the same `Complete` transition as a runtime answer (from
+/// `outcome_unknown` instead of `dispatched`; the state machine checks which), so
+/// one writer serves both paths.
+async fn land_completed(
+    journal: &Journal,
+    report: &mut ExecutionReport,
+    evidence: Option<&serde_json::Value>,
+    result_event: Option<ResultEventBuilder<'_>>,
+    now: chrono::DateTime<Utc>,
+) -> Result<(), JournalError> {
+    let attempt_id = report.attempt_id.clone();
+    match result_event {
+        Some(build) => {
+            let event = build(report);
+            journal
+                .record_completed_with_event(&attempt_id, evidence, &event, now)
+                .await?;
+            report.result_event = Some(event);
+        }
+        None => journal.record_completed(&attempt_id, evidence, now).await?,
+    }
+    Ok(())
+}
+
+async fn supervise(
+    journal: &Journal,
+    adapter: &impl Adapter,
+    operation_id: &str,
+    request: &RunRequest,
+    reservation: &ReservationReference,
+    local: &LocalBudget,
+    result_event: Option<ResultEventBuilder<'_>>,
+) -> Result<ExecutionReport, SupervisorError> {
     let now = Utc::now();
     let attempt_id = ProviderAttemptId::new().to_string();
 
@@ -187,6 +268,7 @@ pub async fn execute_attempt(
             chunks: Vec::new(),
             usage: None,
             reservation_id: reservation.reservation_id.clone(),
+            result_event: None,
         })
     };
     if let Err(e) = reservation.applicable_at(now) {
@@ -223,6 +305,7 @@ pub async fn execute_attempt(
                 chunks: Vec::new(),
                 usage: None,
                 reservation_id: reservation.reservation_id.clone(),
+                result_event: None,
             })
         }
         InvokeOutcome::Accepted(ack, mut handle) => {
@@ -274,16 +357,16 @@ pub async fn execute_attempt(
                             .and_then(|u| u.output_tokens.map(|v| v as u64)),
                     );
                     local.settle(&reservation.dimensions, &actual).await;
-                    journal
-                        .record_completed(&attempt_id, usage.as_ref(), now)
-                        .await?;
-                    Ok(ExecutionReport {
+                    let mut report = ExecutionReport {
                         attempt_id,
                         final_state: ProviderAttemptState::Completed,
                         chunks,
                         usage: normalized,
                         reservation_id: reservation.reservation_id.clone(),
-                    })
+                        result_event: None,
+                    };
+                    land_completed(journal, &mut report, usage.as_ref(), result_event, now).await?;
+                    Ok(report)
                 }
                 Some(Terminal::FailedKnown(reason)) => {
                     journal
@@ -297,6 +380,7 @@ pub async fn execute_attempt(
                         chunks,
                         usage: None,
                         reservation_id: reservation.reservation_id.clone(),
+                        result_event: None,
                     })
                 }
                 None => {
@@ -313,31 +397,28 @@ pub async fn execute_attempt(
                     match adapter.query_status(operation_id).await {
                         StatusLookupOutcome::Supported(AttemptResult::Completed { usage }) => {
                             let normalized = usage.as_ref().map(|u| adapter.normalize_usage(u));
-                            journal
-                                .prove_result(
-                                    &attempt_id,
-                                    ProvenStatus::Completed,
-                                    None,
-                                    usage.as_ref(),
-                                    now,
-                                )
-                                .await?;
-                            let actual = BudgetDimensions::attempt_usage(
-                                normalized
-                                    .as_ref()
-                                    .and_then(|u| u.input_tokens.map(|v| v as u64)),
-                                normalized
-                                    .as_ref()
-                                    .and_then(|u| u.output_tokens.map(|v| v as u64)),
-                            );
-                            local.settle(&reservation.dimensions, &actual).await;
-                            Ok(ExecutionReport {
+                            let mut report = ExecutionReport {
                                 attempt_id,
                                 final_state: ProviderAttemptState::Completed,
                                 chunks,
                                 usage: normalized,
                                 reservation_id: reservation.reservation_id.clone(),
-                            })
+                                result_event: None,
+                            };
+                            land_completed(journal, &mut report, usage.as_ref(), result_event, now)
+                                .await?;
+                            let actual = BudgetDimensions::attempt_usage(
+                                report
+                                    .usage
+                                    .as_ref()
+                                    .and_then(|u| u.input_tokens.map(|v| v as u64)),
+                                report
+                                    .usage
+                                    .as_ref()
+                                    .and_then(|u| u.output_tokens.map(|v| v as u64)),
+                            );
+                            local.settle(&reservation.dimensions, &actual).await;
+                            Ok(report)
                         }
                         StatusLookupOutcome::Supported(AttemptResult::FailedKnown { reason }) => {
                             journal
@@ -357,6 +438,7 @@ pub async fn execute_attempt(
                                 chunks,
                                 usage: None,
                                 reservation_id: reservation.reservation_id.clone(),
+                                result_event: None,
                             })
                         }
                         StatusLookupOutcome::Unsupported => {

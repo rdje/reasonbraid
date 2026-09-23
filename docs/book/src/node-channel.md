@@ -623,15 +623,50 @@ tell a caller to wait for capacity that is not coming back on its own.
 ⚠️ A node that declares **no** concurrency at all never reads `busy`, however
 much it holds. It never said what it can take, so there is no limit to be at.
 
+### A completed result and its event are written together
+
+The node writes a finished attempt's `completed` record and its outgoing
+`work_result` event **in one journal transaction** (`SIGNOFF-REPAIR.4.4.4.1`).
+The event carries the content, the usage and the attempt id. So at no instant
+is the attempt complete while its result exists only in memory:
+
+| The node dies… | What the restarted node finds | What happens |
+| --- | --- | --- |
+| before the transaction commits | the attempt still `dispatched` | recovery marks it `outcome_unknown`; §11.3's proof or an operator adjudicates |
+| after it commits | the attempt `completed` **and** the event pending | the reconcile re-emits the event with its original id |
+
+A result produced while the node is **not schedulable** is handled the same
+way. The worker delivers the already-journaled event only when the node is
+`Schedulable`; otherwise the event stays pending, the worker logs *the next
+reconcile delivers it*, and the reconcile does. Before this repair the two
+writes were separate transactions, and an unschedulable node refused the
+event write outright. The attempt then read `completed` with no event: the
+handshake reported nothing, the retry gate refused the item as terminal, and
+the paid result was lost for good.
+
+An example of what a restarted node's journal holds after a death just past
+the transaction:
+
+```text
+attempts         patt_…  completed
+outgoing_events  evt_…   pending   {"kind":"work_result","attempt_id":"patt_…","content":"…"}
+```
+
+⚠️ Refusing to *dispatch* on a node that is not schedulable is a separate
+repair (`SIGNOFF-REPAIR.4.4.4.2`, pending). Today such a node can still spend
+on a dispatch; what this repair guarantees is that the result of that spend
+is kept.
+
 ## Schedulability gate
 
 A node is `Offline → Reconciling → Schedulable`, and it becomes `Schedulable`
 **only** after the full handshake round-trip is applied: crashed attempts
 classified, replay journaled, directives applied, pending results re-emitted
-(or acknowledged as known), cursor acknowledged on both sides. New work
-(`emit_event`) is refused until then, and any failure drops the node back to
-`Offline` — retrying the whole protocol is always safe because every step is
-idempotent.
+(or acknowledged as known), cursor acknowledged on both sides. A new event
+(`emit_event`) is refused until then. A work result the journal already holds
+is not refused: it stays pending and the reconcile delivers it (above). Any
+failure drops the node back to `Offline`; retrying the whole protocol is
+always safe because every step is idempotent.
 
 ## Inbox hardening (`.1.2.3`)
 

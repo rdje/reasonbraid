@@ -11,7 +11,7 @@ use chrono::{Duration as ChronoDuration, Utc};
 use reasonbraid_adapter::{AdapterCapabilities, FakeAdapter, ScriptStep, StatusLookupSpec};
 use reasonbraid_core::fixture::Fixture;
 use reasonbraid_core::{BudgetDimensions, CACHED_ALLOW_TTL_SECONDS};
-use reasonbraid_node::{Journal, LocalBudget, Node, Worker, WorkerError};
+use reasonbraid_node::{Journal, LocalBudget, Node, Worker};
 use serde_json::{json, Value};
 
 /// A fixture directory for one test, created exclusively on the repository's own
@@ -126,6 +126,54 @@ async fn latest_status(journal: &Journal, command_id: &str) -> Option<String> {
         .find(|w| w.command_id == command_id)
         .expect("seeded work item");
     item.latest_attempt_status
+}
+
+/// The one work result a completed dispatch leaves waiting in the journal
+/// (`SIGNOFF-REPAIR.4.4.4.1`). This node was never reconciled, so it cannot
+/// deliver; the result must stay pending for the next reconcile to re-emit,
+/// naming the attempt that produced it. Before the repair the completion was
+/// journaled, the emission refused with an error, and the result existed
+/// nowhere, so these controls accepted a paid result's loss as proof that the
+/// dispatch happened.
+async fn pending_result_for(journal: &Journal, command_id: &str) -> Value {
+    let operation_id = journal
+        .work_items()
+        .await
+        .expect("work items")
+        .into_iter()
+        .find(|w| w.command_id == command_id)
+        .and_then(|w| w.operation_id)
+        .expect("the dispatched item has an operation");
+    let completed: Vec<String> = journal
+        .attempts_for_operation(&operation_id)
+        .await
+        .expect("attempts")
+        .into_iter()
+        .filter(|a| a.status == "completed")
+        .map(|a| a.attempt_id)
+        .collect();
+    assert_eq!(completed.len(), 1, "exactly one completed attempt");
+    let pending: Vec<Value> = journal
+        .pending_events()
+        .await
+        .expect("pending events")
+        .into_iter()
+        .filter(|e| e.operation_id == operation_id)
+        .map(|e| serde_json::from_str(&e.payload).expect("a JSON payload"))
+        .collect();
+    assert_eq!(
+        pending.len(),
+        1,
+        "the completed dispatch left exactly one result waiting: {pending:?}"
+    );
+    let result = pending.into_iter().next().unwrap();
+    assert_eq!(result["kind"], "work_result");
+    assert_eq!(result["command_id"], command_id);
+    assert_eq!(
+        result["attempt_id"], completed[0],
+        "the result names the attempt that produced it"
+    );
+    result
 }
 
 #[tokio::test]
@@ -254,22 +302,21 @@ async fn a_fresh_epoch_current_cached_allow_dispatches() {
     );
 
     let items = node.journal().work_items().await.expect("work items");
-    // The dispatch proceeds through the gate; the supervisor runs the adapter,
-    // the attempt COMPLETES — and the result emission fails (no server behind
-    // the dummy URL). That failure proves the dispatch WAS allowed (a refused
-    // dispatch returns Ok, never a channel error).
-    let result = worker.process(&items[0]).await;
-    match result {
-        Err(WorkerError::Channel(_)) | Err(WorkerError::Node(_)) => {}
-        other => {
-            panic!("a fresh allow dispatches; the emit fails on the dummy URL — got {other:?}")
-        }
-    }
+    // The dispatch proceeds through the gate; the supervisor runs the adapter
+    // and the attempt COMPLETES. This node was never reconciled, so the result
+    // cannot be delivered: it waits in the journal, and what proves the gate
+    // allowed the dispatch is the completed attempt and its waiting result.
+    worker
+        .process(&items[0])
+        .await
+        .expect("the dispatch completes; its result waits in the journal");
     assert_eq!(
         latest_status(node.journal(), &command_id).await.as_deref(),
         Some("completed"),
         "a fresh, epoch-current cached allow reaches the adapter and completes"
     );
+    let result = pending_result_for(node.journal(), &command_id).await;
+    assert_eq!(result["content"], "done", "the result carries the content");
 }
 
 /// A work item with a reservation that the LOCAL budget refuses: the cached
@@ -393,17 +440,18 @@ async fn a_replayed_decision_dispatches_however_old_the_first_delivery_was() {
 
     let worker = worker_with_ample_budget(&node);
     let items = node.journal().work_items().await.expect("work items");
-    // The dispatch proceeds; the emit then fails against the dummy URL, which
-    // is what proves the gate ALLOWED it (a refusal returns Ok).
-    match worker.process(&items[0]).await {
-        Err(WorkerError::Channel(_)) | Err(WorkerError::Node(_)) => {}
-        other => panic!("the replayed decision must dispatch — got {other:?}"),
-    }
+    // The dispatch proceeds and completes; the completed attempt and its
+    // waiting result are what prove the gate ALLOWED it.
+    worker
+        .process(&items[0])
+        .await
+        .expect("the dispatch completes; its result waits in the journal");
     assert_eq!(
         latest_status(node.journal(), &command_id).await.as_deref(),
         Some("completed"),
         "a replayed admission is fresh from ITS delivery, however old the first was"
     );
+    pending_result_for(node.journal(), &command_id).await;
 }
 
 // ── `.3.4.3.1.2`: the node evaluates server instants in the server's terms ──
@@ -449,17 +497,18 @@ async fn a_node_clock_ahead_of_the_server_still_dispatches() {
 
     let worker = worker_with_ample_budget(&node);
     let items = node.journal().work_items().await.expect("work items");
-    // The dispatch proceeds; the emit then fails against the dummy URL, which
-    // is what proves the gate ALLOWED it (a refusal returns Ok).
-    match worker.process(&items[0]).await {
-        Err(WorkerError::Channel(_)) | Err(WorkerError::Node(_)) => {}
-        other => panic!("a decision fresh in the SERVER's terms must dispatch — got {other:?}"),
-    }
+    // The dispatch proceeds and completes; the completed attempt and its
+    // waiting result are what prove the gate ALLOWED it.
+    worker
+        .process(&items[0])
+        .await
+        .expect("the dispatch completes; its result waits in the journal");
     assert_eq!(
         latest_status(node.journal(), &command_id).await.as_deref(),
         Some("completed"),
         "a node whose clock runs ahead must still do its work"
     );
+    pending_result_for(node.journal(), &command_id).await;
 }
 
 /// The other direction, which `.3.4.3` bounded and this leaf now corrects: the
@@ -534,14 +583,15 @@ async fn a_node_clock_behind_the_server_still_dispatches_a_fresh_decision() {
 
     let worker = worker_with_ample_budget(&node);
     let items = node.journal().work_items().await.expect("work items");
-    match worker.process(&items[0]).await {
-        Err(WorkerError::Channel(_)) | Err(WorkerError::Node(_)) => {}
-        other => panic!("a fresh decision must dispatch under backward skew — got {other:?}"),
-    }
+    worker
+        .process(&items[0])
+        .await
+        .expect("the dispatch completes; its result waits in the journal");
     assert_eq!(
         latest_status(node.journal(), &command_id).await.as_deref(),
         Some("completed"),
     );
+    pending_result_for(node.journal(), &command_id).await;
 }
 
 /// Journal one command of `tenant_id`, decided under `revocation_epoch`, now.
@@ -651,17 +701,18 @@ async fn each_command_is_judged_by_its_own_tenants_epoch() {
         Some("failed_before_dispatch"),
         "a tenant with no epoch reference is refused"
     );
-    // A: decided under 7, A is at 7 — dispatches despite B's bump. The emit
-    // fails on the dummy URL, which proves the gate let it through.
-    match worker.process(&item(cmd_a.clone()).await).await {
-        Err(WorkerError::Channel(_)) | Err(WorkerError::Node(_)) => {}
-        other => panic!("A's current allow dispatches; the emit fails — got {other:?}"),
-    }
+    // A: decided under 7, A is at 7 — dispatches despite B's bump; its
+    // completed attempt and waiting result prove the gate let it through.
+    worker
+        .process(&item(cmd_a.clone()).await)
+        .await
+        .expect("the dispatch completes; its result waits in the journal");
     assert_eq!(
         latest_status(node.journal(), &cmd_a).await.as_deref(),
         Some("completed"),
         "A's command is judged by A's epoch, not B's"
     );
+    pending_result_for(node.journal(), &cmd_a).await;
 }
 
 /// `SIGNOFF-REPAIR.5.3.6` — the epoch map a response carries is the COMPLETE

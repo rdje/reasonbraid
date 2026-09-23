@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — A finished, paid-for answer can no longer be lost between "done" and "sent" (`SIGNOFF-REPAIR.4.4.4.1`)
+
+`REASONBRAID-REPAIR-0462`. The first half of the fourth recovery gap found by `REASONBRAID-DOC-0153`.
+
+- 🔴 **Before:** a machine recorded "the provider finished" and the answer to send as two separate saves. If it died between them, or was merely not yet reconnected, the answer was thrown away. The work was paid for, marked finished, and never sent; nothing could bring it back. Seven existing tests treated that loss as normal.
+- ✅ **Now:** the "finished" record and the answer are saved together in one step. If the machine cannot send the answer right away, the answer waits and goes out on the next reconnect, under its original id so it is never counted twice.
+- ⚠️ Still to do (tracked, next): a machine that is not yet reconnected should not start paid work at all.
+- ✅ Tested: the seven tests, rewritten to demand the waiting answer, failed on the old code (7 of 7) and pass now; two new crash tests; 83 machine tests and six live suites (91 tests) pass; nine deliberately broken versions were tried: four caught, three not buildable, one caught only by the live suites, one hand-made "two separate saves" version caught; strict lint clean.
+- Technical: `Journal::record_completed_with_event` over private `apply_transition_emitting` (transition + ledger row + `INSERT … SELECT operation_id FROM attempts`, one tx); `execute_attempt_emitting(…, &ResultEventBuilder)` + `land_completed` on the runtime and status-lookup paths; `ExecutionReport.result_event`; `Node::deliver_journaled_event` → `EventDelivery::{Delivered, Deferred}` sharing `send_journaled` with `emit_event`. Mutants: `cargo mutants --in-place -o target/r4_4_3` 8 → 4 caught / 3 unviable / 1 missed (`send_journaled → Ok(())`, caught live by `node_work` 10/13); hand two-transaction cut RED at `a_completion_whose_result_cannot_be_written_does_not_happen`. A `proved` flag selecting an identical `Complete` transition was removed when the tool showed it had no possible observer.
+
 ## 2026-09-23 — The tests guarding the hand-off to the provider can now see whether the provider was reached (`SIGNOFF-REPAIR.4.4.3`)
 
 `REASONBRAID-REPAIR-0461`. The third of the seven recovery gaps found by `REASONBRAID-DOC-0153`.

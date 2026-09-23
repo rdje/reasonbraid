@@ -13,7 +13,7 @@
 
 use chrono::{DateTime, Utc};
 use reasonbraid_core::fixture::Fixture;
-use reasonbraid_node::{CommandInput, Journal, ProvenStatus};
+use reasonbraid_node::{CommandInput, Journal, ProvenStatus, ResultEvent};
 use serde_json::{json, Value};
 
 /// A unique journal path under the repo's build dir (same volume as the repo, per the
@@ -283,6 +283,107 @@ async fn kp6_crash_after_result_record_is_terminal() {
             .to_status,
         "completed"
     );
+}
+
+/// KP-6a — crash AFTER a completion journaled WITH its result event
+/// (`SIGNOFF-REPAIR.4.4.4.1`): the restarted node finds the event pending under the
+/// attempt's own operation, with its content, ready for the reconcile to re-emit
+/// with its original id. Before the repair the completion and the event were two
+/// transactions, and a crash between them left `completed` with no event: nothing
+/// reported the result, the retry gate refused the item as terminal, and the paid
+/// result was gone.
+#[tokio::test]
+async fn kp6a_crash_after_a_completion_with_its_result_leaves_the_result_pending() {
+    let fixture = journal_fixture("kp6a");
+    let path = fixture.join("node.db");
+    let op = {
+        let journal = Journal::open(&path).await.unwrap();
+        let op = seed_command(&journal, "kp6a").await;
+        journal
+            .prepare_attempt("patt_kp6a", &op, now())
+            .await
+            .unwrap();
+        journal
+            .record_dispatch("patt_kp6a", None, now())
+            .await
+            .unwrap();
+        journal
+            .record_completed_with_event(
+                "patt_kp6a",
+                None,
+                &ResultEvent {
+                    event_id: "evt_kp6a".to_string(),
+                    payload: json!({ "kind": "work_result", "content": "paid for" }),
+                },
+                now(),
+            )
+            .await
+            .unwrap();
+        op
+    }; // crash immediately after the one transaction
+
+    let journal = Journal::open(&path).await.unwrap();
+    journal.recover(now()).await.unwrap();
+    let pending = journal.pending_events().await.unwrap();
+    assert_eq!(pending.len(), 1, "the result survived the crash, pending");
+    assert_eq!(pending[0].event_id, "evt_kp6a", "under its original id");
+    assert_eq!(
+        pending[0].operation_id, op,
+        "filed under the attempt's operation"
+    );
+    let payload: Value = serde_json::from_str(&pending[0].payload).unwrap();
+    assert_eq!(payload["content"], "paid for");
+    assert_eq!(journal.counts().await.unwrap().attempts_completed, 1);
+}
+
+/// The completion and its result event are ONE transaction, proven by making the
+/// event's write fail (`SIGNOFF-REPAIR.4.4.4.1`): an event id already in the
+/// journal refuses the insert, and the completion must roll back with it — the
+/// attempt stays `dispatched`, with no transition row for a move that never
+/// happened. Two transactions would leave it `completed` with no result, which is
+/// exactly the loss this repair closes.
+#[tokio::test]
+async fn a_completion_whose_result_cannot_be_written_does_not_happen() {
+    let fixture = journal_fixture("kp6a-atomic");
+    let journal = Journal::open(fixture.join("node.db")).await.unwrap();
+    let op = seed_command(&journal, "kp6a-atomic").await;
+    journal
+        .record_outgoing_event("evt_taken", &op, &json!({ "kind": "ready" }), now())
+        .await
+        .unwrap();
+    journal
+        .prepare_attempt("patt_atomic", &op, now())
+        .await
+        .unwrap();
+    journal
+        .record_dispatch("patt_atomic", None, now())
+        .await
+        .unwrap();
+    let history_before = journal.attempt_history("patt_atomic").await.unwrap().len();
+
+    let collided = journal
+        .record_completed_with_event(
+            "patt_atomic",
+            None,
+            &ResultEvent {
+                event_id: "evt_taken".to_string(),
+                payload: json!({ "kind": "work_result", "content": "lost?" }),
+            },
+            now(),
+        )
+        .await;
+    assert!(collided.is_err(), "a colliding event id refuses the write");
+
+    let history = journal.attempt_history("patt_atomic").await.unwrap();
+    assert_eq!(
+        history.last().unwrap().to_status,
+        "dispatched",
+        "the completion rolled back with its event"
+    );
+    assert_eq!(history.len(), history_before, "no transition row was kept");
+    let pending = journal.pending_events().await.unwrap();
+    assert_eq!(pending.len(), 1, "only the event that was already there");
+    assert_eq!(pending[0].event_id, "evt_taken");
 }
 
 /// KP-7 — crash AFTER the ambiguity was already recorded: recovery is a no-op (the

@@ -50,9 +50,12 @@ pub use channel::{
 };
 pub use journal::{
     AttemptSummary, CommandInput, CommandRecorded, EventSummary, Journal, JournalCounts,
-    JournalError, JournalHealth, OperationRecorded, ProvenStatus, RecoveryReport, TransitionRow,
-    WorkItem, DURABILITY_JOURNAL_MODE, DURABILITY_SYNCHRONOUS,
+    JournalError, JournalHealth, OperationRecorded, ProvenStatus, RecoveryReport, ResultEvent,
+    TransitionRow, WorkItem, DURABILITY_JOURNAL_MODE, DURABILITY_SYNCHRONOUS,
 };
-pub use node::{Node, NodeError, NodeState};
-pub use supervisor::{execute_attempt, ExecutionReport, LocalBudget, SupervisorError};
+pub use node::{EventDelivery, Node, NodeError, NodeState};
+pub use supervisor::{
+    execute_attempt, execute_attempt_emitting, ExecutionReport, LocalBudget, ResultEventBuilder,
+    SupervisorError,
+};
 pub use worker::{Worker, WorkerError};

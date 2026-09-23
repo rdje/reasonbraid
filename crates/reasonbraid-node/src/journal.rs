@@ -188,6 +188,16 @@ pub enum ProvenStatus {
     FailedKnown,
 }
 
+/// An outgoing event born of an attempt's result, written in the SAME transaction
+/// as the transition that produced it (`SIGNOFF-REPAIR.4.4.4.1`). The event belongs
+/// to the attempt's own operation, read from the attempt row inside that
+/// transaction, so a caller cannot file a result under another operation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResultEvent {
+    pub event_id: String,
+    pub payload: Value,
+}
+
 /// One attempt row as the inspection surfaces see it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct AttemptSummary {
@@ -381,6 +391,31 @@ impl Journal {
         evidence: Option<&Value>,
         at: DateTime<Utc>,
     ) -> Result<ProviderAttemptState, JournalError> {
+        self.apply_transition_emitting(
+            attempt_id,
+            transition,
+            provider_request_id,
+            evidence,
+            None,
+            at,
+        )
+        .await
+    }
+
+    /// [`Journal::apply_transition`], with the outgoing event the transition
+    /// produced written inside the same transaction (`SIGNOFF-REPAIR.4.4.4.1`).
+    /// A plain INSERT, not the idempotent one [`Journal::record_outgoing_event`]
+    /// uses: the id is freshly minted for this result, so a collision is a defect,
+    /// and it must undo the transition rather than leave it without its event.
+    async fn apply_transition_emitting(
+        &self,
+        attempt_id: &str,
+        transition: ProviderAttemptTransition,
+        provider_request_id: Option<&str>,
+        evidence: Option<&Value>,
+        event: Option<&ResultEvent>,
+        at: DateTime<Utc>,
+    ) -> Result<ProviderAttemptState, JournalError> {
         let mut tx = self.pool.begin().await?;
 
         let current_s: Option<String> =
@@ -440,6 +475,19 @@ impl Journal {
         .bind(&at_s)
         .execute(&mut *tx)
         .await?;
+
+        if let Some(event) = event {
+            sqlx::query(
+                "INSERT INTO outgoing_events (event_id, operation_id, payload, emitted_at) \
+                 SELECT ?, operation_id, ?, ? FROM attempts WHERE attempt_id = ?",
+            )
+            .bind(&event.event_id)
+            .bind(&event.payload)
+            .bind(&at_s)
+            .bind(attempt_id)
+            .execute(&mut *tx)
+            .await?;
+        }
 
         tx.commit().await?;
         Ok(next)
@@ -650,6 +698,32 @@ impl Journal {
             ProviderAttemptTransition::Complete,
             None,
             result,
+            at,
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// [`Journal::record_completed`] and the result event it produced, in ONE
+    /// transaction (`SIGNOFF-REPAIR.4.4.4.1`), from `dispatched` (a runtime answer)
+    /// or from `outcome_unknown` (a status-lookup proof). Written as two, a death
+    /// between them left an attempt `completed` with no event: nothing reported it,
+    /// the retry gate refused it as terminal, and the paid result was gone.
+    /// Written as one, the event is pending the instant the attempt is complete,
+    /// and the next reconcile re-emits it with this id.
+    pub async fn record_completed_with_event(
+        &self,
+        attempt_id: &str,
+        result: Option<&Value>,
+        event: &ResultEvent,
+        at: DateTime<Utc>,
+    ) -> Result<(), JournalError> {
+        self.apply_transition_emitting(
+            attempt_id,
+            ProviderAttemptTransition::Complete,
+            None,
+            result,
+            Some(event),
             at,
         )
         .await?;

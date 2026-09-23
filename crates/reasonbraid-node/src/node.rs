@@ -93,6 +93,16 @@ impl From<ChannelError> for NodeError {
     }
 }
 
+/// What became of a journaled event handed to [`Node::deliver_journaled_event`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EventDelivery {
+    /// Sent and acknowledged.
+    Delivered,
+    /// Not sent: the node is not schedulable. The event is pending in the journal
+    /// and the next reconcile re-emits it with its original id.
+    Deferred,
+}
+
 /// A ReasonBraid node: the journal owns its durable local facts, the channel owns its
 /// outbound connection, and the state machine owns when it may do work.
 #[derive(Clone)]
@@ -393,23 +403,50 @@ impl Node {
         if !self.is_schedulable().await {
             return Err(NodeError::NotSchedulable);
         }
-        let now = Utc::now();
         self.journal
-            .record_outgoing_event(event_id, operation_id, payload, now)
+            .record_outgoing_event(event_id, operation_id, payload, Utc::now())
             .await?;
-        let receipt = match self
+        self.send_journaled(operation_id, event_id, payload).await
+    }
+
+    /// Deliver an event the journal ALREADY holds as pending — a work result
+    /// journaled in the same transaction as its attempt's completion
+    /// (`SIGNOFF-REPAIR.4.4.4.1`). A node that is not schedulable does not send and
+    /// does not fail: the event stays pending and the next reconcile re-emits it
+    /// with its original id. Refusing here with an error, as [`Node::emit_event`]
+    /// does for an event it has not yet written, would strand a result that is
+    /// already paid for.
+    pub async fn deliver_journaled_event(
+        &self,
+        operation_id: &str,
+        event_id: &str,
+        payload: &Value,
+    ) -> Result<EventDelivery, NodeError> {
+        if !self.is_schedulable().await {
+            return Ok(EventDelivery::Deferred);
+        }
+        self.send_journaled(operation_id, event_id, payload).await?;
+        Ok(EventDelivery::Delivered)
+    }
+
+    /// Send a journaled event, record the server's refusal if its receipt reports
+    /// one, and acknowledge it. On a channel error the event stays pending in the
+    /// journal and the next reconcile re-emits it (original id).
+    async fn send_journaled(
+        &self,
+        operation_id: &str,
+        event_id: &str,
+        payload: &Value,
+    ) -> Result<(), NodeError> {
+        let receipt = self
             .channel
             .send_event(event_id, operation_id, payload)
             .await
-        {
-            Ok(receipt) => receipt,
-            // Stays pending in the journal; the next reconcile re-emits it (original id).
-            Err(e) => return Err(NodeError::Channel(e)),
-        };
+            .map_err(NodeError::Channel)?;
         self.record_refusal(event_id, &receipt).await?;
         let cursor = self.journal.last_acked_cursor().await?;
         self.journal
-            .acknowledge_event(event_id, &cursor.to_string(), now)
+            .acknowledge_event(event_id, &cursor.to_string(), Utc::now())
             .await?;
         Ok(())
     }

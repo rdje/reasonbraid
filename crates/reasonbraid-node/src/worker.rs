@@ -31,15 +31,13 @@ use std::time::Duration;
 
 use chrono::{Duration as ChronoDuration, Utc};
 use reasonbraid_adapter::{Adapter, RunRequest};
-use reasonbraid_core::{
-    BudgetDimensions, EventId, ProviderAttemptId, ProviderAttemptState, ReservationReference,
-};
+use reasonbraid_core::{BudgetDimensions, EventId, ProviderAttemptId, ReservationReference};
 use serde_json::{json, Value};
 
 use crate::channel::ChannelError;
-use crate::journal::{CommandInput, JournalError, WorkItem};
-use crate::node::{Node, NodeError};
-use crate::supervisor::{execute_attempt, LocalBudget, SupervisorError};
+use crate::journal::{CommandInput, JournalError, ResultEvent, WorkItem};
+use crate::node::{EventDelivery, Node, NodeError};
+use crate::supervisor::{execute_attempt_emitting, ExecutionReport, LocalBudget, SupervisorError};
 
 /// The worker's typed error surface.
 #[derive(Debug)]
@@ -408,36 +406,54 @@ impl<A: Adapter> Worker<A> {
             budget_hint: None,
         };
 
-        match execute_attempt(
+        // The result event is built INSIDE the supervisor and journaled in the
+        // same transaction as the attempt's completion (`SIGNOFF-REPAIR.4.4.4.1`):
+        // there is no instant at which the attempt is complete and its result
+        // is not pending, so neither a crash nor an unschedulable node can lose it.
+        let event_id = EventId::new().to_string();
+        let build_result = |report: &ExecutionReport| ResultEvent {
+            event_id: event_id.clone(),
+            payload: json!({
+                "kind": "work_result",
+                "work_kind": work_kind,
+                "command_id": item.command_id,
+                "reservation_id": report.reservation_id,
+                "attempt_id": report.attempt_id,
+                "content": report.chunks.join(""),
+                "usage": report.usage,
+            }),
+        };
+        let report = execute_attempt_emitting(
             self.node.journal(),
             &self.adapter,
             &operation_id,
             &request,
             &reservation,
             &self.local,
+            &build_result,
         )
-        .await?
-        {
-            report if report.final_state == ProviderAttemptState::Completed => {
-                let event_payload = json!({
-                    "kind": "work_result",
-                    "work_kind": work_kind,
-                    "command_id": item.command_id,
-                    "reservation_id": reservation.reservation_id,
-                    "attempt_id": report.attempt_id,
-                    "content": report.chunks.join(""),
-                    "usage": report.usage,
-                });
-                self.node
-                    .emit_event(&operation_id, &EventId::new().to_string(), &event_payload)
-                    .await?;
-                eprintln!(
-                    "worker: {} emitted a {work_kind} result for {}",
-                    self.node.node_id(),
-                    item.command_id
-                );
+        .await?;
+        match &report.result_event {
+            Some(event) => {
+                match self
+                    .node
+                    .deliver_journaled_event(&operation_id, &event.event_id, &event.payload)
+                    .await?
+                {
+                    EventDelivery::Delivered => eprintln!(
+                        "worker: {} emitted a {work_kind} result for {}",
+                        self.node.node_id(),
+                        item.command_id
+                    ),
+                    EventDelivery::Deferred => eprintln!(
+                        "worker: {} journaled a {work_kind} result for {}; the node is not \
+                         schedulable, so the next reconcile delivers it",
+                        self.node.node_id(),
+                        item.command_id
+                    ),
+                }
             }
-            report => {
+            None => {
                 eprintln!(
                     "worker: attempt {} ended `{}` — journaled, no contribution emitted",
                     report.attempt_id,

@@ -14,7 +14,7 @@ use reasonbraid_adapter::{
 };
 use reasonbraid_core::fixture::Fixture;
 use reasonbraid_core::BudgetDimensions;
-use reasonbraid_node::{CommandInput, Journal, LocalBudget, Node, Worker, WorkerError};
+use reasonbraid_node::{CommandInput, Journal, LocalBudget, Node, Worker};
 use serde_json::{json, Value};
 
 /// A fixture directory for one test, created exclusively on the repository's own
@@ -130,6 +130,33 @@ async fn attempt_count(journal: &Journal, operation_id: &str) -> usize {
         .len()
 }
 
+/// Exactly one work result waits in the journal for `operation_id`, naming the
+/// attempt that completed (`SIGNOFF-REPAIR.4.4.4.1`). Before the repair the
+/// completion was journaled and the undeliverable result was dropped with an
+/// error, which these controls accepted as proof that the dispatch happened.
+async fn assert_one_pending_result(journal: &Journal, operation_id: &str) {
+    let completed: Vec<String> = journal
+        .attempts_for_operation(operation_id)
+        .await
+        .expect("attempts")
+        .into_iter()
+        .filter(|a| a.status == "completed")
+        .map(|a| a.attempt_id)
+        .collect();
+    assert_eq!(completed.len(), 1, "exactly one completed attempt");
+    let pending: Vec<Value> = journal
+        .pending_events()
+        .await
+        .expect("pending events")
+        .into_iter()
+        .filter(|e| e.operation_id == operation_id)
+        .map(|e| serde_json::from_str(&e.payload).expect("a JSON payload"))
+        .collect();
+    assert_eq!(pending.len(), 1, "one result waits: {pending:?}");
+    assert_eq!(pending[0]["kind"], "work_result");
+    assert_eq!(pending[0]["attempt_id"], completed[0]);
+}
+
 #[tokio::test]
 async fn a_reserved_pre_dispatch_refusal_redispatches() {
     let (_fixture, node) = dummy_node("retry-pre-dispatch").await;
@@ -163,15 +190,14 @@ async fn a_reserved_pre_dispatch_refusal_redispatches() {
         .into_iter()
         .find(|w| w.command_id == "cmd_a")
         .expect("seeded item");
-    // The re-dispatch RUNS (the fresh attempt reaches the adapter and
-    // completes; the result emission fails on the dummy URL — that failure
-    // proves the dispatch happened, a refused one returns Ok silently).
-    match worker.process(&item).await {
-        Err(WorkerError::Channel(_)) | Err(WorkerError::Node(_)) => {}
-        other => panic!(
-            "a reserved refusal re-dispatches; the emit fails on the dummy URL — got {other:?}"
-        ),
-    }
+    // The re-dispatch RUNS: the fresh attempt reaches the adapter and
+    // completes, and its result waits in the journal for the next reconcile
+    // (`SIGNOFF-REPAIR.4.4.4.1` — this node was never reconciled).
+    worker
+        .process(&item)
+        .await
+        .expect("the re-dispatch completes; its result waits in the journal");
+    assert_one_pending_result(node.journal(), &operation_id).await;
     assert_eq!(
         attempt_count(node.journal(), &operation_id).await,
         2,
@@ -301,12 +327,11 @@ async fn an_authorized_ambiguous_outcome_redispatches() {
         .into_iter()
         .find(|w| w.command_id == "cmd_d")
         .expect("seeded item");
-    match worker.process(&item).await {
-        Err(WorkerError::Channel(_)) | Err(WorkerError::Node(_)) => {}
-        other => panic!(
-            "the authorized retry re-dispatches; the emit fails on the dummy URL — got {other:?}"
-        ),
-    }
+    worker
+        .process(&item)
+        .await
+        .expect("the authorized retry completes; its result waits in the journal");
+    assert_one_pending_result(node.journal(), &operation_id).await;
     assert_eq!(
         attempt_count(node.journal(), &operation_id).await,
         2,

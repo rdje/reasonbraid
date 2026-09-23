@@ -9194,8 +9194,17 @@ pub(crate) async fn apply_node_result_in_tx(
         _ => return Ok(()), // not thread work — receipt only
     };
 
-    // Dev rule: the node id IS the agent role wire id it serves.
-    let Ok(role) = node_id.parse::<AgentRoleId>() else {
+    // The acting role is the one the WORK ITEM names — read from the server's
+    // own inbox row, never from anything the node sends (`SIGNOFF-REPAIR.5.3.5.3.1.4`).
+    // Under the dev rule it is the node's own id; for an origin-bound import it
+    // is the imported identity, whose work the origin node ran. A row written
+    // before the item named its role is the dev rule's, and names the node.
+    let role_raw = work
+        .get("agent_role")
+        .and_then(|v| v.as_str())
+        .unwrap_or(node_id)
+        .to_string();
+    let Ok(role) = role_raw.parse::<AgentRoleId>() else {
         return Ok(());
     };
     let principal = GrantSubject::Role(role);
@@ -9240,6 +9249,26 @@ pub(crate) async fn apply_node_result_in_tx(
     match tx::claim_idempotency_in_tx(&mut *tx, &tenant_id.to_string(), command_id, &hash).await? {
         ClaimOutcome::Replay { .. } => return Ok(()),
         ClaimOutcome::Fresh => {}
+    }
+
+    // The node may act for that role only while the role's work RUNS ON IT,
+    // asked now (`role_execution`): an origin node whose binding lapsed after
+    // the work was delivered no longer speaks for the identity, and its result
+    // is refused and recorded like any other rejection. A node's own role
+    // always resolves to the node, so the dev rule is unchanged.
+    let runs_here: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM role_execution WHERE role_id = $1 AND node_id = $2)",
+    )
+    .bind(&role_raw)
+    .bind(node_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    if !runs_here {
+        let err = ControlApiError::unauthorized(format!(
+            "the node `{node_id}` does not run role `{role_raw}`: its result is not the role's"
+        ));
+        store_rejection(&mut *tx, &tenant_id, command_id, &err.failure_result()).await?;
+        return Err(err);
     }
 
     // DATABASE time, sampled here — after the tenant guard and the idempotency

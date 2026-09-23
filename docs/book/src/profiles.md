@@ -420,13 +420,23 @@ work enqueued where nothing reads it:
 409 invalid_transition — the role `rol_0192…` runs on no node: it is bound to its origin's node and the recruitment agreement with the origin no longer stands
 ```
 
-⚠️ What the `origin` binding does **not** do yet: take the origin node's
-**result** back. The server still attributes a node's result to the role of the
-node's own id, so a result the origin node sends for the imported identity's
-work is judged as the origin role's — which is not a participant in the
-importing tenant's thread — and rejected (`SIGNOFF-REPAIR.5.3.5.3.1.4`). The
-binding cannot be changed after the import: a repeat import is a replay,
-whatever `execution` it names.
+**Its result comes back as the imported identity's** (`SIGNOFF-REPAIR.5.3.5.3.1.4`).
+When the origin node sends the result, the server folds it as the role **the
+work item names** — read from its own inbox row, never from anything the node
+sends — so the contribution in the importing tenant's thread is the imported
+identity's, authorized under the importing tenant's grant to it, and never the
+origin role's. The node may speak for the identity only while the identity's
+work still runs on it: a result for work delivered before the agreement
+lapsed, sent after, is refused and stored as the command's rejection:
+
+```text
+unauthorized — the node `rol_0192…` does not run role `rol_0193…`: its result is not the role's
+```
+
+⚠️ What the `origin` binding does **not** do yet: leave a cross-domain receipt
+for each delivery on both sides (`SIGNOFF-REPAIR.5.3.5.3.3`). The binding cannot
+be changed after the import: a repeat import is a replay, whatever `execution`
+it names.
 
 The full-class read of an imported role (`GET /v1/profiles/{role_id}` by the
 role or its tenant administrator) carries `imported_from` — the origin pair, the

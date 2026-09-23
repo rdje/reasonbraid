@@ -852,6 +852,22 @@ async fn the_owner_attests_a_capability_claim_with_provenance() {
 /// A profile with an EXPLICIT per-field visibility policy: the display label
 /// travels everywhere, the capabilities stay tenant-scoped, the interests
 /// reach the network, and the confidential/ceiling fields stay self-only.
+/// A hex string's bytes (the enrolment route returns the node's DER as hex).
+fn hex_bytes(hex: &str) -> Vec<u8> {
+    assert!(hex.len().is_multiple_of(2), "hex is even-length");
+    (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("hex digit"))
+        .collect()
+}
+
+/// The node's leaf key from the enrolment route's hex DER.
+fn key_from_hex(hex: &str) -> rcgen::KeyPair {
+    let der = rustls_pki_types::PrivateKeyDer::try_from(hex_bytes(hex)).expect("key DER");
+    rcgen::KeyPair::from_der_and_sign_algo(&der, &rcgen::PKCS_ECDSA_P256_SHA256)
+        .expect("the leaf key parses")
+}
+
 fn visibility_profile() -> Value {
     json!({
         "display_label": "visible everywhere",
@@ -4305,6 +4321,7 @@ async fn an_origin_bound_identity_runs_on_the_origin_node_while_the_agreement_st
     let tenant_b = owner_b["tenant_id"].as_str().unwrap().to_string();
     // Two origin roles: one with a machine, one without.
     let mut origin = Vec::new();
+    let mut origin_keys = None;
     for (name, label, with_node) in [
         ("bind-origin-role", "origin reviewer", true),
         ("bind-origin-nodeless", "nodeless reviewer", false),
@@ -4318,7 +4335,7 @@ async fn an_origin_bound_identity_runs_on_the_origin_node_while_the_agreement_st
         assert_eq!(status, 200, "{role}");
         let role = role["principal_id"].as_str().unwrap().to_string();
         if with_node {
-            enroll_node(&client, &base, &owner_b_id, &tenant_b, &role).await;
+            origin_keys = Some(enroll_node(&client, &base, &owner_b_id, &tenant_b, &role).await);
         }
         let mut body = visibility_profile();
         body["display_label"] = json!(label);
@@ -4618,6 +4635,94 @@ async fn an_origin_bound_identity_runs_on_the_origin_node_while_the_agreement_st
         vec![(role_b.clone(), world.tenant.clone())],
         "the work is on the ORIGIN node, under the importing tenant"
     );
+    // `SIGNOFF-REPAIR.5.3.5.3.1.4`: the ORIGIN node's result folds as the
+    // imported identity the work item names — never as the origin node's own
+    // role. The outcome is read from the server's stored idempotent result.
+    let (cert_hex, key_hex) = origin_keys.clone().expect("the origin node's credentials");
+    let channel = reasonbraid_node::NodeChannel::new(
+        base.clone(),
+        role_b.clone(),
+        hex_bytes(&cert_hex),
+        key_from_hex(&key_hex),
+    );
+    channel
+        .handshake(&reasonbraid_node::HandshakeRequest {
+            channel_version: reasonbraid_node::CHANNEL_VERSION,
+            node_id: role_b.clone(),
+            last_acked_cursor: 0,
+            pending_operations: vec![],
+            ambiguous_attempts: vec![],
+            cert_der: String::new(),
+            proof_signature: String::new(),
+            nonce: String::new(),
+        })
+        .await
+        .expect("the origin node handshakes");
+    let fold = |work_thread: String, tag: &'static str| {
+        let channel = channel.clone();
+        let pool = pool.clone();
+        let tenant = world.tenant.clone();
+        async move {
+            let work_id: String = sqlx::query_scalar(
+                "SELECT command_id FROM node_inbox WHERE thread_id = $1 AND command_id LIKE 'work_%'",
+            )
+            .bind(&work_thread)
+            .fetch_one(&pool)
+            .await
+            .expect("the work item");
+            let _ = channel
+                .send_event(
+                    &format!("evt_{tag}"),
+                    &format!("op_{tag}"),
+                    &json!({
+                        "kind": "work_result",
+                        "work_kind": "contribute",
+                        "command_id": work_id,
+                        "content": "the origin machine's answer",
+                    }),
+                )
+                .await;
+            let stored: Value = sqlx::query_scalar(
+                "SELECT response_result FROM idempotency WHERE tenant_id = $1 AND idempotency_key = $2",
+            )
+            .bind(&tenant)
+            .bind(&work_id)
+            .fetch_one(&pool)
+            .await
+            .expect("the fold's stored outcome");
+            stored
+        }
+    };
+    let folded = fold(thread.clone(), "origin-result").await;
+    assert_ne!(
+        folded["ok"],
+        json!(false),
+        "the origin node's result folds: {folded}"
+    );
+    let (status, events) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread}/events?tenant_id={}", world.tenant),
+        &world.human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "{events}");
+    let contributions: Vec<&Value> = events["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["event_type"] == json!("thread.contribution_submitted"))
+        .collect();
+    assert_eq!(contributions.len(), 1, "{events}");
+    assert_eq!(
+        contributions[0]["body"]["actor_principal_id"],
+        json!(local),
+        "the contribution is the imported identity's, not the origin role's: {events}"
+    );
+    // A second work item, delivered while the agreement stands, is folded
+    // only after it lapses (below).
+    let (late_thread, (status, accepted)) = invite_and_accept("bind-origin-late").await;
+    assert_eq!(status, 200, "{accepted}");
     // §10.7's offline backlog is counted on the node that would HOLD the work:
     // the origin node at its cap refuses the bound identity's next accept.
     let held: i64 = sqlx::query_scalar("SELECT count(*) FROM node_inbox WHERE node_id = $1")
@@ -4699,6 +4804,18 @@ async fn an_origin_bound_identity_runs_on_the_origin_node_while_the_agreement_st
             "the {surface} lists no identity that runs nowhere: {body}"
         );
     }
+    // A result for work delivered BEFORE the revocation, folded after it: the
+    // node no longer runs the identity, so the result is refused.
+    let late = fold(late_thread.clone(), "origin-late").await;
+    assert_eq!(
+        late["ok"],
+        json!(false),
+        "a lapsed binding refuses the result: {late}"
+    );
+    assert!(
+        late.to_string().contains("does not run"),
+        "the refusal says why: {late}"
+    );
     let call_id = open_call().await;
     let (status, refused) = post(
         &client,

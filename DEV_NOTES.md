@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — A partner agent's answer from its home machine is now credited to it (`SIGNOFF-REPAIR.5.3.5.3.1.4`)
+
+`REASONBRAID-REPAIR-0451`. Completes "a partner's agent runs on its home machine" (`SIGNOFF-REPAIR.5.3.5.3.1`).
+
+- 🔴 **Before:** when the partner's machine sent back the agent's answer, the server credited it to the partner machine's *own* agent instead of the imported one. That agent isn't part of the conversation, so the answer was rejected.
+- ✅ **Now:** the answer is credited to the agent the job was for, which the server reads from its own record of the job, not from anything the machine says. So the contribution appears in the conversation under the imported agent, with the importing organisation's permissions. If the partnership ended after the job was sent, the late answer is refused.
+- ✅ The whole path now works end to end: import → listed in the directory → seated on a panel → work delivered to the partner's machine → checked against the right organisation's revocations → answer credited correctly. What remains is an audit receipt on both sides for each delivery (next task).
+- ✅ Tested: the new check failed on the old code (the answer was refused as the wrong agent) and passes now; switching off the "does this machine still run this agent" check was caught; four suites pass.
+- Technical: `apply_node_result_in_tx` reads the acting role from the stored inbox row's `agent_role` (fallback: the node id, the dev rule) and, after the idempotency claim, requires `role_execution(role).node_id = node_id` (else `unauthorized`, stored as the rejection). The `.5.3.5.3.1` census missed this site (it parses the node id rather than joining on it). Control grown with a real node-crate channel for the origin node; mutant M1 (runs-here check off) caught.
+
 ## 2026-09-23 — A partner's agent now receives its work on the partner's own machine (`SIGNOFF-REPAIR.5.3.5.3.1.3`)
 
 `REASONBRAID-REPAIR-0450`.
@@ -275,155 +285,23 @@
 - 🔴 **The minimum is checked against who said "join", not against who is still eligible.** The close then drops anyone whose eligibility lapsed, so a call can close with a panel smaller than its minimum, down to empty.
 - ✅ Two follow-ups, tracked: the minimum on the selected panel first (small, reproducible), then each transition as one transaction.
 
-## 2026-09-23 — An administrator can now settle a job whose outcome the machine could not prove, and the machine applies the decision (`SIGNOFF-REPAIR.11.4.7.2.1.5.5`)
-
-`REASONBRAID-REPAIR-0427`.
-
-- 🔴 **Before:** when a machine crashed after possibly calling a provider and could not tell whether the call happened, the roadmap's fourth way out — a human decides — did not exist. The machine could only wait for a server receipt or prove it itself, and the administrator's view listed three actions, none of them a verb.
-- ✅ **Now** the organisation's administrator records a verdict — "it completed" or "it did not happen" — with a reason. The verb is authorised, written to the audit trail like every other administrative action (the fifteenth kind), and bound to the organisation's own machines. The machine picks the verdict up at its next check-in and closes the question; until then the listing shows the verdict as awaiting the machine. A second verdict, an unknown verdict, or another organisation's administrator are refused.
-- ✅ Tested end to end with a real machine journal: the ambiguity, the refusals, the recorded verdict and its audit entry, the listing, and the machine applying it. Making the check-in ignore the verdict leaves the job ambiguous, which the test catches.
-- ✅ With this, every buildable item in the re-derivation family opened on 22 September is closed; what remains waits on your two decisions or on the first deployment beyond localhost.
-- Technical: `node_admin::adjudicate_ambiguous_attempt_in_one_transaction` (shared guard, `admit_or_return!`, `FOR UPDATE OF a`, `record_inbox_effect` with `AdministrativeOperation::NodeAttemptAdjudicate`); migration 0094 (four columns + the widened `administrative_effects` CHECK); `node_channel::handshake` asks `operator_verdict` before `event_id_for_operation`; `.doctrine/operator_surfaces.tsv` bullet 4 and the admin family witness `23:-`.
-
-## 2026-09-23 — Correction: the issuance record I called "owed now" cannot be written without first replacing the development bootstrap (`SIGNOFF-REPAIR.11.4.7.2.1.5.4.4`)
-
-`REASONBRAID-DOC-0141`. A correction of this morning's DOC-0140; no code changed.
-
-- 🔴 DOC-0140 said an audit record for each permission's issuance could be added now. One read later that is wrong: every audit record of that kind must point at an *admitted* request, and the enrolment step — where the default permission is issued — is deliberately not admitted: it is the development bootstrap that trusts whoever calls it.
-- ✅ Giving it an admitted issuer is the same change that would let a permission be signed: replacing the development bootstrap at the first deployment beyond localhost. So the two halves wait on one trigger, and the record says so. The census figure I cited (zero records at enrolment) was true and beside the point: the absence is by design, not by omission.
-- ✅ With this, the four missing permission fields are all settled: one built, one waiting on a missing concept, one on your decision, one on the bootstrap's replacement.
-
-## 2026-09-23 — A permission can now hold one agent to fewer decision rules than the organisation's charter allows (`SIGNOFF-REPAIR.11.4.7.2.1.5.4.1`)
-
-`REASONBRAID-REPAIR-0426`.
-
-- 🔴 **Before:** the only limit on which decision rule a new thread could use was the organisation's charter. An issuer could not say "this agent may open threads, but only under owner-decides".
-- ✅ **Now** the enrolment step can declare that list on the agent's permission; malformed lists are refused by name (a permission that creates no threads, an empty list, an unknown rule); the administrator's permission list shows it; and when the agent creates a thread, the server reads the list from the exact permission that admitted the request and refuses a rule outside it, before the charter check. A permission with no list leaves the charter to decide, as before.
-- ✅ Tested: a charter allowing two rules, a narrowed agent refused one and allowed the other, an unconstrained agent allowed both. Making the check permissive, or the validation permissive, makes the tests fail.
-- Technical: `AuthorityGrant.decision_rule_constraints: Option<Vec<String>>`; migration 0093; `decision_rule_violations` in `create_grant_in_guard` (names parsed by `charters::DecisionRule::parse`); `EnrollRequest.decision_rule_constraints` → `dev_grant`; `list_grants` emits it; the Create arm of `run_thread_command` reads the admitting grant via `authorization_records.grant_id` before `charters::allows_on`.
-
-## 2026-09-23 — Of the four permission fields the roadmap lists and the code lacks, one is owed now, one waits on a missing concept, one needs your decision, and one is two halves (`SIGNOFF-REPAIR.11.4.7.2.1.5.4`)
-
-`REASONBRAID-DOC-0140`. A decision; no code changed.
-
-- The roadmap's permission record lists four fields that exist nowhere in the code: policy domains, decision-rule constraints, conditions, and a signature-or-record. I checked what each would attach to.
-- 🔨 **Decision-rule constraints are owed now**: each organisation's charter already limits which decision rules a thread may use, and a permission can narrow that for one agent; the reader exists. Built next.
-- ⏸️ **Policy domains wait**: nothing in the system evaluates a domain at all — even the enrolment boundary's own domain list is compared to nothing — so a permission-level list would bind nothing. It reopens the moment any domain is evaluated.
-- 💡 **Conditions need your decision**: the roadmap names the field and nothing says what a condition is (a purpose? a time window? a network?). Not built until that is decided, so it is never a field that is stored and ignored.
-- ✂️ **The signature-or-record field is two halves**: the record half (an audit entry for each permission's issuance — the enrolment's default permission has none today) is owed now; the signature half waits for the first deployment beyond localhost, with mutual TLS.
-
-## 2026-09-23 — Which machine ran each agent is now recorded, and the "one machine, one agent" rule is a declared limit, not a hidden one (`SIGNOFF-REPAIR.11.4.7.2.1.5.1`)
-
-`REASONBRAID-REPAIR-0425` with decision DOC-0139.
-
-- The question was whether the project owes a registry mapping machines to agents before the stable release. Today a development rule makes a machine's id the agent's id, and seven database joins and two dispatch paths rely on it.
-- ⚖️ **Decided:** the roadmap binds an agent to a machine only through its "incarnation" (the record of which provider, model and harness the agent ran as), so a declaring registry is not owed before the stable release; the release gate asks for declared limits, and this one is declared in the book in two places.
-- ✅ **Built:** each incarnation now records which machine declared it, at the one place it is written, and the administrator's incarnation view shows it. Today that always equals the agent id, by the rule; the day a directory replaces the rule, the history is already there, and the exact condition that reopens the registry question is a one-line query.
-- ✅ Tested: an enrolment records its machine on the incarnation and the view shows it; removing the write makes the test fail.
-- Technical: migration 0092 `incarnations.node_id` (backfilled `= role_id`); the enrolment insert binds `req.node_id`; `list_incarnations` emits `node_id`; the registry trigger is `SELECT count(*) FROM incarnations WHERE node_id <> role_id`.
-
-## 2026-09-23 — An offline agent's backlog of undelivered work is now capped, and the cap is visible (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.3`)
-
-`REASONBRAID-REPAIR-0424`.
-
-- 🔴 **Before:** if an agent's machine never reconnected, work kept piling up for it without limit — the roadmap's "maximum offline backlog" existed only on paper.
-- ✅ **Now** a machine already holding 64 undelivered jobs (a development-scale figure, not a measured one) is handed nothing more. The action that would have handed it the job — an agent accepting an invitation, or a challenge that would send a revision back to the author — is refused and undone, so an invitation never exists without its work. The refusal is recorded like every storm control, and the administrator's node view shows each machine's backlog against the cap before the refusal ever happens.
-- ✅ Tested: a machine seeded at the cap shows "64 of 64", the accept is refused and rolled back with the record naming the machine, the cap and the thread, and after one job is taken the same accept lands. Removing the cap makes the test fail.
-- ✅ With this, the whole storm-control family opened on 22 September is closed: every control whose trigger had fired is built, recorded and readable.
-- Technical: `node_channel::MAX_OFFLINE_BACKLOG`, `undelivered_in_tx` (`queued`/`offered` via `node_inbox_state`); `dispatch_work_in_tx` returns `DispatchRefusal::OfflineBacklog` before reserving; `run_thread_command` rolls back via `tx.rollback()` and records through `refuse_storm` (`backlog_refused`); `list_node_presence` emits `backlog: {undelivered, cap}`.
-
-## 2026-09-23 — Every storm-control refusal is now recorded, so a storm can actually be seen (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.4`)
-
-`REASONBRAID-REPAIR-0423`.
-
-- 🔴 **Before:** when the server refused a request as a storm control — too many open calls, an agent re-joining its own chain, a chain too deep — the caller got a "429" and nothing was written down. The roadmap's circuit breakers were postponed until "the first multi-tenant storm is observed", and nothing could observe one.
-- ✅ **Now** every such refusal is written down before it is answered, by the one piece of code that is allowed to produce that answer, so no refusal can be given without a record. Each row says which control refused, its limit, who was refused, which thread they named, and the exact words they were given. An administrator lists them with one call.
-- ✅ The breakers' trigger is now a plain question with an answer: have two or more organisations been refused within an hour?
-- ✅ Tested on the existing storm tests: the fifth call in a row and the two chain refusals each appear on the record with the right control, limit and words. Removing the write makes the tests fail. The first run caught that the fan-out record named an internal handle instead of the person; fixed before commit.
-- Technical: migration 0091 `storm_refusals`; `api.rs::refuse_storm` (the only value-spelling of the wire code; storage failure → internal error); four producers routed through it; `GET /v1/admin/storm-refusals` (`TenantAdminInspection::StormRefusals`); `.doctrine/book_surface_verdicts.tsv` admin family `21:-` → `22:-`; 26 checked purge plans gained the table.
-
-## 2026-09-23 — The last four pre-wake checks each wait on something that does not exist yet (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.4`)
-
-`REASONBRAID-DOC-0138`. A decision; no code changed.
-
-- The roadmap's pre-wake checklist has four items left: notification controls, required tools, adapter health and billing route. I checked each against what the machine actually runs.
-- ⏸️ None can be built honestly today: the machine runs only the test adapter; the adapter contract has no health check, a job carries no list of tools it needs, nothing anywhere names a billing route, and a call has no urgency class to coalesce by. Building a check over a fact that does not exist would be the "declared but never read" mistake this whole series removed.
-- ✅ Each item now carries the exact condition that reopens it, in a form a command can read. The billing-route half that *records* the route is queued for the next adapter-contract version so the contract changes once.
-- ✅ With this, the parent task — the pre-wake checklist and the six permission limits — is closed: nine controls were built across this series, and what remains is named with its trigger.
-
-## 2026-09-23 — A thread an agent started on its own now limits who its calls may reach, and a call must name a real thread (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.3`)
-
-`REASONBRAID-REPAIR-0422`.
-
-- 🔴 **Before:** "audience" existed nowhere in the code, so a permission could not say how widely a thread started by an agent may recruit. And opening a call checked nothing about the thread it named — three tests had been passing for months by naming thread ids that never existed.
-- ✅ **Now** a permission can say `audience: tenant` or `network`; a thread an agent starts remembers which permission admitted it; and a call on such a thread that would reach the whole network is refused when the permission says "tenant only". A call must also name a thread that really exists in that organisation, or it is refused the same way every thread view refuses.
-- ✅ Tested: the thread shows its permission, a network-wide call is refused and a tenant-wide one lands, a person's own thread is unaffected, and a made-up thread id is refused. The three old tests now create real threads and keep every check they had. Making the audience check permissive, or dropping the remembered permission, makes the test fail.
-- Technical: `reasonbraid_core::Audience`, `AutoBounds.audience` (absent fields omitted on the wire); `AutoLineage.initiating_grant` → `ThreadProjection.initiating_grant`; `open_recruitment_call` loads the projection via `load_thread_projection` (`404 scope_hidden` when absent) and checks `audience_admits(audience, expression.scope)`; a `create_thread` helper seeds the three call fixtures.
-
-## 2026-09-23 — An automatic-thread permission can now carry its limits, and they are read from the permission that actually admitted the request (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.1` and `.2`)
-
-`REASONBRAID-REPAIR-0421`.
-
-- 🔴 **Before:** nothing could set the limits an automatic-thread permission is supposed to carry, and the one limit that was read (spend) was taken as the largest across all of an agent's permissions — including expired ones — rather than from the permission that admitted the request.
-- ✅ **Now** the enrolment step, which already declares an agent's actions, also declares its permission's spend limit, allowed topics and maximum chain depth. Bad declarations are refused with the reason (limits on a permission without the action, an empty topic list, a depth of zero or above 3), and the administrator's permission list shows them.
-- ✅ When an agent starts a thread, the server reads those limits from the exact permission that admitted the request. An expired permission with a bigger spend limit no longer raises the ceiling. The topic limit applies alongside the agent's own declared interests, and the depth limit can be tighter than the site's 3.
-- ✅ Tested end to end, including the expired-permission case that used to slip through. Removing the reader or the check makes the tests fail.
-- Technical: `reasonbraid_core::AutoBounds { topics, max_depth }`; `AuthorityGrant.auto_bounds` (`serde(default)`); migration 0090; `auto_bounds_violations` in `create_grant_in_guard`; `EnrollRequest.spend_limits`/`auto_bounds` → `dev_grant`; `list_grants` emits both when present; `create_thread_auto` keeps the `Allowed` record id and joins `authorization_records → authority_grants` for the admitting grant's bounds; `auto_lineage(role, parent, ceiling)`.
-
-## 2026-09-23 — The limits an automatic-thread permission is supposed to carry have no way to be set (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3`)
-
-`REASONBRAID-DOC-0137`. A decision; no code changed.
-
-- 🔴 The roadmap says the permission to start threads automatically carries six limits: topic, audience, rate, depth, spend and side effects. I checked where each could come from. **There is no way to issue a permission with any of them**: no request issues a permission at all (only "list" and "revoke" exist), the enrolment step issues one with no limits, and every limited permission the tests use was written straight into the database by the test.
-- 🔴 The one limit that is read today (spend) is read from the wrong place: the server takes the largest spend limit across all of an agent's permissions, including expired ones, instead of the permission that actually admitted the request — which the audit record already names.
-- 🔴 "Audience" exists nowhere in the code, and no action that causes a side effect is tied to a thread, so two of the six limits have nothing to attach to yet.
-- ✅ Decided, in order: first a way to declare the limits (at enrolment, the same trusted step that already declares an agent's actions), then reading them from the admitting permission, then the audience limit on the calls an automatic thread opens, and side effects when there is something to bound. A general permission-issuing service is a separate piece of the roadmap and is not started here.
-
-## 2026-09-23 — An agent's declared capacity now limits how much work it is handed (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2.2`)
-
-`REASONBRAID-REPAIR-0420`.
-
-- 🔴 **Before:** an agent could declare "I take at most 2 jobs at a time", and the server would show it as "busy" when it held two — and still hand it a third. The number changed what was displayed, not what was delivered; the book said so twice.
-- ✅ **Now** the server hands an agent at most its declared capacity minus what it already holds, using the same count that decides "busy". At capacity it is handed nothing until it finishes something; an agent that declares no capacity is handed everything, as before.
-- ✅ Tested: three jobs queued for an agent declaring 2 — it is handed two, then nothing while it holds both, then the third when one finishes. Removing the limit makes the test fail.
-- Technical: `wake::delivery_budget(concurrency, in_flight)`; `node_channel::replay` reads `node_presence.in_flight` in its pre-check and binds the budget as `LIMIT $3` on the tail CTE (`LIMIT NULL` = unbounded; `Some(0)` returns early), so only the rows handed over are marked `offered`.
-
-## 2026-09-23 — Two agent settings that were stored and ignored now mean something, and bad values are refused (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2`)
-
-`REASONBRAID-REPAIR-0419`.
-
-- 🔴 **Before:** an agent's profile could declare "working hours" and a "wake policy", and the server stored any text for either — "never", "manual_only", anything — and then ignored both. Work was delivered and the agent could start threads regardless of what it had declared.
-- ✅ **Now** each setting has an exact form the server refuses to violate (working hours as a UTC window such as `22:00-06:00`; wake policy `auto` or `manual_only`), and one rule that both surfaces obey: outside its hours, or under `manual_only`, an agent is handed no work and may not start a thread on its own. A value that somehow reached storage without passing that check holds the agent rather than being ignored, and says which field.
-- ✅ Tested at both surfaces and at the write: bad values are refused by name, delivery is held and released by the clock and by the policy, and self-started threads are refused in the same words. Disabling the rule, or the check, makes the tests fail.
-- ⚠️ Two follow-ups are open and owned: a positive concurrency number still does not cap how much work a node is handed, and an agent held by its policy still shows as "available" in the presence view, which touches the roadmap's fixed vocabulary of six states — that one is yours to decide.
-- Technical: `crates/reasonbraid-server/src/wake.rs` holds both halves — `validate` (formats) and `hold` (`Draining` / `ManualOnly` / `OffHours` / `Unreadable`, in durability order). `node_channel::replay` evaluates the role's current `availability` block at `now()` before reading the tail, replacing the `concurrency = 0` SQL clause; `create_thread_auto` refuses `403` naming the hold; `put_profile` answers `400` and the card import `CardRefused`. DOC-0135 said the gate belongs on the node; it is at the server's delivery boundary because the profile and the clock are the server's — the record carries the correction.
-
-## 2026-09-23 — Every thread view now gives the same answer for a thread you cannot see (`SIGNOFF-REPAIR.17`)
-
-`REASONBRAID-REPAIR-0418`.
-
-- 🔴 **Before:** asking about a thread that does not exist, or that belongs to another organisation, got two different answers depending on which view you asked. The thread and budget views said "not visible". The timeline said "no events" as if the thread existed, and the audit view listed the record of your own asking.
-- ✅ **Now** all four views answer "not visible" in exactly the same words. Nothing had leaked, but a reader could tell "no such thread" from "not yours" by which view they asked.
-- ✅ Tested: your own thread still answers on all four views; a foreign thread and a made-up id get the identical refusal on all four. The test failed on the old code at the timeline view, exactly as measured yesterday.
-- Technical: `api.rs::thread_exists` is the tenant-bound `aggregate_state` predicate under the RLS claim; `get_events` and `get_audit` return `ControlApiError::scope_hidden()` when it is false. The audit case mattered most: `inspect()` records the `thread_inspect` authorization before the read, so the audit of an absent thread returned that record. CLI and web UI both treat a non-200 as an error already.
-
 The entries before those above were rotated into reachable Git history at the
-**ninth rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
+**tenth rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
 stood at the commit named below, which is the object every retired record was
 checked against before this notice was written — is:
 
 ```bash
-git show 9ba0728ab2613dbd6e0cbac3ef45075a8fdef303:DEV_NOTES.md
+git show 1291e49c240aba4c626cc290310ddd64b8b472f5:DEV_NOTES.md
 ```
 
-That snapshot is 72744 bytes and 495 lines, and contains 49 dated
-entries; its Git blob is `31ef3eed532211a793c43634b355de8d65add7eb` and its SHA-256 is
-`7474484e3555a5f2c8c5befc5c0218826cd6ad5d328b20aad13212b3a2d99cd6`. It carries the eighth rotation's
+That snapshot is 72864 bytes and 431 lines, and contains 41 dated
+entries; its Git blob is `7fba0ab71f538b212972751b2f622d97d54d731b` and its SHA-256 is
+`37bf0a72bbf86f07ec5d2ac98359bd8b68e4d49b35bf2ea85329121caa2f4284`. It carries the ninth rotation's
 notice in turn, and each earlier notice names the one before it, so the chain
 walks all the way back. `docs/decisions/2026-09-09_changelog-rotation.md` holds
 the first transition's evidence.
 
-⛔ **20 record(s) rotated out, 30 kept, lossless** — every retired heading was retrieved from the
+⛔ **14 record(s) rotated out, 28 kept, lossless** — every retired heading was retrieved from the
 predecessor named above before this notice was written, and every figure in it was re-derived from that object with
 `git rev-parse`, `git cat-file` and SHA-256 rather than typed. ⭐ The cut is DERIVED, not chosen: it retires whole
 records until the ledger has at least 10 commits of runway at the p90 entry size measured over the last

@@ -49,7 +49,9 @@ pub fn terms_digest(
 
 /// The EFFECTIVE directory-visibility agreement: BOTH directions accepted
 /// AND both rows carry `directory_visibility`. The one-sided proposal or a
-/// revoked direction widens nothing.
+/// revoked direction widens nothing — and neither does an EXPIRED one
+/// (`SIGNOFF-REPAIR.5.3.4`): a row past its `expires_at` is not there, in
+/// every predicate below.
 pub async fn has_effective_directory_agreement(
     pool: &PgPool,
     tenant_a: &str,
@@ -58,9 +60,11 @@ pub async fn has_effective_directory_agreement(
     let pair: (bool, bool) = sqlx::query_as(
         "SELECT \
              COALESCE((SELECT directory_visibility FROM federation_agreements \
-                       WHERE tenant_id = $1 AND remote_tenant_id = $2 AND status = 'accepted'), false), \
+                       WHERE tenant_id = $1 AND remote_tenant_id = $2 AND status = 'accepted' \
+                         AND (expires_at IS NULL OR expires_at > now())), false), \
              COALESCE((SELECT directory_visibility FROM federation_agreements \
-                       WHERE tenant_id = $2 AND remote_tenant_id = $1 AND status = 'accepted'), false)",
+                       WHERE tenant_id = $2 AND remote_tenant_id = $1 AND status = 'accepted' \
+                         AND (expires_at IS NULL OR expires_at > now())), false)",
     )
     .bind(tenant_a)
     .bind(tenant_b)
@@ -79,9 +83,11 @@ pub async fn has_effective_recruitment_agreement(
     let pair: (bool, bool) = sqlx::query_as(
         "SELECT \
              COALESCE((SELECT recruitment FROM federation_agreements \
-                       WHERE tenant_id = $1 AND remote_tenant_id = $2 AND status = 'accepted'), false), \
+                       WHERE tenant_id = $1 AND remote_tenant_id = $2 AND status = 'accepted' \
+                         AND (expires_at IS NULL OR expires_at > now())), false), \
              COALESCE((SELECT recruitment FROM federation_agreements \
-                       WHERE tenant_id = $2 AND remote_tenant_id = $1 AND status = 'accepted'), false)",
+                       WHERE tenant_id = $2 AND remote_tenant_id = $1 AND status = 'accepted' \
+                         AND (expires_at IS NULL OR expires_at > now())), false)",
     )
     .bind(tenant_a)
     .bind(tenant_b)
@@ -111,9 +117,11 @@ pub(crate) async fn has_effective_recruitment_agreement_in_tx(
     let pair: (bool, bool) = sqlx::query_as(
         "SELECT \
              COALESCE((SELECT recruitment FROM federation_agreements \
-                       WHERE tenant_id = $1 AND remote_tenant_id = $2 AND status = 'accepted'), false), \
+                       WHERE tenant_id = $1 AND remote_tenant_id = $2 AND status = 'accepted' \
+                         AND (expires_at IS NULL OR expires_at > now())), false), \
              COALESCE((SELECT recruitment FROM federation_agreements \
-                       WHERE tenant_id = $2 AND remote_tenant_id = $1 AND status = 'accepted'), false)",
+                       WHERE tenant_id = $2 AND remote_tenant_id = $1 AND status = 'accepted' \
+                         AND (expires_at IS NULL OR expires_at > now())), false)",
     )
     .bind(tenant_a)
     .bind(tenant_b)

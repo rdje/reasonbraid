@@ -1377,6 +1377,17 @@ POST /v1/federation-agreements/accept    accept a proposed direction
 POST /v1/federation-agreements/revoke    revoke a live direction
 ```
 
+A proposal names `tenant_id` (the proposer's own), `remote_tenant_id`, the two
+capabilities `directory_visibility` and `recruitment` (both default `false`),
+and optionally `expires_at` — the direction's **lifetime**
+(`SIGNOFF-REPAIR.5.3.4`). Absent is no lifetime. A direction past its
+`expires_at` is not there: it widens nothing, the card import's allowlist rung
+does not see it, and it cannot be accepted against. A past instant is refused
+`400 invalid_command` before the admission, like any malformed body. A lifetime
+is not a term — it does not enter the terms digest, since what is permitted is
+unchanged by when it ends — but moving it is a change to the direction, so a
+re-proposal that moves it resets the row to `proposed` like any other change.
+
 The three verbs each run ONE transaction under the LOCAL tenant's **exclusive** authority guard
 (`SIGNOFF-REPAIR.3.3.4.12`), holding the admission, the direction mutation, the
 acceptance's cross-domain receipt and the final effect record together. Before

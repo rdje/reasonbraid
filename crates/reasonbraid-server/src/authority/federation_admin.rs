@@ -186,6 +186,7 @@ pub(crate) async fn propose_direction_in_one_transaction(
     remote_tenant_id: TenantId,
     directory_visibility: bool,
     recruitment: bool,
+    expires_at: Option<DateTime<Utc>>,
 ) -> Result<DirectionOutcome<ProposeResult>, AuthorityTransactionError> {
     let principal = principal.clone();
     transact(pool, &[(tenant_id, GuardMode::Exclusive)], move |tx| {
@@ -239,20 +240,26 @@ pub(crate) async fn propose_direction_in_one_transaction(
                     directory_visibility,
                     recruitment,
                 );
+                // The lifetime (`SIGNOFF-REPAIR.5.3.4`) is not a term — it does
+                // not enter the digest — but moving it is a change to the
+                // direction, so it resets the row like any other change.
                 let changed: Option<String> = sqlx::query_scalar(
                     "INSERT INTO federation_agreements \
                      (agreement_id, tenant_id, remote_tenant_id, directory_visibility, \
-                      recruitment, status, terms_digest) \
-                     VALUES ($1, $2, $3, $4, $5, 'proposed', $6) \
+                      recruitment, status, terms_digest, expires_at) \
+                     VALUES ($1, $2, $3, $4, $5, 'proposed', $6, $7) \
                      ON CONFLICT (tenant_id, remote_tenant_id) DO UPDATE SET \
                          directory_visibility = EXCLUDED.directory_visibility, \
                          recruitment = EXCLUDED.recruitment, \
                          terms_digest = EXCLUDED.terms_digest, \
+                         expires_at = EXCLUDED.expires_at, \
                          status = 'proposed', accepted_at = NULL, accepted_against = NULL \
                      WHERE federation_agreements.directory_visibility \
                                IS DISTINCT FROM EXCLUDED.directory_visibility \
                         OR federation_agreements.recruitment \
                                IS DISTINCT FROM EXCLUDED.recruitment \
+                        OR federation_agreements.expires_at \
+                               IS DISTINCT FROM EXCLUDED.expires_at \
                         OR federation_agreements.status IS DISTINCT FROM 'proposed' \
                      RETURNING agreement_id",
                 )
@@ -262,6 +269,7 @@ pub(crate) async fn propose_direction_in_one_transaction(
                 .bind(directory_visibility)
                 .bind(recruitment)
                 .bind(&terms_digest)
+                .bind(expires_at)
                 .fetch_optional(&mut *conn)
                 .await?;
                 match changed {
@@ -338,7 +346,8 @@ pub(crate) async fn accept_direction_in_one_transaction(
             // tenant id into a receipt column declared to hold a digest.
             let counterparty_terms: Option<String> = sqlx::query_scalar(
                 "SELECT terms_digest FROM federation_agreements \
-                 WHERE tenant_id = $2 AND remote_tenant_id = $1 AND status <> 'revoked'",
+                 WHERE tenant_id = $2 AND remote_tenant_id = $1 AND status <> 'revoked' \
+                   AND (expires_at IS NULL OR expires_at > now())",
             )
             .bind(tenant_id.to_string())
             .bind(remote_tenant_id.to_string())

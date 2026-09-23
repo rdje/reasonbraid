@@ -238,17 +238,48 @@ async fn an_existing_database_upgrades_and_its_data_survives() {
         .execute(&pool)
         .await
         .expect("seed the counterparty tenant");
-    sqlx::query(
-        "INSERT INTO federation_agreements \
-         (agreement_id, tenant_id, remote_tenant_id, directory_visibility, recruitment, status) \
-         VALUES ($1, $2, $3, true, false, 'accepted')",
+    // ⚠️ "The pre-upgrade schema" is whatever the prefix reaches, and that moves
+    // with every later migration. When the prefix predates 0096 the row is
+    // seeded without a digest and the assertion below measures the BACKFILL;
+    // once 0096 is inside the prefix the column is NOT NULL, the seed carries
+    // the server's own value, and the assertion measures survival. The control
+    // says which it did rather than silently becoming the weaker one.
+    let digest_column_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.columns \
+         WHERE table_name = 'federation_agreements' AND column_name = 'terms_digest')",
     )
-    .bind(format!("fed_{tenant}_{counterparty}"))
-    .bind(tenant)
-    .bind(counterparty)
-    .execute(&pool)
+    .fetch_one(&pool)
     .await
-    .expect("seed a pre-upgrade direction");
+    .expect("read the prefix schema");
+    if digest_column_exists {
+        eprintln!(
+            "migration_upgrade: 0096 is inside the prefix — the direction assertion measures survival, not the backfill"
+        );
+        sqlx::query(
+            "INSERT INTO federation_agreements \
+             (agreement_id, tenant_id, remote_tenant_id, directory_visibility, recruitment, status, terms_digest) \
+             VALUES ($1, $2, $3, true, false, 'accepted', $4)",
+        )
+        .bind(format!("fed_{tenant}_{counterparty}"))
+        .bind(tenant)
+        .bind(counterparty)
+        .bind(reasonbraid_server::federation::terms_digest(tenant, counterparty, true, false))
+        .execute(&pool)
+        .await
+        .expect("seed a direction in the prefix schema");
+    } else {
+        sqlx::query(
+            "INSERT INTO federation_agreements \
+             (agreement_id, tenant_id, remote_tenant_id, directory_visibility, recruitment, status) \
+             VALUES ($1, $2, $3, true, false, 'accepted')",
+        )
+        .bind(format!("fed_{tenant}_{counterparty}"))
+        .bind(tenant)
+        .bind(counterparty)
+        .execute(&pool)
+        .await
+        .expect("seed a pre-upgrade direction");
+    }
     sqlx::query(
         "INSERT INTO enrollment_boundaries \
          (boundary_id, tenant_id, parent_or_root_authority, target_owner, permitted_actions, \

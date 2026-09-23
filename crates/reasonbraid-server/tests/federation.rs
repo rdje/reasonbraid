@@ -813,6 +813,218 @@ async fn an_acceptance_pins_the_counterpartys_terms_and_needs_its_proposal() {
     );
 }
 
+/// `SIGNOFF-REPAIR.5.3.4` — a direction may carry a lifetime, and an expired
+/// direction is not there: it widens nothing and cannot be accepted against.
+/// Before this repair a direction ended only by revocation; a lifetime set on
+/// the row was ignored by every effective-agreement predicate.
+#[tokio::test]
+async fn an_expired_direction_widens_nothing_and_cannot_be_accepted_against() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (status, human_a) =
+        enroll(&client, &base, json!({ "kind": "human", "name": "ttl-a" })).await;
+    assert_eq!(status, 200, "A enrolls: {human_a}");
+    let a_admin = human_a["principal_id"].as_str().unwrap().to_string();
+    let tenant_a = human_a["tenant_id"].as_str().unwrap().to_string();
+    let (status, human_b) =
+        enroll(&client, &base, json!({ "kind": "human", "name": "ttl-b" })).await;
+    assert_eq!(status, 200, "B enrolls: {human_b}");
+    let b_admin = human_b["principal_id"].as_str().unwrap().to_string();
+    let tenant_b = human_b["tenant_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "ttl-role", "tenant_id": tenant_a }),
+    )
+    .await;
+    assert_eq!(status, 200, "the role enrolls: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &role_id,
+        &visibility_profile(),
+    )
+    .await;
+    assert_eq!(status, 200, "the role writes the profile");
+    let direction = |admin: String, tenant: String, remote: String, terms: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            let mut body = json!({ "tenant_id": tenant, "remote_tenant_id": remote });
+            for (k, v) in terms.as_object().unwrap() {
+                body[k] = v.clone();
+            }
+            post(&client, &base, "/v1/federation-agreements", &admin, &body).await
+        }
+    };
+    let accept = |admin: String, tenant: String, remote: String| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            post(
+                &client,
+                &base,
+                "/v1/federation-agreements/accept",
+                &admin,
+                &json!({ "tenant_id": tenant, "remote_tenant_id": remote }),
+            )
+            .await
+        }
+    };
+    let visibility = |who: String| {
+        let client = client.clone();
+        let base = base.clone();
+        let role_id = role_id.clone();
+        async move {
+            let (status, read) =
+                get(&client, &base, &format!("/v1/profiles/{role_id}"), &who).await;
+            assert_eq!(status, 200, "{read}");
+            read["visibility"].as_str().unwrap().to_string()
+        }
+    };
+
+    // 1. The effective pairing, with no lifetime: B reads the tenant view.
+    let terms = json!({ "directory_visibility": true, "recruitment": false });
+    for (admin, tenant, remote) in [
+        (&a_admin, &tenant_a, &tenant_b),
+        (&b_admin, &tenant_b, &tenant_a),
+    ] {
+        let (status, body) =
+            direction(admin.clone(), tenant.clone(), remote.clone(), terms.clone()).await;
+        assert_eq!(status, 200, "{body}");
+    }
+    for (admin, tenant, remote) in [
+        (&a_admin, &tenant_a, &tenant_b),
+        (&b_admin, &tenant_b, &tenant_a),
+    ] {
+        let (status, body) = accept(admin.clone(), tenant.clone(), remote.clone()).await;
+        assert_eq!(status, 200, "{body}");
+    }
+    assert_eq!(visibility(b_admin.clone()).await, "tenant");
+
+    // 2. A's direction lapses (the clock moved, simulated on the row): the
+    //    pairing is no longer effective, and B falls back to the network view.
+    sqlx::query(
+        "UPDATE federation_agreements SET expires_at = now() - interval '1 second' \
+         WHERE tenant_id = $1 AND remote_tenant_id = $2",
+    )
+    .bind(&tenant_a)
+    .bind(&tenant_b)
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        visibility(b_admin.clone()).await,
+        "network",
+        "an expired direction widens nothing"
+    );
+
+    // 3. An expired counterparty cannot be accepted against: B re-proposes on
+    //    new terms and accepts — A's direction is not live.
+    let (status, body) = direction(
+        b_admin.clone(),
+        tenant_b.clone(),
+        tenant_a.clone(),
+        json!({ "directory_visibility": true, "recruitment": true }),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let (status, refused) = accept(b_admin.clone(), tenant_b.clone(), tenant_a.clone()).await;
+    assert_eq!(
+        status, 409,
+        "an expired counterparty is not there to pin: {refused}"
+    );
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("has no live direction toward this tenant"),
+        "{refused}"
+    );
+
+    // 4. A past lifetime is refused on the wire; a future one is stored and the
+    //    re-proposal resets the direction, which both sides then accept.
+    let (status, refused) = direction(
+        a_admin.clone(),
+        tenant_a.clone(),
+        tenant_b.clone(),
+        json!({
+            "directory_visibility": true,
+            "recruitment": false,
+            "expires_at": (chrono::Utc::now() - chrono::Duration::minutes(1)).to_rfc3339(),
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("in the future"),
+        "{refused}"
+    );
+    let ahead = chrono::Utc::now() + chrono::Duration::hours(1);
+    let (status, body) = direction(
+        a_admin.clone(),
+        tenant_a.clone(),
+        tenant_b.clone(),
+        json!({
+            "directory_visibility": true,
+            "recruitment": false,
+            "expires_at": ahead.to_rfc3339(),
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let (status, stored, digest): (String, Option<chrono::DateTime<chrono::Utc>>, String) =
+        sqlx::query_as(
+            "SELECT status, expires_at, terms_digest FROM federation_agreements \
+             WHERE tenant_id = $1 AND remote_tenant_id = $2",
+        )
+        .bind(&tenant_a)
+        .bind(&tenant_b)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(status, "proposed", "a moved lifetime resets the direction");
+    assert_eq!(stored.map(|t| t.timestamp()), Some(ahead.timestamp()));
+    assert_eq!(
+        digest,
+        reasonbraid_server::federation::terms_digest(&tenant_a, &tenant_b, true, false),
+        "a lifetime is not a term: the digest is unchanged"
+    );
+    for (admin, tenant, remote) in [
+        (&a_admin, &tenant_a, &tenant_b),
+        (&b_admin, &tenant_b, &tenant_a),
+    ] {
+        let (status, body) = accept(admin.clone(), tenant.clone(), remote.clone()).await;
+        assert_eq!(status, 200, "{body}");
+    }
+    assert_eq!(
+        visibility(b_admin.clone()).await,
+        "tenant",
+        "live again, for an hour"
+    );
+    // 🔎 Found by this control: B's second acceptance is against A's UNCHANGED
+    // terms (a lifetime is not a term), so its receipt names the same remote
+    // digest as the first — and `cross_domain_receipts`' unique key raised that
+    // into a `500` until migration 0098. A receipt is a record of one
+    // acceptance; two acceptances are two receipts.
+    let receipts: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM cross_domain_receipts WHERE tenant_id = $1 AND kind = 'agreement'",
+    )
+    .bind(&tenant_b)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(receipts, 2, "each acceptance leaves its own receipt");
+}
+
 #[tokio::test]
 async fn proposing_to_an_unknown_tenant_refuses_in_the_record_rather_than_raising() {
     let Some(pool) = pool().await else { return };

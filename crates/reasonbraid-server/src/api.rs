@@ -2003,6 +2003,11 @@ pub struct FederationAgreementRequest {
     pub directory_visibility: bool,
     #[serde(default)]
     pub recruitment: bool,
+    /// The direction's lifetime (`SIGNOFF-REPAIR.5.3.4`): absent is no
+    /// lifetime; a past instant is refused before the admission, as a
+    /// malformed body is.
+    #[serde(default)]
+    pub expires_at: Option<DateTime<Utc>>,
 }
 
 /// The three federation direction verbs each run ONE guarded transaction
@@ -2027,6 +2032,11 @@ async fn propose_federation_agreement(
     Json(req): Json<FederationAgreementRequest>,
 ) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
+    if req.expires_at.is_some_and(|at| at <= Utc::now()) {
+        return Err(ControlApiError::invalid_command(
+            "expires_at must be in the future",
+        ));
+    }
     let proposal = authority::propose_direction_in_one_transaction(
         &state.pool,
         &principal,
@@ -2034,6 +2044,7 @@ async fn propose_federation_agreement(
         req.remote_tenant_id,
         req.directory_visibility,
         req.recruitment,
+        req.expires_at,
     )
     .await?;
     let receipt = proposal.record_id;

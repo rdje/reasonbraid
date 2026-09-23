@@ -1,0 +1,13 @@
+-- 0097_federation_expires_at.sql — SIGNOFF-REPAIR.5.3.4 (ADR-026): a direction may
+-- carry a lifetime.
+--
+-- `federation_agreements` recorded when a direction was proposed and accepted
+-- and never when it should end: a pairing an operator meant for a quarter
+-- stood until someone remembered to revoke it. `expires_at` is proposer-set and
+-- optional — NULL is no lifetime, exactly the shape every existing row keeps —
+-- and every effective-agreement predicate treats an expired row as not there.
+-- A lifetime is not a TERM: it does not enter `terms_digest` (what is permitted
+-- is unchanged by when it ends), but changing it is a change to the direction,
+-- so a re-proposal that moves it resets the row to `proposed` like any other
+-- change.
+ALTER TABLE federation_agreements ADD COLUMN expires_at TIMESTAMPTZ;

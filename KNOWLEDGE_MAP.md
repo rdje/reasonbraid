@@ -251,6 +251,7 @@
 - [`2026-09-22_the-remaining-roadmap-gaps-are-sequenced-by-exposure-then-deletion.md`](docs/decisions/2026-09-22_the-remaining-roadmap-gaps-are-sequenced-by-exposure-then-deletion.md)
 - [`2026-09-22_three-of-the-five-missing-operator-surfaces-have-no-stored-fact.md`](docs/decisions/2026-09-22_three-of-the-five-missing-operator-surfaces-have-no-stored-fact.md)
 - [`2026-09-22_three-storm-controls-were-deferred-behind-triggers-that-have-fired.md`](docs/decisions/2026-09-22_three-storm-controls-were-deferred-behind-triggers-that-have-fired.md)
+- [`2026-09-23_of-the-four-missing-grant-fields-one-is-owed-now-one-waits-on-a-domain-one-on-the-director-and-one-is-two-halves.md`](docs/decisions/2026-09-23_of-the-four-missing-grant-fields-one-is-owed-now-one-waits-on-a-domain-one-on-the-director-and-one-is-two-halves.md)
 - [`2026-09-23_the-auto-grants-bounds-have-no-producer.md`](docs/decisions/2026-09-23_the-auto-grants-bounds-have-no-producer.md)
 - [`2026-09-23_the-four-node-local-wake-items-each-wait-on-a-fact-that-does-not-exist-yet.md`](docs/decisions/2026-09-23_the-four-node-local-wake-items-each-wait-on-a-fact-that-does-not-exist-yet.md)
 - [`2026-09-23_the-node-to-role-binding-is-a-ledger-fact-not-a-registry-before-g9.md`](docs/decisions/2026-09-23_the-node-to-role-binding-is-a-ledger-fact-not-a-registry-before-g9.md)

@@ -126,9 +126,37 @@ impl RecruitmentResponse {
 pub const MAX_OPEN_CALLS_PER_TENANT: i64 = 8;
 pub const MAX_OPEN_CALLS_PER_INITIATOR: i64 = 4;
 
-/// The initiator's current open calls (the fan-out cap's count).
+/// The lock class of the per-tenant open serialization (the first key of the
+/// two-key advisory lock; the second is `hashtext(tenant_id)`).
+pub const OPEN_CALL_LOCK_CLASS: i32 = 0x5EC5;
+
+/// Serialize the opens of one tenant for the rest of the caller's transaction
+/// (`SIGNOFF-REPAIR.5.2.4`). The two fan-out caps are read-then-write over a
+/// SET — the tenant's and the initiator's open calls — and no row stands for
+/// that set, so no row lock can guard it: two opens that both counted under
+/// the cap both inserted. A transaction-scoped advisory lock keyed on the
+/// tenant serializes exactly the opens of one tenant; it is released with the
+/// transaction, commit or rollback, and blocks nothing else in the database.
+/// It covers the initiator's cap too, because a principal is enrolled in one
+/// tenant. ⛔ Not the `tenants` row — every other reader that locks it would
+/// queue behind an open — and not the tenant's authority guard, because an
+/// open is not an issuance and must not wait on one.
+pub async fn serialize_opens(
+    conn: &mut sqlx::PgConnection,
+    tenant_id: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("SELECT pg_advisory_xact_lock($1, hashtext($2))")
+        .bind(OPEN_CALL_LOCK_CLASS)
+        .bind(tenant_id)
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
+/// The initiator's current open calls (the fan-out cap's count). On the
+/// open's own connection, after `serialize_opens`, or the count is a guess.
 pub async fn open_calls_by(
-    pool: &sqlx::PgPool,
+    conn: &mut sqlx::PgConnection,
     tenant_id: Option<&str>,
     initiator: Option<&str>,
 ) -> Result<i64, sqlx::Error> {
@@ -150,7 +178,7 @@ pub async fn open_calls_by(
     if let Some(i) = initiator {
         q = q.bind(i);
     }
-    q.fetch_one(pool).await
+    q.fetch_one(conn).await
 }
 
 /// The call spec as stored (the expression rides as the `.3` typed shape).
@@ -185,9 +213,9 @@ pub struct OpenCallParams<'a> {
 }
 
 /// Open a call: the spec's expression is stored verbatim (the server resolves
-/// it at every response).
+/// it at every response). On the open's transaction, beside its offers.
 pub async fn open_call(
-    pool: &sqlx::PgPool,
+    conn: &mut sqlx::PgConnection,
     params: OpenCallParams<'_>,
 ) -> Result<String, sqlx::Error> {
     let now = Utc::now();
@@ -208,15 +236,44 @@ pub async fn open_call(
     .bind(now)
     .bind(params.join_deadline)
     .bind(params.expires_at)
-    .fetch_one(pool)
+    .fetch_one(conn)
     .await
     .map(|row: sqlx::postgres::PgRow| row.get::<String, _>(0))
 }
 
+/// The advertisement's durable trace (`.5.2`), written WITH the call: one
+/// offer per subscriber whose current profile's interests meet the call's, as
+/// one `INSERT … SELECT` on the open's transaction — so the call and its
+/// offers are one commit, and a failed offer write leaves no call behind
+/// (`SIGNOFF-REPAIR.5.2.4`). Returns how many were offered.
+pub async fn offer_to_subscribers(
+    conn: &mut sqlx::PgConnection,
+    call_id: &str,
+    tenant_id: &str,
+    interests: &[String],
+) -> Result<usize, sqlx::Error> {
+    let offered: Vec<String> = sqlx::query_scalar(
+        "INSERT INTO recruitment_offers (offer_id, call_id, role_id) \
+         SELECT 'ofr_' || gen_random_uuid()::text, $1, p.role_id \
+         FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
+         JOIN agent_roles r ON r.role_id = p.role_id \
+         WHERE v.version = p.current_version AND r.tenant_id = $2 \
+           AND v.profile->'interests' ?| $3 \
+         RETURNING role_id",
+    )
+    .bind(call_id)
+    .bind(tenant_id)
+    .bind(interests)
+    .fetch_all(conn)
+    .await?;
+    Ok(offered.len())
+}
+
 /// Record one typed response (one per respondent — the second overwrites is a
-/// conflict, never a silent merge).
+/// conflict, never a silent merge). On the respond's transaction, which holds
+/// the call row shared (`SIGNOFF-REPAIR.5.2.4`).
 pub async fn record_response(
-    pool: &sqlx::PgPool,
+    conn: &mut sqlx::PgConnection,
     call_id: &str,
     respondent: &str,
     response: &RecruitmentResponse,
@@ -253,14 +310,17 @@ pub async fn record_response(
     .bind(respondent)
     .bind(response.kind())
     .bind(payload)
-    .execute(pool)
+    .execute(conn)
     .await?;
     Ok(())
 }
 
-/// The responses so far (the panel snapshot's raw material).
-pub async fn responses(
-    pool: &sqlx::PgPool,
+/// The responses so far (the panel snapshot's raw material). The close reads
+/// them on its transaction after the call row is locked, so no response lands
+/// between that read and the snapshot (`SIGNOFF-REPAIR.5.2.4`); the
+/// inspection reads them on the pool.
+pub async fn responses<'e>(
+    executor: impl sqlx::PgExecutor<'e>,
     call_id: &str,
 ) -> Result<Vec<(String, String, Value, DateTime<Utc>)>, sqlx::Error> {
     sqlx::query_as(
@@ -268,7 +328,7 @@ pub async fn responses(
          FROM recruitment_responses WHERE call_id = $1 ORDER BY created_at, respondent",
     )
     .bind(call_id)
-    .fetch_all(pool)
+    .fetch_all(executor)
     .await
 }
 
@@ -288,16 +348,65 @@ type CallTuple = (
     String,
 );
 
-/// The call row (the response gate needs the expression + the deadlines).
-pub async fn call(pool: &sqlx::PgPool, call_id: &str) -> Result<Option<CallRow>, sqlx::Error> {
-    let row: Option<CallTuple> = sqlx::query_as(
-        "SELECT call_id, tenant_id, thread_id, initiator, expression, min_participants, \
-                max_participants, recommendations_allowed, advertises_at, join_deadline, expires_at, status \
-         FROM recruitment_calls WHERE call_id = $1",
+const CALL_COLUMNS: &str = "call_id, tenant_id, thread_id, initiator, expression, \
+    min_participants, max_participants, recommendations_allowed, advertises_at, \
+    join_deadline, expires_at, status";
+
+/// The lock a call TRANSITION takes on the call row (`SIGNOFF-REPAIR.5.2.4`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CallLock {
+    /// A respond: shared, so responses do not queue behind each other, while
+    /// a close in progress makes the respond wait and then read the row the
+    /// close committed — a join never lands on a call whose close has begun.
+    Shared,
+    /// A close: exclusive, so a second close waits, reads `closed`, and
+    /// refuses; and no response lands between the close's reads and its
+    /// writes.
+    Exclusive,
+}
+
+/// The call row, for a READ (the inspection): any executor, no lock.
+pub async fn call<'e>(
+    executor: impl sqlx::PgExecutor<'e>,
+    call_id: &str,
+) -> Result<Option<CallRow>, sqlx::Error> {
+    fetch_call(
+        executor,
+        &format!("SELECT {CALL_COLUMNS} FROM recruitment_calls WHERE call_id = $1"),
+        call_id,
     )
-    .bind(call_id)
-    .fetch_optional(pool)
-    .await?;
+    .await
+}
+
+/// The call row, LOCKED for a transition on the caller's transaction: the
+/// status and the deadlines the transition checks are then the row's at
+/// commit, not a stale read.
+pub async fn call_locked(
+    conn: &mut sqlx::PgConnection,
+    call_id: &str,
+    lock: CallLock,
+) -> Result<Option<CallRow>, sqlx::Error> {
+    let clause = match lock {
+        CallLock::Shared => "FOR SHARE",
+        CallLock::Exclusive => "FOR UPDATE",
+    };
+    fetch_call(
+        conn,
+        &format!("SELECT {CALL_COLUMNS} FROM recruitment_calls WHERE call_id = $1 {clause}"),
+        call_id,
+    )
+    .await
+}
+
+async fn fetch_call<'e>(
+    executor: impl sqlx::PgExecutor<'e>,
+    sql: &str,
+    call_id: &str,
+) -> Result<Option<CallRow>, sqlx::Error> {
+    let row: Option<CallTuple> = sqlx::query_as(sql)
+        .bind(call_id)
+        .fetch_optional(executor)
+        .await?;
     Ok(row.map(
         |(
             call_id,
@@ -332,8 +441,11 @@ pub async fn call(pool: &sqlx::PgPool, call_id: &str) -> Result<Option<CallRow>,
 /// Snapshot the panel at the close: the JOINERS (ranked by the default
 /// preferences, capped at the max) + the per-panelist selection explanation
 /// (the stage-1 reasons + the stage-2 features — the visibility-safe strings).
+/// The panel INSERT and the status UPDATE are on the close's transaction,
+/// which holds the call row exclusively (`SIGNOFF-REPAIR.5.2.4`): the panel
+/// and the status commit together, or neither does.
 pub async fn snapshot_panel(
-    pool: &sqlx::PgPool,
+    conn: &mut sqlx::PgConnection,
     call_id: &str,
     ranked: &[crate::matching::RankedCandidate],
     dependence_indicators: &[crate::dependence::DependenceIndicator],
@@ -363,11 +475,11 @@ pub async fn snapshot_panel(
         .bind(call_id)
         .bind(serde_json::json!(panel))
         .bind(explanation)
-        .execute(pool)
+        .execute(&mut *conn)
         .await?;
     sqlx::query("UPDATE recruitment_calls SET status = 'closed' WHERE call_id = $1")
         .bind(call_id)
-        .execute(pool)
+        .execute(conn)
         .await?;
     Ok(())
 }

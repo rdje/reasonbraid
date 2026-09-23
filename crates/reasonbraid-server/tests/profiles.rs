@@ -335,6 +335,190 @@ async fn create_thread(
     body["thread_id"].as_str().unwrap().to_string()
 }
 
+/// The world a call-transition race needs (`SIGNOFF-REPAIR.5.2.4`): a person,
+/// a real thread, and `roles` attested roles with nodes, each eligible for a
+/// call that requires owner-attested `code_review`.
+struct CallWorld {
+    tenant: String,
+    human_id: String,
+    thread_id: String,
+    roles: Vec<String>,
+}
+
+async fn call_world(client: &reqwest::Client, base: &str, label: &str, roles: usize) -> CallWorld {
+    let (status, human) = enroll(
+        client,
+        base,
+        json!({ "kind": "human", "name": format!("{label}-human") }),
+    )
+    .await;
+    assert_eq!(status, 200, "{human}");
+    let tenant = human["tenant_id"].as_str().unwrap().to_string();
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let thread_id =
+        create_thread(client, base, &human_id, &tenant, &format!("{label}-thread")).await;
+    let mut ids = Vec::new();
+    for n in 0..roles {
+        let (status, role) = enroll(
+            client,
+            base,
+            json!({ "kind": "role", "name": format!("{label}-role-{n}"), "tenant_id": tenant }),
+        )
+        .await;
+        assert_eq!(status, 200, "{role}");
+        let role_id = role["principal_id"].as_str().unwrap().to_string();
+        enroll_node(client, base, &human_id, &tenant, &role_id).await;
+        let (status, _) = put(
+            client,
+            base,
+            &format!("/v1/profiles/{role_id}"),
+            &role_id,
+            &visibility_profile(),
+        )
+        .await;
+        assert_eq!(status, 200, "the role writes its profile");
+        let (status, _) = post(
+            client,
+            base,
+            &format!("/v1/profiles/{role_id}/attest"),
+            &human_id,
+            &json!({ "taxonomy_id": "code_review", "evidence_ref": format!("evt_{label}/{n}") }),
+        )
+        .await;
+        assert_eq!(status, 200, "the owner attests");
+        ids.push(role_id);
+    }
+    CallWorld {
+        tenant,
+        human_id,
+        thread_id,
+        roles: ids,
+    }
+}
+
+/// A call body on the world's thread: owner-attested `code_review`, and the
+/// world's roles' declared interest so each is also a subscriber.
+fn call_body(world: &CallWorld, min: i32, max: i32) -> Value {
+    json!({
+        "tenant_id": world.tenant,
+        "thread_id": world.thread_id,
+        "expression": {
+            "scope": "tenant",
+            "capabilities": [{ "taxonomy_id": "code_review", "min_confidence": "owner_attested" }],
+            "interests": ["parser trivia"],
+            "presence_states": ["available", "offline"],
+        },
+        "min_participants": min,
+        "max_participants": max,
+        "join_deadline": (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339(),
+        "expires_at": (chrono::Utc::now() + chrono::Duration::hours(2)).to_rfc3339(),
+    })
+}
+
+/// A request the test does not await in place, so two can be in flight against
+/// one server at once (`enrollment_transaction.rs`'s shape).
+fn spawn_post(
+    client: &reqwest::Client,
+    base: &str,
+    path: &str,
+    principal: &str,
+    body: Value,
+) -> tokio::task::JoinHandle<(u16, Value)> {
+    let client = client.clone();
+    let url = format!("{base}{path}");
+    let principal = principal.to_string();
+    tokio::spawn(async move {
+        let response = client
+            .post(url)
+            .header(PRINCIPAL_HEADER, principal)
+            .json(&body)
+            .send()
+            .await
+            .expect("spawned post");
+        let status = response.status().as_u16();
+        let text = response.text().await.expect("spawned body");
+        let body = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+        (status, body)
+    })
+}
+
+/// Hold every INSERT into `table` behind an advisory transaction lock the
+/// returned transaction owns (`enrollment_transaction.rs`'s `hold_issuance`
+/// shape): a request that reaches that INSERT blocks inside the trigger until
+/// the holder commits, which is what lets a control place two requests
+/// deterministically on either side of one write. The one-key lock form is a
+/// different lock space from the server's two-key per-tenant lock.
+async fn hold_inserts(
+    pool: &PgPool,
+    table: &str,
+    key: i64,
+) -> sqlx::Transaction<'static, sqlx::Postgres> {
+    let mut held = pool.begin().await.unwrap();
+    sqlx::query("SELECT pg_advisory_xact_lock($1)")
+        .bind(key)
+        .execute(&mut *held)
+        .await
+        .unwrap();
+    sqlx::raw_sql(&format!(
+        "DROP TRIGGER IF EXISTS rb_test_hold_{table} ON {table}; \
+         DROP FUNCTION IF EXISTS rb_test_hold_{table}(); \
+         CREATE FUNCTION rb_test_hold_{table}() RETURNS trigger LANGUAGE plpgsql AS $$ \
+           BEGIN PERFORM pg_advisory_xact_lock({key}); RETURN NEW; END $$; \
+         CREATE TRIGGER rb_test_hold_{table} BEFORE INSERT ON {table} \
+           FOR EACH ROW EXECUTE FUNCTION rb_test_hold_{table}()"
+    ))
+    .execute(pool)
+    .await
+    .unwrap();
+    held
+}
+
+async fn release_inserts(
+    pool: &PgPool,
+    table: &str,
+    held: sqlx::Transaction<'static, sqlx::Postgres>,
+) {
+    held.commit().await.unwrap();
+    sqlx::raw_sql(&format!(
+        "DROP TRIGGER rb_test_hold_{table} ON {table}; DROP FUNCTION rb_test_hold_{table}()"
+    ))
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+/// The backends PostgreSQL reports waiting on a lock with a query matching one
+/// of the patterns. A finished job is not evidence of a lock, so the wait ends
+/// early — with the count so far — when any of the jobs has finished.
+async fn wait_for_waiters(
+    pool: &PgPool,
+    patterns: &[&str],
+    expected: usize,
+    jobs: &[&tokio::task::JoinHandle<(u16, Value)>],
+) -> usize {
+    let patterns: Vec<String> = patterns.iter().map(|p| p.to_string()).collect();
+    tokio::time::timeout(std::time::Duration::from_secs(4), async {
+        loop {
+            let waiting: i64 = sqlx::query_scalar(
+                "SELECT count(*) FROM pg_stat_activity \
+                 WHERE datname = current_database() AND wait_event_type = 'Lock' \
+                   AND query LIKE ANY($1)",
+            )
+            .bind(&patterns)
+            .fetch_one(pool)
+            .await
+            .unwrap();
+            let waiting = waiting as usize;
+            if waiting >= expected || jobs.iter().any(|j| j.is_finished()) {
+                return waiting;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap_or(0)
+}
+
 fn profile(claims: Value) -> Value {
     json!({
         "display_label": "directory probe",
@@ -2397,6 +2581,303 @@ async fn a_calls_minimum_is_enforced_on_the_selected_panel() {
     let (status, closed) = close().await;
     assert_eq!(status, 200, "{closed}");
     assert_eq!(closed["panel"], json!([role_id]), "{closed}");
+}
+
+/// `SIGNOFF-REPAIR.5.2.4` — a close is one transaction, and a second close is
+/// a refusal. Both closes are past their reads before either can write (every
+/// panel INSERT waits behind the holder). Before the repair both read `open`
+/// and the second's panel INSERT raised `recruitment_panels`' primary key into
+/// a `500`; now the second waits on the call row, reads `closed`, and answers
+/// `409`.
+#[tokio::test]
+async fn two_concurrent_closes_yield_one_panel_and_one_refusal() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let world = call_world(&client, &base, "close-race", 1).await;
+    let (status, opened) = post(
+        &client,
+        &base,
+        "/v1/calls",
+        &world.human_id,
+        &call_body(&world, 1, 2),
+    )
+    .await;
+    assert_eq!(status, 200, "{opened}");
+    let call_id = opened["call_id"].as_str().unwrap().to_string();
+    let (status, joined) = post(
+        &client,
+        &base,
+        &format!("/v1/calls/{call_id}/respond"),
+        &world.roles[0],
+        &json!({ "kind": "join" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{joined}");
+
+    let held = hold_inserts(&pool, "recruitment_panels", 76_312_601).await;
+    let close = format!("/v1/calls/{call_id}/close");
+    let first = spawn_post(&client, &base, &close, &world.human_id, json!({}));
+    let second = spawn_post(&client, &base, &close, &world.human_id, json!({}));
+    let blocked = wait_for_waiters(&pool, &["%recruitment_%"], 2, &[&first, &second]).await;
+    assert_eq!(
+        blocked, 2,
+        "both closes are past their reads, blocked on the panel write or on the call row"
+    );
+    release_inserts(&pool, "recruitment_panels", held).await;
+    let mut outcomes = [first.await.unwrap(), second.await.unwrap()];
+    outcomes.sort_by_key(|(status, _)| *status);
+    assert_eq!(outcomes[0].0, 200, "one close snapshots: {outcomes:?}");
+    assert_eq!(outcomes[0].1["panel"], json!([world.roles[0]]));
+    assert_eq!(
+        outcomes[1].0, 409,
+        "the other close is a refusal, never a raised primary key: {outcomes:?}"
+    );
+    assert_eq!(outcomes[1].1["code"], json!("invalid_transition"));
+    assert!(
+        outcomes[1].1["message"]
+            .as_str()
+            .unwrap()
+            .contains("the call is closed"),
+        "{outcomes:?}"
+    );
+    let panels: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM recruitment_panels WHERE call_id = $1")
+            .bind(&call_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(panels, 1, "exactly one panel row");
+}
+
+/// `SIGNOFF-REPAIR.5.2.4` — a join that races a close waits behind it and is
+/// refused. The close is past its reads (its panel INSERT waits behind the
+/// holder) when a second role joins. Before the repair the join landed at once
+/// — `200`, on the record, and off the panel the close then wrote; now it
+/// waits on the call row the close holds, reads `closed`, and is refused with
+/// nothing recorded. The decision DOC-0142 left open — refuse, or record as
+/// late — is taken here: refused, because a response on a closed call is on
+/// no panel and a `late` row would be a record nothing consumes.
+#[tokio::test]
+async fn a_join_that_races_a_close_waits_and_is_refused() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let world = call_world(&client, &base, "late-join", 2).await;
+    let (status, opened) = post(
+        &client,
+        &base,
+        "/v1/calls",
+        &world.human_id,
+        &call_body(&world, 1, 4),
+    )
+    .await;
+    assert_eq!(status, 200, "{opened}");
+    let call_id = opened["call_id"].as_str().unwrap().to_string();
+    let respond = format!("/v1/calls/{call_id}/respond");
+    let (status, joined) = post(
+        &client,
+        &base,
+        &respond,
+        &world.roles[0],
+        &json!({ "kind": "join" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{joined}");
+
+    let held = hold_inserts(&pool, "recruitment_panels", 76_312_602).await;
+    let close = spawn_post(
+        &client,
+        &base,
+        &format!("/v1/calls/{call_id}/close"),
+        &world.human_id,
+        json!({}),
+    );
+    assert_eq!(
+        wait_for_waiters(&pool, &["%recruitment_panels%"], 1, &[&close]).await,
+        1,
+        "the close is past its reads and blocked on the panel write"
+    );
+    let join = spawn_post(
+        &client,
+        &base,
+        &respond,
+        &world.roles[1],
+        json!({ "kind": "join" }),
+    );
+    let waiting = wait_for_waiters(&pool, &["%FOR SHARE%"], 1, &[&join]).await;
+    release_inserts(&pool, "recruitment_panels", held).await;
+    let close = close.await.unwrap();
+    let join = join.await.unwrap();
+    assert_eq!(close.0, 200, "{close:?}");
+    assert_eq!(close.1["panel"], json!([world.roles[0]]), "{close:?}");
+    assert_eq!(
+        join.0, 409,
+        "the late join is refused, not recorded on a call it is not on the panel of: {join:?}"
+    );
+    assert!(
+        join.1["message"]
+            .as_str()
+            .unwrap()
+            .contains("the call is closed"),
+        "{join:?}"
+    );
+    assert_eq!(
+        waiting, 1,
+        "the join waited on the call row the close held, rather than landing beside it"
+    );
+    let recorded: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM recruitment_responses WHERE call_id = $1 AND respondent = $2",
+    )
+    .bind(&call_id)
+    .bind(&world.roles[1])
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(recorded, 0, "a refused join records nothing");
+}
+
+/// `SIGNOFF-REPAIR.5.2.4` — the fan-out cap is decided under a per-tenant
+/// serialization. With the initiator one call under its cap, two opens race:
+/// every call INSERT waits behind the holder, so before the repair both
+/// counted under the cap and both inserted — five open calls under a cap of
+/// four. Now the second open waits on the tenant's lock, counts the first,
+/// and is refused `429`.
+#[tokio::test]
+async fn two_concurrent_opens_at_the_cap_admit_exactly_one() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let world = call_world(&client, &base, "open-race", 0).await;
+    let cap = reasonbraid_server::MAX_OPEN_CALLS_PER_INITIATOR;
+    for n in 1..cap {
+        let (status, opened) = post(
+            &client,
+            &base,
+            "/v1/calls",
+            &world.human_id,
+            &call_body(&world, 1, 2),
+        )
+        .await;
+        assert_eq!(status, 200, "open {n} of {}: {opened}", cap - 1);
+    }
+
+    let held = hold_inserts(&pool, "recruitment_calls", 76_312_603).await;
+    let first = spawn_post(
+        &client,
+        &base,
+        "/v1/calls",
+        &world.human_id,
+        call_body(&world, 1, 2),
+    );
+    let second = spawn_post(
+        &client,
+        &base,
+        "/v1/calls",
+        &world.human_id,
+        call_body(&world, 1, 2),
+    );
+    let blocked = wait_for_waiters(
+        &pool,
+        &["%recruitment_calls%", "%pg_advisory_xact_lock%"],
+        2,
+        &[&first, &second],
+    )
+    .await;
+    assert_eq!(
+        blocked, 2,
+        "both opens are blocked, on the call write or on the tenant's serialization"
+    );
+    release_inserts(&pool, "recruitment_calls", held).await;
+    let mut outcomes = [first.await.unwrap(), second.await.unwrap()];
+    outcomes.sort_by_key(|(status, _)| *status);
+    assert_eq!(outcomes[0].0, 200, "one open lands: {outcomes:?}");
+    assert_eq!(
+        outcomes[1].0, 429,
+        "the other is refused at the cap, decided after the first committed: {outcomes:?}"
+    );
+    assert_eq!(
+        outcomes[1].1["code"],
+        json!("storm_control"),
+        "{outcomes:?}"
+    );
+    let open: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM recruitment_calls WHERE tenant_id = $1 AND status = 'open'",
+    )
+    .bind(&world.tenant)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(open, cap, "the cap holds under concurrency");
+}
+
+/// `SIGNOFF-REPAIR.5.2.4` — the call and its offers are one commit. A fault
+/// on the offer write (the subscriber exists: the world's role declares the
+/// call's interest) fails the open; before the repair the call row had
+/// already committed on its own and stayed, advertised to nobody. Now nothing
+/// is left, and the same open without the fault lands with its offer.
+#[tokio::test]
+async fn a_failed_offer_write_leaves_no_call_behind() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let world = call_world(&client, &base, "offer-fault", 1).await;
+    sqlx::raw_sql(
+        "DROP TRIGGER IF EXISTS rb_test_offer_fault ON recruitment_offers; \
+         DROP FUNCTION IF EXISTS rb_test_offer_fault(); \
+         CREATE FUNCTION rb_test_offer_fault() RETURNS trigger LANGUAGE plpgsql AS $$ \
+           BEGIN RAISE EXCEPTION 'rb_test_offer_fault'; END $$; \
+         CREATE TRIGGER rb_test_offer_fault BEFORE INSERT ON recruitment_offers \
+           FOR EACH ROW EXECUTE FUNCTION rb_test_offer_fault()",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let (status, failed) = post(
+        &client,
+        &base,
+        "/v1/calls",
+        &world.human_id,
+        &call_body(&world, 1, 2),
+    )
+    .await;
+    sqlx::raw_sql(
+        "DROP TRIGGER rb_test_offer_fault ON recruitment_offers; DROP FUNCTION rb_test_offer_fault()",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        status, 500,
+        "the faulted offer write fails the open: {failed}"
+    );
+    let calls: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM recruitment_calls WHERE thread_id = $1")
+            .bind(&world.thread_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(calls, 0, "a failed open leaves no call behind");
+    // The positive control: without the fault the same open lands, offered to
+    // the one subscriber — so the fault above was reached, not skipped.
+    let (status, opened) = post(
+        &client,
+        &base,
+        "/v1/calls",
+        &world.human_id,
+        &call_body(&world, 1, 2),
+    )
+    .await;
+    assert_eq!(status, 200, "{opened}");
+    assert_eq!(opened["offered_to"], json!(1), "{opened}");
 }
 
 /// `SIGNOFF-REPAIR.11.4.7.2.1.5.4.1` — §4.2's `decision_rule_constraints`: the

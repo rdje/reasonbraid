@@ -63,6 +63,8 @@ thread.
 ⛔ **Open calls are capped per tenant and per initiator.** Exceeding either
 returns a typed `429` that names the limit it hit — the dev-scale storm control,
 so one initiator cannot flood the directory. The refusal is recorded (below).
+The caps are decided under a per-tenant serialization, so two opens racing at
+the cap admit exactly one (see *Each transition is one transaction*).
 
 ### Every storm-control refusal is recorded, and an operator can list them
 
@@ -125,6 +127,12 @@ respondent is told why rather than silently dropped.
 ⚠️ Eligibility is re-resolved at response time, not at open time. A role whose
 facts changed after the call was advertised is judged on the facts it has now.
 
+⛔ A response that arrives while the call is being closed **waits for the close
+and is then refused** — `409 invalid_transition`, *the call is closed* — with
+nothing recorded. It is not written as a late response on the closed call: a
+response on a closed call is on no panel, and a row nothing consumes is not a
+record (`SIGNOFF-REPAIR.5.2.4`).
+
 ## Closing a call and the panel snapshot
 
 ```bash
@@ -134,7 +142,9 @@ curl -s -X POST "localhost:4310/v1/calls/call_0192…/close" \
 
 The **initiator or the tenant owner** may close a call, and the choice is
 audited. Closing one that is not `open` is refused as an invalid transition, and
-an unknown call is `404`.
+an unknown call is `404`. Two closes at once are ordered: one snapshots the
+panel and the other is refused the same way, never answered with a database
+error.
 
 Closing **snapshots the selected panel**: the joiners, ranked, capped at
 `max_participants` — together with the **selection explanation**, which carries
@@ -153,6 +163,34 @@ remain than `min_participants`, naming both counts — *the panel needs at least
 open. Until this repair the minimum counted who had said `join`, so a call
 whose only joiner had since lost the required attestation closed with an empty
 panel.
+
+## Each transition is one transaction
+
+Every recruitment-call transition is one database transaction
+(`SIGNOFF-REPAIR.5.2.4`), so a client sees either all of a transition's effects
+or none, and two transitions racing on one call are ordered rather than
+interleaved.
+
+| Transition | What it holds | What that orders |
+| --- | --- | --- |
+| open | the tenant's opens, serialized by a transaction-scoped advisory lock keyed on the tenant | the two fan-out caps are counted after every earlier open in the tenant committed; the call row and its offers commit together, so a failed offer write leaves no call behind |
+| respond | the call row, shared | responses do not queue behind each other; a close in progress makes the response wait and then read the status the close committed |
+| close | the call row, exclusive | a second close waits, reads `closed`, and is refused `409`; no response lands between the responses the close reads and the panel it writes; the panel row and the status commit together |
+
+Why an advisory lock for the open, rather than a row: the caps are counts over
+a *set* — the tenant's and the initiator's open calls — and no row stands for
+that set. Locking the `tenants` row would queue every other reader of that row
+behind an open, and the tenant's authority guard is for issuances. The lock is
+released with the transaction, commit or rollback, and holds nothing else in
+the database. A refused open rolls back before its refusal is recorded, so the
+record is written on its own commit and the lock is not held for it.
+
+Before this repair each transition was several statements on the connection
+pool: two concurrent opens both counted under the cap and both landed; a join
+that arrived during a close was recorded on a call whose panel it was not on;
+and two concurrent closes both read `open`, so the second's panel insert raised
+the panel table's primary key into a `500`. Each is now a control that runs
+the two requests deterministically on either side of one write.
 
 ## A node initiating a thread itself
 

@@ -6194,9 +6194,18 @@ async fn open_recruitment_call(
     // The record names the PRINCIPAL (`hpr_…`/`rol_…`), which an operator can
     // resolve; the `agt_` handle above is the fan-out counter's key.
     let refused_by = principal.id_string();
+    let expression = serde_json::to_value(&req.expression)
+        .map_err(|e| ControlApiError::invalid_command(format!("expression: {e}")))?;
+    // ONE transaction (`SIGNOFF-REPAIR.5.2.4`): the tenant's opens serialized,
+    // the two caps decided under that serialization, the call and its offers
+    // written together. A refusal rolls back before it is recorded, so the
+    // record is written on its own commit and the lock is not held for it.
+    let mut tx = state.pool.begin().await?;
+    crate::recruitment::serialize_opens(&mut tx, &req.tenant_id).await?;
     let tenant_open =
-        crate::recruitment::open_calls_by(&state.pool, Some(&req.tenant_id), None).await?;
+        crate::recruitment::open_calls_by(&mut tx, Some(&req.tenant_id), None).await?;
     if tenant_open >= crate::recruitment::MAX_OPEN_CALLS_PER_TENANT {
+        tx.rollback().await?;
         return Err(refuse_storm(
             &state.pool,
             StormRefusal {
@@ -6213,9 +6222,9 @@ async fn open_recruitment_call(
         )
         .await);
     }
-    let initiator_open =
-        crate::recruitment::open_calls_by(&state.pool, None, Some(&initiator)).await?;
+    let initiator_open = crate::recruitment::open_calls_by(&mut tx, None, Some(&initiator)).await?;
     if initiator_open >= crate::recruitment::MAX_OPEN_CALLS_PER_INITIATOR {
+        tx.rollback().await?;
         return Err(refuse_storm(
             &state.pool,
             StormRefusal {
@@ -6232,10 +6241,8 @@ async fn open_recruitment_call(
         )
         .await);
     }
-    let expression = serde_json::to_value(&req.expression)
-        .map_err(|e| ControlApiError::invalid_command(format!("expression: {e}")))?;
     let call_id = crate::recruitment::open_call(
-        &state.pool,
+        &mut tx,
         crate::recruitment::OpenCallParams {
             tenant_id: &req.tenant_id,
             thread_id: &req.thread_id,
@@ -6252,29 +6259,16 @@ async fn open_recruitment_call(
 
     // The advertisement (`.5.2`): the call's topic tags (the expression's
     // interests) MATCH the subscribers' declared interests — the server
-    // records the offer (the §10.5 advertisement window's durable trace).
-    let subscribers: Vec<String> = sqlx::query_scalar(
-        "SELECT p.role_id \
-         FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
-         JOIN agent_roles r ON r.role_id = p.role_id \
-         WHERE v.version = p.current_version AND r.tenant_id = $1 \
-           AND v.profile->'interests' ?| $2",
+    // records the offer (the §10.5 advertisement window's durable trace),
+    // on the same transaction as the call.
+    let offered_count = crate::recruitment::offer_to_subscribers(
+        &mut tx,
+        &call_id,
+        &req.tenant_id,
+        &req.expression.interests,
     )
-    .bind(&req.tenant_id)
-    .bind(req.expression.interests.clone())
-    .fetch_all(&state.pool)
     .await?;
-    let offered_count = subscribers.len();
-    for role_id in subscribers {
-        sqlx::query(
-            "INSERT INTO recruitment_offers (offer_id, call_id, role_id) \
-             VALUES ('ofr_' || gen_random_uuid()::text, $1, $2)",
-        )
-        .bind(&call_id)
-        .bind(&role_id)
-        .execute(&state.pool)
-        .await?;
-    }
+    tx.commit().await?;
 
     Ok(Json(json!({
         "call_id": call_id,
@@ -6286,8 +6280,8 @@ async fn open_recruitment_call(
 
 /// The respondent's current facts for the eligibility gate (the same shape
 /// the match surface loads).
-async fn respondent_candidate(
-    pool: &PgPool,
+async fn respondent_candidate<'e>(
+    executor: impl sqlx::PgExecutor<'e>,
     role_id: &str,
 ) -> Option<(
     crate::matching::EligibilityCandidate,
@@ -6307,7 +6301,7 @@ async fn respondent_candidate(
          FROM node_presence np WHERE np.node_id = $1",
     )
     .bind(role_id)
-    .fetch_optional(pool)
+    .fetch_optional(executor)
     .await
     .ok()?;
     let (online, suspended, concurrency, profile, in_flight) = row?;
@@ -6358,7 +6352,17 @@ pub(crate) async fn respond_to_call_core(
         ));
     };
     let respondent = role.to_string();
-    let Some(call) = crate::recruitment::call(pool, call_id).await? else {
+    // ONE transaction (`SIGNOFF-REPAIR.5.2.4`): the call row is held SHARED
+    // from here to the upsert, so a close in progress — which holds it
+    // exclusively — makes this respond wait and then read the status the
+    // close committed. A join that lost the race to a close is refused as a
+    // response to a closed call, never recorded on a call whose panel it is
+    // not on. Responses do not queue behind each other: shared locks coexist.
+    let mut tx = pool.begin().await?;
+    let Some(call) =
+        crate::recruitment::call_locked(&mut tx, call_id, crate::recruitment::CallLock::Shared)
+            .await?
+    else {
         return Err(ControlApiError::not_found(format!("no call `{call_id}`")));
     };
     // The tenant binding (`SIGNOFF-REPAIR.6.1.2`), derived from the CALL —
@@ -6402,7 +6406,7 @@ pub(crate) async fn respond_to_call_core(
     // ineligible (or unwilling) declaring why, and must not be refused.
     let participation = matches!(response.kind(), "join" | "conditional_join");
     if participation {
-        let Some((candidate, _state)) = respondent_candidate(pool, &respondent).await else {
+        let Some((candidate, _state)) = respondent_candidate(&mut *tx, &respondent).await else {
             return Err(ControlApiError::unauthorized(
                 "the respondent has no enrolled node/profile",
             ));
@@ -6415,7 +6419,8 @@ pub(crate) async fn respond_to_call_core(
             )));
         }
     }
-    crate::recruitment::record_response(pool, call_id, &respondent, response).await?;
+    crate::recruitment::record_response(&mut tx, call_id, &respondent, response).await?;
+    tx.commit().await?;
     Ok(json!({
         "call_id": call_id,
         "respondent": respondent,
@@ -6433,7 +6438,18 @@ async fn close_call(
     Path(call_id): Path<String>,
 ) -> Result<Json<Value>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let Some(call) = crate::recruitment::call(&state.pool, &call_id).await? else {
+    // ONE transaction (`SIGNOFF-REPAIR.5.2.4`): the call row is held
+    // EXCLUSIVELY from here to the commit. A second close waits here, reads
+    // `closed`, and refuses below — a `409`, never `recruitment_panels`'
+    // primary key raised into a `500`. A respond waits here too, so no join
+    // lands between the responses read and the snapshot. Until this
+    // transaction, the close was a read on the pool, then two writes on the
+    // pool, with both races open.
+    let mut tx = state.pool.begin().await?;
+    let Some(call) =
+        crate::recruitment::call_locked(&mut tx, &call_id, crate::recruitment::CallLock::Exclusive)
+            .await?
+    else {
         return Err(ControlApiError::not_found(format!("no call `{call_id}`")));
     };
     if call.status != "open" {
@@ -6461,7 +6477,7 @@ async fn close_call(
         serde_json::from_value(call.expression.clone()).map_err(|e| {
             ControlApiError::internal_with_log(format!("stored expression unreadable: {e}"))
         })?;
-    let responses = crate::recruitment::responses(&state.pool, &call_id).await?;
+    let responses = crate::recruitment::responses(&mut *tx, &call_id).await?;
     let joiners: Vec<String> = responses
         .iter()
         .filter(|(_, kind, _, _)| kind == "join")
@@ -6475,7 +6491,7 @@ async fn close_call(
         crate::matching::EligibilityVerdict,
     )> = Vec::new();
     for joiner in &joiners {
-        if let Some((candidate, _)) = respondent_candidate(&state.pool, joiner).await {
+        if let Some((candidate, _)) = respondent_candidate(&mut *tx, joiner).await {
             let verdict = crate::matching::eligible(&expression, &candidate);
             candidates.push((candidate, verdict));
         }
@@ -6490,7 +6506,7 @@ async fn close_call(
                  WHERE role_id = $1 ORDER BY valid_from DESC LIMIT 1",
         )
         .bind(joiner)
-        .fetch_optional(&state.pool)
+        .fetch_optional(&mut *tx)
         .await?;
         let (provider, model_family, harness) = lineage.unwrap_or((None, None, None));
         facts.insert(
@@ -6532,7 +6548,8 @@ async fn close_call(
                 .filter_map(|r| facts.get(&r.role_id).cloned())
                 .collect::<Vec<_>>(),
         );
-    crate::recruitment::snapshot_panel(&state.pool, &call_id, &ranked, &indicators).await?;
+    crate::recruitment::snapshot_panel(&mut tx, &call_id, &ranked, &indicators).await?;
+    tx.commit().await?;
     Ok(Json(json!({
         "call_id": call_id,
         "status": "closed",

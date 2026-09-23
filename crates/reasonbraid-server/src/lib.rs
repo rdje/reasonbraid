@@ -104,6 +104,9 @@ mod receipts;
 pub mod reconciler;
 pub mod reconciliation;
 mod recruitment;
+/// The dev-scale open-call fan-out caps, for the controls that race them
+/// (`SIGNOFF-REPAIR.5.2.4`).
+pub use recruitment::{MAX_OPEN_CALLS_PER_INITIATOR, MAX_OPEN_CALLS_PER_TENANT};
 mod resolvers;
 mod resources;
 pub mod reviews;

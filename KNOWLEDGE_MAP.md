@@ -263,6 +263,7 @@
 - [`2026-09-23_the-auto-grants-bounds-have-no-producer.md`](docs/decisions/2026-09-23_the-auto-grants-bounds-have-no-producer.md)
 - [`2026-09-23_the-calls-remote-form-was-deferred-behind-itself-and-its-first-half-is-not-federation.md`](docs/decisions/2026-09-23_the-calls-remote-form-was-deferred-behind-itself-and-its-first-half-is-not-federation.md)
 - [`2026-09-23_the-directory-isolation-goal-line-three-items-met-three-live-defects.md`](docs/decisions/2026-09-23_the-directory-isolation-goal-line-three-items-met-three-live-defects.md)
+- [`2026-09-23_the-federation-goal-line-after-the-remote-form-four-met-one-live-race.md`](docs/decisions/2026-09-23_the-federation-goal-line-after-the-remote-form-four-met-one-live-race.md)
 - [`2026-09-23_the-federation-goal-line-two-items-met-two-live-defects-and-the-calls-remote-form-unbuilt.md`](docs/decisions/2026-09-23_the-federation-goal-line-two-items-met-two-live-defects-and-the-calls-remote-form-unbuilt.md)
 - [`2026-09-23_the-four-node-local-wake-items-each-wait-on-a-fact-that-does-not-exist-yet.md`](docs/decisions/2026-09-23_the-four-node-local-wake-items-each-wait-on-a-fact-that-does-not-exist-yet.md)
 - [`2026-09-23_the-node-to-role-binding-is-a-ledger-fact-not-a-registry-before-g9.md`](docs/decisions/2026-09-23_the-node-to-role-binding-is-a-ledger-fact-not-a-registry-before-g9.md)

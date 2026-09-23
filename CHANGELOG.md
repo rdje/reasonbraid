@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-23 — The partnership checklist re-checked: four items hold, one gap found and scheduled (`SIGNOFF-REPAIR.5.3`)
+
+`REASONBRAID-DOC-0151`. A review; no code changed.
+
+- ✅ **Holds:** recruiting a partner's agent under your own permissions; importing all-or-nothing; no duplicate imports; audit receipts for every cross-organisation act (the new delivery receipts point at records by id, which is sound inside one installation; tamper-proof fingerprints are scheduled for when partners run separate installations).
+- 🔴 **Gap found:** if a partnership is ended while work is already queued for a partner's agent, the partner's machine can still be sent that work (including the conversation's topic) and can still run it. Nothing is recorded on the importing side — the answer is refused — but the partner still sees the topic after the partnership ended. Scheduled as the next fix.
+
 ## 2026-09-23 — Each delivery to a partner's machine now leaves an audit receipt on both sides (`SIGNOFF-REPAIR.5.3.5.3.3`)
 
 `REASONBRAID-REPAIR-0453`. Completes cross-organisation recruitment (`SIGNOFF-REPAIR.5.3.5`).

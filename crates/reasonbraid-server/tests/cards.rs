@@ -629,6 +629,9 @@ async fn a_profile_write_failure_leaves_no_imported_identity_behind() {
     let card = exported["card"].clone();
     let digest = exported["digest"].as_str().unwrap().to_string();
 
+    // Both sides propose, then both accept: an acceptance pins the
+    // counterparty's terms, so it needs the counterparty's proposal on file
+    // (`SIGNOFF-REPAIR.5.3.1`).
     for (admin, tenant, remote) in [
         (&a_admin, &tenant_a, &tenant_b),
         (&b_admin, &tenant_b, &tenant_a),
@@ -647,6 +650,11 @@ async fn a_profile_write_failure_leaves_no_imported_identity_behind() {
         )
         .await;
         assert_eq!(status, 200, "the propose");
+    }
+    for (admin, tenant, remote) in [
+        (&a_admin, &tenant_a, &tenant_b),
+        (&b_admin, &tenant_b, &tenant_a),
+    ] {
         let (status, _) = post(
             &client,
             &base,
@@ -990,6 +998,9 @@ async fn a_taken_display_label_refuses_in_the_record_rather_than_raising() {
     )
     .await;
     assert_eq!(status, 200, "the card exports");
+    // Both sides propose, then both accept: an acceptance pins the
+    // counterparty's terms, so it needs the counterparty's proposal on file
+    // (`SIGNOFF-REPAIR.5.3.1`).
     for (admin, tenant, remote) in [
         (&a_admin, &tenant_a, &tenant_b),
         (&b_admin, &tenant_b, &tenant_a),
@@ -1008,6 +1019,11 @@ async fn a_taken_display_label_refuses_in_the_record_rather_than_raising() {
         )
         .await;
         assert_eq!(status, 200, "the propose");
+    }
+    for (admin, tenant, remote) in [
+        (&a_admin, &tenant_a, &tenant_b),
+        (&b_admin, &tenant_b, &tenant_a),
+    ] {
         let (status, _) = post(
             &client,
             &base,
@@ -1180,6 +1196,9 @@ async fn an_import_is_identified_by_its_origin_not_its_label() {
     assert_eq!(status, 200, "B enrolls: {human_b}");
     let b_admin = human_b["principal_id"].as_str().unwrap().to_string();
     let tenant_b = human_b["tenant_id"].as_str().unwrap().to_string();
+    // Both sides propose, then both accept: an acceptance pins the
+    // counterparty's terms, so it needs the counterparty's proposal on file
+    // (`SIGNOFF-REPAIR.5.3.1`).
     for (admin, tenant, remote) in [
         (&a_admin, &tenant_a, &tenant_b),
         (&b_admin, &tenant_b, &tenant_a),
@@ -1198,6 +1217,11 @@ async fn an_import_is_identified_by_its_origin_not_its_label() {
         )
         .await;
         assert_eq!(status, 200, "the propose");
+    }
+    for (admin, tenant, remote) in [
+        (&a_admin, &tenant_a, &tenant_b),
+        (&b_admin, &tenant_b, &tenant_a),
+    ] {
         let (status, _) = post(
             &client,
             &base,
@@ -1632,6 +1656,9 @@ async fn an_import_is_fenced_by_the_origin_tenants_own_guard() {
     )
     .await;
     assert_eq!(status, 200, "the card exports");
+    // Both sides propose, then both accept: an acceptance pins the
+    // counterparty's terms, so it needs the counterparty's proposal on file
+    // (`SIGNOFF-REPAIR.5.3.1`).
     for (admin, tenant, remote) in [
         (&a_admin, &tenant_a, &tenant_b),
         (&b_admin, &tenant_b, &tenant_a),
@@ -1650,6 +1677,11 @@ async fn an_import_is_fenced_by_the_origin_tenants_own_guard() {
         )
         .await;
         assert_eq!(status, 200, "the propose");
+    }
+    for (admin, tenant, remote) in [
+        (&a_admin, &tenant_a, &tenant_b),
+        (&b_admin, &tenant_b, &tenant_a),
+    ] {
         let (status, _) = post(
             &client,
             &base,

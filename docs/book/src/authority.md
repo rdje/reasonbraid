@@ -1340,17 +1340,25 @@ curl -s "localhost:4310/v1/audit/receipts?tenant_id=ten_0192…" \
   "tenant_id": "ten_0192…",
   "receipts": [
     {
-      "receipt_id": "rcp_0192…",
+      "receipt_id": "xrec_7c1e…",
       "tenant_id": "ten_0192…",
       "remote_tenant_id": "ten_0193…",
-      "kind": "federation_acceptance",
-      "remote_ref": "fda_0192…",
-      "local_ref": "fda_0192…",
+      "kind": "agreement",
+      "remote_ref": "sha256:cc4ce56e…",
+      "local_ref": "fed_ten_0192…_ten_0193…",
       "created_at": "2026-09-21T10:14:02Z"
     }
   ]
 }
 ```
+
+The two kinds are `agreement` and `card_import`. `remote_ref` is the remote
+record's digest: for an acceptance, the counterparty's terms digest as read at
+acceptance (`SIGNOFF-REPAIR.5.3.1`); for a card import, the digest of the card
+that landed. `local_ref` is the local record it attached to — the direction's
+id, or the imported role. ⚠️ Until that repair the acceptance's `remote_ref` was
+the counterparty's tenant id, and this example showed a kind and an id shape the
+code never wrote.
 
 Receipts are returned oldest first, by `created_at`, and the query is bound to
 the named tenant — a receipt is a **local** row naming a remote reference, so
@@ -1397,9 +1405,10 @@ are now distinguished in the record:
 | --- | --- | --- |
 | propose a new direction, or change its terms | `200 {"agreement_id":…,"status":"proposed"}` | `applied` |
 | re-propose on **identical** terms | the same `200` | `no_op` — nothing changed |
-| accept a proposed direction | `200 {"status":"accepted"}` | `applied`, with the cross-domain receipt in the same commit |
+| accept a proposed direction | `200 {"status":"accepted"}` | `applied`, with the cross-domain receipt in the same commit — its `remote_ref` the counterparty's terms digest |
 | accept one **already accepted** | `409 invalid_transition` | `no_op` — already satisfied |
 | accept one **never proposed**, or revoked | the same `409` | `refused` / `invalid_transition` |
+| accept while the **counterparty has no live direction** toward this tenant | `409 invalid_transition` naming the counterparty (`SIGNOFF-REPAIR.5.3.1`) | `refused` / `invalid_transition` |
 | revoke a live direction | `200 {"revoked":1}` | `applied` |
 | revoke one already revoked or never recorded | `200 {"revoked":0}` | `no_op` |
 
@@ -1434,7 +1443,25 @@ and the allowlist rung refuses inside the transaction exactly as it always has.
 `proposed` and clears its acceptance. That is preserved exactly as it was — it is
 how terms are changed — but it means a direction can stop being effective without
 anyone calling revoke. What the effective-agreement consumers are guaranteed
-across such a change is `SIGNOFF-REPAIR.5.3`'s, not this chapter's.
+across such a change: each side's row is its own declaration and the effective
+agreement is the intersection of the two accepted declarations, so a re-proposal
+can never widen beyond what the counterparty itself declared
+(`docs/decisions/2026-09-23_the-federation-goal-line-two-items-met-two-live-defects-and-the-calls-remote-form-unbuilt.md`).
+
+**Terms have a digest, and an acceptance pins the counterparty's**
+(`SIGNOFF-REPAIR.5.3.1`). Every direction row carries `terms_digest`, computed by
+the server over the canonical terms — the pair and the two flags — on every
+proposal, and backfilled for rows that predate it by the same recipe. Accepting
+reads the counterparty's live direction toward this tenant and records its
+digest twice: as the cross-domain receipt's `remote_ref`, which is what that
+column has always promised, and as `accepted_against` on the accepting row. So
+the trail says which terms each side saw when it consented, and a re-proposal
+that changes one side's terms changes that side's digest and clears its own
+acceptance, while the counterparty's row keeps naming the digest it consented
+against. One consequence is on the wire: an acceptance with **no live
+counterparty direction** to pin is refused (`409`, naming the counterparty),
+which the refusal message had claimed since the verb existed and the code had
+never required.
 
 ### Importing a portable agent card
 

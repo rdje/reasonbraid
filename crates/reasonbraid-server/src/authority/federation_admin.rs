@@ -73,6 +73,15 @@ pub enum ProposeResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AcceptResult {
     Accepted,
+    /// This side's row is proposed, but the counterparty has no live direction
+    /// toward this tenant (`SIGNOFF-REPAIR.5.3.1`). An acceptance pins the
+    /// counterparty's terms — the receipt's `remote_ref` and the row's
+    /// `accepted_against` are its digest — so there must be terms to pin.
+    /// Before this variant the wire message already said *the remote side
+    /// must propose first*, and the code did not require it.
+    NoCounterparty {
+        remote_tenant_id: TenantId,
+    },
     /// This side already accepted. The request is already satisfied.
     AlreadyAccepted,
     /// There is no proposed direction here to accept — none was ever made, or
@@ -220,15 +229,26 @@ pub(crate) async fn propose_direction_in_one_transaction(
                 // `no_op`: re-proposing the SAME terms touches no column, returns
                 // no row, and records a no-op — the shape `.9` established for a
                 // breaker re-arm. The response is identical either way.
+                // The terms digest rides every proposal (`SIGNOFF-REPAIR.5.3.1`),
+                // and a re-proposal that changes the terms clears the acceptance
+                // it had — `accepted_against` with it, since that acceptance was
+                // against the old terms.
+                let terms_digest = crate::federation::terms_digest(
+                    &tenant_id.to_string(),
+                    &remote_tenant_id.to_string(),
+                    directory_visibility,
+                    recruitment,
+                );
                 let changed: Option<String> = sqlx::query_scalar(
                     "INSERT INTO federation_agreements \
                      (agreement_id, tenant_id, remote_tenant_id, directory_visibility, \
-                      recruitment, status) \
-                     VALUES ($1, $2, $3, $4, $5, 'proposed') \
+                      recruitment, status, terms_digest) \
+                     VALUES ($1, $2, $3, $4, $5, 'proposed', $6) \
                      ON CONFLICT (tenant_id, remote_tenant_id) DO UPDATE SET \
                          directory_visibility = EXCLUDED.directory_visibility, \
                          recruitment = EXCLUDED.recruitment, \
-                         status = 'proposed', accepted_at = NULL \
+                         terms_digest = EXCLUDED.terms_digest, \
+                         status = 'proposed', accepted_at = NULL, accepted_against = NULL \
                      WHERE federation_agreements.directory_visibility \
                                IS DISTINCT FROM EXCLUDED.directory_visibility \
                         OR federation_agreements.recruitment \
@@ -241,6 +261,7 @@ pub(crate) async fn propose_direction_in_one_transaction(
                 .bind(remote_tenant_id.to_string())
                 .bind(directory_visibility)
                 .bind(recruitment)
+                .bind(&terms_digest)
                 .fetch_optional(&mut *conn)
                 .await?;
                 match changed {
@@ -298,64 +319,88 @@ pub(crate) async fn accept_direction_in_one_transaction(
                 }
             };
             let conn = tx.connection(tenant_id, GuardMode::Exclusive)?;
-            // Database time rather than `now()`: `now()` is BEGIN time, which is
-            // before the guard and admission waits this acceptance queued behind.
-            let accepted = sqlx::query(
-                "UPDATE federation_agreements SET status = 'accepted', accepted_at = $3 \
-                 WHERE tenant_id = $1 AND remote_tenant_id = $2 AND status = 'proposed'",
+            // This side's own row first, so the two idle answers keep their
+            // precedence and their ONE wire message.
+            let own_status: Option<String> = sqlx::query_scalar(
+                "SELECT status FROM federation_agreements \
+                 WHERE tenant_id = $1 AND remote_tenant_id = $2",
             )
             .bind(tenant_id.to_string())
             .bind(remote_tenant_id.to_string())
-            .bind(at)
-            .execute(&mut *conn)
-            .await?
-            .rows_affected();
+            .fetch_optional(&mut *conn)
+            .await?;
+            // The COUNTERPARTY'S live direction toward this tenant, and its terms
+            // digest (`SIGNOFF-REPAIR.5.3.1`): the thing an acceptance pins. A
+            // foreign-row READ under this tenant's guard is the same minimal
+            // probe a proposal makes of `tenants` — it decodes no foreign policy
+            // and mutates nothing of the counterparty's; a revoked row is not a
+            // direction. Until this read the acceptance wrote the counterparty's
+            // tenant id into a receipt column declared to hold a digest.
+            let counterparty_terms: Option<String> = sqlx::query_scalar(
+                "SELECT terms_digest FROM federation_agreements \
+                 WHERE tenant_id = $2 AND remote_tenant_id = $1 AND status <> 'revoked'",
+            )
+            .bind(tenant_id.to_string())
+            .bind(remote_tenant_id.to_string())
+            .fetch_optional(&mut *conn)
+            .await?;
 
-            let (result, outcome) = if accepted > 0 {
-                // The cross-domain receipt (`.1.4`, ADR-026), now in the SAME
-                // transaction as the status change it describes rather than
-                // merely the same untenanted one.
-                crate::receipts::record_in_tx(
-                    &mut *conn,
-                    &tenant_id.to_string(),
-                    &remote_tenant_id.to_string(),
-                    crate::receipts::KIND_AGREEMENT,
-                    &remote_tenant_id.to_string(),
-                    &agreement_id(tenant_id, remote_tenant_id),
-                )
-                .await?;
-                (AcceptResult::Accepted, AdministrativeOutcome::Applied {})
-            } else {
-                // Two idle states, ONE wire answer. The extra query runs on the
-                // refusal path only.
-                let status: Option<String> = sqlx::query_scalar(
-                    "SELECT status FROM federation_agreements \
-                     WHERE tenant_id = $1 AND remote_tenant_id = $2",
-                )
-                .bind(tenant_id.to_string())
-                .bind(remote_tenant_id.to_string())
-                .fetch_optional(&mut *conn)
-                .await?;
-                if status.as_deref() == Some("accepted") {
-                    (
-                        AcceptResult::AlreadyAccepted,
-                        AdministrativeOutcome::NoOp {
-                            detail: bounded_detail(
-                                "this side had already accepted the direction".to_owned(),
-                            ),
-                        },
+            let (result, outcome) = match (own_status.as_deref(), counterparty_terms) {
+                (Some("proposed"), Some(against)) => {
+                    // Database time rather than `now()`: `now()` is BEGIN time,
+                    // which is before the guard and admission waits this
+                    // acceptance queued behind.
+                    sqlx::query(
+                        "UPDATE federation_agreements \
+                         SET status = 'accepted', accepted_at = $3, accepted_against = $4 \
+                         WHERE tenant_id = $1 AND remote_tenant_id = $2 AND status = 'proposed'",
                     )
-                } else {
-                    (
-                        AcceptResult::NothingProposed,
-                        AdministrativeOutcome::Refused {
-                            code: AdministrativeRefusal::InvalidTransition,
-                            detail: bounded_detail(
-                                "no proposed direction here to accept".to_owned(),
-                            ),
-                        },
+                    .bind(tenant_id.to_string())
+                    .bind(remote_tenant_id.to_string())
+                    .bind(at)
+                    .bind(&against)
+                    .execute(&mut *conn)
+                    .await?;
+                    // The cross-domain receipt (`.1.4`, ADR-026), in the SAME
+                    // transaction as the status change it describes — and its
+                    // remote reference is now the digest the column promises:
+                    // the counterparty's terms as this side accepted them.
+                    crate::receipts::record_in_tx(
+                        &mut *conn,
+                        &tenant_id.to_string(),
+                        &remote_tenant_id.to_string(),
+                        crate::receipts::KIND_AGREEMENT,
+                        &against,
+                        &agreement_id(tenant_id, remote_tenant_id),
                     )
+                    .await?;
+                    (AcceptResult::Accepted, AdministrativeOutcome::Applied {})
                 }
+                (Some("proposed"), None) => (
+                    AcceptResult::NoCounterparty { remote_tenant_id },
+                    AdministrativeOutcome::Refused {
+                        code: AdministrativeRefusal::InvalidTransition,
+                        detail: bounded_detail(
+                            "the counterparty has no live direction toward this tenant to accept against"
+                                .to_owned(),
+                        ),
+                    },
+                ),
+                (Some("accepted"), _) => (
+                    AcceptResult::AlreadyAccepted,
+                    AdministrativeOutcome::NoOp {
+                        detail: bounded_detail(
+                            "this side had already accepted the direction".to_owned(),
+                        ),
+                    },
+                ),
+                _ => (
+                    AcceptResult::NothingProposed,
+                    AdministrativeOutcome::Refused {
+                        code: AdministrativeRefusal::InvalidTransition,
+                        detail: bounded_detail("no proposed direction here to accept".to_owned()),
+                    },
+                ),
             };
 
             record(

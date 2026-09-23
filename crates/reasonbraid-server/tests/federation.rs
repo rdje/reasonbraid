@@ -434,6 +434,7 @@ async fn each_direction_verb_records_what_it_did() {
     let tenant_a = a["tenant_id"].as_str().unwrap().to_string();
     let (status, b) = enroll(&client, &base, json!({ "kind": "human", "name": "dir-b" })).await;
     assert_eq!(status, 200, "B enrolls: {b}");
+    let b_admin = b["principal_id"].as_str().unwrap().to_string();
     let tenant_b = b["tenant_id"].as_str().unwrap().to_string();
 
     let call = |path: &'static str, principal: String, body: Value| {
@@ -509,6 +510,21 @@ async fn each_direction_verb_records_what_it_did() {
         json!("no_op"),
         "an unchanged re-proposal records a no-op: {outcome}"
     );
+
+    // The counterparty's direction, so A's acceptance has terms to pin
+    // (`SIGNOFF-REPAIR.5.3.1`).
+    let (status, _, body) = call(
+        "/v1/federation-agreements",
+        b_admin.clone(),
+        json!({
+            "tenant_id": tenant_b,
+            "remote_tenant_id": tenant_a,
+            "directory_visibility": true,
+            "recruitment": false,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "B proposes back: {body}");
 
     // ACCEPT — applied, with its cross-domain receipt in the same transaction.
     let action = json!({ "tenant_id": tenant_a, "remote_tenant_id": tenant_b });
@@ -600,6 +616,203 @@ async fn each_direction_verb_records_what_it_did() {
 /// 🔴 Proposing to a tenant that does not exist was a RAISED foreign-key
 /// violation and a `500`. It is a typed `404` now, recorded — the refusal a
 /// constraint used to deliver is a value the transaction can commit beside.
+/// `SIGNOFF-REPAIR.5.3.1` — an acceptance pins the counterparty's terms: the
+/// receipt's `remote_ref` and the accepting row's `accepted_against` are the
+/// digest of the counterparty's direction as read at acceptance, and an
+/// acceptance with no counterparty direction is refused. Before this repair the
+/// receipt named the counterparty's TENANT ID — no digest, no record — and the
+/// acceptance went through with nothing on the other side, while its own
+/// refusal message claimed the remote side had to propose first.
+#[tokio::test]
+async fn an_acceptance_pins_the_counterpartys_terms_and_needs_its_proposal() {
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (status, a) = enroll(&client, &base, json!({ "kind": "human", "name": "pin-a" })).await;
+    assert_eq!(status, 200, "A enrolls: {a}");
+    let a_admin = a["principal_id"].as_str().unwrap().to_string();
+    let tenant_a = a["tenant_id"].as_str().unwrap().to_string();
+    let (status, b) = enroll(&client, &base, json!({ "kind": "human", "name": "pin-b" })).await;
+    assert_eq!(status, 200, "B enrolls: {b}");
+    let b_admin = b["principal_id"].as_str().unwrap().to_string();
+    let tenant_b = b["tenant_id"].as_str().unwrap().to_string();
+    let call = |path: &'static str, principal: String, body: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            let response = client
+                .post(format!("{base}{path}"))
+                .header(PRINCIPAL_HEADER, principal)
+                .json(&body)
+                .send()
+                .await
+                .expect("request");
+            let status = response.status().as_u16();
+            let receipt = response
+                .headers()
+                .get("x-reasonbraid-authorization")
+                .map(|v| v.to_str().unwrap().to_string());
+            let body: Value = response.json().await.expect("json");
+            (status, receipt, body)
+        }
+    };
+    let row = |tenant: String, remote: String| {
+        let pool = pool.clone();
+        async move {
+            sqlx::query_as::<_, (String, String, Option<String>)>(
+                "SELECT status, terms_digest, accepted_against FROM federation_agreements \
+                 WHERE tenant_id = $1 AND remote_tenant_id = $2",
+            )
+            .bind(tenant)
+            .bind(remote)
+            .fetch_one(&pool)
+            .await
+            .expect("the direction row")
+        }
+    };
+
+    // 1. A proposes, and accepts with NO direction from B: refused, naming the
+    //    counterparty, and recorded.
+    let (status, _, body) = call(
+        "/v1/federation-agreements",
+        a_admin.clone(),
+        json!({
+            "tenant_id": tenant_a,
+            "remote_tenant_id": tenant_b,
+            "directory_visibility": true,
+            "recruitment": false,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "A proposes: {body}");
+    let action_a = json!({ "tenant_id": tenant_a, "remote_tenant_id": tenant_b });
+    let (status, receipt, body) = call(
+        "/v1/federation-agreements/accept",
+        a_admin.clone(),
+        action_a.clone(),
+    )
+    .await;
+    assert_eq!(
+        status, 409,
+        "an acceptance with nothing to pin is refused: {body}"
+    );
+    assert_eq!(body["code"], json!("invalid_transition"), "{body}");
+    assert!(
+        body["message"]
+            .as_str()
+            .unwrap()
+            .contains("has no live direction toward this tenant"),
+        "{body}"
+    );
+    let outcome: Value =
+        sqlx::query_scalar("SELECT outcome FROM administrative_effects WHERE record_id = $1")
+            .bind(receipt.expect("the refusal carries its receipt"))
+            .fetch_one(&pool)
+            .await
+            .expect("the refusal's effect record");
+    assert_eq!(outcome["kind"], json!("refused"), "{outcome}");
+    let (status, digest_a, against) = row(tenant_a.clone(), tenant_b.clone()).await;
+    assert_eq!(status, "proposed", "the refused acceptance changed nothing");
+    assert_eq!(
+        digest_a,
+        reasonbraid_server::federation::terms_digest(&tenant_a, &tenant_b, true, false),
+        "the proposal carries its terms digest"
+    );
+    assert_eq!(against, None);
+
+    // 2. B proposes; A accepts: the receipt's remote reference IS B's terms
+    //    digest, and A's row records it.
+    let (status, _, body) = call(
+        "/v1/federation-agreements",
+        b_admin.clone(),
+        json!({
+            "tenant_id": tenant_b,
+            "remote_tenant_id": tenant_a,
+            "directory_visibility": true,
+            "recruitment": true,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "B proposes: {body}");
+    let digest_b = reasonbraid_server::federation::terms_digest(&tenant_b, &tenant_a, true, true);
+    let (status, _, body) = call(
+        "/v1/federation-agreements/accept",
+        a_admin.clone(),
+        action_a.clone(),
+    )
+    .await;
+    assert_eq!(status, 200, "A accepts: {body}");
+    let (remote_ref, local_ref): (String, String) = sqlx::query_as(
+        "SELECT remote_ref, local_ref FROM cross_domain_receipts \
+         WHERE tenant_id = $1 AND kind = 'agreement'",
+    )
+    .bind(&tenant_a)
+    .fetch_one(&pool)
+    .await
+    .expect("A's acceptance receipt");
+    assert_eq!(
+        remote_ref, digest_b,
+        "the receipt names the counterparty's terms by digest, not its tenant id"
+    );
+    assert!(remote_ref.starts_with("sha256:"), "{remote_ref}");
+    assert_eq!(local_ref, format!("fed_{tenant_a}_{tenant_b}"));
+    let (status, _, against) = row(tenant_a.clone(), tenant_b.clone()).await;
+    assert_eq!(status, "accepted");
+    assert_eq!(
+        against.as_deref(),
+        Some(digest_b.as_str()),
+        "A accepted against B's terms"
+    );
+
+    // 3. B accepts: symmetric.
+    let (status, _, body) = call(
+        "/v1/federation-agreements/accept",
+        b_admin.clone(),
+        json!({ "tenant_id": tenant_b, "remote_tenant_id": tenant_a }),
+    )
+    .await;
+    assert_eq!(status, 200, "B accepts: {body}");
+    let (_, _, against_b) = row(tenant_b.clone(), tenant_a.clone()).await;
+    assert_eq!(
+        against_b.as_deref(),
+        Some(digest_a.as_str()),
+        "B accepted against A's terms"
+    );
+
+    // 4. A re-proposes on different terms: A's digest changes and its acceptance
+    //    clears; B's row still says which terms of A it accepted against.
+    let (status, _, body) = call(
+        "/v1/federation-agreements",
+        a_admin.clone(),
+        json!({
+            "tenant_id": tenant_a,
+            "remote_tenant_id": tenant_b,
+            "directory_visibility": true,
+            "recruitment": true,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "A re-proposes: {body}");
+    let (status, new_digest_a, against) = row(tenant_a.clone(), tenant_b.clone()).await;
+    assert_eq!(status, "proposed", "the re-proposal reopens A's direction");
+    assert_eq!(
+        new_digest_a,
+        reasonbraid_server::federation::terms_digest(&tenant_a, &tenant_b, true, true)
+    );
+    assert_ne!(new_digest_a, digest_a, "different terms, different digest");
+    assert_eq!(
+        against, None,
+        "the old acceptance was against B's terms as they were; it is cleared"
+    );
+    let (_, _, against_b) = row(tenant_b.clone(), tenant_a.clone()).await;
+    assert_eq!(
+        against_b.as_deref(),
+        Some(digest_a.as_str()),
+        "B's record still names the terms of A it consented against — the OLD ones"
+    );
+}
+
 #[tokio::test]
 async fn proposing_to_an_unknown_tenant_refuses_in_the_record_rather_than_raising() {
     let Some(pool) = pool().await else { return };

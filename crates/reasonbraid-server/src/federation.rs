@@ -21,6 +21,32 @@
 
 use sqlx::PgPool;
 
+/// The digest of a direction's TERMS (`SIGNOFF-REPAIR.5.3.1`): the canonical
+/// form is the pair and the two flags, newline-separated, the booleans spelled
+/// `true`/`false`, SHA-256, hex, `sha256:`-prefixed. ONE recipe in two places —
+/// here for every write, and in `migrations/0096_federation_terms_digest.sql`
+/// for the backfill — and a control derives it by both routes. It is what an
+/// acceptance pins: the receipt's `remote_ref` and the accepting row's
+/// `accepted_against` are the COUNTERPARTY'S digest as read at acceptance, so
+/// the trail says which terms each side saw.
+pub fn terms_digest(
+    tenant_id: &str,
+    remote_tenant_id: &str,
+    directory_visibility: bool,
+    recruitment: bool,
+) -> String {
+    use sha2::Digest;
+    let canonical =
+        format!("{tenant_id}\n{remote_tenant_id}\n{directory_visibility}\n{recruitment}");
+    format!(
+        "sha256:{}",
+        sha2::Sha256::digest(canonical.as_bytes())
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
+    )
+}
+
 /// The EFFECTIVE directory-visibility agreement: BOTH directions accepted
 /// AND both rows carry `directory_visibility`. The one-sided proposal or a
 /// revoked direction widens nothing.
@@ -94,4 +120,23 @@ pub(crate) async fn has_effective_recruitment_agreement_in_tx(
     .fetch_one(&mut *tx)
     .await?;
     Ok(pair == (true, true))
+}
+
+#[cfg(test)]
+mod terms_digest_vectors {
+    /// Two vectors pinned by an INDEPENDENT route (Python's `hashlib` over the
+    /// documented canonical string), so the recipe cannot drift silently — and
+    /// the migration's SQL backfill is held to the same two values by the
+    /// upgrade suite.
+    #[test]
+    fn the_recipe_matches_the_pinned_vectors() {
+        assert_eq!(
+            super::terms_digest("ten_a", "ten_b", true, false),
+            "sha256:724dd4fbcbd8f9b944c6fb62552624c5df7fdf3f4c6e8af574eae99e9334fae6"
+        );
+        assert_eq!(
+            super::terms_digest("ten_b", "ten_a", true, true),
+            "sha256:cc4ce56edf7697431d32b0636a833ab192e89a5f2414762bcfdddff0e14e74f9"
+        );
+    }
 }

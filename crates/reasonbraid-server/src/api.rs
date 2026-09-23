@@ -2102,6 +2102,16 @@ async fn accept_federation_agreement(
             )
             .into_response()
         }
+        // `SIGNOFF-REPAIR.5.3.1`: an acceptance pins the counterparty's terms,
+        // so the counterparty must have proposed — which the message above
+        // always claimed and the code never required.
+        authority::AcceptResult::NoCounterparty { remote_tenant_id } => {
+            ControlApiError::invalid_transition(format!(
+                "the counterparty `{remote_tenant_id}` has no live direction toward this tenant — \
+                 an acceptance pins its terms, so it must propose first"
+            ))
+            .into_response()
+        }
         authority::AcceptResult::Accepted => Json(json!({ "status": "accepted" })).into_response(),
     };
     Ok(([("x-reasonbraid-authorization", receipt)], response).into_response())

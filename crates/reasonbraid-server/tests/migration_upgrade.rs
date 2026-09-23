@@ -229,6 +229,26 @@ async fn an_existing_database_upgrades_and_its_data_survives() {
         .execute(&pool)
         .await
         .expect("seed the tenant");
+    // A pre-upgrade federation direction (`SIGNOFF-REPAIR.5.3.1`): the row the
+    // OLD app wrote carries no terms digest, and the upgrade must backfill it
+    // by the SAME recipe the server computes.
+    let counterparty = "ten_bbbbbbbb-cccc-4ddd-8eee-ffffffffffff";
+    sqlx::query("INSERT INTO tenants (tenant_id) VALUES ($1)")
+        .bind(counterparty)
+        .execute(&pool)
+        .await
+        .expect("seed the counterparty tenant");
+    sqlx::query(
+        "INSERT INTO federation_agreements \
+         (agreement_id, tenant_id, remote_tenant_id, directory_visibility, recruitment, status) \
+         VALUES ($1, $2, $3, true, false, 'accepted')",
+    )
+    .bind(format!("fed_{tenant}_{counterparty}"))
+    .bind(tenant)
+    .bind(counterparty)
+    .execute(&pool)
+    .await
+    .expect("seed a pre-upgrade direction");
     sqlx::query(
         "INSERT INTO enrollment_boundaries \
          (boundary_id, tenant_id, parent_or_root_authority, target_owner, permitted_actions, \
@@ -287,6 +307,26 @@ async fn an_existing_database_upgrades_and_its_data_survives() {
     // migrations land — a backfill that ran as an earlier last-migration
     // (the 0047 quota backfill) is no longer the boundary's concern; the
     // survival assertions above are the boundary-independent truth.
+
+    // 4b. The pre-upgrade direction was backfilled with the digest the server
+    //     itself computes for those terms — the SQL recipe and the Rust recipe
+    //     agree on a real row — and nothing invented an acceptance record.
+    let (terms_digest, accepted_against): (String, Option<String>) = sqlx::query_as(
+        "SELECT terms_digest, accepted_against FROM federation_agreements WHERE tenant_id = $1",
+    )
+    .bind(tenant)
+    .fetch_one(&pool)
+    .await
+    .expect("the direction survived the upgrade");
+    assert_eq!(
+        terms_digest,
+        reasonbraid_server::federation::terms_digest(tenant, counterparty, true, false),
+        "the backfill derives the same digest as the server's recipe"
+    );
+    assert_eq!(
+        accepted_against, None,
+        "an upgrade cannot know what a past acceptance saw"
+    );
 
     // 5. The API behavior survives (the post-upgrade surface works over the
     //    upgraded database): the role enroll path still answers.

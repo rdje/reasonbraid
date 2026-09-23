@@ -893,29 +893,24 @@ impl NodeChannelState {
         .bind(node_id)
         .fetch_one(&self.pool)
         .await?;
-        let mut budget: Option<i64> = None;
-        if let Some(block) = block {
-            // A block that is not even the typed struct holds too: the write
-            // stores only the struct, so this is a hand-edited row, and
-            // fail-closed is the doctrine.
-            let held = match serde_json::from_value::<crate::profiles::Availability>(block) {
-                Ok(availability) => {
-                    let held = crate::wake::hold(Some(&availability), now);
-                    if held.is_none() {
-                        budget = crate::wake::delivery_budget(
-                            availability.concurrency,
-                            in_flight.unwrap_or(0),
-                        );
-                    }
-                    held
+        // The stored block read the ONE way every reader reads it
+        // (`wake::stored`, `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2.3`): no block and
+        // a JSON `null` both declare nothing and hold nothing back; a block
+        // that is not even the typed struct holds — the write stores only the
+        // struct, so it is a hand-edited row, and fail-closed is the doctrine.
+        let budget: Option<i64> = match crate::wake::stored(block.as_ref()) {
+            Err(_) => return Ok(Vec::new()),
+            Ok(availability) => {
+                if crate::wake::hold(availability.as_ref(), now).is_some() {
+                    return Ok(Vec::new());
                 }
-                Err(error) => Some(crate::wake::Hold::Unreadable(
-                    crate::wake::FormatError::Block(error.to_string()),
-                )),
-            };
-            if held.is_some() || budget == Some(0) {
-                return Ok(Vec::new());
+                availability.and_then(|a| {
+                    crate::wake::delivery_budget(a.concurrency, in_flight.unwrap_or(0))
+                })
             }
+        };
+        if budget == Some(0) {
+            return Ok(Vec::new());
         }
         let rows = sqlx::query_as::<
             _,

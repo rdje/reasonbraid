@@ -2307,6 +2307,124 @@ async fn bootstrap_role(client: &reqwest::Client, base: &str, tenant: &str) -> S
     body["principal_id"].as_str().unwrap().to_string()
 }
 
+/// `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2.3` — a profile that declares NO
+/// availability is stored with `"availability": null` (the typed profile
+/// serializes an absent block that way), and the replay must read that as no
+/// declaration: every queued row is handed over. As found the replay parsed
+/// the JSON null as a block, failed, and held the node as *unreadable* — so a
+/// role with any profile but no availability was handed nothing, while its
+/// presence (`presence::hold_from_stored`, which tests for null) read
+/// `available`. The capacity control below seeds `{}`, a shape no write
+/// produces, which is why it never saw this.
+#[tokio::test]
+async fn a_profile_without_availability_holds_nothing_back() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
+    let tenant = "ten_00000000-0000-7000-8000-0000000000d4";
+    let role_id = "rol_00000000-0000-7000-8000-0000000000d4".to_string();
+    sqlx::query("INSERT INTO tenants (tenant_id, name) VALUES ($1, 'no-availability')")
+        .bind(tenant)
+        .execute(&pool)
+        .await
+        .expect("seed tenant");
+    sqlx::query(
+        "INSERT INTO hosts (host_id, tenant_id, name) VALUES ('hst_null_d4', $1, 'null-host')",
+    )
+    .bind(tenant)
+    .execute(&pool)
+    .await
+    .expect("seed the host");
+    sqlx::query("INSERT INTO nodes (node_id, host_id, tenant_id) VALUES ($1, 'hst_null_d4', $2)")
+        .bind(&role_id)
+        .bind(tenant)
+        .execute(&pool)
+        .await
+        .expect("seed the node");
+    let leaf = reasonbraid_server::ca::issue_node_leaf(
+        &ensure_server_ca(&pool).await.expect("server CA"),
+        &role_id,
+        "null-host",
+    )
+    .expect("the fixture host claim is a valid SAN");
+    sqlx::query(
+        "INSERT INTO node_certificates \
+         (cert_fingerprint, node_id, cert_der, key_der, issued_at, expires_at) \
+         VALUES ($1, $2, $3, $4, now(), now() + interval '10 minutes')",
+    )
+    .bind(reasonbraid_server::ca::cert_fingerprint(&leaf.cert_der))
+    .bind(&role_id)
+    .bind(&leaf.cert_der)
+    .bind(&leaf.key_der)
+    .execute(&pool)
+    .await
+    .expect("seed the certificate");
+    sqlx::query("INSERT INTO agent_roles (role_id, tenant_id, name) VALUES ($1, $2, 'null-role')")
+        .bind(&role_id)
+        .bind(tenant)
+        .execute(&pool)
+        .await
+        .expect("seed role");
+    // The profile as the write stores one that declares no availability: the
+    // typed profile serializes the absent block as `null` (a full read of such
+    // a profile returns `"availability": null`).
+    let stored = json!({
+        "display_label": "no availability",
+        "purpose": "probe the replay",
+        "conversation_modes": [],
+        "capabilities": [],
+        "interests": [],
+        "languages": [],
+        "structured_output_formats": [],
+        "scopes": [],
+        "confidentiality_classes": [],
+        "availability": null,
+        "resolver_tool_capabilities": [],
+        "cost_latency_class": null,
+        "resource_ceilings": null,
+        "visibility": {},
+        "grants_by_reference": [],
+        "incarnation_id": null,
+    });
+    sqlx::query("INSERT INTO agent_profiles (role_id, current_version) VALUES ($1, 1)")
+        .bind(&role_id)
+        .execute(&pool)
+        .await
+        .expect("seed profile pointer");
+    sqlx::query(
+        "INSERT INTO profile_versions (version_id, role_id, version, content_hash, profile, written_by) \
+         VALUES ('pver_null_1', $1, 1, 'h', $2, 'agt_null')",
+    )
+    .bind(&role_id)
+    .bind(&stored)
+    .execute(&pool)
+    .await
+    .expect("seed the profile");
+    for n in 1..=2 {
+        let command_id = format!("cmd_null_{n}");
+        state
+            .enqueue(
+                &role_id,
+                &command_id,
+                tenant,
+                "thr_00000000-0000-7000-8000-000000000000",
+                &json!({ "operation": "contribute", "command_id": command_id }),
+            )
+            .await
+            .expect("enqueue");
+    }
+    let handed = state.replay(&role_id, 0).await.expect("replay");
+    assert_eq!(
+        handed
+            .iter()
+            .map(|c| c.command_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["cmd_null_1", "cmd_null_2"],
+        "no declared availability holds nothing back"
+    );
+}
+
 /// `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2.2`: a POSITIVE declared capacity bounds
 /// delivery. The tail is cut at `concurrency − in_flight`, where `in_flight` is
 /// the ladder's `transport_received` count — the same number that makes

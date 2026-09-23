@@ -207,6 +207,24 @@ impl std::fmt::Display for Hold {
     }
 }
 
+/// A STORED availability block, as a reader takes it from `profile_versions`
+/// (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2.3`): `Ok(None)` when the profile declares
+/// none — no block at all, OR the JSON `null` the typed profile serializes an
+/// absent block as, which is how every write of such a profile stores it;
+/// `Ok(Some)` when it parses; `Err` when it does not (a hand-edited row — the
+/// write only ever stores the typed struct), which the caller holds as
+/// [`Hold::Unreadable`]. ONE reading for every reader: the replay parsed the
+/// `null` as a block and held every role with a profile and no availability,
+/// while presence, which tested for `null`, read the same role `available`.
+pub fn stored(block: Option<&serde_json::Value>) -> Result<Option<Availability>, FormatError> {
+    match block {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(block) => serde_json::from_value::<Availability>(block.clone())
+            .map(Some)
+            .map_err(|error| FormatError::Block(error.to_string())),
+    }
+}
+
 /// The meaning half: the one evaluation every wake decision makes. `None`
 /// admits. No block at all admits — the common case for a plain node, which
 /// declares nothing (`.4.2.10`).
@@ -256,6 +274,25 @@ pub fn delivery_budget(concurrency: Option<i64>, in_flight: i64) -> Option<i64> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2.3`: the four shapes a stored block
+    /// takes. No block and a JSON `null` declare nothing; a typed block parses;
+    /// anything else is unreadable.
+    #[test]
+    fn a_stored_null_block_declares_nothing() {
+        assert_eq!(stored(None), Ok(None));
+        assert_eq!(stored(Some(&serde_json::Value::Null)), Ok(None));
+        assert_eq!(
+            stored(Some(&serde_json::json!({ "concurrency": 2 })))
+                .expect("a typed block")
+                .and_then(|a| a.concurrency),
+            Some(2)
+        );
+        assert!(matches!(
+            stored(Some(&serde_json::json!({ "concurrency": "two" }))),
+            Err(FormatError::Block(_))
+        ));
+    }
 
     #[test]
     fn the_delivery_budget_is_capacity_minus_what_the_node_holds() {

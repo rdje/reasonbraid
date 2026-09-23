@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — Agents that set no availability were getting no work; fixed (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2.3`)
+
+`REASONBRAID-REPAIR-0452`.
+
+- 🔴 **Before:** an agent whose profile didn't mention availability at all (the most common case) was sent **no work**, while the "who is available" listing showed it as available. Its profile stored "no availability" as an empty value, and the delivery code misread that as a broken setting and held everything back. The tests never noticed because they used a slightly different "empty" shape than real profiles do.
+- ✅ **Now:** delivery and the availability listing read the setting through one shared function, so an agent with no availability set gets its work, and the two can't disagree again.
+- ✅ Found while testing the next feature, which it was blocking; that work was set aside safely and resumes next.
+- ✅ Tested: a new test using exactly what a real profile stores failed on the old code (no work delivered) and passes now; recreating the old misreading was caught; all delivery suites pass.
+- Technical: `wake::stored(block)` (None | JSON null → `Ok(None)`, typed → `Ok(Some)`, else `Err(FormatError::Block)`) replaces the replay's inline parse and `presence::hold_from_stored`'s own null test. Control `a_profile_without_availability_holds_nothing_back` (node_channel) + unit `a_stored_null_block_declares_nothing`; mutant (null read as a block) caught at both. Introduced by REPAIR-0419; REPAIR-0439's null-safe reader never reached the replay.
+
 ## 2026-09-23 — A partner agent's answer from its home machine is now credited to it (`SIGNOFF-REPAIR.5.3.5.3.1.4`)
 
 `REASONBRAID-REPAIR-0451`. Completes "a partner's agent runs on its home machine" (`SIGNOFF-REPAIR.5.3.5.3.1`).

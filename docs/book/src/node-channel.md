@@ -494,6 +494,14 @@ Two things are deliberately narrow:
   tests for exactly zero, and the write now refuses the value, so it can only
   be a legacy row.
 
+  ⚠️ A profile written without the block is **stored** with
+  `"availability": null`, and until `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2.3` the
+  delivery path read that `null` as a block it could not parse and held the
+  role as *unreadable* — so **every role that had written a profile but
+  declared no availability was handed no work**, while its presence read
+  `available`. Presence and delivery now read the stored block through one
+  function, so they cannot disagree about it again.
+
 ⛔ **The write refuses a format the evaluator could not read** — `400
 invalid_command` naming the field — and a value that nonetheless reaches the
 store (a row written before the formats existed, or edited by hand) **holds the

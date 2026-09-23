@@ -137,15 +137,9 @@ pub fn hold_from_stored(
     block: Option<&serde_json::Value>,
     at: chrono::DateTime<chrono::Utc>,
 ) -> Option<Hold> {
-    let block = block?;
-    if block.is_null() {
-        return None;
-    }
-    match serde_json::from_value::<crate::profiles::Availability>(block.clone()) {
-        Ok(availability) => crate::wake::hold(Some(&availability), at),
-        Err(error) => Some(Hold::Unreadable(crate::wake::FormatError::Block(
-            error.to_string(),
-        ))),
+    match crate::wake::stored(block) {
+        Ok(availability) => crate::wake::hold(availability.as_ref(), at),
+        Err(error) => Some(Hold::Unreadable(error)),
     }
 }
 

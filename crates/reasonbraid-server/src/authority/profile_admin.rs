@@ -454,6 +454,16 @@ async fn import_after_admission(
             other => CardImportResult::CardRefused(other.to_string()),
         });
     }
+    // The availability formats are a pure rung too
+    // (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2`): a card whose block the wake
+    // evaluator could not read is refused here, exactly as the profile write
+    // refuses it, so an imported role is never held by a value nobody can
+    // rewrite from this tenant.
+    if let Some(availability) = &card.profile.availability {
+        if let Err(error) = crate::wake::validate(availability) {
+            return Ok(CardImportResult::CardRefused(error.to_string()));
+        }
+    }
 
     let conn = tx.connection(tenant_id, GuardMode::Exclusive)?;
     let importing = tenant_id.to_string();

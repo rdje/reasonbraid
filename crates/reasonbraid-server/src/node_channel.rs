@@ -99,8 +99,9 @@ pub const LEASE_TTL: ChronoDuration = ChronoDuration::seconds(60);
 ///
 /// ⚠️ **The exclusion is the PER-ROW withholding reasons only, and that line is
 /// argued rather than convenient.** `replay` also withholds for two per-NODE
-/// facts — no usable certificate (`.4.1.3.1`), and a profile declaring zero
-/// concurrency. Those describe the node's standing NOW, not whether any row was
+/// facts — no usable certificate (`.4.1.3.1`), and a profile whose availability
+/// holds it (`crate::wake`: zero concurrency, `manual_only`, outside its
+/// operating hours). Those describe the node's standing NOW, not whether any row was
 /// carried, so including them would suppress TRUE receipts for rows the node
 /// demonstrably holds. The per-row reasons are the ones about which the server
 /// has positive knowledge that this tail did not carry the row.
@@ -134,7 +135,7 @@ pub const LEASE_TTL: ChronoDuration = ChronoDuration::seconds(60);
 ///
 /// ⚠️ **The two per-NODE reasons stay honoured, and the mechanism is better
 /// than the clause that used to say so.** `replay` also withholds for no usable
-/// certificate (`.4.1.3.1`) and a profile declaring zero concurrency; those
+/// certificate (`.4.1.3.1`) and a profile whose availability holds it; those
 /// describe the node's standing NOW, not whether a row was carried. Keying on a
 /// recorded offer is exactly the distinction that clause was reaching for: a row
 /// carried BEFORE the node lost its certificate keeps its receipt, and one never
@@ -772,6 +773,18 @@ impl NodeChannelState {
     /// the handshake's replay, where it is vacuous — `verify_cert_proof` has
     /// already required a usable row for this node id before the tail is read.
     ///
+    /// # The wake gate rides in front of the tail (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2`)
+    ///
+    /// Before the tail is read, the role's current `availability` block is
+    /// evaluated ONCE by `crate::wake` at the database's clock: a zero
+    /// concurrency (the `.4.2.10` drain switch), a `manual_only` wake policy, an
+    /// instant outside the declared operating hours, or a stored value the
+    /// evaluator cannot read each HOLD the role — the tail is not read and no
+    /// row is marked `offered`, which is exactly what the zero-concurrency SQL
+    /// clause this replaces did. The same evaluator gates `POST /v1/threads/auto`,
+    /// so a role that may not be woken may not wake itself either. A plain node
+    /// with no profile declares nothing and is admitted.
+    ///
     /// # Reading the tail IS the offer (`SIGNOFF-REPAIR.11.24.1.1.1`)
     ///
     /// §10.6's `offered` had no producer, so a row the server had handed to a
@@ -802,6 +815,32 @@ impl NodeChannelState {
         node_id: &str,
         after_cursor: i64,
     ) -> Result<Vec<ReplayCommand>, sqlx::Error> {
+        // The wake gate, at the database's clock, before anything is read or
+        // marked. `fetch_one`: the outer select always yields a row, and the
+        // inner one is NULL for a node that has no profile.
+        let (block, now): (Option<Value>, DateTime<Utc>) = sqlx::query_as(
+            "SELECT (SELECT v.profile->'availability' FROM profile_versions v \
+                       JOIN agent_profiles p ON p.role_id = v.role_id \
+                      WHERE v.role_id = $1 AND v.version = p.current_version), \
+                    now()",
+        )
+        .bind(node_id)
+        .fetch_one(&self.pool)
+        .await?;
+        if let Some(block) = block {
+            // A block that is not even the typed struct holds too: the write
+            // stores only the struct, so this is a hand-edited row, and
+            // fail-closed is the doctrine.
+            let held = match serde_json::from_value::<crate::profiles::Availability>(block) {
+                Ok(availability) => crate::wake::hold(Some(&availability), now),
+                Err(error) => Some(crate::wake::Hold::Unreadable(
+                    crate::wake::FormatError::Block(error.to_string()),
+                )),
+            };
+            if held.is_some() {
+                return Ok(Vec::new());
+            }
+        }
         let rows = sqlx::query_as::<
             _,
             (
@@ -828,11 +867,6 @@ impl NodeChannelState {
                    AND EXISTS (SELECT 1 FROM node_certificates c \
                                WHERE c.node_id = $1 \
                                  AND c.revoked_at IS NULL AND c.expires_at > now()) \
-                   AND NOT EXISTS ( \
-                       SELECT 1 FROM profile_versions v \
-                         JOIN agent_profiles p ON p.role_id = v.role_id \
-                       WHERE v.role_id = $1 AND v.version = p.current_version \
-                         AND (v.profile->'availability'->>'concurrency')::bigint = 0) \
              ), marked AS ( \
                  UPDATE node_inbox SET offered_at = now() \
                   WHERE node_id = $1 AND offered_at IS NULL \

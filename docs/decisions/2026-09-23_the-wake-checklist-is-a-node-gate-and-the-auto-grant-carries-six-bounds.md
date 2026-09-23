@@ -75,3 +75,17 @@ hand-off. That is the same shape `.11.4.7.2.1` found in prose, one leaf later.
    health and billing route. Each is adjudicated against the adapters that actually ship
    (the fake, Codex and Claude CLI adapters; `rb-node` constructs only the fake), then built
    or given an evaluable trigger.
+
+## Correction (2026-09-23, `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2`, `REASONBRAID-REPAIR-0419`)
+
+Item 2 above says *the wake gate on the node*. The gate was built at the **server's
+delivery boundary** — `node_channel::replay`, where `PHASE-3.5.2` had put the
+zero-concurrency drain switch — and not on the node, for a reason this record did
+not weigh: the profile and the clock are the server's, and the node holds a copy of
+neither. A node-side evaluator would have been a second reader of the same three
+fields against a second clock. §11.5's *before wake, the node evaluates* is met by
+the server evaluating the block before the node is handed anything: a held role's
+rows stay `queued` and are never offered. The census table's *auto-wake for
+mode/topic* and *operating hours* rows now read: ✅ server, before the tail is read
+(`crate::wake`). The non-zero concurrency cap remains open as
+`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2.2`.

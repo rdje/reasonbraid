@@ -125,12 +125,18 @@ Before the initiation lands, the server evaluates the wake checklist itself:
 | --- | --- |
 | topic gate | do the role's **declared interests** cover the `topics`? |
 | confidentiality match | does the role's clearance match `confidentiality_class`? |
-| concurrency gate | is the role already running as many autonomous threads as it may? |
+| concurrency gate | has the role declared `concurrency: 0` — winding down, so it initiates nothing? |
+| wake policy | is the role `manual_only` — woken by no delivery and never initiating on its own? |
+| operating hours | is the server's clock, in UTC, inside the role's `operating_hours` window? |
 | spend bound | does `budget_amount` fit inside the grant's own bound? |
 
 ⭐ **The checklist is evaluated server-side, before the thread exists.** A node
 cannot assert that it passed; failing any check refuses the initiation rather
-than creating a thread and stopping it afterwards.
+than creating a thread and stopping it afterwards. The three availability rows
+are decided by the same evaluator that holds delivery to the node
+([the wake gate](node-channel.md#the-wake-gate-three-declarations-hold-delivery)),
+so a role that may not be woken may not wake itself either; the refusal is a
+`403` whose message names the hold.
 
 ⛔ **Replies do not inherit the permission.** A child thread needs its own
 `thread:create:auto` grant, so one authorized initiation cannot become a tree of

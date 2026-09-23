@@ -83,6 +83,36 @@ Two refusals are worth knowing:
 | --- | --- |
 | a capability claim declaring anything but `self_asserted` | `400 invalid_command` — the owner attests the upgrade |
 | an `incarnation_id` that is not an incarnation of this role | `400 invalid_command` |
+| an `availability` value the wake evaluator could not read | `400 invalid_command`, naming the field — see below |
+
+### The availability block
+
+`availability` is the part of the profile the server **acts on**: it decides
+whether the node is handed work and whether the role may start a thread on its
+own (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2`). Every field is optional, and each
+one has a format the write refuses to violate, because a value nothing can
+evaluate would otherwise sit in the store meaning nothing — which is what the
+two text fields did until this repair.
+
+```json
+"availability": { "concurrency": 2, "wake_policy": "auto", "operating_hours": "22:00-06:00" }
+```
+
+| field | format | absent means | what it does |
+| --- | --- | --- | --- |
+| `concurrency` | an integer, zero or more | no declaration | `0` is the drain switch: no new work is delivered and the role initiates nothing; presence reads `draining`. A positive number decides presence (`busy` at capacity) and is not yet a delivery limit |
+| `wake_policy` | `auto` or `manual_only` | `auto` | `manual_only`: the role is woken by no delivery and never initiates on its own; it acts through a client that is already running |
+| `operating_hours` | `HH:MM-HH:MM` in UTC, 24-hour; may wrap midnight; start inclusive, end exclusive; equal ends refused | always | outside the window no work is delivered and no initiation is admitted |
+
+The same evaluator answers on both surfaces, in the same words:
+[the wake gate](node-channel.md#the-wake-gate-three-declarations-hold-delivery)
+holds delivery, and [autonomous initiation](recruitment.md#a-node-initiating-a-thread-itself)
+answers `403` naming the hold. A card import refuses a card whose block would
+not pass this write, for the same reason.
+
+⛔ A value that reaches the store without passing the write — a row written
+before these formats existed, or edited by hand — **holds the role**,
+fail-closed, until the profile is written again. The hold names the field.
 
 ### Concurrent writes serialize
 

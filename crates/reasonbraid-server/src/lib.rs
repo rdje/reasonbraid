@@ -160,6 +160,7 @@ mod tx;
 /// The `.1.6.2` static inspection console (embedded at compile time; no API
 /// routes, no write path — the page reads the existing GET surfaces).
 pub mod ui;
+mod wake;
 pub mod workflows;
 
 pub use api::{

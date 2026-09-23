@@ -2110,6 +2110,78 @@ async fn the_zero_concurrency_wake_gate_holds_the_delivery() {
          for exactly zero, not a limiter that compares against an active count"
     );
 
+    // ── `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2`: the two fields that were declared ──
+    // and read nowhere. Each now holds delivery through the SAME evaluator as
+    // the drain switch, and a stored value the evaluator cannot read holds too.
+    set_availability(
+        json!({ "concurrency": 2, "operating_hours": null, "wake_policy": "manual_only" }),
+    )
+    .await;
+    assert!(
+        state
+            .replay(&role_id, 0)
+            .await
+            .expect("the replay")
+            .is_empty(),
+        "`manual_only` HOLDS: the role is woken by no delivery"
+    );
+    set_availability(json!({ "concurrency": 2, "operating_hours": null, "wake_policy": "auto" }))
+        .await;
+    assert_eq!(
+        state.replay(&role_id, 0).await.expect("the replay").len(),
+        1,
+        "`auto` delivers"
+    );
+    // The windows are computed from the clock, so the control is true at any
+    // hour of the day — including across midnight, which the format allows.
+    let now = chrono::Utc::now();
+    let clock = |t: chrono::DateTime<chrono::Utc>| t.format("%H:%M").to_string();
+    let off_hours = format!(
+        "{}-{}",
+        clock(now + chrono::Duration::hours(2)),
+        clock(now + chrono::Duration::hours(4))
+    );
+    let on_hours = format!(
+        "{}-{}",
+        clock(now - chrono::Duration::hours(1)),
+        clock(now + chrono::Duration::hours(1))
+    );
+    set_availability(
+        json!({ "concurrency": 2, "operating_hours": off_hours, "wake_policy": "auto" }),
+    )
+    .await;
+    assert!(
+        state
+            .replay(&role_id, 0)
+            .await
+            .expect("the replay")
+            .is_empty(),
+        "outside the operating hours `{off_hours}` HOLDS"
+    );
+    set_availability(
+        json!({ "concurrency": 2, "operating_hours": on_hours, "wake_policy": "auto" }),
+    )
+    .await;
+    assert_eq!(
+        state.replay(&role_id, 0).await.expect("the replay").len(),
+        1,
+        "inside the operating hours `{on_hours}` delivers"
+    );
+    // The shape a row written before the format existed can have: the write
+    // refuses it now, and a stored one holds rather than admits, fail-closed.
+    set_availability(
+        json!({ "concurrency": 2, "operating_hours": "never", "wake_policy": "auto" }),
+    )
+    .await;
+    assert!(
+        state
+            .replay(&role_id, 0)
+            .await
+            .expect("the replay")
+            .is_empty(),
+        "a stored value the evaluator cannot read HOLDS"
+    );
+
     // ⭐ And the drain state is re-asserted LAST, so the four "delivers" above
     // cannot all be passing because the fixture quietly stopped being deliverable
     // for some unrelated reason. A control whose positive arms could all be

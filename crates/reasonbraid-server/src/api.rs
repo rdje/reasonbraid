@@ -5528,16 +5528,17 @@ async fn create_thread_auto(
         AuthorizationOutcome::Allowed { .. } => {}
     }
 
-    // 2. THE §11.5 checklist (server-side).
-    let profile_row: Option<(Value, Option<i64>)> = sqlx::query_as(
-        "SELECT v.profile, (v.profile->'availability'->>'concurrency')::bigint \
+    // 2. THE §11.5 checklist (server-side). The instant rides the same read,
+    //    from the database's clock, for the operating-hours gate below.
+    let profile_row: Option<(Value, DateTime<Utc>)> = sqlx::query_as(
+        "SELECT v.profile, now() \
          FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
          WHERE v.role_id = $1 AND v.version = p.current_version",
     )
     .bind(role.to_string())
     .fetch_optional(&state.pool)
     .await?;
-    let Some((profile_json, concurrency)) = profile_row else {
+    let Some((profile_json, now)) = profile_row else {
         return Err(ControlApiError::unauthorized(
             "the role declares no profile — the auto-wake cannot be evaluated",
         ));
@@ -5562,11 +5563,14 @@ async fn create_thread_auto(
             )));
         }
     }
-    // c. The concurrency gate (the `.5.2` sibling).
-    if concurrency == Some(0) {
-        return Err(ControlApiError::unauthorized(
-            "the role's declared concurrency is zero — the auto-wake is held",
-        ));
+    // c. The availability gates — the concurrency drain switch, the wake
+    //    policy, the operating hours — by the ONE evaluator the delivery
+    //    boundary uses (`crate::wake`, `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2`): a
+    //    role that may not be woken may not wake itself either.
+    if let Some(hold) = crate::wake::hold(profile.availability.as_ref(), now) {
+        return Err(ControlApiError::unauthorized(format!(
+            "the auto-wake is held: {hold}"
+        )));
     }
     // d. The spend bound: the grant's spend limits cover the declared budget.
     if let Some(budget) = req.budget_amount {
@@ -6511,6 +6515,13 @@ async fn put_profile(
             claim.taxonomy_id,
             claim.confidence.rank_name()
         )));
+    }
+    // The availability formats (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2`): a value the
+    // wake evaluator could not read is refused here, so it never reaches the
+    // store — where it would hold the role fail-closed.
+    if let Some(availability) = &profile.availability {
+        crate::wake::validate(availability)
+            .map_err(|error| ControlApiError::invalid_command(error.to_string()))?;
     }
     let writer = actor_handle_for_subject(&principal).to_string();
     // ONE transaction (`SIGNOFF-REPAIR.3.3.4.11.1`): the role's existence, the

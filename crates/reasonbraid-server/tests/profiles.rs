@@ -2159,6 +2159,191 @@ async fn the_auto_initiation_lands_under_the_grant_and_the_checklist() {
     );
 }
 
+/// `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2`: `wake_policy` and `operating_hours` were
+/// accepted, stored and read nowhere — DOC-0136 stored `"never"` on the running
+/// server and the role still initiated. Each now has a FORMAT the write refuses
+/// to violate and a MEANING one evaluator applies: at the delivery boundary
+/// (the `node_channel` control) and here, at autonomous initiation.
+#[tokio::test]
+async fn the_wake_policy_and_operating_hours_are_formats_and_gates() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "hours-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrols: {human}");
+    let tenant = human["tenant_id"].as_str().unwrap().to_string();
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let boundary_id = human["boundary_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "hours-agent", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "the role enrols: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &human_id, &tenant, &role_id).await;
+    sqlx::query(
+        "UPDATE enrollment_boundaries \
+         SET permitted_actions = permitted_actions || '[\"thread_create_auto\"]'::jsonb \
+         WHERE boundary_id = $1",
+    )
+    .bind(&boundary_id)
+    .execute(&pool)
+    .await
+    .expect("the boundary permits the auto action");
+    sqlx::query(
+        "INSERT INTO authority_grants \
+         (grant_id, boundary_id, tenant_id, issuer, subject_kind, subject_id, actions, selector, \
+          risk_ceiling, spend_limits, delegable, valid_from, expires_at, status) \
+         VALUES ('grt_auto_hours', $1, $2, $3, 'role', $4, '[\"thread_create_auto\"]', \
+                 '{\"kind\":\"tenant_wide\"}', 'low', '{\"amount\": 100.0}', false, \
+                 now(), now() + interval '1 day', 'active')",
+    )
+    .bind(&boundary_id)
+    .bind(&tenant)
+    .bind(&human_id)
+    .bind(&role_id)
+    .execute(&pool)
+    .await
+    .expect("seed the auto grant");
+
+    let write = |availability: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let role_id = role_id.clone();
+        async move {
+            let mut profile = visibility_profile();
+            profile["availability"] = availability;
+            put(
+                &client,
+                &base,
+                &format!("/v1/profiles/{role_id}"),
+                &role_id,
+                &profile,
+            )
+            .await
+        }
+    };
+
+    // ── The FORMAT half: the write refuses what the evaluator could not read.
+    for (availability, names) in [
+        (json!({ "wake_policy": "never" }), "wake_policy"),
+        (json!({ "operating_hours": "9-17" }), "operating_hours"),
+        (
+            json!({ "operating_hours": "09:00-09:00" }),
+            "operating_hours",
+        ),
+        (json!({ "concurrency": -1 }), "concurrency"),
+    ] {
+        let (status, refused) = write(availability.clone()).await;
+        assert_eq!(status, 400, "{availability} is refused: {refused}");
+        assert!(
+            refused["message"].as_str().unwrap_or("").contains(names),
+            "the refusal names `{names}`: {refused}"
+        );
+    }
+    let (status, _missing) =
+        get(&client, &base, &format!("/v1/profiles/{role_id}"), &role_id).await;
+    assert_eq!(
+        status, 404,
+        "no profile was written by the refused attempts"
+    );
+    let (status, written) = write(json!({
+        "concurrency": 2, "wake_policy": "auto", "operating_hours": "22:00-06:00"
+    }))
+    .await;
+    assert_eq!(status, 200, "a well-formed block is written: {written}");
+
+    // ── The MEANING half, at autonomous initiation.
+    let auto = |key: &'static str| {
+        let client = client.clone();
+        let base = base.clone();
+        let role_id = role_id.clone();
+        let tenant = tenant.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/threads/auto"))
+                .header(PRINCIPAL_HEADER, &role_id)
+                .json(&json!({
+                    "tenant_id": tenant,
+                    "subject": "a wake probe",
+                    "objective": "probe",
+                    "topics": ["parser trivia"],
+                    "idempotency_key": key,
+                }))
+                .send()
+                .await
+                .expect("auto request");
+            let status = response.status().as_u16();
+            (status, response.json::<Value>().await.expect("auto json"))
+        }
+    };
+    let now = chrono::Utc::now();
+    let clock = |t: chrono::DateTime<chrono::Utc>| t.format("%H:%M").to_string();
+    let off_hours = format!(
+        "{}-{}",
+        clock(now + chrono::Duration::hours(2)),
+        clock(now + chrono::Duration::hours(4))
+    );
+    let on_hours = format!(
+        "{}-{}",
+        clock(now - chrono::Duration::hours(1)),
+        clock(now + chrono::Duration::hours(1))
+    );
+
+    let (status, _) = write(json!({ "wake_policy": "manual_only" })).await;
+    assert_eq!(status, 200);
+    let (status, refused) = auto("wake-manual").await;
+    assert_eq!(status, 403, "{refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("manual_only"),
+        "the refusal names the policy: {refused}"
+    );
+
+    let (status, _) = write(json!({ "wake_policy": "auto", "operating_hours": off_hours })).await;
+    assert_eq!(status, 200);
+    let (status, refused) = auto("wake-off-hours").await;
+    assert_eq!(status, 403, "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("operating hours"),
+        "the refusal names the hours: {refused}"
+    );
+
+    let (status, _) = write(json!({ "wake_policy": "auto", "operating_hours": on_hours })).await;
+    assert_eq!(status, 200);
+    let (status, landed) = auto("wake-on-hours").await;
+    assert_eq!(
+        status, 200,
+        "inside the hours, under `auto`, the initiation lands: {landed}"
+    );
+    assert!(landed["thread_id"].as_str().unwrap().starts_with("thr_"));
+
+    // The drain switch answers through the same evaluator, in the same words.
+    let (status, _) = write(json!({ "concurrency": 0 })).await;
+    assert_eq!(status, 200);
+    let (status, refused) = auto("wake-draining").await;
+    assert_eq!(status, 403, "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("concurrency is zero"),
+        "{refused}"
+    );
+}
+
 /// `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.1` with `SIGNOFF-REPAIR.5.2` clause 1, which
 /// ship together: a role may initiate MORE THAN ONCE — the key is per
 /// initiation now — and how often is bounded by the `initiator` quota:

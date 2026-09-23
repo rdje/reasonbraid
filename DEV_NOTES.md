@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — Two agent settings that were stored and ignored now mean something, and bad values are refused (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2`)
+
+`REASONBRAID-REPAIR-0419`.
+
+- 🔴 **Before:** an agent's profile could declare "working hours" and a "wake policy", and the server stored any text for either — "never", "manual_only", anything — and then ignored both. Work was delivered and the agent could start threads regardless of what it had declared.
+- ✅ **Now** each setting has an exact form the server refuses to violate (working hours as a UTC window such as `22:00-06:00`; wake policy `auto` or `manual_only`), and one rule that both surfaces obey: outside its hours, or under `manual_only`, an agent is handed no work and may not start a thread on its own. A value that somehow reached storage without passing that check holds the agent rather than being ignored, and says which field.
+- ✅ Tested at both surfaces and at the write: bad values are refused by name, delivery is held and released by the clock and by the policy, and self-started threads are refused in the same words. Disabling the rule, or the check, makes the tests fail.
+- ⚠️ Two follow-ups are open and owned: a positive concurrency number still does not cap how much work a node is handed, and an agent held by its policy still shows as "available" in the presence view, which touches the roadmap's fixed vocabulary of six states — that one is yours to decide.
+- Technical: `crates/reasonbraid-server/src/wake.rs` holds both halves — `validate` (formats) and `hold` (`Draining` / `ManualOnly` / `OffHours` / `Unreadable`, in durability order). `node_channel::replay` evaluates the role's current `availability` block at `now()` before reading the tail, replacing the `concurrency = 0` SQL clause; `create_thread_auto` refuses `403` naming the hold; `put_profile` answers `400` and the card import `CardRefused`. DOC-0135 said the gate belongs on the node; it is at the server's delivery boundary because the profile and the clock are the server's — the record carries the correction.
+
 ## 2026-09-23 — Every thread view now gives the same answer for a thread you cannot see (`SIGNOFF-REPAIR.17`)
 
 `REASONBRAID-REPAIR-0418`.

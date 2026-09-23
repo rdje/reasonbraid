@@ -403,25 +403,45 @@ and a fenced session that receives a stale tail leaves no trace — the rows sta
 in the inbox and replay to whoever holds the lease. An in-transaction
 re-verification there would buy a lock on every delivery poll and no invariant.
 
-## The wake gate is a drain switch
+## The wake gate: three declarations hold delivery
 
-A role's profile may declare `availability.concurrency`. The delivery path reads
-it and holds work when it is **exactly zero** — the state presence reports as
-`draining`. That is the whole of it (`.4.2.10`):
+A role's profile may declare an `availability` block. The delivery path
+evaluates it **once, before it reads the node's tail**, and holds work — the
+rows stay `queued`, none is marked `offered` — when any of these is true
+(`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2`; the zero case is `.4.2.10`'s drain switch):
 
-- `concurrency: 0` — the node receives no new work. Its in-flight session is not
-  cut: `poll` still admits, and `ack` and `events` are untouched, so it finishes
-  and reports what it already holds. This is the same filter-not-refusal shape
+| declaration | holds when | format |
+| --- | --- | --- |
+| `concurrency` | it is **exactly zero** — the role is winding down; presence reads `draining` | an integer, zero or more |
+| `wake_policy` | it is `manual_only` — the role is woken by no delivery and never initiates on its own; it acts through a client that is already running (§11.6's MCP active-client path) | `auto` (what an absent field means) or `manual_only` |
+| `operating_hours` | the server's clock, in UTC, is **outside** the window | `HH:MM-HH:MM`, UTC; may wrap midnight (`22:00-06:00`); start inclusive, end exclusive |
+
+The same evaluator gates `POST /v1/threads/auto`, so a role that may not be
+woken may not wake itself either — the refusal there is a `403` that names the
+hold in the same words.
+
+Two things are deliberately narrow:
+
+- **The hold is a filter, not a refusal.** The in-flight session is not cut:
+  `poll` still admits, `ack` and `events` are untouched, so the node finishes
+  and reports what it already holds. It simply gets no more — the same shape
   revocation uses.
-- **anything else delivers** — a positive number, a negative one, a profile with
-  no `concurrency` key, a profile with no `availability` block, or no profile at
-  all (the common case for a plain node).
+- **Anything undeclared admits.** A profile with no `availability` block, no
+  `concurrency` key, or no profile at all (the common case for a plain node)
+  delivers. A stored *negative* concurrency also delivers: the drain switch
+  tests for exactly zero, and the write now refuses the value, so it can only
+  be a legacy row.
 
-⚠️ **It is still not a concurrency limiter, and that is worth stating twice
-now that the number is read.** Declaring `concurrency: 2` does not cap the node
-at two in-flight commands: the delivery path compares only against **zero**, and
-a node that declares two will receive a third row. An operator who wants a
-delivery limit must enforce it at the node.
+⛔ **The write refuses a format the evaluator could not read** — `400
+invalid_command` naming the field — and a value that nonetheless reaches the
+store (a row written before the formats existed, or edited by hand) **holds the
+role, fail-closed**, until the profile is written again. Until this repair
+`operating_hours: "never"` was stored verbatim and gated nothing.
+
+⚠️ **It is still not a concurrency limiter.** Declaring `concurrency: 2` does
+not cap the node at two in-flight commands: a node that declares two will
+receive a third row. An operator who wants a delivery limit must enforce it at
+the node; the server-side cap is owned by `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2.2`.
 
 What the declared number *does* do, since `SIGNOFF-REPAIR.11.24.1.2`, is decide
 presence. A node holding as many commands as it declared reads `busy` — see

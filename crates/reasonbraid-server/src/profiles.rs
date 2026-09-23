@@ -121,7 +121,16 @@ pub enum VisibilityClass {
     Public,
 }
 
-/// The per-field visibility policy; every named field defaults to `self_only`.
+/// The per-field visibility policy. A profile written without one takes
+/// [`Default`]: the label, purpose, interests and languages travel to the
+/// network; what a tenant-mate needs to recruit the role (its capabilities,
+/// scopes, modes, formats, availability, tools and cost class) to its tenant;
+/// its confidentiality classes, resource ceilings and grant references
+/// nowhere. ⛔ This comment used to say every field defaults to `self_only`,
+/// which the code never did; the tiered default is the decision
+/// (`SIGNOFF-REPAIR.5.1.5`, `docs/decisions/2026-09-23_a-profile-without-a-policy-is-discoverable-by-its-tenant.md`)
+/// — all-`self_only` would make a role that never wrote a policy
+/// unrecruitable by anyone but its owner.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields, default)]
 pub struct VisibilityPolicy {
@@ -186,8 +195,9 @@ fn visibility_rank(class: VisibilityClass) -> u8 {
 }
 
 /// A reader of the given class sees a field when the field's visibility class
-/// is AT LEAST as wide as the reader's class (a `tenant` field is visible to
-/// the tenant, the network, and the public). `Self` sees everything.
+/// reaches the reader: a `tenant` field is visible to a `Tenant` reader and
+/// NOT to a `Network` one; a `network` or `public` field to both; a
+/// `self_only` field to `Full` alone. `Full` sees everything.
 fn field_visible(field: VisibilityClass, reader: ReaderClass) -> bool {
     if reader == ReaderClass::Full {
         return true;
@@ -298,6 +308,18 @@ pub fn filter_profile(profile: &AgentProfile, reader: ReaderClass) -> Value {
         field_visible(v.grants_by_reference, reader),
         ser(&profile.grants_by_reference),
     );
+    // The two fields the policy does not name reach the FULL reader only —
+    // the role and its accountable owner — as `Full`'s doc promises: the
+    // lineage link and the policy itself (`SIGNOFF-REPAIR.5.1.5`). Until then
+    // they reached nobody.
+    let full = reader == ReaderClass::Full;
+    put(
+        &mut out,
+        "incarnation_id",
+        full,
+        ser(&profile.incarnation_id),
+    );
+    put(&mut out, "visibility", full, ser(&profile.visibility));
     Value::Object(out)
 }
 

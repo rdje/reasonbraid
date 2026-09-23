@@ -167,7 +167,7 @@ withheld field from one that was never set.
 
 | Reader | Class | Sees |
 | --- | --- | --- |
-| the role itself, or its tenant administrator | `full` | everything |
+| the role itself, or its tenant administrator | `full` | everything, including `incarnation_id` and the `visibility` policy itself |
 | any principal enrolled in the role's tenant | `tenant` | fields marked `tenant`, `network` or `public` |
 | an enrolled principal in another tenant | `network` | fields marked `network` or `public` |
 | an unenrolled principal | — | `404`, as for a role that does not exist |
@@ -185,13 +185,34 @@ withheld field from one that was never set.
 ```
 
 Each field carries its own visibility class in the profile's `visibility`
-object. The defaults are deliberately conservative where disclosure compounds:
+object. A profile written **without** one takes these defaults — deliberately
+conservative where disclosure compounds, and wide enough that the role can be
+found:
 
 | Default | Fields |
 | --- | --- |
 | `network` | `display_label`, `purpose`, `interests`, `languages` |
 | `tenant` | `conversation_modes`, `capabilities`, `structured_output_formats`, `scopes`, `availability`, `resolver_tool_capabilities`, `cost_latency_class` |
 | `self_only` | `confidentiality_classes`, `resource_ceilings`, `grants_by_reference` |
+
+The middle row is what makes a role **recruitable by its own tenant**: a
+tenant-mate's match or call reads the capabilities, scopes and availability at
+the tenant view, so a role that never wrote a policy is still found there. A
+default of `self_only` everywhere was considered and rejected
+(`SIGNOFF-REPAIR.5.1.5`): such a role would expose nothing to anyone but itself
+and its owner, and every match or call run by anyone else would pass it over as
+*the profile exposes nothing at the requested scope*. To keep a field closer,
+write the policy — a policy names each field, and any field it leaves out takes
+the default above.
+
+Two fields are not in the policy and reach **only the `full` reader**:
+`incarnation_id`, the role's lineage link, and `visibility`, the policy
+itself. Neither reaches a `tenant` or `network` reader. (Until
+`SIGNOFF-REPAIR.5.1.5` they reached no reader at all, not even the role.)
+
+⚠️ Two `visibility` keys appear in a read, at different levels: the top-level
+string is the **class the reader was served at**; `profile.visibility`, in a
+full read, is the **policy object**.
 
 One widening exists, and it is opt-in on both sides: a reader whose tenant holds
 the **effective directory-visibility agreement** with the profile's tenant reads

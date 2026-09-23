@@ -1042,6 +1042,173 @@ async fn the_same_profile_read_by_four_readers_yields_exactly_the_allowed_fields
     assert_eq!(claim["confidence"], json!("self_asserted"));
 }
 
+/// `SIGNOFF-REPAIR.5.1.5`: a profile written WITHOUT a visibility policy takes
+/// the documented default — its label travels to the network, its
+/// capabilities to its tenant, its confidentiality classes nowhere — so a
+/// tenant-mate still DISCOVERS it (clause 1: the shipped default is the
+/// decision, pinned here; every other control writes an explicit policy, and
+/// the suite passed unchanged with an all-`self_only` default). And the full
+/// reader receives the whole profile, `incarnation_id` and `visibility`
+/// included, which no other class does (clause 3; as found, nobody did).
+#[tokio::test]
+async fn a_profile_without_a_policy_takes_the_default_and_the_full_reader_sees_all_of_it() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, owner) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "default-owner" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the owner enrolls: {owner}");
+    let tenant = owner["tenant_id"].as_str().unwrap().to_string();
+    let owner_id = owner["principal_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "default-agent", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "the role enrolls: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &owner_id, &tenant, &role_id).await;
+    let (status, sibling) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "default-sibling", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "the sibling enrolls: {sibling}");
+    let sibling_id = sibling["principal_id"].as_str().unwrap().to_string();
+    let (status, stranger) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "default-stranger" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the stranger enrolls: {stranger}");
+    let stranger_id = stranger["principal_id"].as_str().unwrap().to_string();
+
+    let incarnation: String = sqlx::query_scalar(
+        "SELECT incarnation_id FROM incarnations WHERE role_id = $1 \
+         ORDER BY valid_from DESC NULLS LAST LIMIT 1",
+    )
+    .bind(&role_id)
+    .fetch_one(&pool)
+    .await
+    .expect("the role's incarnation");
+    let mut body = profile(json!([{ "taxonomy_id": "code_review" }]));
+    assert!(body.get("visibility").is_none(), "no policy is written");
+    body["incarnation_id"] = json!(incarnation);
+    let (status, written) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &role_id,
+        &body,
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the role writes a policy-less profile: {written}"
+    );
+
+    let read = |principal: String| {
+        let client = client.clone();
+        let base = base.clone();
+        let role_id = role_id.clone();
+        async move {
+            let (status, body) = get(
+                &client,
+                &base,
+                &format!("/v1/profiles/{role_id}"),
+                &principal,
+            )
+            .await;
+            assert_eq!(status, 200, "the read succeeds: {body}");
+            body
+        }
+    };
+
+    // The discovery the default exists for: a tenant-mate's match finds the
+    // policy-less role by its tenant-visible capability.
+    let response = client
+        .post(format!("{base}/v1/directory/match"))
+        .header(PRINCIPAL_HEADER, &sibling_id)
+        .json(&json!({ "expression": {
+            "scope": "tenant",
+            "capabilities": [{ "taxonomy_id": "code_review", "min_confidence": "self_asserted" }],
+            "presence_states": ["available", "offline"],
+        }}))
+        .send()
+        .await
+        .expect("match request");
+    assert_eq!(response.status().as_u16(), 200, "the match resolves");
+    let matched: Value = response.json().await.unwrap();
+    assert!(
+        matched["candidates"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c["role_id"] == json!(role_id)),
+        "the tenant-mate discovers the policy-less role: {matched}"
+    );
+
+    // Clause 1: the default, read by the tenant and the network.
+    let tenant_view = read(sibling_id.clone()).await;
+    let fields = tenant_view["profile"].as_object().unwrap();
+    for key in ["display_label", "capabilities", "scopes"] {
+        assert!(
+            fields.contains_key(key),
+            "the tenant reads `{key}`: {fields:?}"
+        );
+    }
+    for hidden in ["confidentiality_classes", "incarnation_id", "visibility"] {
+        assert!(
+            !fields.contains_key(hidden),
+            "the tenant never reads `{hidden}`: {fields:?}"
+        );
+    }
+    let network_view = read(stranger_id.clone()).await;
+    let fields = network_view["profile"].as_object().unwrap();
+    for key in ["display_label", "purpose", "interests", "languages"] {
+        assert!(
+            fields.contains_key(key),
+            "the network reads `{key}`: {fields:?}"
+        );
+    }
+    for hidden in ["capabilities", "scopes", "incarnation_id", "visibility"] {
+        assert!(
+            !fields.contains_key(hidden),
+            "the network never reads `{hidden}`: {fields:?}"
+        );
+    }
+
+    // Clause 3: the full reader — the role and its owner — gets the lineage
+    // link and the policy itself.
+    for full in [role_id.clone(), owner_id.clone()] {
+        let own = read(full).await;
+        assert_eq!(own["visibility"], json!("full"), "{own}");
+        assert_eq!(
+            own["profile"]["incarnation_id"],
+            json!(incarnation),
+            "{own}"
+        );
+        let policy = &own["profile"]["visibility"];
+        assert_eq!(policy["display_label"], json!("network"), "{own}");
+        assert_eq!(policy["capabilities"], json!("tenant"), "{own}");
+        assert_eq!(
+            policy["confidentiality_classes"],
+            json!("self_only"),
+            "{own}"
+        );
+    }
+}
+
 /// The history stays FULL-only: a tenant sibling or a stranger cannot read
 /// the version history (the past versions may carry fields later reclassified).
 #[tokio::test]

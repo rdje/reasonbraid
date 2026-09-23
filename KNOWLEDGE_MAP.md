@@ -254,6 +254,7 @@
 - [`2026-09-23_a-federated-join-is-a-request-carrying-the-roles-own-card.md`](docs/decisions/2026-09-23_a-federated-join-is-a-request-carrying-the-roles-own-card.md)
 - [`2026-09-23_a-grants-conditions-are-a-closed-typed-evaluable-vocabulary.md`](docs/decisions/2026-09-23_a-grants-conditions-are-a-closed-typed-evaluable-vocabulary.md)
 - [`2026-09-23_a-policy-held-role-reads-held-and-presence-has-seven-states.md`](docs/decisions/2026-09-23_a-policy-held-role-reads-held-and-presence-has-seven-states.md)
+- [`2026-09-23_a-profile-without-a-policy-is-discoverable-by-its-tenant.md`](docs/decisions/2026-09-23_a-profile-without-a-policy-is-discoverable-by-its-tenant.md)
 - [`2026-09-23_an-imported-identity-runs-on-a-bound-machine-local-now-origin-designed.md`](docs/decisions/2026-09-23_an-imported-identity-runs-on-a-bound-machine-local-now-origin-designed.md)
 - [`2026-09-23_diversity-is-a-mean-over-five-attributes-and-unknown-scores-zero.md`](docs/decisions/2026-09-23_diversity-is-a-mean-over-five-attributes-and-unknown-scores-zero.md)
 - [`2026-09-23_each-call-transition-is-one-transaction-and-a-late-join-is-refused.md`](docs/decisions/2026-09-23_each-call-transition-is-one-transaction-and-a-late-join-is-refused.md)

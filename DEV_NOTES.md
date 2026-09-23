@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — An agent's owner now sees its whole profile; the privacy defaults are confirmed and explained (`SIGNOFF-REPAIR.5.1.5`)
+
+`REASONBRAID-REPAIR-0445`. Closes the directory-privacy work (`SIGNOFF-REPAIR.5.1`).
+
+- 🔴 **Before:** an agent and its owner were promised "the full profile" but never saw two parts of it: which running instance the agent is, and its own privacy settings. Separately, a code comment claimed every profile field is private unless the agent says otherwise, which was never true, and another comment described the privacy rule backwards.
+- ✅ **Now:** the agent and its owner see both parts; nobody else does. The two wrong comments are corrected.
+- ⚖️ **A decision taken, and measured:** an agent that never sets privacy settings keeps the current defaults — its name and purpose visible to everyone, its skills visible to its own organisation, sensitive details hidden. Making everything private by default was tested: the agent then became invisible to its own organisation's searches, so nobody could recruit it. The book now explains the defaults and how to override them.
+- ✅ Tested: the new test failed on the old code and passes now; the "everything private" version was run and the test caught it; the profile suite (87) and three neighbouring suites pass.
+- Technical: `filter_profile` emits `incarnation_id` and `visibility` for `ReaderClass::Full` only; `VisibilityPolicy` and `field_visible` doc comments corrected. Clause-1 measurement: all-`self_only` default → suite 86/86 before the new control (no test reads a policy-less profile as a non-owner), and with it the tenant-mate's match returns no candidates. Control `a_profile_without_a_policy_takes_the_default_and_the_full_reader_sees_all_of_it` (discovery arm first). Record: `docs/decisions/2026-09-23_a-profile-without-a-policy-is-discoverable-by-its-tenant.md`.
+
 ## 2026-09-23 — Unknown facts about an agent no longer count as variety on a panel (`SIGNOFF-REPAIR.5.1.3`)
 
 `REASONBRAID-REPAIR-0444`.

@@ -6332,6 +6332,7 @@ async fn open_recruitment_call(
 async fn respondent_candidate<'e>(
     executor: impl sqlx::PgExecutor<'e>,
     role_id: &str,
+    at: chrono::DateTime<Utc>,
 ) -> Option<(
     crate::matching::EligibilityCandidate,
     crate::presence::PresenceState,
@@ -6354,10 +6355,8 @@ async fn respondent_candidate<'e>(
     .await
     .ok()?;
     let (online, suspended, concurrency, profile, in_flight) = row?;
-    let hold = crate::presence::hold_from_stored(
-        profile.as_ref().and_then(|p| p.get("availability")),
-        Utc::now(),
-    );
+    let hold =
+        crate::presence::hold_from_stored(profile.as_ref().and_then(|p| p.get("availability")), at);
     let state = crate::presence::presence_state(
         true,
         suspended,
@@ -6507,12 +6506,15 @@ pub(crate) async fn respond_to_call_core(
     // ineligible (or unwilling) declaring why, and must not be refused.
     let participation = matches!(response.kind(), "join" | "conditional_join");
     if participation {
-        let Some((candidate, _state)) = respondent_candidate(&mut *tx, &respondent).await else {
+        // ONE instant judges the respondent: its hold and its claims' expiry.
+        let at = Utc::now();
+        let Some((candidate, _state)) = respondent_candidate(&mut *tx, &respondent, at).await
+        else {
             return Err(ControlApiError::unauthorized(
                 "the respondent has no enrolled node/profile",
             ));
         };
-        let verdict = crate::matching::eligible(&expression, &candidate);
+        let verdict = crate::matching::eligible(&expression, &candidate, at);
         if !verdict.eligible {
             return Err(ControlApiError::unauthorized(format!(
                 "the respondent is ineligible: {}",
@@ -6620,9 +6622,12 @@ async fn close_call(
         crate::matching::EligibilityCandidate,
         crate::matching::EligibilityVerdict,
     )> = Vec::new();
+    // ONE instant judges the whole panel — every joiner's hold and every
+    // claim's expiry — so two joiners are never judged at different times.
+    let at = Utc::now();
     for joiner in &joiners {
-        if let Some((candidate, _)) = respondent_candidate(&mut *tx, joiner).await {
-            let verdict = crate::matching::eligible(&expression, &candidate);
+        if let Some((candidate, _)) = respondent_candidate(&mut *tx, joiner, at).await {
+            let verdict = crate::matching::eligible(&expression, &candidate, at);
             candidates.push((candidate, verdict));
         }
     }
@@ -6948,6 +6953,8 @@ async fn directory_match(
     // neither satisfies a requirement nor appears in the answer.
     let mut class_by_tenant: std::collections::HashMap<String, crate::profiles::ReaderClass> =
         std::collections::HashMap::new();
+    // ONE instant judges every candidate — its hold and its claims' expiry.
+    let at = Utc::now();
     let mut scope_by_role: std::collections::HashMap<String, crate::profiles::ReaderClass> =
         std::collections::HashMap::new();
     let mut candidates: Vec<(
@@ -7002,7 +7009,7 @@ async fn directory_match(
             scope: effective,
             ..req.expression.clone()
         };
-        let hold = crate::wake::hold(parsed.availability.as_ref(), Utc::now());
+        let hold = crate::wake::hold(parsed.availability.as_ref(), at);
         let state_now = crate::presence::presence_state(
             true,
             suspended,
@@ -7020,7 +7027,7 @@ async fn directory_match(
             // zero (§14.5) — a budget requirement therefore cannot be proven.
             available_budget: None,
         };
-        let verdict = crate::matching::eligible(&scoped, &candidate);
+        let verdict = crate::matching::eligible(&scoped, &candidate, at);
         scope_by_role.insert(node_id, effective);
         candidates.push((candidate, verdict));
     }

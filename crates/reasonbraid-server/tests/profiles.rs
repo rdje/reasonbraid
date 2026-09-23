@@ -16554,3 +16554,139 @@ async fn a_moderator_moderates_and_is_refused_everything_else() {
     .await
     .expect("drop the custom profile");
 }
+
+/// `SIGNOFF-REPAIR.5.1.2` — an expired capability claim satisfies nothing, at
+/// any of the three surfaces that judge eligibility: the match, the response,
+/// and the close's re-resolution of the panel. Until this leaf nothing read
+/// `expires_at`, so a lapsed attestation qualified a role for ever.
+#[tokio::test]
+async fn an_expired_claim_satisfies_no_eligibility_surface() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let world = call_world(&client, &base, "claim-expiry", 3).await;
+    let (live, lapsed, lapsing) = (
+        world.roles[0].clone(),
+        world.roles[1].clone(),
+        world.roles[2].clone(),
+    );
+
+    // `lapsed` re-declares its claim with an expiry already behind it, and the
+    // owner attests it: the attestation keeps the expiry, as it keeps every
+    // other field of the claim it upgrades.
+    let mut expired = visibility_profile();
+    expired["capabilities"][0]["expires_at"] =
+        json!((chrono::Utc::now() - chrono::Duration::days(1)).to_rfc3339());
+    let (status, body) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{lapsed}"),
+        &lapsed,
+        &expired,
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let (status, body) = post(
+        &client,
+        &base,
+        &format!("/v1/profiles/{lapsed}/attest"),
+        &world.human_id,
+        &json!({ "taxonomy_id": "code_review", "evidence_ref": "evt_claim-expiry/lapsed" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        body["profile"]["capabilities"][0]["confidence"],
+        json!("owner_attested")
+    );
+    assert!(
+        body["profile"]["capabilities"][0]["expires_at"].is_string(),
+        "the attested claim keeps its expiry: {body}"
+    );
+
+    // 1. The match: the lapsed role is not a candidate; its peers are.
+    let (status, matched) = post(
+        &client,
+        &base,
+        "/v1/directory/match",
+        &world.human_id,
+        &json!({ "expression": call_body(&world, 1, 3)["expression"] }),
+    )
+    .await;
+    assert_eq!(status, 200, "{matched}");
+    let mut candidates: Vec<String> = matched["candidates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["role_id"].as_str().unwrap().to_string())
+        .collect();
+    candidates.sort();
+    let mut expected = vec![live.clone(), lapsing.clone()];
+    expected.sort();
+    assert_eq!(
+        candidates, expected,
+        "a lapsed claim qualifies no candidate"
+    );
+
+    // 2. The response: the lapsed role's join is refused, naming the expiry.
+    let (status, body) = post(
+        &client,
+        &base,
+        "/v1/calls",
+        &world.human_id,
+        &call_body(&world, 1, 3),
+    )
+    .await;
+    assert_eq!(status, 200, "the call opens: {body}");
+    let call_id = body["call_id"].as_str().unwrap().to_string();
+    let respond = format!("/v1/calls/{call_id}/respond");
+    let (status, refused) = post(
+        &client,
+        &base,
+        &respond,
+        &lapsed,
+        &json!({ "kind": "join" }),
+    )
+    .await;
+    assert_eq!(status, 403, "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("capability `code_review` expired at"),
+        "the refusal names the expiry: {refused}"
+    );
+    for role in [&live, &lapsing] {
+        let (status, body) = post(&client, &base, &respond, role, &json!({ "kind": "join" })).await;
+        assert_eq!(status, 200, "a live claim joins: {body}");
+    }
+
+    // 3. The close re-resolves every joiner at ITS instant: `lapsing`'s claim
+    //    runs out after it joined, and it is not seated. The expiry is moved
+    //    in the store rather than waited for, so the control has no sleep.
+    sqlx::query(
+        "UPDATE profile_versions v SET profile = jsonb_set(v.profile, '{capabilities,0,expires_at}', to_jsonb($2::text)) \
+         FROM agent_profiles p WHERE p.role_id = v.role_id AND v.version = p.current_version AND v.role_id = $1",
+    )
+    .bind(&lapsing)
+    .bind((chrono::Utc::now() - chrono::Duration::seconds(1)).to_rfc3339())
+    .execute(&pool)
+    .await
+    .expect("age the claim");
+    let (status, closed) = post(
+        &client,
+        &base,
+        &format!("/v1/calls/{call_id}/close"),
+        &world.human_id,
+        &json!({}),
+    )
+    .await;
+    assert_eq!(status, 200, "{closed}");
+    assert_eq!(
+        closed["panel"],
+        json!([live]),
+        "a claim that lapsed between the join and the close seats nobody"
+    );
+}

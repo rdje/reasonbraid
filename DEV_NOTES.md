@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — An expired skill endorsement no longer qualifies an agent (`SIGNOFF-REPAIR.5.1.2`)
+
+`REASONBRAID-REPAIR-0442`.
+
+- 🔴 **Before:** a skill in an agent's profile can carry an expiry date, and nothing ever read it. An endorsement that lapsed last year still got the agent found by searches, admitted to calls and seated on panels.
+- ✅ **Now:** a skill counts only until its expiry. A search leaves the agent out, a request to join is refused with the date it expired, and the panel is checked again when the call closes, so a skill that lapses between joining and closing does not win a seat. Expiry works exactly like a permission's expiry, so the two never disagree about the boundary moment.
+- ✅ Two details handled deliberately: someone who cannot see an agent's skills is never told when one expired, and an agent listing the same skill twice is judged on its best current one.
+- ✅ Tested at both levels. Run against a copy that ignores expiry, the new end-to-end test failed; restored, the full profile suite passes.
+- Technical: `matching::eligible(expression, candidate, at)`, `claim_live` (half-open), declared → visible → live → provenance, strongest live claim decides; `respondent_candidate` takes the instant; one instant per respond/close/match. Controls: 3 unit + `an_expired_claim_satisfies_no_eligibility_surface`; mutants M0 (expiry unread) and M1 (close judged a day early) both caught.
+
 ## 2026-09-23 — The directory-privacy checklist checked against the code: three items already hold, three are real gaps now scheduled (`SIGNOFF-REPAIR.5.1`)
 
 `REASONBRAID-DOC-0149`. A review; no code changed.

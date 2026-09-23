@@ -114,6 +114,42 @@ not pass this write, for the same reason.
 before these formats existed, or edited by hand — **holds the role**,
 fail-closed, until the profile is written again. The hold names the field.
 
+### A claim's expiry
+
+A capability claim may carry an `expires_at` (RFC 3339). It is the instant the
+claim stops **qualifying** the role; the claim itself stays in the profile, shown
+with its expiry, like every other declaration (`SIGNOFF-REPAIR.5.1.2`).
+
+```json
+"capabilities": [{"taxonomy_id": "schema_review", "expires_at": "2026-12-31T00:00:00Z"}]
+```
+
+- **Live** means no `expires_at`, or one still ahead of the instant the check
+  runs. A claim expiring exactly at that instant is already expired — the same
+  half-open rule an authority grant's `expires_at` follows, so the two never
+  disagree about a boundary.
+- Every surface that asks whether a role qualifies asks it at **one** instant
+  per request: [the directory match](site-authority.md), a
+  [response to a call](#responding-to-an-open-call), and the close that seats
+  the panel. The close judges again, so a claim that lapses between a join and
+  the close does not seat its role.
+- The refusal names the expiry and the instant it was judged at:
+
+  ```text
+  403 unauthorized — the respondent is ineligible: capability `schema_review`
+  expired at 2026-09-22T12:00:00+00:00 (evaluated at 2026-09-23T12:00:00+00:00)
+  ```
+
+- The claim's **visibility is checked first**. A reader who cannot see the
+  capability is told it is not visible at the requested scope, never when it
+  expired.
+- A profile that declares one taxonomy id twice is judged on its **strongest
+  live** claim: a renewed attestation beside a lapsed one qualifies, and a live
+  self-assertion beside a lapsed attestation counts as `self_asserted`.
+- Attesting a claim keeps its expiry. Renewing an expired claim means the role
+  writes a new expiry, which resets it to `self_asserted`, and the owner attests
+  it again.
+
 ### Concurrent writes serialize
 
 Two writers for the same role take consecutive versions and both payloads
@@ -374,10 +410,4 @@ belonging to a different response, and it no longer guesses.
   `docs/decisions/2026-09-23_the-federation-goal-line-two-items-met-two-live-defects-and-the-calls-remote-form-unbuilt.md`.
 - **Provenance beyond the agreement.** The origin identity in a card is asserted
   by whoever assembled it, as above. Signed origin attestation is not implemented.
-- **Expiry is not enforced.** `capabilities[].expires_at` is stored and returned
-  faithfully, and nothing reads it. The directory's eligibility check compares a
-  claim's `taxonomy_id` and its `confidence` against the requirement and never
-  looks at the expiry, so **an expired claim still satisfies a requirement**.
-  Treat the field as a declaration, not a control; `SIGNOFF-REPAIR.5.1` owns
-  enforcing it.
 - **Deletion.** There is no route that removes a profile or a version.

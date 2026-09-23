@@ -1202,6 +1202,129 @@ async fn only_the_full_class_exports_the_portable_card() {
 /// direction revocation takes there. Against the superseded shape this control
 /// does not fail slowly — it does not block at all, because that transaction
 /// never declared the origin's key.
+/// `SIGNOFF-REPAIR.5.3.3` — an imported role's grant is issued by the
+/// administrator whose admission the import ran under. Until this repair the
+/// import minted a fresh human id as the issuer — an id naming no enrolled
+/// principal — while the admitting administrator went unread.
+#[tokio::test]
+async fn an_imported_roles_grant_is_issued_by_the_admitting_administrator() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (status, human_a) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "issuer-a" }),
+    )
+    .await;
+    assert_eq!(status, 200, "A enrolls: {human_a}");
+    let a_admin = human_a["principal_id"].as_str().unwrap().to_string();
+    let tenant_a = human_a["tenant_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "issuer-role", "tenant_id": tenant_a }),
+    )
+    .await;
+    assert_eq!(status, 200, "the role enrolls: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    let (status, written) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &role_id,
+        &sample_profile(),
+    )
+    .await;
+    assert_eq!(status, 200, "the profile writes: {written}");
+    let (status, human_b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "issuer-b" }),
+    )
+    .await;
+    assert_eq!(status, 200, "B enrolls: {human_b}");
+    let b_admin = human_b["principal_id"].as_str().unwrap().to_string();
+    let tenant_b = human_b["tenant_id"].as_str().unwrap().to_string();
+    for (admin, tenant, remote) in [
+        (&a_admin, &tenant_a, &tenant_b),
+        (&b_admin, &tenant_b, &tenant_a),
+    ] {
+        let (status, proposed) = post(
+            &client,
+            &base,
+            "/v1/federation-agreements",
+            admin,
+            &json!({
+                "tenant_id": tenant,
+                "remote_tenant_id": remote,
+                "directory_visibility": false,
+                "recruitment": true,
+            }),
+        )
+        .await;
+        assert_eq!(status, 200, "the propose: {proposed}");
+    }
+    for (admin, tenant, remote) in [
+        (&a_admin, &tenant_a, &tenant_b),
+        (&b_admin, &tenant_b, &tenant_a),
+    ] {
+        let (status, accepted) = post(
+            &client,
+            &base,
+            "/v1/federation-agreements/accept",
+            admin,
+            &json!({ "tenant_id": tenant, "remote_tenant_id": remote }),
+        )
+        .await;
+        assert_eq!(status, 200, "the accept: {accepted}");
+    }
+    let (status, exported) = get(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}/card"),
+        &role_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the card exports: {exported}");
+    let (status, imported) = post(
+        &client,
+        &base,
+        "/v1/profiles/cards/import",
+        &b_admin,
+        &json!({ "tenant_id": tenant_b, "card": exported["card"], "digest": exported["digest"] }),
+    )
+    .await;
+    assert_eq!(status, 200, "the import lands: {imported}");
+    let local_role = imported["role_id"].as_str().unwrap().to_string();
+
+    // The grant's issuer is B's administrator — and an enrolled principal.
+    let issuer: String =
+        sqlx::query_scalar("SELECT issuer FROM authority_grants WHERE grant_id = $1")
+            .bind(format!("grt_{local_role}"))
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        issuer, b_admin,
+        "the imported role's grant names the admitting administrator as its issuer"
+    );
+    let enrolled: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM human_principals WHERE principal_id = $1 AND tenant_id = $2)",
+    )
+    .bind(&issuer)
+    .bind(&tenant_b)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(
+        enrolled,
+        "the issuer is a principal enrolled in the importing tenant"
+    );
+}
+
 #[tokio::test]
 async fn an_import_is_fenced_by_the_origin_tenants_own_guard() {
     let _guard = guard().await;

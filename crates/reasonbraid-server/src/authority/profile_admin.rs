@@ -442,7 +442,7 @@ async fn import_after_admission(
     card: &crate::cards::AgentCard,
     presented_digest: &str,
     at: chrono::DateTime<chrono::Utc>,
-    _principal: &GrantSubject,
+    principal: &GrantSubject,
 ) -> Result<CardImportResult, GuardError> {
     // The pure rungs stay where the superseded route had them — AFTER the
     // admission. Moving them earlier would have been a wire change in the one
@@ -485,9 +485,21 @@ async fn import_after_admission(
 
     let role = GrantSubject::Role(reasonbraid_core::AgentRoleId::new());
     let role_id = role.id_string();
+    // The grant's issuer is the administrator whose admission this import runs
+    // under (`SIGNOFF-REPAIR.5.3.3`). Until this line the import minted a fresh
+    // `HumanPrincipalId` — an id naming no principal — as enrolment does for a
+    // role's dev grant; but enrolment is un-admitted by design (DOC-0141) and
+    // this import is admitted under `tenant_admin`, so the real issuer is in
+    // hand. A role admitted as the tenant's administrator has no human id to
+    // give, and there the enrolment limitation stands: a fresh handle, which is
+    // not an authenticated issuer identity.
+    let issuer = match principal {
+        GrantSubject::Human(human) => *human,
+        GrantSubject::Role(_) => HumanPrincipalId::new(),
+    };
     let grant: AuthorityGrant = crate::api::dev_grant(
         &boundary,
-        HumanPrincipalId::new(),
+        issuer,
         role.clone(),
         vec![
             GrantAction::ThreadContribute,

@@ -272,7 +272,8 @@ consequence is the allowlist rung, which requires the named origin to have
 accepted a bilateral recruitment agreement with the importer.
 
 ⛔ **The card confers no authority.** The imported role acts under a *local*
-grant, issued under the importing tenant's own boundary and checked against it.
+grant, issued under the importing tenant's own boundary and checked against it,
+and issued **by the administrator who authorised the import** (`SIGNOFF-REPAIR.5.3.3`).
 The card's capability claims are descriptions carried across a boundary; they are
 never permissions. This is the ADR-026 invariant.
 

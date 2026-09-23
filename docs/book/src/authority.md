@@ -1456,7 +1456,7 @@ Everything is now inside that transaction, in this order:
 | Digest and compatibility rungs | Pure. The digest must re-derive from the card's own canonical bytes, and the schema version must be the supported one. |
 | Allowlist rung | The EFFECTIVE recruitment agreement with the origin — both sides accepted, both carrying `recruitment`. |
 | Boundary | The importing tenant's active enrollment boundary, read in the same transaction that then issues against it. |
-| Grant, identity, quota, enrollment, receipt | The default local grant, the `agent_roles` row, the per-principal quota row, the enrollment row and the cross-domain receipt. |
+| Grant, identity, quota, enrollment, receipt | The default local grant — issued by the administrator whose admission the import runs under (`SIGNOFF-REPAIR.5.3.3`) — the `agent_roles` row, the per-principal quota row, the enrollment row and the cross-domain receipt. |
 | **Profile** | The card's profile, written as the local role's first version. |
 | Effect record | `profile_card_import`, with the outcome. |
 
@@ -1489,6 +1489,15 @@ correction is `SIGNOFF-REPAIR.3.3.4.12.2`, which also deleted the three
 superseded services the sentence named. It is recorded rather than quietly fixed
 because nothing mechanical could have caught it: each sentence was well-formed,
 and only their conjunction was wrong.
+
+**Who issued the local grant.** Its `issuer` is the administrator the import was
+admitted under — the human named in the `x-reasonbraid-authorization` receipt's
+record (`SIGNOFF-REPAIR.5.3.3`). Until that repair the import minted a fresh
+human id as the issuer, an id that named no enrolled principal, the way enrolment
+still does for a role's dev grant; enrolment has no admitting principal to name
+(it is un-admitted by design until the first non-loopback deployment), while an
+import does. A tenant administered by a role rather than a person keeps the
+enrolment limitation, and the source says so beside it.
 
 The effect record's target is the digest the server **re-derives** from the
 submitted card, not the one the caller presented. On every path but one they are

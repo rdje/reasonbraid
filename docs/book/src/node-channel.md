@@ -232,6 +232,20 @@ Anything else (a journal the node cannot write, for instance) still stops the
 process. The decision is `WorkerError::calls_for_reconcile()`, in the library,
 so it is tested there rather than inside the binary.
 
+A reconcile that fails is retried after a wait that doubles each time: 1 s,
+2 s, 4 s and so on up to a minute, never longer (`SIGNOFF-REPAIR.4.4.5.3`,
+`reconcile_backoff`). The wait restarts at one second after each successful
+reconcile. It used to be a fixed second for ever, so a control plane down for
+an hour met 3,600 handshakes from every node, each carrying a certificate
+proof. The log reads:
+
+```text
+rb-node: reconcile failed (…) — retrying in 1s
+rb-node: reconcile failed (…) — retrying in 2s
+rb-node: reconcile failed (…) — retrying in 4s
+rb-node: reconciled
+```
+
 Before this repair a failed send and an unknown outcome both stopped the node
 process, and one unreadable item abandoned every item after it in the same
 tick. An example log from the item case:

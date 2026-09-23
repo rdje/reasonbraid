@@ -58,4 +58,4 @@ pub use supervisor::{
     execute_attempt, execute_attempt_emitting, ExecutionReport, LocalBudget, ResultEventBuilder,
     SupervisorError,
 };
-pub use worker::{Worker, WorkerError};
+pub use worker::{reconcile_backoff, Worker, WorkerError};

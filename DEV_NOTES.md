@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-24 — A machine that cannot reconnect now waits longer between tries (`SIGNOFF-REPAIR.4.4.5.3`)
+
+`REASONBRAID-REPAIR-0469`. Completes the fifth recovery gap found by `REASONBRAID-DOC-0153`.
+
+- 🔴 **Before:** a machine that could not reconnect tried again every second, for ever. A server down for an hour met 3,600 reconnect attempts from each machine.
+- ✅ **Now:** the wait doubles after each failure (1, 2, 4 … seconds) up to a minute, and goes back to one second once a reconnect succeeds.
+- ✅ Tested: the waiting rule has its own check; 96 machine tests and the two-machine demonstration pass; three deliberately broken versions were all caught; strict lint clean.
+- Technical: `reasonbraid_node::reconcile_backoff(n)` = `1s.saturating_mul(2.saturating_pow(n)).min(60s)`; `rb-node` loops `while let Err(e) = node.reconcile()` with a per-recovery failure count. No jitter (decided; trigger: a fleet profile).
+
 ## 2026-09-24 — A delivered job now shows as done, and stops counting against the machine's capacity (`SIGNOFF-REPAIR.4.4.9`)
 
 `REASONBRAID-REPAIR-0468`. A defect found while testing the previous fix.

@@ -85,6 +85,25 @@ impl WorkerError {
     }
 }
 
+/// How long the node waits before its next reconcile attempt, after
+/// `consecutive_failures` failed ones in a row (`SIGNOFF-REPAIR.4.4.5.3`): one
+/// second, doubling, capped at a minute. The count restarts with each recovery,
+/// so a node that reconciles is back to one second the next time it loses the
+/// channel.
+///
+/// The retry used to be a fixed second for ever, so a control plane down for an
+/// hour met 3,600 handshakes from every node, each paying for a certificate
+/// proof. No jitter: the node crate carries no randomness source, and the dev
+/// profile runs a handful of nodes. A fleet profile, where many nodes lose one
+/// control plane together, is the trigger to add it.
+pub fn reconcile_backoff(consecutive_failures: u32) -> Duration {
+    const FIRST: Duration = Duration::from_secs(1);
+    const CEILING: Duration = Duration::from_secs(60);
+    FIRST
+        .saturating_mul(2u32.saturating_pow(consecutive_failures))
+        .min(CEILING)
+}
+
 impl std::error::Error for WorkerError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
@@ -627,6 +646,16 @@ impl<A: Adapter> Worker<A> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The reconcile backoff (`SIGNOFF-REPAIR.4.4.5.3`): doubling from one
+    /// second, never past a minute, and never overflowing however long the
+    /// control plane stays away.
+    #[test]
+    fn the_reconcile_backoff_doubles_and_is_bounded() {
+        let waits: Vec<u64> = (0..9).map(|n| reconcile_backoff(n).as_secs()).collect();
+        assert_eq!(waits, [1, 2, 4, 8, 16, 32, 60, 60, 60]);
+        assert_eq!(reconcile_backoff(u32::MAX), Duration::from_secs(60));
+    }
 
     /// The run loop's decision (`SIGNOFF-REPAIR.4.4.4.2.2`, `.4.4.5.2`): a channel
     /// failure, the node's failed send, and a dispatch refused on an unschedulable

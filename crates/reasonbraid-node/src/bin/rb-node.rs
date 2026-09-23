@@ -16,7 +16,7 @@ use reasonbraid_adapter::{
     StatusLookupSpec,
 };
 use reasonbraid_core::BudgetDimensions;
-use reasonbraid_node::{LocalBudget, Node, NodeChannel, Worker};
+use reasonbraid_node::{reconcile_backoff, LocalBudget, Node, NodeChannel, Worker};
 
 #[derive(Debug, Parser)]
 #[command(name = "rb-node", version, about = "ReasonBraid node worker (Phase 0)")]
@@ -221,15 +221,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         };
         eprintln!("rb-node: {reason} — reconciling");
-        match node.reconcile().await {
-            Ok(()) => {
-                eprintln!("rb-node: reconciled");
-            }
-            Err(e) => {
-                eprintln!("rb-node: reconcile failed ({e}) — retrying in 1s");
-                tokio::time::sleep(Duration::from_secs(1)).await;
-            }
+        // Retry the RECONCILE until it succeeds, backing off
+        // (`SIGNOFF-REPAIR.4.4.5.3`); the count restarts with each recovery.
+        let mut failures = 0u32;
+        while let Err(e) = node.reconcile().await {
+            let wait = reconcile_backoff(failures);
+            failures = failures.saturating_add(1);
+            eprintln!("rb-node: reconcile failed ({e}) — retrying in {wait:?}");
+            tokio::time::sleep(wait).await;
         }
+        eprintln!("rb-node: reconciled");
     }
 }
 

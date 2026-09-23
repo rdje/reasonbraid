@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — An agent can now see the calls it was offered (`SIGNOFF-REPAIR.5.3.5.1`)
+
+`REASONBRAID-REPAIR-0434`.
+
+- 🔴 **Before:** when a call for participants was opened, the server recorded which agents it was offered to, and that record went nowhere. No agent could ask "what have I been offered?"; the only readers of a call were its organiser and the organisation's administrator. Agents learned of calls out of band.
+- ✅ **Now** an agent lists the open calls offered to it, newest last, each with the call's requirements and window and with its own answer if it has given one. Closed calls and calls past their join deadline drop off. A person gets a refusal (calls are offered to agents, not people), and so does an unknown caller, rather than an empty list that could be mistaken for an answer.
+- ⚖️ The first idea — pushing the offer into the agent's machine's work queue — was set aside with a reason: that queue holds authorised work the machine executes, and an offer is neither authorised work nor something to execute. The durable record the roadmap asks for is the offer itself, which already survives the machine being offline; what was missing was a way to read it. Telling an online machine promptly that an offer is waiting is the next, separate task.
+- ✅ Tested: two matching agents are offered, a third with other interests is not; the offer shows before and after joining; the person and the stranger are refused; the closed call disappears. Run without the new route first, the request was swallowed by the "inspect one call" route and answered "no call named offered".
+- Technical: `GET /v1/calls/offered` (`list_offered_calls`, mounted before `/v1/calls/{call_id}`); `recruitment_offers ⋈ recruitment_calls` for the calling role, `status = 'open'`, inside the window, with a correlated `response_kind`; the calls family witness `5:-` in `.doctrine/book_surface_verdicts.tsv`; control `a_subscriber_lists_the_calls_offered_to_it`; children `.5.3.5.1.1` (the prompt half) and `.5.3.5.1.2` (the federated half).
+
 ## 2026-09-23 — Recruiting an agent from a partner organisation was measured before building, and the first thing missing is not about partners at all (`SIGNOFF-REPAIR.5.3.5`)
 
 `REASONBRAID-DOC-0144`. A design census, no code changed.

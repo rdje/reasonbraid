@@ -736,6 +736,7 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
         .route("/v1/directory/presence", get(directory_presence))
         .route("/v1/directory/match", post(directory_match))
         .route("/v1/calls", post(open_recruitment_call))
+        .route("/v1/calls/offered", get(list_offered_calls))
         .route("/v1/calls/{call_id}/respond", post(respond_to_call))
         .route("/v1/calls/{call_id}/close", post(close_call))
         .route("/v1/calls/{call_id}", get(inspect_call))
@@ -6577,6 +6578,89 @@ async fn close_call(
         "panel": ranked
             .iter()
             .map(|r| r.role_id.clone())
+            .collect::<Vec<_>>(),
+    })))
+}
+
+/// `GET /v1/calls/offered` — the calls offered to the calling ROLE
+/// (`SIGNOFF-REPAIR.5.3.5.1`): the durable half of §10.5's advertisement. An
+/// offer row was written for every matching subscriber since `.5.2`, and until
+/// this read nothing carried it further — a role learned of a call out of band
+/// and answered by id. Only OPEN calls inside their join window are listed,
+/// oldest offer first, each with the role's own response if it has made one.
+/// A person has no offers (calls are offered to roles), and an unenrolled
+/// principal is refused rather than shown an empty list it could mistake for
+/// an answer.
+async fn list_offered_calls(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let GrantSubject::Role(role) = &principal else {
+        return Err(ControlApiError::unauthorized(
+            "calls are offered to roles; a person reads a call by its id",
+        ));
+    };
+    if reader_tenant(&state.pool, &principal).await?.is_none() {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal has no offers",
+        ));
+    }
+    let role_id = role.to_string();
+    type Row = (
+        String,
+        String,
+        Value,
+        i32,
+        i32,
+        bool,
+        DateTime<Utc>,
+        DateTime<Utc>,
+        DateTime<Utc>,
+        Option<String>,
+    );
+    let rows: Vec<Row> = sqlx::query_as(
+        "SELECT c.call_id, c.thread_id, c.expression, c.min_participants, c.max_participants, \
+                c.recommendations_allowed, c.join_deadline, c.expires_at, o.offered_at, \
+                (SELECT r.response_kind FROM recruitment_responses r \
+                  WHERE r.call_id = c.call_id AND r.respondent = $1) AS responded \
+         FROM recruitment_offers o JOIN recruitment_calls c ON c.call_id = o.call_id \
+         WHERE o.role_id = $1 AND c.status = 'open' \
+           AND c.join_deadline > now() AND c.expires_at > now() \
+         ORDER BY o.offered_at, c.call_id",
+    )
+    .bind(&role_id)
+    .fetch_all(&state.pool)
+    .await?;
+    Ok(Json(json!({
+        "role_id": role_id,
+        "offered": rows
+            .into_iter()
+            .map(
+                |(
+                    call_id,
+                    thread_id,
+                    expression,
+                    min_participants,
+                    max_participants,
+                    recommendations_allowed,
+                    join_deadline,
+                    expires_at,
+                    offered_at,
+                    responded,
+                )| json!({
+                    "call_id": call_id,
+                    "thread_id": thread_id,
+                    "expression": expression,
+                    "min_participants": min_participants,
+                    "max_participants": max_participants,
+                    "recommendations_allowed": recommendations_allowed,
+                    "join_deadline": join_deadline.to_rfc3339(),
+                    "expires_at": expires_at.to_rfc3339(),
+                    "offered_at": offered_at.to_rfc3339(),
+                    "responded": responded,
+                }),
+            )
             .collect::<Vec<_>>(),
     })))
 }

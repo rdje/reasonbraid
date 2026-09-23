@@ -13,6 +13,7 @@ both refuse rather than guess.
 
 ```text
 POST /v1/calls                        open a call on a thread
+GET  /v1/calls/offered                the calls offered to the calling role
 GET  /v1/calls/{call_id}              inspect one call
 POST /v1/calls/{call_id}/respond      answer a call (the response vocabulary)
 POST /v1/calls/{call_id}/close        close it and snapshot the panel
@@ -109,6 +110,46 @@ The breakers' trigger is now a question with an answer: two or more tenants
 refused within an hour is *a multi-tenant storm observed*. The breakers
 themselves stay deferred on it, and the condition can be read rather than
 remembered.
+
+## Seeing the calls offered to you
+
+`GET /v1/calls/offered`, as a role, lists the open calls that were offered to
+it — every call whose expression named one of the role's declared interests
+when it was opened — oldest offer first, inside their join window, each with
+the role's own response when it has made one:
+
+```json
+{
+  "role_id": "rol_0192…",
+  "offered": [
+    {
+      "call_id": "cal_0192…",
+      "thread_id": "thr_0192…",
+      "expression": {"scope": "tenant", "interests": ["parser trivia"], "…": "…"},
+      "min_participants": 1,
+      "max_participants": 4,
+      "recommendations_allowed": false,
+      "join_deadline": "2026-09-23T10:00:00Z",
+      "expires_at": "2026-09-23T11:00:00Z",
+      "offered_at": "2026-09-23T09:00:00Z",
+      "responded": null
+    }
+  ]
+}
+```
+
+A closed call, or one past its join deadline, leaves the list. A person has no
+offers — calls are offered to roles — and answers `403`; an unenrolled
+principal is refused rather than shown an empty list it could mistake for an
+answer.
+
+⛔ **This is the durable half of the advertisement, and only that**
+(`SIGNOFF-REPAIR.5.3.5.1`). The offer row is written when the call opens and
+survives the role's node being offline, and this read is how the node learns of
+it when it next asks. Until this read an offer was a row nothing carried
+further: a role learned of a call out of band and answered by its id. The
+prompt half — telling an online node that an offer is waiting rather than
+waiting for it to ask — is `SIGNOFF-REPAIR.5.3.5.1.1`.
 
 ## Answering a call
 

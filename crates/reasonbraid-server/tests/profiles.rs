@@ -2881,6 +2881,125 @@ async fn a_failed_offer_write_leaves_no_call_behind() {
     assert_eq!(opened["offered_to"], json!(1), "{opened}");
 }
 
+/// `SIGNOFF-REPAIR.5.3.5.1` — a role can list the calls offered to it. Until
+/// this read an offer was a row nothing carried further: a role learned of a
+/// call out of band and answered by id. Open calls inside their join window,
+/// with the role's own response when it has made one; a person has no offers;
+/// an unoffered role sees none; a closed call leaves the list.
+#[tokio::test]
+async fn a_subscriber_lists_the_calls_offered_to_it() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let world = call_world(&client, &base, "offered", 2).await;
+    // A role whose interests match nothing the call names: never offered.
+    let (status, bystander) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "offered-bystander", "tenant_id": world.tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "{bystander}");
+    let bystander_id = bystander["principal_id"].as_str().unwrap().to_string();
+    enroll_node(
+        &client,
+        &base,
+        &world.human_id,
+        &world.tenant,
+        &bystander_id,
+    )
+    .await;
+    let mut aloof = visibility_profile();
+    aloof["interests"] = json!(["knot theory"]);
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{bystander_id}"),
+        &bystander_id,
+        &aloof,
+    )
+    .await;
+    assert_eq!(status, 200);
+
+    let (status, opened) = post(
+        &client,
+        &base,
+        "/v1/calls",
+        &world.human_id,
+        &call_body(&world, 1, 4),
+    )
+    .await;
+    assert_eq!(status, 200, "{opened}");
+    assert_eq!(
+        opened["offered_to"],
+        json!(2),
+        "both subscribers offered: {opened}"
+    );
+    let call_id = opened["call_id"].as_str().unwrap().to_string();
+
+    // The offered role sees the call, unanswered.
+    let (status, listed) = get(&client, &base, "/v1/calls/offered", &world.roles[0]).await;
+    assert_eq!(status, 200, "{listed}");
+    let offered = listed["offered"].as_array().unwrap();
+    assert_eq!(offered.len(), 1, "{listed}");
+    assert_eq!(offered[0]["call_id"], json!(call_id));
+    assert_eq!(offered[0]["thread_id"], json!(world.thread_id));
+    assert_eq!(offered[0]["min_participants"], json!(1));
+    assert_eq!(offered[0]["responded"], Value::Null, "{listed}");
+    assert_eq!(
+        offered[0]["expression"]["interests"],
+        json!(["parser trivia"]),
+        "the expression rides the offer: {listed}"
+    );
+
+    // After joining, the offer carries the role's own answer.
+    let (status, joined) = post(
+        &client,
+        &base,
+        &format!("/v1/calls/{call_id}/respond"),
+        &world.roles[0],
+        &json!({ "kind": "join" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{joined}");
+    let (_, listed) = get(&client, &base, "/v1/calls/offered", &world.roles[0]).await;
+    assert_eq!(listed["offered"][0]["responded"], json!("join"), "{listed}");
+
+    // A person has no offers; an unoffered role sees none; a stranger is refused.
+    let (status, refused) = get(&client, &base, "/v1/calls/offered", &world.human_id).await;
+    assert_eq!(status, 403, "{refused}");
+    let (status, none) = get(&client, &base, "/v1/calls/offered", &bystander_id).await;
+    assert_eq!(status, 200, "{none}");
+    assert_eq!(none["offered"], json!([]), "{none}");
+    let (status, _) = get(
+        &client,
+        &base,
+        "/v1/calls/offered",
+        "rol_00000000-0000-7000-8000-00000000dead",
+    )
+    .await;
+    assert_eq!(status, 403, "an unenrolled principal has no offers");
+
+    // A closed call leaves the list.
+    let (status, closed) = post(
+        &client,
+        &base,
+        &format!("/v1/calls/{call_id}/close"),
+        &world.human_id,
+        &json!({}),
+    )
+    .await;
+    assert_eq!(status, 200, "{closed}");
+    let (_, listed) = get(&client, &base, "/v1/calls/offered", &world.roles[0]).await;
+    assert_eq!(
+        listed["offered"],
+        json!([]),
+        "a closed call is no longer offered: {listed}"
+    );
+}
+
 /// `SIGNOFF-REPAIR.11.4.7.2.1.5.4.1` — §4.2's `decision_rule_constraints`: the
 /// issuer narrows, for one subject, the decision rules the tenant's charter
 /// allows. Declared in the enrolment body, validated at the one grant-creation

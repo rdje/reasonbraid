@@ -51,7 +51,7 @@ sqlx = { version = "0.8", default-features = false, features = [
     "macros",
     "json",
 ] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 # Local operation identifiers (`op_<uuidv7>`): node-local identity for now — promoted
 # to a `reasonbraid-core` Id family the moment an operation crosses the wire.
 uuid = { version = "1", features = ["v7"] }

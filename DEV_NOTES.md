@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-24 — A provider that never answers no longer freezes the machine, and answers have a size limit (`SIGNOFF-REPAIR.4.4.6`)
+
+`REASONBRAID-REPAIR-0470`. The sixth recovery gap found by `REASONBRAID-DOC-0153`.
+
+- 🔴 **Before:** every job came with a time limit, but nothing enforced it. A provider that took a job and never answered froze the machine for good. Answers could also be any size, including sizes the server would refuse to accept.
+- ✅ **Now:** when the time limit passes, the machine tells the provider to stop and records the job as "outcome unknown", with the reason. It never guesses the job failed or succeeded, because the provider may have done the work. An answer larger than 256 KB is stopped and recorded as failed, naming the limit; a partial answer is never passed off as a whole one.
+- ✅ Tested: two checks failed on the old code (a frozen job, and an oversized answer accepted) and pass now, plus four more; 102 machine tests, four live suites and the two-machine demonstration pass. The deliberately broken versions first exposed a gap: nothing checked that the provider was actually told to stop. The checks were strengthened until all were caught. Strict lint clean.
+- ⚠️ Tracked next: whether a machine can get stuck on an answer the server refuses outright; and charging a job's elapsed time to its budget.
+- Technical: supervisor `within` (`tokio::time::timeout_at`) over `invoke` and every `next()`; `cancel_within_grace` (5 s); `Terminal::Lost(reason)` → extracted `settle_unknown(UnknownOutcome{…}, …)`; `MAX_OUTPUT_BYTES = 256 KiB` → `Terminal::FailedKnown`; `tokio` `time` feature. `tests/supervisor_bounds.rs` 6 controls (`SlowCancel`, `SilentInvoke`). Mutants: first pass 3 missed in `cancel_within_grace`, strengthened to 0 missed; hand mutant on the `invoke` wait caught.
+
 ## 2026-09-24 — A machine that cannot reconnect now waits longer between tries (`SIGNOFF-REPAIR.4.4.5.3`)
 
 `REASONBRAID-REPAIR-0469`. Completes the fifth recovery gap found by `REASONBRAID-DOC-0153`.

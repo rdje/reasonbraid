@@ -107,6 +107,32 @@ A stream that ends without a result is a lost response: `outcome_unknown` in
 the journal, moved only by a proven lookup (`completed`/`failed_known`) or an
 authorized adjudication (`reconciled`).
 
+### Two bounds on every attempt
+
+The supervisor ends an attempt itself in two cases (`SIGNOFF-REPAIR.4.4.6`):
+
+| Bound | What happens when it is crossed | Where the attempt lands |
+| --- | --- | --- |
+| **The request's deadline.** The worker sets it from the reservation's wall-clock allowance (60 s when none is given, never more than an hour). It bounds the wait for the provider's acknowledgement *and* for every event after it | the adapter is asked to cancel, and its answer is waited for up to 5 s | `outcome_unknown`, because the provider may have run. The evidence names the deadline, where it passed, and the cancellation's answer. A status lookup, if the adapter has one, may still prove the result |
+| **`MAX_OUTPUT_BYTES` (256 KiB)** of collected output | the adapter is asked to cancel | `failed_known`, naming the bound. The excess is never kept, and a shortened result is never delivered as if it were whole |
+
+For example, a provider that accepts the request and then never answers leaves
+this in the journal once its deadline passes:
+
+```text
+outcome_unknown  {"reason":"the deadline 2026-09-24T… passed with no result; cancellation: Confirmed"}
+```
+
+Why 256 KiB: a finished result travels to the control plane as one JSON body,
+and the control plane accepts at most 2 MiB. JSON can spend up to six bytes on
+one byte of content (a `\u0000` escape), so 256 KiB fits even at the worst.
+A larger result could never be delivered, and the node would keep offering
+it.
+
+Before this repair the deadline was computed, documented as the caller's to
+enforce, and enforced by no one. A provider that never answered held the
+node's worker for ever, and the collected output had no limit.
+
 ## The first real adapter: the Codex-family CLI
 
 `CodexCliAdapter` (`crates/reasonbraid-adapter/src/codex.rs`) supervises

@@ -21,11 +21,16 @@
 //!    not a retry recommendation (retrying `outcome_unknown` requires duplicate-risk
 //!    authorization, `§14.6` — a policy decision, never made here).
 //!
-//! Cancellation is the caller's tool: [`execute_attempt`] drives the stream to a
-//! terminal; a caller that observes a hang calls [`Adapter::cancel`] (the fake's
-//! `HangForever` resolves deterministically on cancellation) and the stream then ends
-//! — step 5 applies. Deadline enforcement is likewise caller-side (the request carries
-//! the deadline; WP5 types the budgets that police it).
+//! Two bounds end an attempt from the supervisor's side (`SIGNOFF-REPAIR.4.4.6`).
+//! The request's DEADLINE bounds the wait for the acknowledgement and for every
+//! stream event; when it passes, the supervisor asks the adapter to cancel and
+//! lands the attempt on step 5's honest `outcome_unknown`, naming the deadline,
+//! because the provider may have run. [`MAX_OUTPUT_BYTES`] bounds the output
+//! collected; past it, the supervisor cancels and lands a definitive
+//! `failed_known` naming the bound, never a silently shortened result. Until that
+//! leaf the deadline was documented as the caller's to enforce, and no caller did.
+
+use std::time::Duration;
 
 use chrono::Utc;
 use reasonbraid_adapter::{
@@ -39,6 +44,45 @@ use serde_json::json;
 use tokio::sync::Mutex;
 
 use crate::journal::{Journal, JournalError, ProvenStatus, ResultEvent};
+
+/// The most output one attempt may produce, in bytes (`SIGNOFF-REPAIR.4.4.6`).
+///
+/// The result travels to the control plane as one JSON body, and the control
+/// plane accepts bodies up to 2 MiB (the HTTP framework's default). A JSON
+/// string can cost up to six bytes per byte of content (`\u0000` escapes), so
+/// 256 KiB of content fits even at the worst escaping, with room for the rest of
+/// the event. A larger result could never be delivered: the node would carry an
+/// event the control plane refuses for as long as it runs.
+pub const MAX_OUTPUT_BYTES: usize = 256 * 1024;
+
+/// How long a cancellation may take before the supervisor stops waiting for its
+/// answer. The attempt is already being ended; this only bounds the courtesy.
+const CANCEL_GRACE: Duration = Duration::from_secs(5);
+
+/// `fut`, or `None` if `deadline` passes first. No deadline waits for `fut`.
+async fn within<F: std::future::Future>(
+    deadline: Option<tokio::time::Instant>,
+    fut: F,
+) -> Option<F::Output> {
+    match deadline {
+        Some(at) => tokio::time::timeout_at(at, fut).await.ok(),
+        None => Some(fut.await),
+    }
+}
+
+/// Ask the adapter to cancel `operation_id`, waiting at most [`CANCEL_GRACE`],
+/// and say what came of it, for the attempt's evidence.
+async fn cancel_within_grace(adapter: &impl Adapter, operation_id: &str) -> String {
+    match within(
+        Some(tokio::time::Instant::now() + CANCEL_GRACE),
+        adapter.cancel(operation_id),
+    )
+    .await
+    {
+        Some(outcome) => format!("{outcome:?}"),
+        None => format!("no answer within {CANCEL_GRACE:?}"),
+    }
+}
 
 /// The node's LOCAL budget ledger (§14.3 step 4: "the node verifies a signed/
 /// authorized reservation AND local headroom before dispatch"). Development profile:
@@ -291,8 +335,40 @@ async fn supervise(
         .await?;
     journal.record_dispatch(&attempt_id, None, now).await?;
 
+    // The deadline, as an instant on the runtime's clock (a deadline already
+    // past waits for nothing), and as the text the evidence names.
+    let deadline = request.deadline.map(|at| {
+        tokio::time::Instant::now() + (at - Utc::now()).to_std().unwrap_or(Duration::ZERO)
+    });
+    let deadline_label = request
+        .deadline
+        .map(|at| at.to_rfc3339())
+        .unwrap_or_default();
+
     // 3. Invoke: a pre-boundary refusal, or an acknowledgement + streaming handle.
-    match adapter.invoke(request, operation_id).await {
+    // The boundary is already recorded, so a deadline passing HERE is step 5 too.
+    let Some(invoked) = within(deadline, adapter.invoke(request, operation_id)).await else {
+        let cancellation = cancel_within_grace(adapter, operation_id).await;
+        return settle_unknown(
+            UnknownOutcome {
+                journal,
+                adapter,
+                operation_id,
+                reservation,
+                local,
+                result_event,
+                now,
+            },
+            attempt_id,
+            Vec::new(),
+            &format!(
+                "the deadline {deadline_label} passed before the provider acknowledged \
+                 the dispatch; cancellation: {cancellation}"
+            ),
+        )
+        .await;
+    };
+    match invoked {
         InvokeOutcome::FailedBeforeDispatch { reason, .. } => {
             journal
                 .record_failed_before_dispatch(&attempt_id, Some(&reason), now)
@@ -318,10 +394,20 @@ async fn supervise(
             }
 
             let mut chunks = Vec::new();
-            let mut terminal = None;
-            while let Some(event) = handle.next().await {
-                match event {
-                    AttemptEvent::ProviderRequestId { request_id } => {
+            let mut collected = 0usize;
+            let terminal = loop {
+                let Some(next) = within(deadline, handle.next()).await else {
+                    let cancellation = cancel_within_grace(adapter, operation_id).await;
+                    break Terminal::Lost(format!(
+                        "the deadline {deadline_label} passed with no result; cancellation: \
+                         {cancellation}"
+                    ));
+                };
+                match next {
+                    // The stream ended with no terminal event: the response was
+                    // lost after dispatch (or the attempt was cancelled).
+                    None => break Terminal::Lost("response lost after dispatch".to_string()),
+                    Some(AttemptEvent::ProviderRequestId { request_id }) => {
                         // Some providers only reveal their request handle AFTER
                         // dispatch (Codex's thread.started): attach it the same way
                         // an ack-carried id is attached.
@@ -329,22 +415,28 @@ async fn supervise(
                             .attach_provider_request_id(&attempt_id, &request_id)
                             .await?;
                     }
-                    AttemptEvent::OutputChunk { chunk } => chunks.push(chunk),
-                    AttemptEvent::Completed { usage } => {
-                        // A terminal event ENDS the attempt: never keep pulling the
-                        // stream past a result.
-                        terminal = Some(Terminal::Completed(usage));
-                        break;
+                    Some(AttemptEvent::OutputChunk { chunk }) => {
+                        collected = collected.saturating_add(chunk.len());
+                        if collected > MAX_OUTPUT_BYTES {
+                            let cancellation = cancel_within_grace(adapter, operation_id).await;
+                            break Terminal::FailedKnown(format!(
+                                "the output exceeded the {MAX_OUTPUT_BYTES}-byte bound; \
+                                 cancellation: {cancellation}"
+                            ));
+                        }
+                        chunks.push(chunk);
                     }
-                    AttemptEvent::FailedKnown { reason } => {
-                        terminal = Some(Terminal::FailedKnown(reason));
-                        break;
+                    // A terminal event ENDS the attempt: never keep pulling the
+                    // stream past a result.
+                    Some(AttemptEvent::Completed { usage }) => break Terminal::Completed(usage),
+                    Some(AttemptEvent::FailedKnown { reason }) => {
+                        break Terminal::FailedKnown(reason)
                     }
                 }
-            }
+            };
 
             match terminal {
-                Some(Terminal::Completed(usage)) => {
+                Terminal::Completed(usage) => {
                     let normalized = usage.as_ref().map(|u| adapter.normalize_usage(u));
                     // Settle ACTUAL usage against the hold (overruns land in the
                     // local ledger as-is — recorded, never clamped).
@@ -368,7 +460,7 @@ async fn supervise(
                     land_completed(journal, &mut report, usage.as_ref(), result_event, now).await?;
                     Ok(report)
                 }
-                Some(Terminal::FailedKnown(reason)) => {
+                Terminal::FailedKnown(reason) => {
                     journal
                         .record_failed_known(&attempt_id, Some(&json!({ "reason": reason })), now)
                         .await?;
@@ -383,74 +475,22 @@ async fn supervise(
                         result_event: None,
                     })
                 }
-                None => {
-                    // The stream ended with no terminal event: the response was lost
-                    // after dispatch (or the attempt was cancelled). Journal the honest
-                    // fact, then let ONLY a proof move it.
-                    journal
-                        .record_outcome_unknown(
-                            &attempt_id,
-                            Some("response lost after dispatch"),
+                Terminal::Lost(reason) => {
+                    settle_unknown(
+                        UnknownOutcome {
+                            journal,
+                            adapter,
+                            operation_id,
+                            reservation,
+                            local,
+                            result_event,
                             now,
-                        )
-                        .await?;
-                    match adapter.query_status(operation_id).await {
-                        StatusLookupOutcome::Supported(AttemptResult::Completed { usage }) => {
-                            let normalized = usage.as_ref().map(|u| adapter.normalize_usage(u));
-                            let mut report = ExecutionReport {
-                                attempt_id,
-                                final_state: ProviderAttemptState::Completed,
-                                chunks,
-                                usage: normalized,
-                                reservation_id: reservation.reservation_id.clone(),
-                                result_event: None,
-                            };
-                            land_completed(journal, &mut report, usage.as_ref(), result_event, now)
-                                .await?;
-                            let actual = BudgetDimensions::attempt_usage(
-                                report
-                                    .usage
-                                    .as_ref()
-                                    .and_then(|u| u.input_tokens.map(|v| v as u64)),
-                                report
-                                    .usage
-                                    .as_ref()
-                                    .and_then(|u| u.output_tokens.map(|v| v as u64)),
-                            );
-                            local.settle(&reservation.dimensions, &actual).await;
-                            Ok(report)
-                        }
-                        StatusLookupOutcome::Supported(AttemptResult::FailedKnown { reason }) => {
-                            journal
-                                .prove_result(
-                                    &attempt_id,
-                                    ProvenStatus::FailedKnown,
-                                    None,
-                                    Some(&json!({ "reason": reason })),
-                                    now,
-                                )
-                                .await?;
-                            let actual = BudgetDimensions::attempt_usage(None, None);
-                            local.settle(&reservation.dimensions, &actual).await;
-                            Ok(ExecutionReport {
-                                attempt_id,
-                                final_state: ProviderAttemptState::FailedKnown,
-                                chunks,
-                                usage: None,
-                                reservation_id: reservation.reservation_id.clone(),
-                                result_event: None,
-                            })
-                        }
-                        StatusLookupOutcome::Unsupported => {
-                            // The hold stays in place: an ambiguous attempt MAY have
-                            // consumed (§14.6 — release only amounts not potentially
-                            // consumed). Settlement/adjudication owns the release.
-                            Err(SupervisorError::OutcomeUnknown {
-                                attempt_id: attempt_id.clone(),
-                                detail: "status lookup unsupported by the adapter".to_string(),
-                            })
-                        }
-                    }
+                        },
+                        attempt_id,
+                        chunks,
+                        &reason,
+                    )
+                    .await
                 }
             }
         }
@@ -460,4 +500,98 @@ async fn supervise(
 enum Terminal {
     Completed(Option<serde_json::Value>),
     FailedKnown(String),
+    /// No result, and none can be claimed: the stream ended without one, or the
+    /// deadline passed. The reason goes into the `outcome_unknown` evidence.
+    Lost(String),
+}
+
+/// What [`settle_unknown`] needs of the attempt it lands.
+struct UnknownOutcome<'a, A: Adapter> {
+    journal: &'a Journal,
+    adapter: &'a A,
+    operation_id: &'a str,
+    reservation: &'a ReservationReference,
+    local: &'a LocalBudget,
+    result_event: Option<ResultEventBuilder<'a>>,
+    now: chrono::DateTime<Utc>,
+}
+
+/// Step 5: the attempt has no result the supervisor can vouch for. Journal the
+/// honest `outcome_unknown` with `reason`, then let ONLY a proof move it: a
+/// provider status lookup that proves the result lands it; without one, the
+/// caller receives [`SupervisorError::OutcomeUnknown`].
+async fn settle_unknown<A: Adapter>(
+    at: UnknownOutcome<'_, A>,
+    attempt_id: String,
+    chunks: Vec<String>,
+    reason: &str,
+) -> Result<ExecutionReport, SupervisorError> {
+    let UnknownOutcome {
+        journal,
+        adapter,
+        operation_id,
+        reservation,
+        local,
+        result_event,
+        now,
+    } = at;
+    journal
+        .record_outcome_unknown(&attempt_id, Some(reason), now)
+        .await?;
+    match adapter.query_status(operation_id).await {
+        StatusLookupOutcome::Supported(AttemptResult::Completed { usage }) => {
+            let normalized = usage.as_ref().map(|u| adapter.normalize_usage(u));
+            let mut report = ExecutionReport {
+                attempt_id,
+                final_state: ProviderAttemptState::Completed,
+                chunks,
+                usage: normalized,
+                reservation_id: reservation.reservation_id.clone(),
+                result_event: None,
+            };
+            land_completed(journal, &mut report, usage.as_ref(), result_event, now).await?;
+            let actual = BudgetDimensions::attempt_usage(
+                report
+                    .usage
+                    .as_ref()
+                    .and_then(|u| u.input_tokens.map(|v| v as u64)),
+                report
+                    .usage
+                    .as_ref()
+                    .and_then(|u| u.output_tokens.map(|v| v as u64)),
+            );
+            local.settle(&reservation.dimensions, &actual).await;
+            Ok(report)
+        }
+        StatusLookupOutcome::Supported(AttemptResult::FailedKnown { reason }) => {
+            journal
+                .prove_result(
+                    &attempt_id,
+                    ProvenStatus::FailedKnown,
+                    None,
+                    Some(&json!({ "reason": reason })),
+                    now,
+                )
+                .await?;
+            let actual = BudgetDimensions::attempt_usage(None, None);
+            local.settle(&reservation.dimensions, &actual).await;
+            Ok(ExecutionReport {
+                attempt_id,
+                final_state: ProviderAttemptState::FailedKnown,
+                chunks,
+                usage: None,
+                reservation_id: reservation.reservation_id.clone(),
+                result_event: None,
+            })
+        }
+        StatusLookupOutcome::Unsupported => {
+            // The hold stays in place: an ambiguous attempt MAY have consumed
+            // (§14.6 — release only amounts not potentially consumed).
+            // Settlement/adjudication owns the release.
+            Err(SupervisorError::OutcomeUnknown {
+                attempt_id,
+                detail: "status lookup unsupported by the adapter".to_string(),
+            })
+        }
+    }
 }

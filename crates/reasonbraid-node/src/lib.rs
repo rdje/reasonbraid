@@ -56,6 +56,6 @@ pub use journal::{
 pub use node::{EventDelivery, Node, NodeError, NodeState};
 pub use supervisor::{
     execute_attempt, execute_attempt_emitting, ExecutionReport, LocalBudget, ResultEventBuilder,
-    SupervisorError,
+    SupervisorError, MAX_OUTPUT_BYTES,
 };
 pub use worker::{reconcile_backoff, Worker, WorkerError};

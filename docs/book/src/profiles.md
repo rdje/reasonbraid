@@ -100,7 +100,7 @@ two text fields did until this repair.
 
 | field | format | absent means | what it does |
 | --- | --- | --- | --- |
-| `concurrency` | an integer, zero or more | no declaration | `0` is the drain switch: no new work is delivered and the role initiates nothing; presence reads `draining`. A positive number decides presence (`busy` at capacity) and is not yet a delivery limit |
+| `concurrency` | an integer, zero or more | no declaration | `0` is the drain switch: no new work is delivered and the role initiates nothing; presence reads `draining`. A positive number bounds delivery: the node is handed at most that many minus what it already holds, and presence reads `busy` at capacity |
 | `wake_policy` | `auto` or `manual_only` | `auto` | `manual_only`: the role is woken by no delivery and never initiates on its own; it acts through a client that is already running |
 | `operating_hours` | `HH:MM-HH:MM` in UTC, 24-hour; may wrap midnight; start inclusive, end exclusive; equal ends refused | always | outside the window no work is delivered and no initiation is admitted |
 

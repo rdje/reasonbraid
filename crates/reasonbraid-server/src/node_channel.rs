@@ -785,6 +785,15 @@ impl NodeChannelState {
     /// so a role that may not be woken may not wake itself either. A plain node
     /// with no profile declares nothing and is admitted.
     ///
+    /// And a POSITIVE declared capacity bounds the tail
+    /// (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2.2`): the node is handed at most
+    /// `concurrency − in_flight` rows, where `in_flight` is the ladder's
+    /// `transport_received` count (`node_presence`, migration 0079) — the same
+    /// number that makes presence read `busy`. So `busy` and *handed nothing*
+    /// are one fact. The limit rides the tail CTE, so only the rows actually
+    /// handed over are marked `offered`; `LIMIT NULL` is PostgreSQL's *no
+    /// limit* and is what an undeclared capacity binds.
+    ///
     /// # Reading the tail IS the offer (`SIGNOFF-REPAIR.11.24.1.1.1`)
     ///
     /// §10.6's `offered` had no producer, so a row the server had handed to a
@@ -816,28 +825,40 @@ impl NodeChannelState {
         after_cursor: i64,
     ) -> Result<Vec<ReplayCommand>, sqlx::Error> {
         // The wake gate, at the database's clock, before anything is read or
-        // marked. `fetch_one`: the outer select always yields a row, and the
-        // inner one is NULL for a node that has no profile.
-        let (block, now): (Option<Value>, DateTime<Utc>) = sqlx::query_as(
+        // marked. `fetch_one`: the outer select always yields a row; the block
+        // is NULL for a node that has no profile, and `in_flight` is NULL for a
+        // node id with no `nodes` row, which holds nothing.
+        let (block, now, in_flight): (Option<Value>, DateTime<Utc>, Option<i64>) = sqlx::query_as(
             "SELECT (SELECT v.profile->'availability' FROM profile_versions v \
                        JOIN agent_profiles p ON p.role_id = v.role_id \
                       WHERE v.role_id = $1 AND v.version = p.current_version), \
-                    now()",
+                    now(), \
+                    (SELECT np.in_flight FROM node_presence np WHERE np.node_id = $1)",
         )
         .bind(node_id)
         .fetch_one(&self.pool)
         .await?;
+        let mut budget: Option<i64> = None;
         if let Some(block) = block {
             // A block that is not even the typed struct holds too: the write
             // stores only the struct, so this is a hand-edited row, and
             // fail-closed is the doctrine.
             let held = match serde_json::from_value::<crate::profiles::Availability>(block) {
-                Ok(availability) => crate::wake::hold(Some(&availability), now),
+                Ok(availability) => {
+                    let held = crate::wake::hold(Some(&availability), now);
+                    if held.is_none() {
+                        budget = crate::wake::delivery_budget(
+                            availability.concurrency,
+                            in_flight.unwrap_or(0),
+                        );
+                    }
+                    held
+                }
                 Err(error) => Some(crate::wake::Hold::Unreadable(
                     crate::wake::FormatError::Block(error.to_string()),
                 )),
             };
-            if held.is_some() {
+            if held.is_some() || budget == Some(0) {
                 return Ok(Vec::new());
             }
         }
@@ -867,6 +888,7 @@ impl NodeChannelState {
                    AND EXISTS (SELECT 1 FROM node_certificates c \
                                WHERE c.node_id = $1 \
                                  AND c.revoked_at IS NULL AND c.expires_at > now()) \
+                 ORDER BY cursor LIMIT $3 \
              ), marked AS ( \
                  UPDATE node_inbox SET offered_at = now() \
                   WHERE node_id = $1 AND offered_at IS NULL \
@@ -878,6 +900,7 @@ impl NodeChannelState {
         )
         .bind(node_id)
         .bind(after_cursor)
+        .bind(budget)
         .fetch_all(&self.pool)
         .await?;
         Ok(rows

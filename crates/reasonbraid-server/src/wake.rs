@@ -223,9 +223,48 @@ pub fn hold(availability: Option<&Availability>, at: DateTime<Utc>) -> Option<Ho
     None
 }
 
+/// How many rows a delivery may hand the node NOW
+/// (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2.2`): the declared capacity minus the
+/// commands it already holds (`node_presence.in_flight`, the ladder's
+/// `transport_received` rung). `None` is unbounded — no capacity was declared,
+/// or a legacy negative one, which is no declaration. `Some(0)` is §10.2's
+/// `busy`: the node is at the capacity it declared and is handed nothing until
+/// it finishes something. Zero capacity is the drain switch and is decided by
+/// [`hold`] before this is asked; it answers `Some(0)` here too, so the two can
+/// never disagree.
+pub fn delivery_budget(concurrency: Option<i64>, in_flight: i64) -> Option<i64> {
+    match concurrency {
+        Some(declared) if declared >= 0 => Some((declared - in_flight).max(0)),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_delivery_budget_is_capacity_minus_what_the_node_holds() {
+        assert_eq!(delivery_budget(None, 5), None, "no declaration is no limit");
+        assert_eq!(
+            delivery_budget(Some(-1), 0),
+            None,
+            "a legacy negative is no declaration"
+        );
+        assert_eq!(
+            delivery_budget(Some(0), 0),
+            Some(0),
+            "the drain switch agrees with hold"
+        );
+        assert_eq!(delivery_budget(Some(2), 0), Some(2));
+        assert_eq!(delivery_budget(Some(2), 1), Some(1));
+        assert_eq!(delivery_budget(Some(2), 2), Some(0), "at capacity: busy");
+        assert_eq!(
+            delivery_budget(Some(2), 3),
+            Some(0),
+            "over capacity never goes negative"
+        );
+    }
 
     fn clock(s: &str) -> NaiveTime {
         NaiveTime::parse_from_str(s, "%H:%M").unwrap()

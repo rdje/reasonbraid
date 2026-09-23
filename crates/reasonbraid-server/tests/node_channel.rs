@@ -1931,6 +1931,205 @@ async fn bootstrap_role(client: &reqwest::Client, base: &str, tenant: &str) -> S
     body["principal_id"].as_str().unwrap().to_string()
 }
 
+/// `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2.2`: a POSITIVE declared capacity bounds
+/// delivery. The tail is cut at `concurrency − in_flight`, where `in_flight` is
+/// the ladder's `transport_received` count — the same number that makes
+/// presence read `busy` — so *busy* and *handed nothing* are one fact. Until
+/// this repair the number decided presence only: a node declaring two was
+/// handed a third row, and the book said so twice.
+#[tokio::test]
+async fn a_declared_capacity_bounds_what_the_replay_hands_the_node() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
+
+    let tenant = "ten_00000000-0000-7000-8000-0000000000c3";
+    let role_id = "rol_00000000-0000-7000-8000-0000000000c3".to_string();
+    sqlx::query("INSERT INTO tenants (tenant_id, name) VALUES ($1, 'capacity')")
+        .bind(tenant)
+        .execute(&pool)
+        .await
+        .expect("seed tenant");
+    sqlx::query(
+        "INSERT INTO hosts (host_id, tenant_id, name) VALUES ('hst_cap_c3', $1, 'cap-host')",
+    )
+    .bind(tenant)
+    .execute(&pool)
+    .await
+    .expect("seed the host");
+    // The `nodes` row is what gives `node_presence` — and so `in_flight` — a row.
+    sqlx::query("INSERT INTO nodes (node_id, host_id, tenant_id) VALUES ($1, 'hst_cap_c3', $2)")
+        .bind(&role_id)
+        .bind(tenant)
+        .execute(&pool)
+        .await
+        .expect("seed the node");
+    {
+        let leaf = reasonbraid_server::ca::issue_node_leaf(
+            &ensure_server_ca(&pool).await.expect("server CA"),
+            &role_id,
+            "cap-host",
+        )
+        .expect("the fixture host claim is a valid SAN");
+        sqlx::query(
+            "INSERT INTO node_certificates \
+             (cert_fingerprint, node_id, cert_der, key_der, issued_at, expires_at) \
+             VALUES ($1, $2, $3, $4, now(), now() + interval '10 minutes')",
+        )
+        .bind(reasonbraid_server::ca::cert_fingerprint(&leaf.cert_der))
+        .bind(&role_id)
+        .bind(&leaf.cert_der)
+        .bind(&leaf.key_der)
+        .execute(&pool)
+        .await
+        .expect("seed the certificate");
+    }
+    sqlx::query("INSERT INTO agent_roles (role_id, tenant_id, name) VALUES ($1, $2, 'cap-role')")
+        .bind(&role_id)
+        .bind(tenant)
+        .execute(&pool)
+        .await
+        .expect("seed role");
+    sqlx::query("INSERT INTO agent_profiles (role_id, current_version) VALUES ($1, 1)")
+        .bind(&role_id)
+        .execute(&pool)
+        .await
+        .expect("seed profile pointer");
+    let profile = |availability: Value| {
+        json!({
+            "display_label": "cap",
+            "purpose": "probe",
+            "conversation_modes": [],
+            "capabilities": [],
+            "interests": [],
+            "languages": [],
+            "structured_output_formats": [],
+            "scopes": [],
+            "confidentiality_classes": [],
+            "availability": availability,
+            "resolver_tool_capabilities": [],
+            "cost_latency_class": null,
+            "resource_ceilings": null,
+            "visibility": {},
+            "grants_by_reference": [],
+            "incarnation_id": null,
+        })
+    };
+    // No declaration first: the control that the tail is unbounded by default.
+    sqlx::query(
+        "INSERT INTO profile_versions (version_id, role_id, version, content_hash, profile, written_by) \
+         VALUES ('pver_cap_1', $1, 1, 'h', $2, 'agt_cap')",
+    )
+    .bind(&role_id)
+    .bind(profile(json!({})))
+    .execute(&pool)
+    .await
+    .expect("seed the undeclared profile");
+    let set_availability = async |value: Value| {
+        sqlx::query(
+            "UPDATE profile_versions SET profile = jsonb_set(profile, '{availability}', $2) \
+             WHERE role_id = $1 AND version = 1",
+        )
+        .bind(&role_id)
+        .bind(value)
+        .execute(&pool)
+        .await
+        .expect("rewrite the availability block");
+    };
+
+    for n in 1..=3 {
+        let command_id = format!("cmd_cap_{n}");
+        state
+            .enqueue(
+                &role_id,
+                &command_id,
+                tenant,
+                "thr_00000000-0000-7000-8000-000000000000",
+                &json!({ "operation": "contribute", "command_id": command_id }),
+            )
+            .await
+            .expect("enqueue");
+    }
+    let in_flight = || {
+        let pool = pool.clone();
+        let role_id = role_id.clone();
+        async move {
+            sqlx::query_scalar::<_, i64>(
+                "SELECT np.in_flight FROM node_presence np WHERE np.node_id = $1",
+            )
+            .bind(&role_id)
+            .fetch_one(&pool)
+            .await
+            .expect("the node's in-flight count")
+        }
+    };
+
+    // ── No declared capacity: the whole tail.
+    let all = state.replay(&role_id, 0).await.expect("the replay");
+    assert_eq!(all.len(), 3, "an undeclared capacity is no limit");
+
+    // ── Capacity 2, holding nothing: at most two rows, in cursor order.
+    set_availability(json!({ "concurrency": 2 })).await;
+    let first = state.replay(&role_id, 0).await.expect("the replay");
+    assert_eq!(first.len(), 2, "capacity 2 minus 0 held: two rows");
+    assert_eq!(
+        first
+            .iter()
+            .map(|c| c.command_id.as_str())
+            .collect::<Vec<_>>(),
+        ["cmd_cap_1", "cmd_cap_2"],
+        "the first two by cursor"
+    );
+    let handed = first.iter().map(|c| c.cursor).max().unwrap();
+
+    // ── The node holds both: `transport_received`, in flight 2, at capacity.
+    state
+        .acknowledge(&role_id, handed, chrono::Utc::now())
+        .await
+        .expect("the node durably holds the two");
+    assert_eq!(in_flight().await, 2);
+    let none = state.replay(&role_id, handed).await.expect("the replay");
+    assert!(
+        none.is_empty(),
+        "at capacity the node is handed nothing — the third row waits: {none:?}"
+    );
+
+    // ── One finishes: in flight 1, so exactly one more row is handed over.
+    sqlx::query(
+        "INSERT INTO node_events (event_id, node_id, operation_id, payload) \
+         VALUES ('evt_cap_1', $1, 'cmd_cap_1', '{\"kind\":\"work_result\"}'::jsonb)",
+    )
+    .bind(&role_id)
+    .execute(&pool)
+    .await
+    .expect("the first work result lands");
+    assert_eq!(in_flight().await, 1);
+    let third = state.replay(&role_id, handed).await.expect("the replay");
+    assert_eq!(
+        third
+            .iter()
+            .map(|c| c.command_id.as_str())
+            .collect::<Vec<_>>(),
+        ["cmd_cap_3"],
+        "capacity 2 minus 1 held: the third row"
+    );
+    // Only the rows handed over were marked `offered`: the third carries the
+    // mark now and did not before the budget allowed it.
+    let offered: Vec<(String, bool)> = sqlx::query_as(
+        "SELECT command_id, offered_at IS NOT NULL FROM node_inbox \
+         WHERE node_id = $1 ORDER BY cursor",
+    )
+    .bind(&role_id)
+    .fetch_all(&pool)
+    .await
+    .expect("the offer marks");
+    assert!(
+        offered.iter().all(|(_, marked)| *marked),
+        "every row has now been handed over once: {offered:?}"
+    );
+}
+
 /// THE `.3.5.2` wake-gate acceptance: a role whose profile declares ZERO
 /// concurrency is HELD at the delivery boundary — its inbox rows stay
 /// `queued` (the replay skips them) until the policy admits work again.

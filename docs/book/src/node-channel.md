@@ -438,15 +438,22 @@ store (a row written before the formats existed, or edited by hand) **holds the
 role, fail-closed**, until the profile is written again. Until this repair
 `operating_hours: "never"` was stored verbatim and gated nothing.
 
-⚠️ **It is still not a concurrency limiter.** Declaring `concurrency: 2` does
-not cap the node at two in-flight commands: a node that declares two will
-receive a third row. An operator who wants a delivery limit must enforce it at
-the node; the server-side cap is owned by `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2.2`.
+⭐ **A positive number is a delivery limit** (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2.2`).
+Declaring `concurrency: 2` means the node is handed at most **two minus what it
+already holds**: the tail is cut at that budget, only the rows actually handed
+over are marked `offered`, and a node holding two receives nothing until it
+finishes one. *Holds* is the ladder's `transport_received` rung — the same count
+that makes presence read `busy` below — so `busy` and *handed nothing* are one
+fact rather than two opinions. Until this repair the number decided presence
+only, and a node that declared two was handed a third row.
 
-What the declared number *does* do, since `SIGNOFF-REPAIR.11.24.1.2`, is decide
-presence. A node holding as many commands as it declared reads `busy` — see
-below — which tells a caller what the node's own situation is without changing
-what the server will hand it.
+| the node declares | it holds | the next poll hands it |
+| --- | --- | --- |
+| nothing | anything | the whole tail |
+| `2` | 0 | at most 2 rows |
+| `2` | 1 | at most 1 row |
+| `2` | 2 | nothing — presence reads `busy` |
+| `0` | anything | nothing — presence reads `draining` |
 
 ## Presence has six states, and `busy` is one of them
 

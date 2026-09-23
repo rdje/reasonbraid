@@ -3849,6 +3849,99 @@ async fn the_match_surface_classifies_each_candidate_by_its_own_tenant() {
     );
 }
 
+/// `SIGNOFF-REPAIR.5.1.6` — the presence listing classifies another tenant's
+/// entries exactly as the match does: the network pseudonym by default, the
+/// tenant view once the effective directory-visibility agreement stands. As
+/// found the listing read every other tenant at `Network`, agreement or not,
+/// while the match (REPAIR-0438) and the book widened it.
+#[tokio::test]
+async fn the_presence_listing_widens_to_the_tenant_view_under_a_directory_agreement() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let world = call_world(&client, &base, "presence-wide", 1).await;
+    let member = world.roles[0].clone();
+    let (status, owner_b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "presence-wide-b" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{owner_b}");
+    let owner_b_id = owner_b["principal_id"].as_str().unwrap().to_string();
+    let tenant_b = owner_b["tenant_id"].as_str().unwrap().to_string();
+    let (status, role_b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "presence-wide-role", "tenant_id": tenant_b }),
+    )
+    .await;
+    assert_eq!(status, 200, "{role_b}");
+    let role_b = role_b["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &owner_b_id, &tenant_b, &role_b).await;
+    let (status, written) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_b}"),
+        &role_b,
+        &visibility_profile(),
+    )
+    .await;
+    assert_eq!(status, 200, "{written}");
+    let b_entry = || {
+        let client = client.clone();
+        let base = base.clone();
+        let member = member.clone();
+        let role_b = role_b.clone();
+        async move {
+            let (status, listed) = get(&client, &base, "/v1/directory/presence", &member).await;
+            assert_eq!(status, 200, "{listed}");
+            listed["network"]["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|e| e["role_id"] == json!(role_b))
+                .cloned()
+                .unwrap_or_else(|| panic!("B is listed: {listed}"))
+        }
+    };
+
+    // No agreement: the network pseudonym — B's tenant-visible `scopes` absent.
+    let entry = b_entry().await;
+    assert!(entry["profile"].get("display_label").is_some(), "{entry}");
+    assert!(entry["profile"].get("scopes").is_none(), "{entry}");
+
+    // The effective directory agreement: the tenant view, as the match reads it.
+    for step in [
+        "/v1/federation-agreements",
+        "/v1/federation-agreements/accept",
+    ] {
+        for (admin, tenant, remote) in [
+            (&world.human_id, &world.tenant, &tenant_b),
+            (&owner_b_id, &tenant_b, &world.tenant),
+        ] {
+            let mut body = json!({ "tenant_id": tenant, "remote_tenant_id": remote });
+            if step == "/v1/federation-agreements" {
+                body["directory_visibility"] = json!(true);
+                body["recruitment"] = json!(false);
+            }
+            let (status, answer) = post(&client, &base, step, admin, &body).await;
+            assert_eq!(status, 200, "{step}: {answer}");
+        }
+    }
+    let entry = b_entry().await;
+    assert!(
+        entry["profile"].get("scopes").is_some(),
+        "under the effective directory agreement B is listed at the tenant view: {entry}"
+    );
+    assert!(
+        entry["profile"].get("resource_ceilings").is_none(),
+        "the widening never goes past the tenant view: {entry}"
+    );
+}
+
 /// `SIGNOFF-REPAIR.11.4.7.2.1.5.4.3` — §4.2's `conditions[]` have a vocabulary:
 /// closed, typed, evaluable. Issuance refuses an unknown kind, an empty list,
 /// a malformed window, and a human carrying one; the operator's list shows a

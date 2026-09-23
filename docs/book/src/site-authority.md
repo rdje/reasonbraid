@@ -421,7 +421,11 @@ requirement nor appears in the answer. A field declared at a higher visibility
 class than the reader holds toward that candidate is absent from the response,
 not redacted in place. ⚠️ Until that repair the match applied ONE class — the
 reader's own — to every tenant's candidate, which this paragraph described as
-the design; the presence listing had classified per tenant all along.
+the design. The presence listing reads each other tenant at the **same** class,
+from the same code (`SIGNOFF-REPAIR.5.1.6`): until then it split own tenant
+from every other correctly but read all the others at `Network`, so a partner
+under an effective directory agreement saw the pseudonym there and the tenant
+view in the match.
 
 This differs from `GET /v1/nodes/presence`, which answers about one *named* node
 and is therefore bound to the caller's own tenant: there, a foreign answer would

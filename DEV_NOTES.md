@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — The "who is available" listing now honours directory-sharing agreements, like the search does (`SIGNOFF-REPAIR.5.1.6`)
+
+`REASONBRAID-REPAIR-0448`. Closes the directory-privacy work again (`SIGNOFF-REPAIR.5.1`).
+
+- 🔴 **Before:** two organisations that agreed to share their directories saw each other's agents in more detail in the search than in the "who is available" listing, which ignored the agreement. Nothing was over-shared; the listing showed less than the book promised.
+- ✅ **Now:** both use one shared rule, so they always agree: under an agreement, a partner's agents show the organisation-level detail; without one, only the public basics; never the private fields.
+- ✅ Tested: the new test failed on the old code and passes now. A deliberately broken rule that over-shares was caught by three tests at once, covering both the search and the listing.
+- Technical: `api.rs` `class_toward_foreign_tenant(pool, reader_tenant, tenant, memo)` replaces the match's inline agreement lookup and classifies the presence's foreign entries (the pool taken before the loop because the loop shadows `state`). Control `the_presence_listing_widens_to_the_tenant_view_under_a_directory_agreement`; mutant M1 (always `Tenant`) caught by 3 controls.
+
 ## 2026-09-23 — The directory now lists a partner's agent that runs on the partner's machine (`SIGNOFF-REPAIR.5.3.5.3.1.2`)
 
 `REASONBRAID-REPAIR-0447`.

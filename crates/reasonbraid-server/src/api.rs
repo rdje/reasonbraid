@@ -6923,6 +6923,33 @@ type DirectoryRow = (
     i64,
 );
 
+/// The reader's class toward ANOTHER tenant's directory entries, memoised per
+/// tenant for one request: `Tenant` when the effective directory-visibility
+/// agreement stands between the two (both directions accepted, both carrying
+/// `directory_visibility`, unexpired — the opt-in `classify_reader` honours),
+/// `Network` otherwise. The match and the presence listing both ask it
+/// (`SIGNOFF-REPAIR.5.1.1`, `.5.1.6`), so the two routes cannot classify one
+/// tenant differently.
+async fn class_toward_foreign_tenant(
+    pool: &PgPool,
+    reader_tenant: &str,
+    tenant: &str,
+    memo: &mut std::collections::HashMap<String, crate::profiles::ReaderClass>,
+) -> Result<crate::profiles::ReaderClass, ControlApiError> {
+    if let Some(class) = memo.get(tenant) {
+        return Ok(*class);
+    }
+    let class = if crate::federation::has_effective_directory_agreement(pool, reader_tenant, tenant)
+        .await?
+    {
+        crate::profiles::ReaderClass::Tenant
+    } else {
+        crate::profiles::ReaderClass::Network
+    };
+    memo.insert(tenant.to_string(), class);
+    Ok(class)
+}
+
 fn scope_rank(class: crate::profiles::ReaderClass) -> u8 {
     match class {
         crate::profiles::ReaderClass::Full => 2,
@@ -7030,23 +7057,8 @@ async fn directory_match(
         let class = if tenant == reader_tenant {
             own_class
         } else {
-            if !class_by_tenant.contains_key(&tenant) {
-                let widened = crate::federation::has_effective_directory_agreement(
-                    &state.pool,
-                    &reader_tenant,
-                    &tenant,
-                )
-                .await?;
-                class_by_tenant.insert(
-                    tenant.clone(),
-                    if widened {
-                        crate::profiles::ReaderClass::Tenant
-                    } else {
-                        crate::profiles::ReaderClass::Network
-                    },
-                );
-            }
-            class_by_tenant[&tenant]
+            class_toward_foreign_tenant(&state.pool, &reader_tenant, &tenant, &mut class_by_tenant)
+                .await?
         };
         let effective = if scope_rank(class) < scope_rank(req.expression.scope) {
             class
@@ -7140,9 +7152,11 @@ async fn directory_match(
 
 /// The reader's directory scope: the OWNER (tenant_admin) reads the FULL fields
 /// of their own tenant's nodes; a tenant member reads the TENANT-filtered
-/// fields; every enrolled principal reads the network pseudonyms of the other
-/// tenants (a profile whose network view is empty contributes NOTHING — not
-/// even a count). The `.1.3` filter is the field-level engine.
+/// fields; every enrolled principal reads the other tenants at the class the
+/// match reads them at — the tenant view under the effective directory
+/// agreement, the network pseudonym otherwise (`SIGNOFF-REPAIR.5.1.6`) — and a
+/// profile whose view at that class is empty contributes NOTHING, not even a
+/// count. The `.1.3` filter is the field-level engine.
 async fn directory_presence(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -7177,6 +7191,14 @@ async fn directory_presence(
 
     let mut own_nodes = Vec::new();
     let mut network_nodes = Vec::new();
+    // Another tenant's entries are read at the class the match reads them at
+    // (`SIGNOFF-REPAIR.5.1.6`): the tenant view under the effective directory
+    // agreement, the network pseudonym otherwise. Until this repair every other
+    // tenant was read at `Network`, agreement or not.
+    let mut class_by_tenant: std::collections::HashMap<String, crate::profiles::ReaderClass> =
+        std::collections::HashMap::new();
+    // The loop below names each entry's presence `state`; the pool is taken first.
+    let pool = &state.pool;
     for (
         role_id,
         node_id,
@@ -7240,10 +7262,16 @@ async fn directory_presence(
                     Ok(p) => p,
                     Err(_) => continue,
                 };
-                let filtered =
-                    crate::profiles::filter_profile(&parsed, crate::profiles::ReaderClass::Network);
-                // The zero-visibility rule: a profile whose network view is
-                // EMPTY contributes nothing — not even a count.
+                let class = class_toward_foreign_tenant(
+                    pool,
+                    &reader_tenant,
+                    &tenant,
+                    &mut class_by_tenant,
+                )
+                .await?;
+                let filtered = crate::profiles::filter_profile(&parsed, class);
+                // The zero-visibility rule: a profile whose view at that class
+                // is EMPTY contributes nothing — not even a count.
                 if filtered.as_object().map(|o| o.is_empty()).unwrap_or(true) {
                     continue;
                 }

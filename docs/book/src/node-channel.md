@@ -377,6 +377,25 @@ queued → offered → transport_received → consumed
 | `expired` | the command's authority **lapsed**: the grant that admitted it reached its own expiry | the admitting grant's `expires_at` has passed |
 | `dead_lettered` | the row was quarantined; the quarantine **is** the dead letter | `quarantined_at` set |
 
+**A finished item is never dead-lettered** (`SIGNOFF-REPAIR.4.4.8`). A node
+reports a dead letter when its retry gate refuses an item: the retry budget is
+exhausted, the provider failed definitively, the outcome is unknown and
+unauthorized, or the payload cannot be read. A *completed* attempt is not a
+refusal. The gate calls it **settled**, and the node sends nothing more for it.
+The server holds the same line on its own: a dead-letter report for a row whose
+`work_result` this node already delivered (found by the command the result
+names) is a receipt with no effect, and the row is not quarantined. Before this
+repair every successful item was reported *the attempt is terminal* one poll
+after it succeeded. Because the quarantine outranks every other state, it
+then read `dead_lettered`.
+
+⚠️ **Known defect, owned by `SIGNOFF-REPAIR.4.4.9`:** for a real node, the
+`consumed` row above never appears. The rung looks for a result whose
+*operation id* is the command id, but a node's operation ids are its own
+(`op_…`). A delivered item therefore reads `transport_received`. The
+correction keys the rung on the command the result names, which is what the
+server's guard above already uses.
+
 ⚠️ **`transport_received` is not an acknowledgement, and the two words are kept
 apart on purpose.** `ROADMAP.md` §10.6 states it directly — *transport receipt
 does not mean an agent read or acted* — and a client that reads a receipt as an

@@ -18,7 +18,7 @@ use reasonbraid_node::{
     CommandInput, EventDelivery, Journal, LocalBudget, Node, NodeError, ResultEvent, Worker,
     WorkerError,
 };
-use serde_json::json;
+use serde_json::{json, Value};
 use support::control_plane::StubControlPlane;
 
 const TENANT: &str = "ten_00000000-0000-7000-8000-000000000000";
@@ -346,4 +346,39 @@ async fn an_unschedulable_node_spends_nothing() {
         .expect("a schedulable node dispatches");
     assert_eq!(invocations.load(std::sync::atomic::Ordering::SeqCst), 1);
     assert_eq!(stub.events().len(), 1, "and delivers");
+}
+
+/// A finished item is SETTLED (`SIGNOFF-REPAIR.4.4.8`): the ticks after its result
+/// was delivered send nothing more. Before the repair the very next tick asked the
+/// retry gate about the completed item, took its *the attempt is terminal*
+/// refusal for a dead letter, and reported one, so every successful item was
+/// quarantined one poll after it succeeded.
+#[tokio::test]
+async fn a_delivered_result_is_never_followed_by_a_dead_letter() {
+    let stub = StubControlPlane::start_with_epochs(std::collections::BTreeMap::from([(
+        TENANT.to_string(),
+        7,
+    )]))
+    .await;
+    let (_fixture, node) = node_at(&stub, "settled").await;
+    node.reconcile().await.expect("reconcile");
+    seed_allowed_work(node.journal(), "settled").await;
+    let worker = worker(&node);
+
+    for tick in 0..3 {
+        worker
+            .tick()
+            .await
+            .unwrap_or_else(|e| panic!("tick {tick}: {e}"));
+    }
+    let kinds: Vec<Value> = stub
+        .events()
+        .into_iter()
+        .map(|e| e.payload["kind"].clone())
+        .collect();
+    assert_eq!(
+        kinds,
+        [json!("work_result")],
+        "one result, and nothing after it"
+    );
 }

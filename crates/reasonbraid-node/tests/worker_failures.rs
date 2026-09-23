@@ -215,17 +215,16 @@ async fn a_malformed_item_does_not_abandon_the_items_after_it() {
         .expect("the dead letter");
     assert_eq!(dead_letter.payload["command_id"], broken);
 
-    // A second tick does not re-report the stuck item. (It counts the malformed
-    // item's reports only: the completed item's own next-tick report is a
-    // separate defect, `SIGNOFF-REPAIR.4.4.8`, with its own control.)
+    // A second tick sends nothing: the stuck item is not re-reported, and the
+    // finished one is settled (`SIGNOFF-REPAIR.4.4.8`, which this control found).
     worker(&node, completing())
         .tick()
         .await
         .expect("the next tick");
-    let reports_for_broken = stub
-        .events()
-        .iter()
-        .filter(|e| e.payload["kind"] == "work_dead_lettered" && e.payload["command_id"] == broken)
-        .count();
-    assert_eq!(reports_for_broken, 1, "the dead letter is reported once");
+    assert_eq!(
+        stub.events().len(),
+        2,
+        "nothing more after the first tick: {:?}",
+        kinds(&stub)
+    );
 }

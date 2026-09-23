@@ -18,6 +18,10 @@ pub enum RetryVerdict {
     /// The item must NOT be re-dispatched. The reason carries the §9.8
     /// `retry_requires_authorization` code where that is the refusal.
     Refuse { reason: &'static str },
+    /// The item's work is DONE: its attempt completed (`SIGNOFF-REPAIR.4.4.8`).
+    /// Nothing is retried and nothing is refused, because nothing is wanted: a
+    /// refusal is a dead letter, and a completed item is the opposite of one.
+    Settled,
 }
 
 /// The pure retry decision (§14.6 classes):
@@ -36,8 +40,13 @@ pub enum RetryVerdict {
 ///   accepted): retry ONLY with an explicit possible-duplicate authorization
 ///   (`allow_possible_duplicate` on the delivery), bounded; without it the
 ///   refusal names §9.8's `retry_requires_authorization`.
-/// - every other status (`completed`, `failed_known`, `reconciled`, …) is
-///   terminal: never retried.
+/// - `completed` — the work is done: SETTLED, which is not a refusal
+///   (`SIGNOFF-REPAIR.4.4.8`; a refusal is reported as a dead letter, and a
+///   finished item reported so was quarantined one poll after it succeeded).
+/// - every other status (`failed_known`, `reconciled`, …) is terminal: never
+///   retried, and refused. `failed_known` is a genuine dead letter; `reconciled`
+///   is an operator's verdict, and one of its forms (*it did not happen*) is
+///   exactly what a dead letter's quarantine lets an operator replay.
 pub fn retry_decision(
     latest_status: Option<&str>,
     attempt_count: usize,
@@ -77,6 +86,7 @@ pub fn retry_decision(
         Some("dispatched") => RetryVerdict::Refuse {
             reason: "the attempt is dispatched — proof or adjudication owns it",
         },
+        Some("completed") => RetryVerdict::Settled,
         Some(_) => RetryVerdict::Refuse {
             reason: "the attempt is terminal",
         },
@@ -150,8 +160,20 @@ mod tests {
     }
 
     #[test]
+    fn a_completed_attempt_is_settled_not_refused() {
+        // Whatever the other facts say: the work is done.
+        for (count, reserved, authorized) in [(1, true, true), (0, false, false), (9, true, false)]
+        {
+            assert_eq!(
+                retry_decision(Some("completed"), count, reserved, authorized),
+                RetryVerdict::Settled
+            );
+        }
+    }
+
+    #[test]
     fn terminal_states_are_never_retried() {
-        for status in ["completed", "failed_known", "reconciled"] {
+        for status in ["failed_known", "reconciled"] {
             assert_eq!(
                 retry_decision(Some(status), 1, true, true),
                 RetryVerdict::Refuse {

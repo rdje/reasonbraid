@@ -618,7 +618,9 @@ The active-incident surface (`SIGNOFF-REPAIR.4.6.1.5.1`) lists the tenant's open
 ```
 
 The dead-letter surface (`.2.4`): a terminal refusal auto-quarantines the
-inbox row with the reason, and the operator REPLAYS it — the quarantine
+inbox row with the reason (a completed item is settled, never refused, and a row
+whose result was delivered is never quarantined: `SIGNOFF-REPAIR.4.4.8`), and
+the operator REPLAYS it — the quarantine
 clears, the admission decision refreshes, and the command re-enters the
 delivery tail:
 

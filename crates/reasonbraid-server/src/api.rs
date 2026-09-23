@@ -9158,6 +9158,16 @@ pub(crate) async fn apply_node_result_in_tx(
     };
     // A node's dead-letter report (`.2.4`): auto-quarantine the inbox row WITH
     // the refusal reason — the terminal fact the operator later replays.
+    //
+    // ⛔ NOT a row whose result this node already delivered
+    // (`SIGNOFF-REPAIR.4.4.8`): its work is done, and a dead letter for it is a
+    // contradiction. Such a report was sent for EVERY successful item, one tick
+    // after its success, and the quarantine outranks every other delivery state,
+    // so finished work read `dead_lettered`. The node no longer sends it; this
+    // guard keeps any report, of any origin, from undoing a delivered result.
+    // The result is found by the command it names (`payload->>'command_id'`,
+    // what the fold itself reads), never by its operation id, which is the
+    // node's own and never the command's.
     if kind == "work_dead_lettered" {
         let Some(reason) = payload.get("reason").and_then(|v| v.as_str()) else {
             return Ok(()); // malformed report — the receipt stands, no domain effect
@@ -9166,7 +9176,11 @@ pub(crate) async fn apply_node_result_in_tx(
         sqlx::query(
             "UPDATE node_inbox SET quarantined_at = $4, quarantine_reason = $5 \
              WHERE node_id = $1 AND command_id = $2 AND tenant_id = $3 \
-               AND quarantined_at IS NULL",
+               AND quarantined_at IS NULL \
+               AND NOT EXISTS (SELECT 1 FROM node_events e \
+                               WHERE e.node_id = node_inbox.node_id \
+                                 AND e.payload->>'kind' = 'work_result' \
+                                 AND e.payload->>'command_id' = node_inbox.command_id)",
         )
         .bind(node_id)
         .bind(command_id)

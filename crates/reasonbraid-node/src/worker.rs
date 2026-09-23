@@ -297,6 +297,11 @@ impl<A: Adapter> Worker<A> {
             duplicate_authorized,
         ) {
             reasonbraid_core::RetryVerdict::Retry => {}
+            // The work is done and its result is journaled (and delivered, or
+            // pending for the reconcile to deliver): nothing to do, and nothing
+            // to report (`SIGNOFF-REPAIR.4.4.8`). Silent, because every tick
+            // after a success passes through here.
+            reasonbraid_core::RetryVerdict::Settled => return Ok(()),
             reasonbraid_core::RetryVerdict::Refuse { reason } => {
                 eprintln!(
                     "worker: {} REFUSED the re-dispatch of {} (retry gate): {reason}",

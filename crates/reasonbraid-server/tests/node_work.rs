@@ -2241,3 +2241,115 @@ async fn a_refused_result_is_settled_and_the_node_journals_the_refusal() {
         "no contribution entered the closed thread"
     );
 }
+
+/// `SIGNOFF-REPAIR.4.4.8` — a completed, delivered work item is never
+/// dead-lettered, from either side.
+///
+/// NODE: the ticks after its result was delivered send nothing (the retry gate
+/// now calls a completed attempt SETTLED, not refused). SERVER: a dead-letter
+/// report for a row whose result this node already delivered is a receipt with
+/// no domain effect: the row stays unquarantined. Before the repair
+/// the node reported *the attempt is terminal* one tick after success, the
+/// server quarantined the row on it, and `node_inbox_state` (which ranks the
+/// quarantine first) read every successful item `dead_lettered`.
+#[tokio::test]
+async fn a_completed_item_is_never_dead_lettered() {
+    let _g = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (_tenant, _human, role, _thread, cert_hex, key_hex) =
+        dispatch_one_work_item(&client, &server.base(), "key-settled").await;
+
+    let key_der = from_hex(&key_hex).expect("key hex");
+    let der = rustls_pki_types::PrivateKeyDer::try_from(key_der).expect("key DER");
+    let key = rcgen::KeyPair::from_der_and_sign_algo(&der, &rcgen::PKCS_ECDSA_P256_SHA256)
+        .expect("key parses");
+    let fixture = journal_fixture("settled");
+    let node = reasonbraid_node::Node::open(
+        fixture.join("node.db"),
+        server.base(),
+        role.clone(),
+        from_hex(&cert_hex).expect("cert hex"),
+        key,
+    )
+    .await
+    .expect("open node");
+    node.reconcile().await.expect("reconcile");
+    let worker = reasonbraid_node::Worker::new(
+        node.clone(),
+        reasonbraid_adapter::FakeAdapter::new(
+            vec![reasonbraid_adapter::ScriptStep::Complete { usage: None }],
+            reasonbraid_adapter::StatusLookupSpec::Unsupported,
+            reasonbraid_adapter::AdapterCapabilities {
+                streaming: false,
+                cancellation: reasonbraid_adapter::CancellationStrength::BestEffort,
+                provider_idempotency: false,
+                status_lookup: false,
+                tool_support: false,
+                policy_injection: reasonbraid_adapter::PolicyInjectionMode::None,
+            },
+        ),
+        reasonbraid_node::LocalBudget::new(reasonbraid_core::BudgetDimensions {
+            calls: Some(100),
+            input_tokens: Some(100_000),
+            output_tokens: Some(100_000),
+            wall_clock_seconds: Some(10_000),
+        }),
+        std::time::Duration::from_millis(50),
+    );
+    // The first tick completes and delivers; the next two find it finished.
+    for tick in 0..3 {
+        worker
+            .tick()
+            .await
+            .unwrap_or_else(|e| panic!("tick {tick}: {e}"));
+    }
+    let quarantine = |pool: PgPool, role: String| async move {
+        sqlx::query_scalar::<_, Option<String>>(
+            "SELECT quarantine_reason FROM node_inbox WHERE node_id = $1",
+        )
+        .bind(role)
+        .fetch_one(&pool)
+        .await
+        .expect("the row")
+    };
+    assert_eq!(
+        quarantine(pool.clone(), role.clone()).await,
+        None,
+        "the node did not dead-letter its own finished work"
+    );
+    // ⚠️ Not yet `consumed`: that rung never fires for a real node's result,
+    // which is `SIGNOFF-REPAIR.4.4.9`'s defect (found here). Until then, the
+    // assertion is that the row is not `dead_lettered`.
+    assert_ne!(delivery_state(&pool, &role).await, "dead_lettered");
+
+    // The server side, on its own: a dead-letter report for the consumed row.
+    let item = node
+        .journal()
+        .work_items()
+        .await
+        .expect("work items")
+        .into_iter()
+        .next()
+        .expect("the item");
+    let operation_id = item.operation_id.expect("an operation");
+    node.channel()
+        .send_event(
+            &reasonbraid_core::EventId::new().to_string(),
+            &operation_id,
+            &json!({
+                "kind": "work_dead_lettered",
+                "command_id": item.command_id,
+                "reason": "the attempt is terminal",
+            }),
+        )
+        .await
+        .expect("the report is received");
+    assert_eq!(
+        quarantine(pool.clone(), role.clone()).await,
+        None,
+        "a row whose result was delivered is not quarantined by a later report"
+    );
+    assert_ne!(delivery_state(&pool, &role).await, "dead_lettered");
+}

@@ -7574,9 +7574,11 @@ async fn list_incarnations(
                 Option<Value>,
                 Option<DateTime<Utc>>,
                 Option<DateTime<Utc>>,
+                Option<String>,
             );
             let rows: Vec<Row> = sqlx::query_as(
-        "SELECT incarnation_id, role_id, provider, model, harness, config, valid_from, valid_to \
+        "SELECT incarnation_id, role_id, provider, model, harness, config, valid_from, valid_to, \
+                node_id \
          FROM incarnations WHERE tenant_id = $1 ORDER BY valid_from DESC",
     )
     .bind(q.tenant_id.to_string())
@@ -7594,10 +7596,14 @@ async fn list_incarnations(
                         config,
                         valid_from,
                         valid_to,
+                        node_id,
                     )| {
                         json!({
                             "incarnation_id": incarnation_id,
                             "role_id": role_id,
+                            // §8.1: which node instance ran it
+                            // (`SIGNOFF-REPAIR.11.4.7.2.1.5.1`).
+                            "node_id": node_id,
                             "provider": provider,
                             "model": model,
                             "harness": harness,

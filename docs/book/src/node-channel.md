@@ -841,6 +841,31 @@ The journal is explicitly **not authoritative** for "global grants or final
 decisions" (§17.1) — the cache borrows a server fact, it never re-evaluates a
 grant locally.
 
+## The node a role runs on is a ledger fact
+
+ROADMAP §8.1 binds a role to a machine only through its **incarnation**: the
+incarnation states the provider, model, harness and configuration, and the
+harness is an installation on a node instance. There is no direct node→role
+registry in the model. The development profile collapses the two — *a node id
+is the agent-role wire id it serves*, one node, one role — and that is declared
+as a known limit in [deployment](deployment.md) and the [two-host demo](two-host-demo.md).
+
+Since `SIGNOFF-REPAIR.11.4.7.2.1.5.1` the binding also exists as a **fact**:
+every incarnation records `node_id`, the node instance that declared it, at the
+one place it is written (node enrolment), and `GET /v1/admin/incarnations` shows
+it. Today it equals `role_id` on every row, because the rule makes it so. A
+registry that *declares* bindings — a role moving between machines without
+re-enrolling, one machine serving two roles — is not owed before the stable
+release; it is deferred on a condition anyone can read:
+
+```sql
+SELECT count(*) FROM incarnations WHERE node_id <> role_id;   -- 0 under the rule
+```
+
+A non-zero answer means a directory has replaced the rule, and the registry
+derives from these rows rather than being declared beside them
+(`docs/decisions/2026-09-23_the-node-to-role-binding-is-a-ledger-fact-not-a-registry-before-g9.md`).
+
 ## Honest limits (Phase 2, after `.1.5.2`)
 
 - The channel identity is the workload certificate with the certificate-proof

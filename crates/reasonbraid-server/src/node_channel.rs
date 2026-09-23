@@ -2664,10 +2664,15 @@ async fn enroll(
             .execute(&mut *tx)
             .await?;
         }
+        // `role_id` is the node id by the dev rule; `node_id` records WHICH
+        // node instance this incarnation ran on as a fact of its own
+        // (`SIGNOFF-REPAIR.11.4.7.2.1.5.1`, §8.1) — the same value today, and
+        // the column that lets a directory later say otherwise.
         sqlx::query(
                 "INSERT INTO incarnations \
-                 (incarnation_id, role_id, tenant_id, provider, model, harness, config, valid_from) \
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                 (incarnation_id, role_id, tenant_id, provider, model, harness, config, valid_from, \
+                  node_id) \
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $2)",
             )
             .bind(&id)
             .bind(&req.node_id)

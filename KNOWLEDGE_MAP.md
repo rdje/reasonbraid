@@ -253,6 +253,7 @@
 - [`2026-09-22_three-storm-controls-were-deferred-behind-triggers-that-have-fired.md`](docs/decisions/2026-09-22_three-storm-controls-were-deferred-behind-triggers-that-have-fired.md)
 - [`2026-09-23_the-auto-grants-bounds-have-no-producer.md`](docs/decisions/2026-09-23_the-auto-grants-bounds-have-no-producer.md)
 - [`2026-09-23_the-four-node-local-wake-items-each-wait-on-a-fact-that-does-not-exist-yet.md`](docs/decisions/2026-09-23_the-four-node-local-wake-items-each-wait-on-a-fact-that-does-not-exist-yet.md)
+- [`2026-09-23_the-node-to-role-binding-is-a-ledger-fact-not-a-registry-before-g9.md`](docs/decisions/2026-09-23_the-node-to-role-binding-is-a-ledger-fact-not-a-registry-before-g9.md)
 - [`2026-09-23_the-wake-checklist-is-a-node-gate-and-the-auto-grant-carries-six-bounds.md`](docs/decisions/2026-09-23_the-wake-checklist-is-a-node-gate-and-the-auto-grant-carries-six-bounds.md)
 - [`2026-09-23_this-sessions-findings-re-derived-against-the-running-server.md`](docs/decisions/2026-09-23_this-sessions-findings-re-derived-against-the-running-server.md)
 

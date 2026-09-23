@@ -1726,7 +1726,9 @@ build.
   (Phase 2), and the wire is plain HTTP. Public exposure waits for the G6
   Internet-qualification gate.
 - **One node, one role:** the dev profile has no directory — a node id is the
-  agent-role wire id it serves.
+  agent-role wire id it serves. Every incarnation records the node it ran on
+  all the same ([the binding as a fact](node-channel.md#the-node-a-role-runs-on-is-a-ledger-fact)),
+  so the rule can be replaced without losing history.
 - **Flags, not config files:** everything is flags/env; process supervision
   units and container images arrive with Phase 2 operations — recorded in the
   runbook's subtraction record.

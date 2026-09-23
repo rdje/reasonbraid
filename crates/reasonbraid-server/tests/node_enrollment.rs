@@ -730,14 +730,17 @@ async fn enrollment_writes_the_incarnation_row_with_its_facts() {
     );
 
     // The row exists with the declared facts (a separate connection).
-    let row: (
+    /// `(role_id, provider, model, harness, config, node_id)`.
+    type IncarnationRow = (
         String,
         Option<String>,
         Option<String>,
         Option<String>,
         Option<Value>,
-    ) = sqlx::query_as(
-        "SELECT role_id, provider, model, harness, config FROM incarnations \
+        Option<String>,
+    );
+    let row: IncarnationRow = sqlx::query_as(
+        "SELECT role_id, provider, model, harness, config, node_id FROM incarnations \
              WHERE incarnation_id = $1",
     )
     .bind(&incarnation_id)
@@ -745,6 +748,14 @@ async fn enrollment_writes_the_incarnation_row_with_its_facts() {
     .await
     .expect("the incarnation row");
     assert_eq!(row.0, role_id);
+    // `SIGNOFF-REPAIR.11.4.7.2.1.5.1`: the node instance that declared it is a
+    // fact of its own — equal to the role id under the dev rule, and the
+    // column a directory later fills differently.
+    assert_eq!(
+        row.5.as_deref(),
+        Some(role_id.as_str()),
+        "the incarnation records its node"
+    );
     assert_eq!(row.1.as_deref(), Some("fake"));
     assert_eq!(row.2.as_deref(), Some("scripted-1"));
     assert_eq!(row.3.as_deref(), Some("fake"));
@@ -766,6 +777,11 @@ async fn enrollment_writes_the_incarnation_row_with_its_facts() {
     let incarnations = list["incarnations"].as_array().expect("array");
     assert_eq!(incarnations.len(), 1, "exactly one incarnation: {list}");
     assert_eq!(incarnations[0]["incarnation_id"], json!(incarnation_id));
+    assert_eq!(
+        incarnations[0]["node_id"],
+        json!(role_id),
+        "the operator sees which node ran it: {list}"
+    );
     assert_eq!(incarnations[0]["harness"], json!("fake"));
 
     // A re-enrollment attempt is refused BEFORE the incarnation writer — the

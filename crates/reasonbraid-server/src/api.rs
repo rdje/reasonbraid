@@ -8666,6 +8666,39 @@ async fn load_thread_projection(
     .transpose()
 }
 
+/// Whether a thread exists in this tenant — the tenant-BOUND select
+/// [`thread_inspection`] makes, reduced to its predicate (`SIGNOFF-REPAIR.17`).
+/// The sub-reads ask it first, so a thread the caller cannot see gets ONE
+/// answer from every view — [`ControlApiError::scope_hidden`], whether the id
+/// is another tenant's or nobody's. A row-less `event_log` or
+/// `authorization_records` select cannot tell those apart from an existing
+/// thread with nothing to show, which is how the timeline came to answer an
+/// absent thread with `200 []` and the audit view with the caller's own
+/// inspection records while the item and budget reads answered `404`.
+async fn thread_exists(
+    pool: &PgPool,
+    tenant_id: TenantId,
+    thread_id: ThreadId,
+) -> Result<bool, ControlApiError> {
+    let tenant = tenant_id.to_string();
+    let thread = thread_id.to_string();
+    let claim = tenant.clone();
+    let exists: bool = crate::rls::with_tenant_claim(pool, &claim, |tx| {
+        Box::pin(async move {
+            sqlx::query_scalar(
+                "SELECT EXISTS (SELECT 1 FROM aggregate_state \
+                 WHERE tenant_id = $1 AND aggregate_id = $2 AND aggregate_type = 'thread')",
+            )
+            .bind(tenant)
+            .bind(thread)
+            .fetch_one(&mut *tx)
+            .await
+        })
+    })
+    .await?;
+    Ok(exists)
+}
+
 /// The thread inspection's read half: the tenant-BOUND `aggregate_state`
 /// select under that tenant's RLS claim, plus the `.1.3.1` derived view.
 ///
@@ -8752,6 +8785,11 @@ async fn get_events(
             thread_id,
         },
         |pool| async move {
+            // `SIGNOFF-REPAIR.17`: the item read's answer for a thread the
+            // caller cannot see, before a row-less select could say `[]`.
+            if !thread_exists(&pool, tenant_id, thread_id).await? {
+                return Err(ControlApiError::scope_hidden());
+            }
             let after = q.after.unwrap_or(0);
             let tenant = tenant_id.to_string();
             let thread = thread_id.to_string();
@@ -9508,6 +9546,12 @@ async fn get_audit(
             thread_id,
         },
         |pool| async move {
+            // `SIGNOFF-REPAIR.17`: the item read's answer for a thread the
+            // caller cannot see — before the records select, which would
+            // otherwise return the inspection record this very call wrote.
+            if !thread_exists(&pool, tenant_id, thread_id).await? {
+                return Err(ControlApiError::scope_hidden());
+            }
             let rows =
                 authority::load_thread_authorization_records(&pool, tenant_id, thread_id).await?;
             let records: Vec<Value> = rows

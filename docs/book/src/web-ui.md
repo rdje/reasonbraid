@@ -20,6 +20,15 @@ Every view is one of the existing inspection GETs, rendered as-is:
 | Node presence (derived from the lease clock; the caller's own tenant) | `GET /v1/nodes/presence?node_id=…` |
 | Node inbox (tenant_admin) | `GET /v1/nodes/inbox?node=…&tenant_id=…` |
 
+The four thread reads give **one answer** for a thread the caller cannot see:
+`404 scope_hidden`, whether the id belongs to another tenant or to no thread at
+all (`SIGNOFF-REPAIR.17`). Until that repair the timeline answered an absent
+thread with `200 {"events": []}` and the audit view with the caller's own
+inspection records, while the thread and budget views answered `404` — one
+question, two answers. Nothing leaked, since no other tenant's data appeared,
+but a reader could tell "no such thread" from "not yours" by which view they
+asked. See [`scope_hidden`](errors.md).
+
 ## Identity
 
 The page asks for the same two facts the CLI presents:

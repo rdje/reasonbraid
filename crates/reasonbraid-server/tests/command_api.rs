@@ -192,6 +192,119 @@ async fn get(client: &reqwest::Client, base: &str, path: &str, principal: &str) 
     (status, response.json().await.expect("get json"))
 }
 
+/// `SIGNOFF-REPAIR.17`: the four thread reads give ONE answer for a thread the
+/// caller cannot see — `404 scope_hidden` — whether the id is another tenant's
+/// or nobody's. Measured on the running server (DOC-0136): the item and budget
+/// reads answered `404`, the timeline `200 {"events": []}` and the audit read
+/// `200` with the caller's own inspection records. Nothing leaked, but a reader
+/// could tell "no such thread" from "not yours" by which view they asked, and
+/// the audit view answered a question about a thread that does not exist with
+/// records about the asking.
+#[tokio::test]
+async fn every_thread_read_answers_a_hidden_or_absent_thread_the_same_way() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, alice) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "alice-reads" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{alice}");
+    let tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    let (status, created) = command(
+        &client,
+        &base,
+        "/v1/threads",
+        &alice_id,
+        &envelope(
+            "thread.create",
+            "k-reads-own",
+            json!({ "tenant_id": tenant, "subject": "mine", "objective": "probe" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "{created}");
+    let own = created["thread_id"].as_str().unwrap().to_string();
+
+    // A second tenant with a thread of its own.
+    let (status, bob) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "bob-reads" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{bob}");
+    let bob_tenant = bob["tenant_id"].as_str().unwrap().to_string();
+    let bob_id = bob["principal_id"].as_str().unwrap().to_string();
+    let (status, created) = command(
+        &client,
+        &base,
+        "/v1/threads",
+        &bob_id,
+        &envelope(
+            "thread.create",
+            "k-reads-foreign",
+            json!({ "tenant_id": bob_tenant, "subject": "bob's", "objective": "probe" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "{created}");
+    let foreign = created["thread_id"].as_str().unwrap().to_string();
+    let absent = reasonbraid_core::ThreadId::new().to_string();
+
+    let views = ["", "/events", "/audit", "/budget"];
+    // The control: the caller's own thread answers 200 on every view.
+    for view in views {
+        let (status, body) = get(
+            &client,
+            &base,
+            &format!("/v1/threads/{own}{view}?tenant_id={tenant}"),
+            &alice_id,
+        )
+        .await;
+        assert_eq!(status, 200, "own thread, view `{view}`: {body}");
+    }
+    // A foreign thread named under the caller's tenant, and a thread that does
+    // not exist, answer every view identically — and the answer is the item
+    // read's, so no view is an existence oracle the item read is not.
+    let expected = json!({
+        "code": "scope_hidden",
+        "message": "the requested thread is not visible in this scope",
+    });
+    for view in views {
+        let (status, hidden) = get(
+            &client,
+            &base,
+            &format!("/v1/threads/{foreign}{view}?tenant_id={tenant}"),
+            &alice_id,
+        )
+        .await;
+        assert_eq!(
+            (status, &hidden),
+            (404, &expected),
+            "foreign thread, view `{view}`"
+        );
+        let (status, absent_body) = get(
+            &client,
+            &base,
+            &format!("/v1/threads/{absent}{view}?tenant_id={tenant}"),
+            &alice_id,
+        )
+        .await;
+        assert_eq!(
+            (status, &absent_body),
+            (404, &expected),
+            "absent thread, view `{view}`"
+        );
+    }
+}
+
 /// The happy path end to end — and the `.6.1` acceptance: every inspection happens
 /// through the API, never through the database.
 #[tokio::test]

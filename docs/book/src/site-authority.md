@@ -407,12 +407,19 @@ product premise is that an authorized caller asks a durable network a question
 *without knowing who is online*, and a directory restricted to one tenant would
 not answer it.
 
-What bounds the disclosure is not the row set but the fields. Each request derives
-a reader classification — `Full` for a tenant administrator over their own tenant,
-otherwise `Tenant` or `Network` — clamps the request's declared scope against it,
-and filters every profile through that classification before returning it. A field
-declared at a higher visibility class than the reader holds is absent from the
-response, not redacted in place.
+What bounds the disclosure is not the row set but the fields, and the bound is
+decided **per candidate tenant** (`SIGNOFF-REPAIR.5.1.1`). Toward its own tenant
+the reader is `Full` (a tenant administrator) or `Tenant` (a member); toward a
+tenant that holds the effective directory-visibility agreement with the reader's
+it is `Tenant`; toward every other tenant it is `Network`. The match clamps the
+request's declared scope against the reader's own class, then judges, ranks and
+renders each candidate at the lower of that scope and the class toward the
+candidate's tenant — so a foreign tenant-only claim neither satisfies a
+requirement nor appears in the answer. A field declared at a higher visibility
+class than the reader holds toward that candidate is absent from the response,
+not redacted in place. ⚠️ Until that repair the match applied ONE class — the
+reader's own — to every tenant's candidate, which this paragraph described as
+the design; the presence listing had classified per tenant all along.
 
 This differs from `GET /v1/nodes/presence`, which answers about one *named* node
 and is therefore bound to the caller's own tenant: there, a foreign answer would

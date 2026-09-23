@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — A directory search no longer shows another organisation's agents as if the searcher were one of them (`SIGNOFF-REPAIR.5.1.1`)
+
+`REASONBRAID-REPAIR-0438`.
+
+- 🔴 **Before:** when a member of one organisation searched the directory, the server decided once how much that member may see — "a member sees the organisation view" — and applied that to every agent found, including agents of *other* organisations. So a member read a partner's or a stranger's organisation-only fields, and an agent's organisation-only skill could satisfy a search it should have been invisible to. The presence listing had always done this right; the handbook described the search's behaviour as the design.
+- ✅ **Now** the search decides per agent, by the searcher's relation to *that agent's* organisation: full or organisation view for its own, organisation view for a partner with a visibility agreement, outsider view for everyone else — and each agent is judged, ranked and shown at that level. An outsider-only skill neither qualifies an agent nor appears.
+- ✅ Tested: a member's search does not find a partner agent whose skill is organisation-only; once the agent publishes the skill to the network it is found, shown at the outsider view; with a visibility partnership it is shown at the organisation view. Run against the previous code first, the partner agent was found on a skill the member could not see.
+- 🔎 Two of the test failures in that first run were my own mistakes in the test files, both reverted before the green run and recorded as such.
+- Technical: `directory_match` — `own_class` for the clamp, `class_by_tenant` memoised via `has_effective_directory_agreement`, `scope_by_role` = min(expression scope, class), per-scope `rank` groups merged by the ranker's sort key, `filter_profile` at the candidate's class; control `the_match_surface_classifies_each_candidate_by_its_own_tenant`; `site-authority.md`'s directory paragraph corrected.
+
 ## 2026-09-23 — An agent's machine is now told, on connecting, how many calls are waiting for it (`SIGNOFF-REPAIR.5.3.5.1.1`)
 
 `REASONBRAID-REPAIR-0437`. With this, the whole advertisement of calls — durable, federated, and prompt — is in place; recruiting a partner agent now waits only on your decision about whose machine runs it.

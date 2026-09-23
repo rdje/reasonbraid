@@ -6829,10 +6829,21 @@ fn scope_rank(class: crate::profiles::ReaderClass) -> u8 {
 
 /// `POST /v1/directory/match` — the initiator's expression resolves
 /// SERVER-side (§10.2: the caller never enumerates the network). The
-/// expression's scope must not exceed the reader's classification (a network
-/// reader cannot demand the tenant view — the typed 403). The response carries
-/// ONLY the eligible candidates, ranked, each with the stage-1 reasons + the
-/// stage-2 explanations + the profile fields VISIBLE to the reader.
+/// expression's scope must not exceed the reader's classification toward its
+/// OWN tenant (a member cannot demand the full view — the typed 403). The
+/// response carries ONLY the eligible candidates, ranked, each with the
+/// stage-1 reasons + the stage-2 explanations + the profile fields VISIBLE to
+/// the reader.
+///
+/// ⛔ VISIBLE TO THE READER is decided PER CANDIDATE TENANT
+/// (`SIGNOFF-REPAIR.5.1.1`), the way `directory_presence` always did and this
+/// surface did not: the reader is `Full` or `Tenant` toward its own tenant's
+/// candidates, `Tenant` toward a tenant that holds the effective directory
+/// agreement with it, and `Network` toward everyone else. Each candidate is
+/// judged, ranked and rendered at the LOWER of the expression's scope and that
+/// class. Until this repair ONE class — the reader's own — was applied to
+/// every tenant's candidate, so a member of one tenant read another tenant's
+/// tenant-view fields and saw its tenant-only claims satisfy a requirement.
 async fn directory_match(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -6851,25 +6862,23 @@ async fn directory_match(
     } else {
         false
     };
-    let reader_class = if owner {
+    // The reader's class toward its OWN tenant: the owner reads full, a member
+    // reads the tenant view. It is the scope clamp's reference and the class
+    // every own-tenant candidate is rendered at.
+    let own_class = if owner {
         crate::profiles::ReaderClass::Full
-    } else if crate::profiles::ReaderClass::Tenant == req.expression.scope
-        || crate::profiles::ReaderClass::Network == req.expression.scope
-    {
-        // A same-tenant member may search at most the tenant scope; anyone
-        // else at most the network scope.
-        crate::profiles::ReaderClass::Tenant
     } else {
-        crate::profiles::ReaderClass::Network
+        crate::profiles::ReaderClass::Tenant
     };
-    // The scope clamp: the expression must not exceed the reader's class.
-    if scope_rank(req.expression.scope) > scope_rank(reader_class) {
+    // The scope clamp: the expression must not exceed the reader's own class.
+    if scope_rank(req.expression.scope) > scope_rank(own_class) {
         return Err(ControlApiError::unauthorized(
             "the expression's scope exceeds the reader's classification".to_string(),
         ));
     }
 
     type Row = (
+        String,
         String,
         bool,
         bool,
@@ -6880,7 +6889,7 @@ async fn directory_match(
         i64,
     );
     let rows: Vec<Row> = sqlx::query_as(
-        "SELECT np.node_id, np.online, np.suspended, np.last_seen_at, np.lease_expires_at, \
+        "SELECT np.node_id, np.tenant_id, np.online, np.suspended, np.last_seen_at, np.lease_expires_at, \
                 (SELECT (v.profile->'availability'->>'concurrency')::bigint \
                  FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
                  WHERE v.role_id = np.node_id AND v.version = p.current_version) AS concurrency, \
@@ -6893,12 +6902,32 @@ async fn directory_match(
     .fetch_all(&state.pool)
     .await?;
 
+    // The class toward each CANDIDATE's tenant, memoised per tenant: the
+    // reader's own tenant reads at `own_class`; a tenant holding the effective
+    // directory agreement with the reader's reads at the tenant view (the
+    // opt-in `classify_reader` honours); every other tenant at the network
+    // pseudonym. A candidate is judged, ranked and rendered at the LOWER of
+    // the expression's scope and that class — so a foreign tenant-only claim
+    // neither satisfies a requirement nor appears in the answer.
+    let mut class_by_tenant: std::collections::HashMap<String, crate::profiles::ReaderClass> =
+        std::collections::HashMap::new();
+    let mut scope_by_role: std::collections::HashMap<String, crate::profiles::ReaderClass> =
+        std::collections::HashMap::new();
     let mut candidates: Vec<(
         crate::matching::EligibilityCandidate,
         crate::matching::EligibilityVerdict,
     )> = Vec::new();
-    for (node_id, online, suspended, _last_seen, _lease_expiry, concurrency, profile, in_flight) in
-        rows
+    for (
+        node_id,
+        tenant,
+        online,
+        suspended,
+        _last_seen,
+        _lease_expiry,
+        concurrency,
+        profile,
+        in_flight,
+    ) in rows
     {
         let Some(stored) = profile else {
             continue; // a role node without a profile declares nothing
@@ -6906,30 +6935,97 @@ async fn directory_match(
         let Ok(parsed) = serde_json::from_value::<crate::profiles::AgentProfile>(stored) else {
             continue;
         };
-        let state =
+        let class = if tenant == reader_tenant {
+            own_class
+        } else {
+            if !class_by_tenant.contains_key(&tenant) {
+                let widened = crate::federation::has_effective_directory_agreement(
+                    &state.pool,
+                    &reader_tenant,
+                    &tenant,
+                )
+                .await?;
+                class_by_tenant.insert(
+                    tenant.clone(),
+                    if widened {
+                        crate::profiles::ReaderClass::Tenant
+                    } else {
+                        crate::profiles::ReaderClass::Network
+                    },
+                );
+            }
+            class_by_tenant[&tenant]
+        };
+        let effective = if scope_rank(class) < scope_rank(req.expression.scope) {
+            class
+        } else {
+            req.expression.scope
+        };
+        let scoped = crate::matching::EligibilityExpression {
+            scope: effective,
+            ..req.expression.clone()
+        };
+        let state_now =
             crate::presence::presence_state(true, suspended, online, concurrency, in_flight);
         let candidate = crate::matching::EligibilityCandidate {
             role_id: node_id.clone(),
             profile: Some(parsed),
-            presence_state: state,
+            presence_state: state_now,
             concurrency,
             // The dev profile has no per-role budget facts: UNKNOWN, never
             // zero (§14.5) — a budget requirement therefore cannot be proven.
             available_budget: None,
         };
-        let verdict = crate::matching::eligible(&req.expression, &candidate);
+        let verdict = crate::matching::eligible(&scoped, &candidate);
+        scope_by_role.insert(node_id, effective);
         candidates.push((candidate, verdict));
     }
 
-    let ranked = crate::matching::rank(&req.expression, &candidates, &req.preferences);
+    // The ranking scores each candidate on its own visible profile, so ranking
+    // each scope's group at that scope and merging by the same key the ranker
+    // sorts on is the per-candidate rank; the dependence facts, which are
+    // cross-candidate, are the close's and not this surface's.
+    let mut ranked: Vec<crate::matching::RankedCandidate> = Vec::new();
+    for scope in [
+        crate::profiles::ReaderClass::Full,
+        crate::profiles::ReaderClass::Tenant,
+        crate::profiles::ReaderClass::Network,
+    ] {
+        let group: Vec<(
+            crate::matching::EligibilityCandidate,
+            crate::matching::EligibilityVerdict,
+        )> = candidates
+            .iter()
+            .filter(|(c, _)| scope_by_role.get(&c.role_id) == Some(&scope))
+            .cloned()
+            .collect();
+        if group.is_empty() {
+            continue;
+        }
+        let scoped = crate::matching::EligibilityExpression {
+            scope,
+            ..req.expression.clone()
+        };
+        ranked.extend(crate::matching::rank(&scoped, &group, &req.preferences));
+    }
+    ranked.sort_by(|a, b| {
+        b.total
+            .partial_cmp(&a.total)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.role_id.cmp(&b.role_id))
+    });
     let out: Vec<Value> = ranked
         .into_iter()
         .map(|r| {
+            let class = scope_by_role
+                .get(&r.role_id)
+                .copied()
+                .unwrap_or(crate::profiles::ReaderClass::Network);
             let profile = candidates
                 .iter()
                 .find(|(c, _)| c.role_id == r.role_id)
                 .and_then(|(c, _)| c.profile.as_ref())
-                .map(|p| crate::profiles::filter_profile(p, reader_class))
+                .map(|p| crate::profiles::filter_profile(p, class))
                 .unwrap_or_else(|| json!({}));
             json!({
                 "role_id": r.role_id,
@@ -6941,7 +7037,7 @@ async fn directory_match(
         })
         .collect();
     Ok(Json(json!({
-        "scope": format!("{:?}", reader_class).to_lowercase(),
+        "scope": format!("{:?}", own_class).to_lowercase(),
         "candidates": out,
     })))
 }

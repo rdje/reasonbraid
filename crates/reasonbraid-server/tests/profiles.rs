@@ -1524,7 +1524,11 @@ async fn the_match_query_resolves_the_expression_and_clamps_the_scope() {
         candidates[0]["total"].as_f64().unwrap() > candidates[1]["total"].as_f64().unwrap(),
         "the affinity separates the ranking: {matched}"
     );
-    // The candidate profiles carry only the reader-class-visible fields.
+    // The candidate profiles carry only the reader-class-visible fields. Both
+    // candidates are the owner's OWN tenant's roles, so the owner reads them
+    // full; the per-candidate classification of a FOREIGN candidate is
+    // `the_match_surface_classifies_each_candidate_by_its_own_tenant`'s
+    // (`SIGNOFF-REPAIR.5.1.1`).
     let a_fields = candidates[0]["profile"].as_object().unwrap();
     assert!(
         a_fields.contains_key("capabilities"),
@@ -3446,6 +3450,167 @@ async fn a_federated_subscribers_join_is_a_recorded_request() {
             .await
             .unwrap();
     assert_eq!(origin, role_b);
+}
+
+/// `SIGNOFF-REPAIR.5.1.1` — the match surface classifies each candidate by the
+/// reader's relation to the CANDIDATE's tenant, never by the reader's own
+/// class alone. A member of A searching at tenant scope is a network reader
+/// toward B: B's tenant-only claim cannot satisfy the requirement, B's
+/// tenant-only fields do not come back — and the effective directory agreement
+/// widens B to the tenant view, exactly as a profile read does. Before this
+/// repair one class was applied to every tenant's candidate.
+#[tokio::test]
+async fn the_match_surface_classifies_each_candidate_by_its_own_tenant() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let world = call_world(&client, &base, "per-tenant", 1).await;
+    let member = world.roles[0].clone();
+    let (status, owner_b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "per-tenant-b" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{owner_b}");
+    let owner_b_id = owner_b["principal_id"].as_str().unwrap().to_string();
+    let tenant_b = owner_b["tenant_id"].as_str().unwrap().to_string();
+    let (status, role_b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "per-tenant-role", "tenant_id": tenant_b }),
+    )
+    .await;
+    assert_eq!(status, 200, "{role_b}");
+    let role_b = role_b["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &owner_b_id, &tenant_b, &role_b).await;
+    let publish_b = |profile: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let role_b = role_b.clone();
+        let owner_b_id = owner_b_id.clone();
+        async move {
+            let (status, _) = put(
+                &client,
+                &base,
+                &format!("/v1/profiles/{role_b}"),
+                &role_b,
+                &profile,
+            )
+            .await;
+            assert_eq!(status, 200);
+            let (status, _) = post(
+                &client,
+                &base,
+                &format!("/v1/profiles/{role_b}/attest"),
+                &owner_b_id,
+                &json!({ "taxonomy_id": "code_review", "evidence_ref": "evt_per-tenant/b" }),
+            )
+            .await;
+            assert_eq!(status, 200, "B's owner attests");
+        }
+    };
+    publish_b(visibility_profile()).await;
+    let matched = || {
+        let client = client.clone();
+        let base = base.clone();
+        let member = member.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/directory/match"))
+                .header(PRINCIPAL_HEADER, &member)
+                .json(&json!({ "expression": {
+                    "scope": "tenant",
+                    "capabilities": [{ "taxonomy_id": "code_review", "min_confidence": "owner_attested" }],
+                    "presence_states": ["available", "offline"],
+                }}))
+                .send()
+                .await
+                .expect("match request");
+            assert_eq!(
+                response.status().as_u16(),
+                200,
+                "the member's tenant-scope match resolves"
+            );
+            let body: Value = response.json().await.unwrap();
+            body["candidates"].as_array().unwrap().clone()
+        }
+    };
+    let entry = |candidates: &[Value], who: &str| -> Option<Value> {
+        candidates
+            .iter()
+            .find(|c| c["role_id"] == json!(who))
+            .cloned()
+    };
+
+    // 1. B's capability is tenant-visible: toward B the member is a network
+    //    reader, so B cannot satisfy the requirement and is not a candidate.
+    let candidates = matched().await;
+    assert!(
+        entry(&candidates, &member).is_some(),
+        "the member's own tenant-mate is a candidate: {candidates:?}"
+    );
+    assert!(
+        entry(&candidates, &role_b).is_none(),
+        "a foreign tenant-only claim does not satisfy the requirement: {candidates:?}"
+    );
+
+    // 2. B publishes its capability to the network: now a candidate — rendered
+    //    at the network view, its tenant-visible `scopes` absent — while the
+    //    member's own tenant-mate keeps its tenant-visible fields.
+    let mut outward = visibility_profile();
+    outward["visibility"]["capabilities"] = json!("network");
+    publish_b(outward).await;
+    let candidates = matched().await;
+    let b = entry(&candidates, &role_b).expect("B is a candidate at network view");
+    assert!(
+        b["profile"].get("scopes").is_none(),
+        "B's tenant-visible field is absent for another tenant's member: {b}"
+    );
+    let a = entry(&candidates, &member).unwrap();
+    assert!(
+        a["profile"].get("scopes").is_some(),
+        "the own-tenant candidate keeps its tenant view: {a}"
+    );
+
+    // 3. The effective directory agreement widens the member's view of B to
+    //    the tenant view — the same opt-in a profile read honours.
+    for (admin, tenant, remote) in [
+        (&world.human_id, &world.tenant, &tenant_b),
+        (&owner_b_id, &tenant_b, &world.tenant),
+    ] {
+        let (status, body) = post(
+            &client,
+            &base,
+            "/v1/federation-agreements",
+            admin,
+            &json!({ "tenant_id": tenant, "remote_tenant_id": remote, "directory_visibility": true, "recruitment": false }),
+        )
+        .await;
+        assert_eq!(status, 200, "{body}");
+    }
+    for (admin, tenant, remote) in [
+        (&world.human_id, &world.tenant, &tenant_b),
+        (&owner_b_id, &tenant_b, &world.tenant),
+    ] {
+        let (status, body) = post(
+            &client,
+            &base,
+            "/v1/federation-agreements/accept",
+            admin,
+            &json!({ "tenant_id": tenant, "remote_tenant_id": remote }),
+        )
+        .await;
+        assert_eq!(status, 200, "{body}");
+    }
+    let candidates = matched().await;
+    let b = entry(&candidates, &role_b).expect("B is a candidate");
+    assert!(
+        b["profile"].get("scopes").is_some(),
+        "under the effective directory agreement B is read at the tenant view: {b}"
+    );
 }
 
 /// `SIGNOFF-REPAIR.11.4.7.2.1.5.4.1` — §4.2's `decision_rule_constraints`: the

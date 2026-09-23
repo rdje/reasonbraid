@@ -129,7 +129,7 @@ with its expiry, like every other declaration (`SIGNOFF-REPAIR.5.1.2`).
   half-open rule an authority grant's `expires_at` follows, so the two never
   disagree about a boundary.
 - Every surface that asks whether a role qualifies asks it at **one** instant
-  per request: [the directory match](site-authority.md), a
+  per request: [the directory match](#matching-the-directory), a
   [response to a call](#responding-to-an-open-call), and the close that seats
   the panel. The close judges again, so a claim that lapses between a join and
   the close does not seat its role.
@@ -351,6 +351,80 @@ measured limits.
 The receipt **cross-references**; it never merges the two domains' chains. The
 remote reference is the card's digest — what the origin's own records are
 addressed by — and the local reference is the fresh role.
+
+## Matching the directory
+
+```text
+POST /v1/directory/match    rank the roles that satisfy an expression
+```
+
+An initiator asks the directory for the roles that fit a question **without
+enumerating the network**: it sends an eligibility expression, and the server
+answers with the eligible candidates only, ranked. Which fields each candidate
+shows, and at what class, is decided per candidate tenant — that bound is in
+[the site-authority chapter](site-authority.md).
+
+```json
+{
+  "expression": {
+    "scope": "tenant",
+    "capabilities": [{ "taxonomy_id": "code_review", "min_confidence": "owner_attested" }],
+    "interests": ["parser trivia"],
+    "domains": ["repo:example/parser"],
+    "preferred_latency": "interactive"
+  },
+  "preferences": { "capability": 1.0, "diversity": 0.0 }
+}
+```
+
+The ranking runs in two stages. **Stage 1** decides eligibility: a candidate
+that fails any requirement is not in the answer at all, and the reasons a
+candidate passed ride it as `stage1_reasons`. **Stage 2** ranks the eligible
+set: each candidate gets six feature scores, each between 0 and 1, and its
+`total` is the sum of each score times the weight `preferences` gives it.
+Ties break by role id, so the same request always ranks the same way.
+
+| Weight | Feature | Scores |
+| --- | --- | --- |
+| `capability` | `capability_match` | the share of the required capabilities the candidate declares, visibly at this scope |
+| `interest` | `interest_match` | the share of the expression's `interests` the candidate declares |
+| `affinity` | `domain_affinity` | the share of the expression's `domains` among the candidate's declared scopes |
+| `latency` | `latency_class` | 1 when the candidate's cost/latency class equals `preferred_latency`, else 0 |
+| `balance` | `workload_balance` | 1 when `available`, 0.3 when `draining`, else 0 |
+| `diversity` | `diversity` | how little the candidate shares its dependence facts with the others |
+
+The first four read the expression: when it asks nothing of one — no required
+capabilities, no interests, no domains, no latency preference — that feature
+scores 0 for everyone and cannot reorder the answer. ⚠️ This surface loads no dependence facts, so `diversity`
+scores 0 here and its weight changes nothing; the facts are the close's, which
+ranks a call's joiners with them ([the panel
+snapshot](recruitment.md#closing-a-call-and-the-panel-snapshot)).
+
+Every weight is optional and defaults to `1`, so an absent `preferences` weighs
+all six features equally, and a partial one changes only what it names.
+
+### The weights are bounded
+
+Each weight is a **finite number from 0 to 1**, both ends included
+(`SIGNOFF-REPAIR.5.1.4`). A weight outside that range is refused, and the
+refusal names it:
+
+```text
+400 invalid_command — the ranking weight `diversity` must be a finite number from 0 to 1
+```
+
+The range loses nothing. The ranking is **ordinal** — only the order of the
+totals matters — and scaling every weight by the same factor keeps the order,
+so any ratio between two weights can still be written inside `[0, 1]`: to make
+capability count four times as much as interest, send `1` and `0.25`. `0` turns
+a feature off.
+
+⚠️ Until that repair the weights were unchecked, and two shapes ranked wrongly
+without any error. A **negative** weight turned a feature upside down, so
+`"diversity": -1` put the candidates that share the most with the others first.
+Weights **near the largest number JSON can carry** could push a total to
+infinity, and two infinite totals compared as a tie, so the role id decided
+the order instead of the scores.
 
 ## Responding to an open call
 

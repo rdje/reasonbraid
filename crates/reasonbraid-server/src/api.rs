@@ -6897,6 +6897,10 @@ async fn directory_match(
             "an unenrolled principal matches nothing",
         ));
     };
+    // The weights are bounded before the directory is read (`SIGNOFF-REPAIR.5.1.4`).
+    req.preferences
+        .validate()
+        .map_err(ControlApiError::invalid_command)?;
     let owner = if let Ok(tenant) = reader_tenant.parse() {
         authorize_tenant_admin(&state.pool, &principal, tenant)
             .await
@@ -7059,12 +7063,7 @@ async fn directory_match(
         };
         ranked.extend(crate::matching::rank(&scoped, &group, &req.preferences));
     }
-    ranked.sort_by(|a, b| {
-        b.total
-            .partial_cmp(&a.total)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a.role_id.cmp(&b.role_id))
-    });
+    ranked.sort_by(crate::matching::by_rank);
     let out: Vec<Value> = ranked
         .into_iter()
         .map(|r| {

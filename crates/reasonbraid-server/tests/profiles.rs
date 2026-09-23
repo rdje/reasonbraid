@@ -1577,6 +1577,75 @@ async fn the_match_query_resolves_the_expression_and_clamps_the_scope() {
     );
 }
 
+/// `SIGNOFF-REPAIR.5.1.4`: each of the initiator's six ranking weights is a
+/// finite number in `[0, 1]`, and a weight outside it is refused `400
+/// invalid_command` naming the weight. The two ends are accepted, so the
+/// bound refuses nothing an ordinal ranking can use. As found, all three
+/// shapes answered `200`: a negative weight ranks a feature's WORST
+/// candidates first, and a weight near `f64::MAX` overflows the total to
+/// `inf`, which the sort read as a tie.
+#[tokio::test]
+async fn the_ranking_weights_are_bounded_and_a_stray_one_is_named() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, owner) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "weights-owner" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the owner enrolls: {owner}");
+    let owner_id = owner["principal_id"].as_str().unwrap().to_string();
+    let expression = json!({ "scope": "tenant", "capabilities": [] });
+    let request = |preferences: Value| {
+        client
+            .post(format!("{base}/v1/directory/match"))
+            .header(PRINCIPAL_HEADER, &owner_id)
+            .json(&json!({ "expression": expression, "preferences": preferences }))
+            .send()
+    };
+
+    // The three shapes as found, each on a different weight.
+    for (weight, value) in [
+        ("diversity", json!(-1.0)),
+        ("capability", json!(1.5)),
+        ("balance", json!(1.0e308)),
+    ] {
+        let response = request(json!({ (weight): value }))
+            .await
+            .expect("match request");
+        let status = response.status().as_u16();
+        let refused: Value = response.json().await.unwrap();
+        assert_eq!(status, 400, "`{weight}` = {value} is refused: {refused}");
+        assert_eq!(refused["code"], json!("invalid_command"), "{refused}");
+        assert!(
+            refused["message"]
+                .as_str()
+                .unwrap_or("")
+                .contains(&format!("`{weight}`")),
+            "the refusal names the weight: {refused}"
+        );
+    }
+
+    // Both ends of the interval are admitted.
+    for end in [0.0, 1.0] {
+        let all = json!({
+            "capability": end, "interest": end, "affinity": end,
+            "latency": end, "balance": end, "diversity": end,
+        });
+        let response = request(all).await.expect("match request");
+        assert_eq!(
+            response.status().as_u16(),
+            200,
+            "every weight at {end} is admitted"
+        );
+    }
+}
+
 /// THE `.3.4.2` acceptance: the call rides the thread's invitation machinery —
 /// the human opens a call with the eligibility expression, the eligible role
 /// joins, the ineligible role's join refuses with the stage-1 reasons, the

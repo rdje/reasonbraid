@@ -327,6 +327,12 @@ pub fn eligible(
 
 /// The stage-2 feature weights (the initiator's preferences). Zero-weight
 /// features contribute nothing; the ranking is the weighted sum.
+///
+/// ⛔ Each weight is a finite number in `[0, 1]` ([`Self::validate`],
+/// `SIGNOFF-REPAIR.5.1.4`). The ranking is ordinal, so scaling every weight by
+/// one factor keeps the order and every ratio stays expressible inside the
+/// interval; outside it a negative weight inverts a feature, and weights near
+/// `f64::MAX` overflow the total to `inf`, where two candidates compare equal.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct RankingPreferences {
@@ -351,6 +357,40 @@ impl Default for RankingPreferences {
             diversity: 1.0,
         }
     }
+}
+
+impl RankingPreferences {
+    /// The first weight outside `[0, 1]`, named as the request spells it; a
+    /// NaN or an infinity is outside too. The weights are checked in
+    /// declaration order, so the refusal is deterministic.
+    pub fn validate(&self) -> Result<(), String> {
+        let weights = [
+            ("capability", self.capability),
+            ("interest", self.interest),
+            ("affinity", self.affinity),
+            ("latency", self.latency),
+            ("balance", self.balance),
+            ("diversity", self.diversity),
+        ];
+        match weights
+            .into_iter()
+            .find(|(_, weight)| !(0.0..=1.0).contains(weight))
+        {
+            Some((name, _)) => Err(format!(
+                "the ranking weight `{name}` must be a finite number from 0 to 1"
+            )),
+            None => Ok(()),
+        }
+    }
+}
+
+/// The ranking order: the higher total first, ties by role id. `total_cmp`
+/// keeps it a total order whatever the totals are; the match surface merges
+/// its per-scope groups by this same key.
+pub fn by_rank(a: &RankedCandidate, b: &RankedCandidate) -> std::cmp::Ordering {
+    b.total
+        .total_cmp(&a.total)
+        .then_with(|| a.role_id.cmp(&b.role_id))
 }
 
 /// One feature score with its visibility-safe explanation: the explanation
@@ -599,12 +639,7 @@ pub fn rank_with_dependence(
             }
         })
         .collect();
-    ranked.sort_by(|a, b| {
-        b.total
-            .partial_cmp(&a.total)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a.role_id.cmp(&b.role_id))
-    });
+    ranked.sort_by(by_rank);
     ranked
 }
 
@@ -1157,5 +1192,46 @@ mod tests {
             "the tie breaks by role id: {ranked:?}"
         );
         assert_eq!(ranked[1].role_id, "rol_b");
+    }
+
+    /// `SIGNOFF-REPAIR.5.1.4`: both ends of `[0, 1]` are admitted; a weight
+    /// below, above, NaN or infinite is refused by name, the first in
+    /// declaration order when several stray.
+    #[test]
+    fn a_weight_outside_the_unit_interval_is_refused_by_name() {
+        let ends = [0.0, 1.0].map(|w| RankingPreferences {
+            capability: w,
+            interest: w,
+            affinity: w,
+            latency: w,
+            balance: w,
+            diversity: w,
+        });
+        for preferences in ends {
+            assert_eq!(preferences.validate(), Ok(()), "{preferences:?}");
+        }
+        for stray in [
+            -1.0,
+            -f64::MIN_POSITIVE,
+            1.0 + f64::EPSILON,
+            f64::MAX,
+            f64::NAN,
+            f64::INFINITY,
+        ] {
+            let preferences = RankingPreferences {
+                diversity: stray,
+                ..RankingPreferences::default()
+            };
+            let refusal = preferences
+                .validate()
+                .expect_err("a stray weight is refused");
+            assert!(refusal.contains("`diversity`"), "{stray}: {refusal}");
+        }
+        let two = RankingPreferences {
+            latency: -1.0,
+            diversity: 2.0,
+            ..RankingPreferences::default()
+        };
+        assert!(two.validate().unwrap_err().contains("`latency`"));
     }
 }

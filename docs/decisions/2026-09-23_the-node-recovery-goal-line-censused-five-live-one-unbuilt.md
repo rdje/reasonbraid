@@ -36,3 +36,4 @@ By exposure. `.4.4.1` closes an ambiguity with no evidence in ordinary operation
 
 - Build `.4.4.1` → `.4.4.2` → `.4.4.3` → `.4.4.4` → `.4.4.5` → `.4.4.6` → `.4.4.7`; `.4.4` closes with the last, reconciled clause by clause.
 - ⛔ `.4.4.1`'s directive lookup must name the ATTEMPT: the server holds this attempt's `work_result` (the payload carries `attempt_id`), not any event under the operation; and the node must apply the directive's `terminal`, not flatten it. Whether `failed_known` redelivers is decided in that leaf against `retry_decision`, which today refuses `failed_known` as terminal — `.11.4.7.2.1.5.5`'s closure claimed a redelivery the node does not perform.
+- Measured by `.4.4.3` (REPAIR-0461, 2026-09-23): the `node_work.rs` clause is exact about its ASSERTION, and the control as a whole was not blind. Under a gate-bypass mutant it failed first at its `failed_before_dispatch` lookup. Only the `node_replacement.rs` control passed with the gate bypassed.

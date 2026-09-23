@@ -561,23 +561,33 @@ async fn the_replacement_ritual_recovers_a_lost_node() {
         // fail-closed (a stale decision, never a silent re-dispatch of the lost
         // node's in-flight work), the bounded retry budget exhausts, and the row
         // dead-letters (the server's auto-quarantine).
+        //
+        // ⚠️ The adapter is scripted to SUCCEED (`SIGNOFF-REPAIR.4.4.3`). A
+        // refusing script made this control pass with the gate removed: the
+        // adapter's own refusals exhausted the same bound and dead-lettered the
+        // same row. Only an adapter that would complete makes the gate the one
+        // thing standing between the stale decision and a dispatch — and the
+        // counter, the attempts' evidence and the absent contribution below are
+        // what show it was the gate that refused.
         let work_command_id = work[0].command_id.clone();
+        let fenced_adapter = reasonbraid_adapter::FakeAdapter::new(
+            vec![reasonbraid_adapter::ScriptStep::Complete {
+                usage: Some(json!({ "input_tokens": 1, "output_tokens": 1, "exact": true })),
+            }],
+            reasonbraid_adapter::StatusLookupSpec::Unsupported,
+            reasonbraid_adapter::AdapterCapabilities {
+                streaming: false,
+                cancellation: reasonbraid_adapter::CancellationStrength::BestEffort,
+                provider_idempotency: false,
+                status_lookup: false,
+                tool_support: false,
+                policy_injection: reasonbraid_adapter::PolicyInjectionMode::None,
+            },
+        );
+        let fenced_invocations = fenced_adapter.invocation_counter();
         let worker = reasonbraid_node::Worker::new(
             node.clone(),
-            reasonbraid_adapter::FakeAdapter::new(
-                vec![reasonbraid_adapter::ScriptStep::FailBeforeDispatch {
-                    reason: "provider unavailable".to_string(),
-                }],
-                reasonbraid_adapter::StatusLookupSpec::Unsupported,
-                reasonbraid_adapter::AdapterCapabilities {
-                    streaming: false,
-                    cancellation: reasonbraid_adapter::CancellationStrength::BestEffort,
-                    provider_idempotency: false,
-                    status_lookup: false,
-                    tool_support: false,
-                    policy_injection: reasonbraid_adapter::PolicyInjectionMode::None,
-                },
-            ),
+            fenced_adapter,
             reasonbraid_node::LocalBudget::new(reasonbraid_core::BudgetDimensions {
                 calls: Some(100),
                 input_tokens: Some(100_000),
@@ -586,8 +596,47 @@ async fn the_replacement_ritual_recovers_a_lost_node() {
             }),
             std::time::Duration::from_millis(50),
         );
-        for _ in 0..4 {
-            let _ = worker.tick().await; // the refusals + the terminal report
+        // `MAX_DISPATCH_ATTEMPTS` refusals, then the tick that reports the dead
+        // letter. A refusal is `Ok(())` by design — it is journaled, not raised —
+        // so an `Err` here is a channel or journal failure, never the fence.
+        for tick in 0..=reasonbraid_core::MAX_DISPATCH_ATTEMPTS {
+            worker
+                .tick()
+                .await
+                .unwrap_or_else(|e| panic!("tick {tick} failed outside the fence: {e}"));
+        }
+        assert_eq!(
+            fenced_invocations.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "the stale decision never reached the provider"
+        );
+        let fenced_operation = node
+            .journal()
+            .work_items()
+            .await
+            .expect("work items")
+            .into_iter()
+            .find(|w| w.command_id == work_command_id)
+            .and_then(|w| w.operation_id)
+            .expect("the re-delivered work has an operation");
+        let fenced_attempts = node
+            .journal()
+            .attempts_for_operation(&fenced_operation)
+            .await
+            .expect("attempt list");
+        assert_eq!(
+            fenced_attempts.len(),
+            reasonbraid_core::MAX_DISPATCH_ATTEMPTS,
+            "one journaled refusal per bounded attempt: {fenced_attempts:?}"
+        );
+        for attempt in &fenced_attempts {
+            assert_eq!(attempt.status, "failed_before_dispatch");
+            let evidence = attempt.evidence.as_deref().unwrap_or_default();
+            assert!(
+                evidence.contains("cached admission decision is stale")
+                    && evidence.contains("recorded epoch 0"),
+                "the refusal is the stale-decision gate's own: {evidence}"
+            );
         }
         let quarantine: (Option<chrono::DateTime<chrono::Utc>>, Option<String>) = sqlx::query_as(
             "SELECT quarantined_at, quarantine_reason FROM node_inbox \
@@ -631,29 +680,29 @@ async fn the_replacement_ritual_recovers_a_lost_node() {
             "the operator replay succeeds"
         );
 
+        let completing_adapter = reasonbraid_adapter::FakeAdapter::new(
+            vec![
+                reasonbraid_adapter::ScriptStep::EmitChunk {
+                    chunk: "recovered".to_string(),
+                },
+                reasonbraid_adapter::ScriptStep::Complete {
+                    usage: Some(json!({ "input_tokens": 1, "output_tokens": 1, "exact": true })),
+                },
+            ],
+            reasonbraid_adapter::StatusLookupSpec::Unsupported,
+            reasonbraid_adapter::AdapterCapabilities {
+                streaming: true,
+                cancellation: reasonbraid_adapter::CancellationStrength::BestEffort,
+                provider_idempotency: false,
+                status_lookup: false,
+                tool_support: false,
+                policy_injection: reasonbraid_adapter::PolicyInjectionMode::None,
+            },
+        );
+        let completing_invocations = completing_adapter.invocation_counter();
         let completing_worker = reasonbraid_node::Worker::new(
             node.clone(),
-            reasonbraid_adapter::FakeAdapter::new(
-                vec![
-                    reasonbraid_adapter::ScriptStep::EmitChunk {
-                        chunk: "recovered".to_string(),
-                    },
-                    reasonbraid_adapter::ScriptStep::Complete {
-                        usage: Some(
-                            json!({ "input_tokens": 1, "output_tokens": 1, "exact": true }),
-                        ),
-                    },
-                ],
-                reasonbraid_adapter::StatusLookupSpec::Unsupported,
-                reasonbraid_adapter::AdapterCapabilities {
-                    streaming: true,
-                    cancellation: reasonbraid_adapter::CancellationStrength::BestEffort,
-                    provider_idempotency: false,
-                    status_lookup: false,
-                    tool_support: false,
-                    policy_injection: reasonbraid_adapter::PolicyInjectionMode::None,
-                },
-            ),
+            completing_adapter,
             reasonbraid_node::LocalBudget::new(reasonbraid_core::BudgetDimensions {
                 calls: Some(100),
                 input_tokens: Some(100_000),
@@ -662,9 +711,27 @@ async fn the_replacement_ritual_recovers_a_lost_node() {
             }),
             std::time::Duration::from_millis(50),
         );
-        for _ in 0..4 {
-            let _ = completing_worker.tick().await;
+        for tick in 0..4 {
+            completing_worker
+                .tick()
+                .await
+                .unwrap_or_else(|e| panic!("completing tick {tick} failed: {e}"));
         }
+        assert_eq!(
+            completing_invocations.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "the replayed admission dispatched exactly once"
+        );
+        let settled = node
+            .journal()
+            .attempts_for_operation(&fenced_operation)
+            .await
+            .expect("attempt list");
+        assert_eq!(
+            settled.iter().filter(|a| a.status == "completed").count(),
+            1,
+            "the replay's one attempt completed, beside the fenced refusals: {settled:?}"
+        );
     }
 
     // Exactly ONE contribution folded (the re-delivery produced no duplicate).

@@ -264,3 +264,36 @@ async fn malformed_output_passes_through_verbatim() {
     assert_eq!(chunks[0], "valid prefix");
     assert_eq!(chunks[1], "\u{1f}\u{0} garbage {{{ not-json");
 }
+
+/// The invocation counter counts every `invoke` — a refused one as much as an
+/// accepted one — and the handle keeps counting after the fake is MOVED away,
+/// which is how a worker holds it (`SIGNOFF-REPAIR.4.4.3`). A counter that
+/// counted only acceptances would read zero for a refusal the adapter itself
+/// produced, and a control asserting "never invoked" would pass for the wrong
+/// reason.
+#[tokio::test]
+async fn the_invocation_counter_counts_every_invoke_after_the_fake_is_moved() {
+    let refusing = fixture("fail_before_dispatch");
+    let refusals = refusing.invocation_counter();
+    let owned = Box::new(refusing);
+    assert_eq!(refusals.load(std::sync::atomic::Ordering::SeqCst), 0);
+    for op in ["op_c1", "op_c2"] {
+        assert!(matches!(
+            owned.invoke(&request(), op).await,
+            InvokeOutcome::FailedBeforeDispatch { .. }
+        ));
+    }
+    assert_eq!(refusals.load(std::sync::atomic::Ordering::SeqCst), 2);
+
+    let accepting = fixture("malformed_output");
+    let acceptances = accepting.invocation_counter();
+    let InvokeOutcome::Accepted(..) = accepting.invoke(&request(), "op_c3").await else {
+        panic!("expected an accepted dispatch");
+    };
+    assert_eq!(acceptances.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert_eq!(
+        refusals.load(std::sync::atomic::Ordering::SeqCst),
+        2,
+        "each fake counts only its own invocations"
+    );
+}

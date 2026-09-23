@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — The tests guarding the hand-off to the provider can now see whether the provider was reached (`SIGNOFF-REPAIR.4.4.3`)
+
+`REASONBRAID-REPAIR-0461`. The third of the seven recovery gaps found by `REASONBRAID-DOC-0153`.
+
+- 🔴 **Before:** one test was meant to prove that a replacement machine refuses outdated work instead of sending it to the provider. Its stand-in provider was set up to refuse by itself, though. The test also passed with the safety check switched off, because the stand-in's own refusals produced the same outcome. Nothing in the tests could count provider calls.
+- ✅ **Now:** the stand-in provider counts every call. The tests use one that *would* succeed, then check it was called zero times and that the recorded refusal is the safety check's own. Every step's result is checked, not thrown away, and a second test now looks for the right kind of event (a revision, not a contribution).
+- ⭐ **Shown, not assumed:** with the safety check deliberately broken, the OLD test still passed and the new one failed. A second test the review had flagged turned out to catch the break already through an earlier check; only its last line was blind, and that line is fixed too.
+- ✅ Tested: 13 + 2 live tests pass; 134 tests in the provider and machine packages pass; strict lint clean. No product behaviour changed.
+- Technical: `FakeAdapter::invocation_counter() -> Arc<AtomicU32>` (bumped on every `invoke`); `node_replacement::the_replacement_ritual_recovers_a_lost_node` scripts `Complete`, asserts 0 invocations, `MAX_DISPATCH_ATTEMPTS` `failed_before_dispatch` attempts whose evidence names *cached admission decision is stale* / *recorded epoch 0*, every tick `Ok`, and after the replay exactly 1 invocation and 1 `completed` attempt; `node_work::a_revocation_invalidates_the_cached_decision_at_the_next_dispatch` asserts invocations 1 → 1 across the refusal, the epoch pair in the evidence, and 0 `thread.revision_submitted`. Falsified with the `cargo mutants` diff `&&`→`||` in `CachedDecision::evaluate`, applied by `patch` and run through `run_pg_tests.sh`: new `node_replacement` RED (`left: 1`), HEAD `node_replacement` GREEN, `node_work` RED at its pre-existing lookup; restored, `shasum -a 256 -c` OK.
+
 ## 2026-09-23 — A refused answer's cost is now counted, and the machine is told it was refused (`SIGNOFF-REPAIR.4.4.2`)
 
 `REASONBRAID-REPAIR-0460`. The second of the seven recovery gaps found by `REASONBRAID-DOC-0153`.

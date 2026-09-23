@@ -16,6 +16,7 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -201,6 +202,7 @@ pub struct FakeAdapter {
     lookup: StatusLookupSpec,
     capabilities: AdapterCapabilities,
     ops: Mutex<HashMap<String, Arc<FakeOpState>>>,
+    invocations: Arc<AtomicU32>,
 }
 
 impl FakeAdapter {
@@ -214,7 +216,17 @@ impl FakeAdapter {
             lookup,
             capabilities,
             ops: Mutex::new(HashMap::new()),
+            invocations: Arc::new(AtomicU32::new(0)),
         }
+    }
+
+    /// A shared handle on the number of times [`Adapter::invoke`] has been
+    /// called, whatever the script then answered — the "was the provider ever
+    /// reached" oracle. A handle rather than a getter because the fake is
+    /// usually MOVED into the worker that drives it, so a caller must take the
+    /// handle before giving the fake away (`SIGNOFF-REPAIR.4.4.3`).
+    pub fn invocation_counter(&self) -> Arc<AtomicU32> {
+        Arc::clone(&self.invocations)
     }
 
     /// Build the fake from a corpus fixture.
@@ -244,6 +256,7 @@ impl Adapter for FakeAdapter {
     }
 
     async fn invoke(&self, _request: &RunRequest, operation_id: &str) -> InvokeOutcome {
+        self.invocations.fetch_add(1, Ordering::SeqCst);
         match self.script.first() {
             Some(ScriptStep::FailBeforeDispatch { reason }) => {
                 InvokeOutcome::FailedBeforeDispatch {

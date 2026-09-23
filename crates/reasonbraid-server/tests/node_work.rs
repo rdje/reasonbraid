@@ -1290,20 +1290,25 @@ async fn a_revocation_invalidates_the_cached_decision_at_the_next_dispatch() {
     node.reconcile()
         .await
         .expect("reconcile journals the delivery");
+    // The adapter completes whatever it is handed, so the ONLY thing that can
+    // keep the revise from dispatching below is the gate; its counter is how
+    // the control sees that the provider was never reached (`SIGNOFF-REPAIR.4.4.3`).
+    let adapter = reasonbraid_adapter::FakeAdapter::new(
+        vec![reasonbraid_adapter::ScriptStep::Complete { usage: None }],
+        reasonbraid_adapter::StatusLookupSpec::Unsupported,
+        reasonbraid_adapter::AdapterCapabilities {
+            streaming: false,
+            cancellation: reasonbraid_adapter::CancellationStrength::BestEffort,
+            provider_idempotency: false,
+            status_lookup: false,
+            tool_support: false,
+            policy_injection: reasonbraid_adapter::PolicyInjectionMode::None,
+        },
+    );
+    let invocations = adapter.invocation_counter();
     let worker = reasonbraid_node::Worker::new(
         node.clone(),
-        reasonbraid_adapter::FakeAdapter::new(
-            vec![reasonbraid_adapter::ScriptStep::Complete { usage: None }],
-            reasonbraid_adapter::StatusLookupSpec::Unsupported,
-            reasonbraid_adapter::AdapterCapabilities {
-                streaming: false,
-                cancellation: reasonbraid_adapter::CancellationStrength::BestEffort,
-                provider_idempotency: false,
-                status_lookup: false,
-                tool_support: false,
-                policy_injection: reasonbraid_adapter::PolicyInjectionMode::None,
-            },
-        ),
+        adapter,
         reasonbraid_node::LocalBudget::new(reasonbraid_core::BudgetDimensions {
             calls: Some(100),
             input_tokens: Some(100_000),
@@ -1313,6 +1318,11 @@ async fn a_revocation_invalidates_the_cached_decision_at_the_next_dispatch() {
         std::time::Duration::from_millis(50),
     );
     worker.tick().await.expect("the fresh allow dispatches");
+    assert_eq!(
+        invocations.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "the fresh allow reached the provider once"
+    );
 
     let events = thread_events(&client, &server.base(), &thread, &tenant, &human).await;
     let contribution_id = events
@@ -1403,10 +1413,17 @@ async fn a_revocation_invalidates_the_cached_decision_at_the_next_dispatch() {
     assert_eq!(attempts.len(), 1, "exactly one attempt — the refusal");
     let evidence = attempts[0].evidence.clone().unwrap_or_default();
     assert!(
-        evidence.contains("stale"),
-        "the refusal names the staleness (recorded epoch 0 vs current 1): {evidence}"
+        evidence.contains("cached admission decision is stale")
+            && evidence.contains("recorded epoch 0")
+            && evidence.contains("current epoch 1"),
+        "the refusal is the stale-decision gate's own (recorded epoch 0 vs current 1): {evidence}"
     );
     assert_eq!(attempts[0].status, "failed_before_dispatch");
+    assert_eq!(
+        invocations.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "the refused revise never reached the provider"
+    );
 
     let events = thread_events(&client, &server.base(), &thread, &tenant, &human).await;
     assert_eq!(
@@ -1415,7 +1432,17 @@ async fn a_revocation_invalidates_the_cached_decision_at_the_next_dispatch() {
             .filter(|e| e["event_type"] == "thread.contribution_submitted")
             .count(),
         1,
-        "the refused revise dispatched nothing — exactly one contribution landed"
+        "exactly the one contribution the fresh allow produced"
+    );
+    // A revise lands as `thread.revision_submitted`, never as a contribution, so
+    // counting contributions alone could not see a revise that slipped through.
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| e["event_type"] == "thread.revision_submitted")
+            .count(),
+        0,
+        "the refused revise dispatched nothing — no revision landed"
     );
 }
 

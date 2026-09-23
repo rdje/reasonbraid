@@ -71,6 +71,27 @@ against it, so the oracle can only change additively with a recorded reason.
 There are no sleeps: the hang resolves exactly on cancellation, so every test is
 deterministic and the same script always yields the same event sequence.
 
+The fake also counts its own `invoke` calls — every call, whether the script
+then accepts or refuses. `invocation_counter()` hands out a shared handle, taken
+before the fake is moved into the worker that drives it:
+
+```rust
+let adapter = FakeAdapter::new(vec![ScriptStep::Complete { usage: None }], lookup, caps);
+let invocations = adapter.invocation_counter();
+let worker = Worker::new(node, adapter, budget, poll_interval);
+worker.tick().await?; // a stale cached decision: refused at the dispatch boundary
+assert_eq!(invocations.load(Ordering::SeqCst), 0); // the provider was never reached
+```
+
+This is how a test proves that a gate **ahead of** the adapter refused. That
+proof holds only if the fake is scripted to *succeed*. A fake scripted with
+`fail_before_dispatch` ends up at the same journaled `failed_before_dispatch`
+whether or not the gate exists, so a control built on one passes even with the
+gate removed (`SIGNOFF-REPAIR.4.4.3`). The node-side controls that guard the
+cached-decision gate (`node_work`, `node_replacement`) script a completing fake,
+assert that it was invoked zero times, and check the gate's own reason in the
+journaled attempt.
+
 ## The supervisor
 
 `execute_attempt` (`crates/reasonbraid-node/src/supervisor.rs`) is the boundary

@@ -1801,7 +1801,9 @@ const CURRENT_CURSOR_SQL: &str = "SELECT GREATEST( \
 ///
 /// The row is also the natural per-node lock: a second concurrent allocation
 /// waits on it and reads the bumped value, so two writers never compute one
-/// cursor twice (`SIGNOFF-REPAIR.4.3.4` owns proving that).
+/// cursor twice — observed by `concurrent_enqueues_to_one_node_serialize_on_its_mark`
+/// (`SIGNOFF-REPAIR.4.3.4`), which holds the row, sees a second enqueue blocked
+/// on it with nothing written, and releases it to the next cursor.
 pub(crate) async fn next_cursor_in_tx<'e, E>(mut tx: E, node_id: &str) -> Result<i64, sqlx::Error>
 where
     E: std::ops::DerefMut,

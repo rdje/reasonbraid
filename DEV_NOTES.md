@@ -1,5 +1,16 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — Two jobs sent to one machine at the same instant no longer collide: proven, and the inbox checklist is complete (`SIGNOFF-REPAIR.4.3.4`, closing `SIGNOFF-REPAIR.4.3`)
+
+`REASONBRAID-REPAIR-0458`. The last of the four inbox-identity gaps found by `REASONBRAID-DOC-0152`; with it the whole checklist (`SIGNOFF-REPAIR.4.3`) is met.
+
+- 🔴 **Before:** two jobs handed to one machine at the same moment could be given the same number, and the second was refused.
+- ✅ **Now:** the per-machine counter introduced two fixes ago (`REASONBRAID-REPAIR-0456`) already makes the second job wait its turn and take the next number. This change proves it rather than re-fixing it: a test holds the counter the way a job in flight does, watches the database report the second job waiting, releases it, and sees it land with the next number; then eight jobs at once all land with eight consecutive numbers.
+- ✅ The test was then run against the old numbering to show it refuses: nothing waits, and the test fails.
+- ✅ The inbox checklist is now met in full: receipts and reconnect answers are per machine, the counter survives clearing out old work, answers and the "answered" state are per machine, and simultaneous jobs are serialized.
+- ✅ Tested: the new test passes on the current code (51 tests in the machine-channel suite) and was then run against the old numbering, where it failed as it should because nothing waited; three further suites that hand out job numbers pass unchanged (113 tests); strict lint clean.
+- Technical: no product change. Control `concurrent_enqueues_to_one_node_serialize_on_its_mark` (node_channel, multi-thread flavour): a holder transaction seeds the mark row idempotently and takes it `FOR UPDATE` (seeded so the control refuses the old allocation at the property — nothing blocks — rather than at its precondition — no row); a spawned `enqueue` is observed by `blocked_on(pool, "node_inbox_cursors")` (`pg_stat_activity`, `wait_event_type = 'Lock'`), has written no row, lands with cursor 2 on release; a `JoinSet` of eight lands `3..=10`. Mutant M1 (the pre-0456 `MAX + 1` enqueue on a pooled connection) → nothing blocks, the control refuses. `next_cursor_in_tx`'s docblock now cites the control. `.4.3` closed with every goal-line clause and the attached clause reconciled MET.
+
 ## 2026-09-23 — Two machines holding a job with the same name now each get their answer counted (`SIGNOFF-REPAIR.4.3.3`)
 
 `REASONBRAID-REPAIR-0457`. The third of the four inbox-identity gaps found by `REASONBRAID-DOC-0152`.

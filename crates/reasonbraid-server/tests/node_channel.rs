@@ -5954,3 +5954,95 @@ async fn a_foreign_nodes_result_does_not_read_this_nodes_row_consumed() {
     );
     server.crash();
 }
+
+/// `SIGNOFF-REPAIR.4.3.4` — enqueue is serialized per node. DOC-0152 found two
+/// concurrent `COALESCE(MAX(cursor), 0) + 1` allocations computing one cursor,
+/// the loser's dispatch rolling back on the `(node_id, cursor)` key. Since
+/// `SIGNOFF-REPAIR.4.3.2` every writer allocates through the node's durable
+/// mark row (`node_inbox_cursors`), and that upsert takes the row's lock: a
+/// second concurrent allocation WAITS on the first and reads the bumped value.
+///
+/// Observed, not argued: a transaction holds the node's mark row the way an
+/// allocation in flight does; an enqueue spawned meanwhile is reported BLOCKED
+/// by PostgreSQL on a statement naming that row, and has written nothing;
+/// released, it lands with the next cursor. Then eight enqueues at once all
+/// land, with eight distinct consecutive cursors.
+///
+/// ⚠️ Written GREEN against the `.4.3.2` allocator, so what makes it a control
+/// is the mutant: with the pre-0456 allocation (`MAX + 1`, no mark row) the
+/// spawned enqueue never blocks — this control refuses that.
+#[tokio::test(flavor = "multi_thread")]
+async fn concurrent_enqueues_to_one_node_serialize_on_its_mark() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = Arc::new(NodeChannelState::new(pool.clone(), ca));
+    let node_id = "nod_00000000-0000-7000-8000-000000004341".to_string();
+    seed_node(&pool, &node_id).await;
+    assert_eq!(enqueue(&state, &node_id, "cmd_serial_1").await, 1);
+
+    // Hold the node's mark row, as an allocation in flight holds it. The row is
+    // seeded idempotently first, so this control is about whether an enqueue
+    // WAITS on the row and never about which writer created it: against the
+    // pre-0456 allocation the row would otherwise not exist, and the control
+    // would refuse at its own precondition instead of at the property.
+    let mut holder = pool.begin().await.expect("the holder's transaction");
+    sqlx::query(
+        "INSERT INTO node_inbox_cursors (node_id, high_water) VALUES ($1, 1) \
+         ON CONFLICT (node_id) DO NOTHING",
+    )
+    .bind(&node_id)
+    .execute(&mut *holder)
+    .await
+    .expect("the mark row exists");
+    let held: i64 = sqlx::query_scalar(
+        "SELECT high_water FROM node_inbox_cursors WHERE node_id = $1 FOR UPDATE",
+    )
+    .bind(&node_id)
+    .fetch_one(&mut *holder)
+    .await
+    .expect("the mark row is held");
+    assert_eq!(held, 1, "sanity: the mark is the first cursor");
+
+    let racer = {
+        let state = state.clone();
+        let node_id = node_id.clone();
+        tokio::spawn(async move { enqueue(&state, &node_id, "cmd_serial_2").await })
+    };
+    let pid = blocked_on(&pool, "node_inbox_cursors").await;
+    assert!(
+        !racer.is_finished(),
+        "the second enqueue waits on the node's mark row (pid {pid})"
+    );
+    let rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM node_inbox WHERE node_id = $1")
+        .bind(&node_id)
+        .fetch_one(&pool)
+        .await
+        .expect("count the rows");
+    assert_eq!(rows, 1, "it wrote nothing while it waited");
+
+    holder.commit().await.expect("the holder releases the row");
+    let second = tokio::time::timeout(std::time::Duration::from_secs(5), racer)
+        .await
+        .expect("the second enqueue completes once the row is released")
+        .expect("the racer joins");
+    assert_eq!(second, 2, "released, it takes the next cursor");
+
+    // Eight at once: every one lands, with distinct consecutive cursors.
+    let mut burst = tokio::task::JoinSet::new();
+    for i in 0..8 {
+        let state = state.clone();
+        let node_id = node_id.clone();
+        burst.spawn(async move { enqueue(&state, &node_id, &format!("cmd_burst_{i}")).await });
+    }
+    let mut cursors = Vec::with_capacity(8);
+    while let Some(landed) = burst.join_next().await {
+        cursors.push(landed.expect("a burst enqueue joins"));
+    }
+    cursors.sort_unstable();
+    assert_eq!(
+        cursors,
+        (3..=10).collect::<Vec<i64>>(),
+        "eight distinct consecutive cursors"
+    );
+}

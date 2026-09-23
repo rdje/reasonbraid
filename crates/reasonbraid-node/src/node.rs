@@ -30,7 +30,7 @@ use tokio::sync::RwLock;
 use crate::channel::{
     AmbiguousAttempt, ChannelError, Directive, HandshakeRequest, NodeChannel, CHANNEL_VERSION,
 };
-use crate::journal::{CommandInput, Journal, JournalError};
+use crate::journal::{CommandInput, Journal, JournalError, ProvenStatus};
 
 /// Where the node stands with respect to the control plane.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -286,8 +286,54 @@ impl Node {
         // 5. Apply the server's reconciliation directives.
         for directive in &response.directives {
             match directive {
-                Directive::Adjudicated { attempt_id, .. } => {
-                    self.journal.reconcile(attempt_id, now).await?;
+                // The verdict lands AS ITSELF, with the server's evidence attached
+                // (`SIGNOFF-REPAIR.4.4.1`). Every adjudication used to become
+                // `reconciled` whatever the server said, so an operator's
+                // `failed_known` or `completed` was flattened and its evidence lost.
+                Directive::Adjudicated {
+                    attempt_id,
+                    terminal,
+                    evidence,
+                } => {
+                    let evidence = serde_json::json!({ "adjudication": evidence });
+                    match terminal.as_str() {
+                        "reconciled" => {
+                            self.journal
+                                .reconcile_with_evidence(attempt_id, Some(&evidence), now)
+                                .await?;
+                        }
+                        "completed" => {
+                            self.journal
+                                .prove_result(
+                                    attempt_id,
+                                    ProvenStatus::Completed,
+                                    None,
+                                    Some(&evidence),
+                                    now,
+                                )
+                                .await?;
+                        }
+                        "failed_known" => {
+                            self.journal
+                                .prove_result(
+                                    attempt_id,
+                                    ProvenStatus::FailedKnown,
+                                    None,
+                                    Some(&evidence),
+                                    now,
+                                )
+                                .await?;
+                        }
+                        // A verdict this node does not know must not close an
+                        // ambiguity: the attempt stays `outcome_unknown`, visibly.
+                        other => {
+                            eprintln!(
+                                "node: {} ignored an adjudication of {attempt_id} with an unknown \
+                                 terminal `{other}` — the attempt stays outcome_unknown",
+                                self.node_id
+                            );
+                        }
+                    }
                 }
                 Directive::NeedsAdjudication { .. } => {
                     // The attempt stays `outcome_unknown` — bounded and visible, never

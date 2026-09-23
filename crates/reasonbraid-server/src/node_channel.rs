@@ -1131,6 +1131,32 @@ impl NodeChannelState {
         .await
     }
 
+    /// The event id of THIS node's `work_result` for THIS attempt, if the server
+    /// holds one — the only receipt that adjudicates an ambiguous attempt
+    /// (`SIGNOFF-REPAIR.4.4.1`). The lookup used to accept any event under the
+    /// operation: the node's own `work_dead_lettered` report, emitted after it
+    /// refused an unauthorized retry of that very attempt, or a later attempt's
+    /// result, closed the ambiguity with no evidence for it at all.
+    pub async fn result_receipt_for_attempt(
+        &self,
+        node_id: &str,
+        operation_id: &str,
+        attempt_id: &str,
+    ) -> Result<Option<String>, sqlx::Error> {
+        sqlx::query_scalar(
+            "SELECT event_id FROM node_events \
+             WHERE node_id = $1 AND operation_id = $2 \
+               AND payload->>'kind' = 'work_result' \
+               AND payload->>'attempt_id' = $3 \
+             ORDER BY received_at LIMIT 1",
+        )
+        .bind(node_id)
+        .bind(operation_id)
+        .bind(attempt_id)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
     /// The operator's verdict on an OPEN ambiguous attempt, if one is on file
     /// (`SIGNOFF-REPAIR.11.4.7.2.1.5.5`): the verdict, the admission that
     /// recorded it, and the operator's reason.
@@ -2042,24 +2068,26 @@ async fn handshake(
             });
             continue;
         }
+        // The receipt that adjudicates is THIS attempt's own result, never any
+        // event under its operation (`SIGNOFF-REPAIR.4.4.1`).
         match state
-            .event_id_for_operation(&req.node_id, &attempt.operation_id)
+            .result_receipt_for_attempt(&req.node_id, &attempt.operation_id, &attempt.attempt_id)
             .await?
         {
             Some(event_id) => directives.push(Directive::Adjudicated {
                 attempt_id: attempt.attempt_id.clone(),
                 terminal: "reconciled".to_string(),
                 evidence: format!(
-                    "server holds event {event_id} for operation {}",
-                    attempt.operation_id
+                    "server holds result {event_id} for attempt {} of operation {}",
+                    attempt.attempt_id, attempt.operation_id
                 ),
             }),
             None => directives.push(Directive::NeedsAdjudication {
                 attempt_id: attempt.attempt_id.clone(),
                 reason: format!(
-                    "no server receipt for operation {} — provider proof or operator \
-                     adjudication required",
-                    attempt.operation_id
+                    "no server receipt for attempt {} of operation {} — provider proof or \
+                     operator adjudication required",
+                    attempt.attempt_id, attempt.operation_id
                 ),
             }),
         }

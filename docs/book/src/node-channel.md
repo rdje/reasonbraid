@@ -208,12 +208,20 @@ attempt:
 | the handshake… | the row |
 | --- | --- |
 | reports the attempt, and the server holds no receipt | **open** — inserted, or refreshed: `report_count` goes up, `first_reported_at` stays |
-| reports it, and the server now holds a receipt | closed `adjudicated`, with the receipt as the evidence |
+| reports it, and the server now holds **this attempt's own result** | closed `adjudicated`, with that receipt as the evidence |
 | no longer reports an open attempt | closed `resolved_by_node` — the node's journal settled it itself, for example with a proven status lookup |
 | reports it again after it was closed | re-opened as a new episode |
 
 An attempt the server can adjudicate on its **first** report was never open to
 anyone, so it leaves no row. Closed rows are kept, with how they ended.
+
+⛔ **The receipt that adjudicates is the attempt's own `work_result`** — one
+whose payload names the attempt — and never any event the server happens to
+hold under the operation (`SIGNOFF-REPAIR.4.4.1`). Until that repair any such
+event counted: a node that refused an unauthorized retry of an ambiguous
+attempt reported a dead letter under the same operation, and at its next
+handshake that dead letter was read back as the receipt, closing the ambiguity
+with no evidence for it at all; a later attempt's result did the same.
 
 ```text
 GET /v1/admin/nodes/ambiguous-attempts?tenant_id=ten_…
@@ -234,7 +242,7 @@ both answers carry `x-reasonbraid-authorization`.
       "node_id": "nod_…",
       "attempt_id": "patt_…",
       "operation_id": "op_…",
-      "reason": "no server receipt for operation op_… — provider proof or operator adjudication required",
+      "reason": "no server receipt for attempt patt_… of operation op_… — provider proof or operator adjudication required",
       "first_reported_at": "2026-09-22T19:02:11.412+00:00",
       "last_reported_at": "2026-09-22T19:04:37.905+00:00",
       "report_count": 2
@@ -276,15 +284,20 @@ POST /v1/admin/nodes/ambiguous-attempts/adjudicate
 | `verdict` | means |
 | --- | --- |
 | `completed` | the provider call happened: the charge stands, the result is lost, and the thread's human decides what next (a re-ask with `allow_possible_duplicate`, or the honest close) |
-| `failed_known` | it did not happen: nothing was charged, and the work is safe to redeliver |
+| `failed_known` | it did not happen: nothing was charged, so a re-ask carries no duplicate risk. The re-ask is the thread human's; the node re-runs nothing by itself — the retry policy treats a `failed_known` attempt as terminal |
 
 The verb is admitted under `tenant_admin`, runs in one shared-guard
 transaction, and writes an administrative effect (`node_attempt_adjudicate`)
 like every other node administration; the response carries the
 `x-reasonbraid-authorization` receipt. It **records** the verdict — it does not
 apply it. The node owns its journal: at its next handshake it receives the
-verdict as an `adjudicated` directive whose evidence names the admission, marks
-the attempt `reconciled`, and only then does the row close `adjudicated`. Until
+verdict as an `adjudicated` directive whose evidence names the admission, lands
+the attempt **on the verdict** — `completed` or `failed_known`, with the
+admission stored as the attempt's evidence — and only then does the row close
+`adjudicated`. Until `SIGNOFF-REPAIR.4.4.1` the node flattened every directive
+to `reconciled` and kept no evidence, so an operator who ruled `failed_known`
+found `reconciled` in the journal. A verdict the node does not know leaves the
+attempt open rather than closing it. Until
 then the row stays **open** and the listing shows `operator_verdict`,
 `operator_reason` and `adjudicated_at` beside it, so an operator can see a
 decision the node has not yet taken. A second verdict on the same open row is

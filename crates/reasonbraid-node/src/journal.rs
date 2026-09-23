@@ -720,9 +720,11 @@ impl Journal {
         Ok(())
     }
 
-    /// The ONLY way an ambiguous attempt leaves `outcome_unknown` with a result: the
-    /// adapter PROVED it (a definitive runtime answer or a provider status-lookup hit,
-    /// §11.3). Land on the proven terminal state with the evidence attached.
+    /// The ONLY way an ambiguous attempt leaves `outcome_unknown` with a result: it
+    /// was PROVED — by the adapter (a definitive runtime answer or a provider
+    /// status-lookup hit, §11.3) or by an operator's adjudication carried as a
+    /// handshake directive (`SIGNOFF-REPAIR.4.4.1`). Land on the proven terminal
+    /// state with the evidence attached.
     pub async fn prove_result(
         &self,
         attempt_id: &str,
@@ -743,11 +745,22 @@ impl Journal {
     /// An authorized adjudication of an ambiguous attempt: `outcome_unknown →
     /// reconciled` (terminal). The machine refuses to reconcile anything else.
     pub async fn reconcile(&self, attempt_id: &str, at: DateTime<Utc>) -> Result<(), JournalError> {
+        self.reconcile_with_evidence(attempt_id, None, at).await
+    }
+
+    /// [`Journal::reconcile`] with the adjudication's evidence attached — the
+    /// server's receipt for the attempt's own result (`SIGNOFF-REPAIR.4.4.1`).
+    pub async fn reconcile_with_evidence(
+        &self,
+        attempt_id: &str,
+        evidence: Option<&Value>,
+        at: DateTime<Utc>,
+    ) -> Result<(), JournalError> {
         self.apply_transition(
             attempt_id,
             ProviderAttemptTransition::Reconcile,
             None,
-            None,
+            evidence,
             at,
         )
         .await?;

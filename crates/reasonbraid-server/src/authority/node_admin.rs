@@ -701,7 +701,10 @@ pub enum AdjudicationResult {
 
 /// The two verdicts an operator may give (§11.3): the provider call happened
 /// (`completed` — the charge stands, the result is lost, the thread's human
-/// decides what next) or it did not (`failed_known` — safe to redeliver).
+/// decides what next) or it did not (`failed_known` — nothing was charged, so a
+/// re-ask carries no duplicate risk; the re-ask is the thread human's, the node
+/// re-runs nothing by itself — `SIGNOFF-REPAIR.4.4.1`). The node lands the
+/// attempt on the verdict with the admission as its evidence.
 pub const ADJUDICATION_VERDICTS: [&str; 2] = ["completed", "failed_known"];
 
 /// Adjudicate one OPEN ambiguous attempt in ONE shared-guard transaction

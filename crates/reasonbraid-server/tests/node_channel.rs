@@ -690,7 +690,7 @@ async fn an_operator_adjudicates_an_ambiguous_attempt_and_the_node_applies_it() 
 
     let fixture = journal_fixture("ambiguous-adjudicated-by-operator");
     let journal_path = fixture.join("node.db");
-    {
+    let op = {
         let journal = Journal::open(&journal_path).await.unwrap();
         let payload = json!({ "operation": "contribute" });
         journal
@@ -723,7 +723,8 @@ async fn an_operator_adjudicates_an_ambiguous_attempt_and_the_node_applies_it() 
             .record_dispatch("patt_adj_1", None, Utc::now())
             .await
             .unwrap();
-    }
+        op
+    };
     let node = Node::open(
         &journal_path,
         server.base_url(),
@@ -840,6 +841,21 @@ async fn an_operator_adjudicates_an_ambiguous_attempt_and_the_node_applies_it() 
             .is_empty(),
         "the attempt left outcome_unknown"
     );
+    // The verdict LANDS AS ITSELF, with the admission as its evidence — not
+    // flattened to `reconciled` (`SIGNOFF-REPAIR.4.4.1`): an operator who
+    // ruled `failed_known` must find `failed_known` in the journal.
+    let history = node.journal().attempt_history("patt_adj_1").await.unwrap();
+    assert_eq!(
+        history.last().unwrap().to_status,
+        "failed_known",
+        "the operator's verdict lands as the verdict: {history:?}"
+    );
+    let attempts = node.journal().attempts_for_operation(&op).await.unwrap();
+    let evidence = attempts[0].evidence.clone().unwrap_or_default();
+    assert!(
+        evidence.contains(&receipt),
+        "the journal's evidence names the admission: {evidence}"
+    );
     let closed: (Option<String>, Option<String>) = sqlx::query_as(
         "SELECT closure, closure_evidence FROM node_ambiguous_attempts \
          WHERE node_id = $1 AND attempt_id = 'patt_adj_1'",
@@ -912,14 +928,13 @@ async fn ambiguous_attempt_with_server_receipt_is_adjudicated_and_events_dedupe(
             .unwrap();
         // The event WAS emitted and the server accepted it (receipt below) — but the
         // node crashed before journaling the acknowledgement.
+        // The event is the attempt's own result — the only receipt that
+        // adjudicates it (`SIGNOFF-REPAIR.4.4.1`).
         let event_id = "evt_amb_2".to_string();
+        let result = json!({ "kind": "work_result", "command_id": "cmd_amb_2",
+                             "attempt_id": "patt_amb_2", "content": "the answer" });
         journal
-            .record_outgoing_event(
-                &event_id,
-                &op,
-                &json!({ "event_type": "ready" }),
-                Utc::now(),
-            )
+            .record_outgoing_event(&event_id, &op, &result, Utc::now())
             .await
             .unwrap();
         (op, event_id)
@@ -929,7 +944,8 @@ async fn ambiguous_attempt_with_server_receipt_is_adjudicated_and_events_dedupe(
             &node_id,
             &event_id,
             &op,
-            &json!({ "event_type": "ready" }),
+            &json!({ "kind": "work_result", "command_id": "cmd_amb_2",
+                     "attempt_id": "patt_amb_2", "content": "the answer" }),
             Utc::now(),
         )
         .await
@@ -1153,7 +1169,8 @@ async fn the_operator_lists_open_ambiguous_attempts_and_each_closure_ends_one() 
             &node_id,
             "evt_amb_l1",
             &op_1,
-            &json!({ "event_type": "ready" }),
+            &json!({ "kind": "work_result", "command_id": "cmd_amb_l1",
+                     "attempt_id": "patt_amb_l1", "content": "the answer" }),
             Utc::now(),
         )
         .await
@@ -5791,7 +5808,11 @@ async fn a_foreign_receipt_neither_adjudicates_nor_is_disclosed() {
     let node_b = "nod_00000000-0000-7000-8000-000000004314".to_string();
     let (cert_a, key_a) = seed_node(&pool, &node_a).await;
     seed_node(&pool, &node_b).await;
-    let payload = json!({ "event_type": "ready" });
+    // A result for the attempt id A will name — attempt ids are per node too, so
+    // B's result under the same ids is still B's (`SIGNOFF-REPAIR.4.4.1` made the
+    // adjudicating receipt the attempt's own result).
+    let payload = json!({ "kind": "work_result", "command_id": "cmd_shared",
+                          "attempt_id": "patt_foreign", "content": "an answer" });
 
     // B holds a receipt for an operation id A also uses (ids are per node).
     state
@@ -6045,4 +6066,114 @@ async fn concurrent_enqueues_to_one_node_serialize_on_its_mark() {
         (3..=10).collect::<Vec<i64>>(),
         "eight distinct consecutive cursors"
     );
+}
+
+/// `SIGNOFF-REPAIR.4.4.1` — the receipt that adjudicates an ambiguous attempt
+/// is THIS attempt's own result. The handshake used to answer `adjudicated`
+/// for any event the server held under the attempt's operation: the node's
+/// own `work_dead_lettered` report — emitted after it refused an unauthorized
+/// retry of that very attempt — or a later attempt's result, so the ambiguity
+/// closed with no evidence for it at all. Three receipts under one operation:
+/// a dead letter and another attempt's result leave the attempt open; the
+/// attempt's own result adjudicates it, and the evidence names both.
+#[tokio::test]
+async fn a_receipt_that_is_not_this_attempts_result_does_not_adjudicate_it() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
+    let server = TestServer::start(&pool).await;
+    let node_id = "nod_00000000-0000-7000-8000-000000004351".to_string();
+    let (cert_der, key_der) = seed_node(&pool, &node_id).await;
+    let channel = reasonbraid_node::NodeChannel::new(
+        server.base_url(),
+        node_id.clone(),
+        cert_der.clone(),
+        key_from_der(&key_der),
+    );
+    let req = reasonbraid_node::HandshakeRequest {
+        channel_version: reasonbraid_node::CHANNEL_VERSION,
+        node_id: node_id.clone(),
+        last_acked_cursor: 0,
+        pending_operations: vec![],
+        ambiguous_attempts: vec![reasonbraid_node::AmbiguousAttempt {
+            attempt_id: "patt_amb".to_string(),
+            operation_id: "op_amb".to_string(),
+        }],
+        cert_der: String::new(),
+        proof_signature: String::new(),
+        nonce: String::new(),
+    };
+    let still_open = |directives: &[reasonbraid_node::Directive]| {
+        matches!(
+            directives,
+            [reasonbraid_node::Directive::NeedsAdjudication { attempt_id, .. }]
+                if attempt_id == "patt_amb"
+        )
+    };
+
+    // (1) The node's own dead letter under the operation is not evidence.
+    state
+        .record_event(
+            &node_id,
+            "evt_dead_letter",
+            "op_amb",
+            &json!({ "kind": "work_dead_lettered", "command_id": "cmd_amb",
+                     "reason": "retry_requires_authorization" }),
+            Utc::now(),
+        )
+        .await
+        .unwrap();
+    let answer = channel.handshake(&req).await.expect("handshake");
+    assert!(
+        still_open(&answer.directives),
+        "a dead letter is not evidence for the attempt: {:?}",
+        answer.directives
+    );
+
+    // (2) Another attempt's result under the same operation is not evidence.
+    state
+        .record_event(
+            &node_id,
+            "evt_later_attempt",
+            "op_amb",
+            &json!({ "kind": "work_result", "command_id": "cmd_amb",
+                     "attempt_id": "patt_later", "content": "a later attempt's answer" }),
+            Utc::now(),
+        )
+        .await
+        .unwrap();
+    let answer = channel.handshake(&req).await.expect("handshake");
+    assert!(
+        still_open(&answer.directives),
+        "another attempt's result is not evidence for this one: {:?}",
+        answer.directives
+    );
+
+    // (3) THIS attempt's own result adjudicates it, and the evidence names both.
+    state
+        .record_event(
+            &node_id,
+            "evt_own_result",
+            "op_amb",
+            &json!({ "kind": "work_result", "command_id": "cmd_amb",
+                     "attempt_id": "patt_amb", "content": "this attempt's answer" }),
+            Utc::now(),
+        )
+        .await
+        .unwrap();
+    let answer = channel.handshake(&req).await.expect("handshake");
+    assert!(
+        matches!(
+            answer.directives.as_slice(),
+            [reasonbraid_node::Directive::Adjudicated { attempt_id, terminal, evidence }]
+                if attempt_id == "patt_amb"
+                    && terminal == "reconciled"
+                    && evidence.contains("evt_own_result")
+                    && evidence.contains("patt_amb")
+        ),
+        "the attempt's own result adjudicates it: {:?}",
+        answer.directives
+    );
+    server.crash();
 }

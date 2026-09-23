@@ -46,6 +46,7 @@ async fn pool() -> Option<PgPool> {
         &pool,
         &[
             "derivations",
+            "node_inbox_cursors",
             "node_inbox",
             "claim_assessments",
             "quota_events",

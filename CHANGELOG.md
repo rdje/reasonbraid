@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-23 — Clearing out a machine's old delivered work no longer locks it out or hides later work (`SIGNOFF-REPAIR.4.3.2`)
+
+`REASONBRAID-REPAIR-0456`. The second of the four inbox-identity gaps found by `REASONBRAID-DOC-0152`.
+
+- 🔴 **Before:** the server worked out "how far has this machine got" by looking at the highest-numbered item still in its inbox. When an operator cleared out old delivered items, that number could drop — so a machine that had confirmed up to item 30 was refused on its next check-in as "ahead of the server", and new items handed out afterwards could be numbered 1, 2, 3 again, which the machine had already seen and would skip. Work went silently undelivered and counted against the machine's backlog for ever.
+- ✅ **Now:** the server keeps a durable per-machine counter that only ever goes up. Every new item is numbered above it, so clearing out old items removes items, never numbers. A machine that confirmed up to 30 reconnects fine, and the next item is number 31.
+- ✅ Existing machines' counters were seeded from what they already held, so nothing moved. A machine whose entire inbox had already been cleared before this change cannot have its lost number recovered; the change says so.
+- ✅ Tested: the new prune-everything-then-reconnect check failed on the old code exactly where predicted and passes now (the inbox suite: 12 tests); two deliberately broken versions (the counter overwritten by the inbox's highest number; the reconnect check ignoring the counter) were each caught; ten further suites that hand out or read cursors pass unchanged (223 tests); strict lint clean.
+
 ## 2026-09-23 — One machine can no longer silence another machine's answer by reusing its message id (`SIGNOFF-REPAIR.4.3.1`)
 
 `REASONBRAID-REPAIR-0455`. The first of the four inbox-identity gaps found by `REASONBRAID-DOC-0152`.

@@ -77,6 +77,7 @@ impl RemovalFixture {
             "event_log",
             "outbox",
             "outbox_delivery",
+            "node_inbox_cursors",
             "node_inbox",
             "budget_reservations",
             "quota_events",

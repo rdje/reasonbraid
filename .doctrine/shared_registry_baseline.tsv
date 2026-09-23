@@ -62,13 +62,13 @@ POST /v1/evaluations/gates/{gate_id}/evaluations	site authority	evaluation_gate_
 POST /v1/evaluations/runs	site authority	evaluation_runs	walk
 POST /v1/evaluations/trials	site authority	evaluation_trials	walk
 POST /v1/evaluations/trials/{trial_id}/results	site authority	evaluation_trial_results	walk
-POST /v1/nodes/ack	not-censused	node_ambiguous_attempts,node_certificates,node_events,node_keys,node_leases,node_proof_nonces	module-reach
+POST /v1/nodes/ack	not-censused	node_ambiguous_attempts,node_certificates,node_events,node_inbox_cursors,node_keys,node_leases,node_proof_nonces	module-reach
 POST /v1/nodes/enroll	not-censused	node_certificates,node_keys,node_leases	walk
-POST /v1/nodes/enroll-tokens	guarded transaction	node_ambiguous_attempts,node_certificates,node_events,node_keys,node_leases,node_proof_nonces,server_ca	module-reach
+POST /v1/nodes/enroll-tokens	guarded transaction	node_ambiguous_attempts,node_certificates,node_events,node_inbox_cursors,node_keys,node_leases,node_proof_nonces,server_ca	module-reach
 POST /v1/nodes/events	not-censused	node_events,quota_events,resource_references	walk
-POST /v1/nodes/handshake	not-censused	node_ambiguous_attempts,node_certificates,node_events,node_keys,node_leases,node_proof_nonces	module-reach
-POST /v1/nodes/heartbeat	not-censused	node_ambiguous_attempts,node_certificates,node_events,node_keys,node_leases,node_proof_nonces	module-reach
-POST /v1/nodes/poll	not-censused	node_ambiguous_attempts,node_certificates,node_events,node_keys,node_leases,node_proof_nonces	module-reach
+POST /v1/nodes/handshake	not-censused	node_ambiguous_attempts,node_certificates,node_events,node_inbox_cursors,node_keys,node_leases,node_proof_nonces	module-reach
+POST /v1/nodes/heartbeat	not-censused	node_ambiguous_attempts,node_certificates,node_events,node_inbox_cursors,node_keys,node_leases,node_proof_nonces	module-reach
+POST /v1/nodes/poll	not-censused	node_ambiguous_attempts,node_certificates,node_events,node_inbox_cursors,node_keys,node_leases,node_proof_nonces	module-reach
 POST /v1/nodes/rotate	not-censused	node_certificates	walk
 POST /v1/policies	site authority	policy_versions,site_audit	module-reach
 POST /v1/policies/resolve	identity only	policy_versions	module-reach
@@ -78,8 +78,8 @@ POST /v1/resources/{resource_id}/resolve	identity only	derivations,evidence_snap
 POST /v1/snapshots	identity only	evidence_snapshots,snapshot_objects	walk
 POST /v1/snapshots/expire-due	site authority	site_audit	module-reach
 POST /v1/snapshots/{snapshot_id}/tombstone	site authority	site_audit	module-reach
-POST /v1/threads	guarded transaction	quota_events,resource_references	walk
-POST /v1/threads/auto	guarded transaction	quota_events,resource_references	walk
-POST /v1/threads/{thread_id}/commands	guarded transaction	quota_events,resource_references	walk
+POST /v1/threads	guarded transaction	node_inbox_cursors,quota_events,resource_references	walk
+POST /v1/threads/auto	guarded transaction	node_inbox_cursors,quota_events,resource_references	walk
+POST /v1/threads/{thread_id}/commands	guarded transaction	node_inbox_cursors,quota_events,resource_references	walk
 POST /v1/workflow-profiles	site authority	site_audit,workflow_profiles	module-reach
 PUT /v1/profiles/{role_id}	identity only	agent_profiles,profile_versions	walk

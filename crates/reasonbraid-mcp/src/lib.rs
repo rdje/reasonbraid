@@ -588,6 +588,7 @@ mod tests {
                 "outbox_delivery",
                 "outbox",
                 "node_events",
+                "node_inbox_cursors",
                 "node_inbox",
                 "budget_reservations",
                 "budget_ceilings",

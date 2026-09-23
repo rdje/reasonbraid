@@ -50,6 +50,7 @@ async fn pool() -> Option<PgPool> {
             "outbox_delivery",
             "outbox",
             "node_events",
+            "node_inbox_cursors",
             "node_inbox",
             "node_leases",
             "budget_reservations",
@@ -1696,4 +1697,180 @@ async fn a_cursor_ack_does_not_receipt_a_row_the_tail_withheld() {
         "and it carries no receipt, so the retention prune cannot delete work \
          that was never delivered"
     );
+}
+
+/// The authenticated handshake at a REPORTED cursor, returning the status and
+/// the body rather than asserting success — the cursor-ahead refusal is one of
+/// the answers a control here has to be able to see.
+async fn handshake_at(
+    client: &reqwest::Client,
+    base: &str,
+    node_id: &str,
+    cert_hex: &str,
+    key_hex: &str,
+    last_acked_cursor: i64,
+) -> (u16, Value) {
+    let key_der = from_hex(key_hex).expect("key hex");
+    let der = rustls_pki_types::PrivateKeyDer::try_from(key_der).expect("key DER");
+    let key = rcgen::KeyPair::from_der_and_sign_algo(&der, &rcgen::PKCS_ECDSA_P256_SHA256)
+        .expect("key parses");
+    let nonce = reasonbraid_node::fresh_proof_nonce();
+    let proof = reasonbraid_node::compute_cert_proof(
+        &key,
+        CHANNEL_VERSION,
+        node_id,
+        last_acked_cursor,
+        &[],
+        &[],
+        &nonce,
+    );
+    let response = client
+        .post(format!("{base}/v1/nodes/handshake"))
+        .json(&json!({
+            "channel_version": CHANNEL_VERSION,
+            "node_id": node_id,
+            "last_acked_cursor": last_acked_cursor,
+            "pending_operations": [],
+            "ambiguous_attempts": [],
+            "cert_der": cert_hex,
+            "proof_signature": proof,
+            "nonce": nonce,
+        }))
+        .send()
+        .await
+        .expect("handshake request");
+    let status = response.status().as_u16();
+    let text = response.text().await.unwrap_or_default();
+    (status, serde_json::from_str(&text).unwrap_or(Value::Null))
+}
+
+/// `SIGNOFF-REPAIR.4.3.2` — a node's cursor survives its inbox being pruned.
+/// This is `.4.3`'s attached clause: the retention control above keeps a
+/// partial prefix (`cmd_prune_3..5` survive), so `MAX(cursor)` never had to
+/// answer for an inbox the prune emptied of delivered rows.
+///
+/// 🔴 Every cursor writer allocated `COALESCE(MAX(cursor), 0) + 1` over the
+/// rows that HAPPENED to remain, and the three refusals compared the node's
+/// reported cursor with that same maximum. After a node acknowledged up to N
+/// and the operator pruned its delivered rows, the ledger forgot N: the node
+/// was refused `cursor_ahead` at every handshake, poll and ack, and each row
+/// enqueued or replayed afterwards took a cursor ≤ N that the node's
+/// `cursor > N` replay never offered — hidden work, counted toward the backlog
+/// cap for ever.
+///
+/// Three arms, one node. (1) After everything delivered is pruned, a reconnect
+/// at N is admitted, not refused, and the ledger still answers N. (2) A
+/// quarantined row replayed after the prune is numbered above N. (3) A fresh
+/// enqueue after that is numbered above the replayed row — and the reconnect
+/// at N is offered exactly those two.
+#[tokio::test]
+async fn a_nodes_cursor_survives_its_inbox_being_pruned() {
+    let _g = guard().await;
+    let Some(pool) = pool().await else { return };
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let node_id = "nod_00000000-0000-7000-8000-000000004320";
+    let (tenant, alice) = bootstrap_admin(&client, &base).await;
+    let (cert_hex, key_hex) = seed_node_in(&pool, node_id, &tenant).await;
+    for i in 1..=3 {
+        enqueue_in(&state, node_id, &format!("cmd_floor_{i}"), &tenant).await;
+    }
+    // The middle row is quarantined before delivery: never offered, never
+    // acknowledged, so the prune leaves it — the one row that will remain.
+    let (status, _, body) = inbox_post(
+        &client,
+        &base,
+        "/v1/nodes/quarantine",
+        &alice,
+        json!({ "tenant_id": tenant, "node_id": node_id, "command_id": "cmd_floor_2",
+                "reason": "held back across the prune" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+
+    // The node takes rows 1 and 3 and acknowledges up to 3.
+    let hs = handshake(&client, &base, node_id, &cert_hex, &key_hex).await;
+    assert_eq!(hs["current_cursor"], json!(3));
+    let token = hs["fencing_token"].as_str().unwrap();
+    let epoch = hs["lease_epoch"].as_i64().unwrap();
+    ack_cursor(&client, &base, node_id, 3, token, epoch).await;
+
+    // The delivered rows age past the window; the operator prunes them.
+    sqlx::query(
+        "UPDATE node_inbox SET acknowledged_at = now() - interval '10 days' \
+         WHERE node_id = $1 AND acknowledged_at IS NOT NULL",
+    )
+    .bind(node_id)
+    .execute(&pool)
+    .await
+    .expect("backdate the acknowledgements");
+    let (status, _, measured) = inbox_post(
+        &client,
+        &base,
+        "/v1/nodes/inbox/prune",
+        &alice,
+        json!({ "tenant_id": tenant, "node_id": node_id, "min_age_seconds": 7 * 24 * 3600 }),
+    )
+    .await;
+    assert_eq!(status, 200, "{measured}");
+    assert_eq!(measured["deleted"], json!(2), "{measured}");
+    assert_eq!(
+        measured["after"],
+        json!(1),
+        "only the quarantined row remains"
+    );
+
+    // (1) The reconnect at the cursor the node durably holds is ADMITTED, and
+    // the ledger still answers the high-water mark it acknowledged.
+    let (status, body) = handshake_at(&client, &base, node_id, &cert_hex, &key_hex, 3).await;
+    assert_eq!(
+        status, 200,
+        "a node whose delivered rows were pruned is not `cursor_ahead`: {body}"
+    );
+    assert_eq!(
+        body["current_cursor"],
+        json!(3),
+        "the ledger remembers what the node acknowledged: {body}"
+    );
+    assert_eq!(body["replay"], json!([]), "{body}");
+
+    // (2) Replaying the quarantined row numbers it ABOVE the high-water mark.
+    let (status, _, body) = inbox_post(
+        &client,
+        &base,
+        "/v1/nodes/replay",
+        &alice,
+        json!({ "tenant_id": tenant, "node_id": node_id, "command_id": "cmd_floor_2" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let replayed: i64 =
+        sqlx::query_scalar("SELECT cursor FROM node_inbox WHERE node_id = $1 AND command_id = $2")
+            .bind(node_id)
+            .bind("cmd_floor_2")
+            .fetch_one(&pool)
+            .await
+            .expect("the replayed row");
+    assert_eq!(
+        replayed, 4,
+        "a replayed row is numbered above what the node acknowledged"
+    );
+
+    // (3) A fresh enqueue is numbered above the replayed row — and the
+    // reconnect at 3 is offered exactly those two, in cursor order.
+    let fresh = enqueue_in(&state, node_id, "cmd_floor_4", &tenant).await;
+    assert_eq!(fresh, 5, "a fresh row is numbered above the replayed one");
+    let (status, body) = handshake_at(&client, &base, node_id, &cert_hex, &key_hex, 3).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["current_cursor"], json!(5), "{body}");
+    let offered: Vec<&str> = body["replay"]
+        .as_array()
+        .expect("a replay array")
+        .iter()
+        .map(|c| c["command_id"].as_str().unwrap())
+        .collect();
+    assert_eq!(offered, vec!["cmd_floor_2", "cmd_floor_4"], "{body}");
 }

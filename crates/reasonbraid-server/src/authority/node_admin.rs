@@ -913,14 +913,19 @@ pub(crate) async fn replay_command_in_one_transaction(
                     .bind(tenant_id.to_string())
                     .fetch_one(&mut *conn)
                     .await?;
+                    // The replayed row is numbered from the node's DURABLE
+                    // high-water mark (`SIGNOFF-REPAIR.4.3.2`), above everything
+                    // the node has acknowledged — pruned rows included — so the
+                    // node's `cursor > N` replay offers it.
+                    let cursor =
+                        crate::node_channel::next_cursor_in_tx(&mut *conn, &node_id).await?;
                     sqlx::query(
                         "UPDATE node_inbox SET \
                            quarantined_at = NULL, \
                            quarantine_reason = NULL, \
                            decided_at = $4, \
                            revocation_epoch = $5, \
-                           cursor = (SELECT COALESCE(MAX(cursor), 0) + 1 \
-                                     FROM node_inbox WHERE node_id = $1) \
+                           cursor = $6 \
                          WHERE node_id = $1 AND command_id = $2 AND tenant_id = $3",
                     )
                     .bind(&node_id)
@@ -928,6 +933,7 @@ pub(crate) async fn replay_command_in_one_transaction(
                     .bind(tenant_id.to_string())
                     .bind(at)
                     .bind(epoch)
+                    .bind(cursor)
                     .execute(&mut *conn)
                     .await?;
                     (ReplayResult::Replayed, AdministrativeOutcome::Applied {})

@@ -666,9 +666,10 @@ impl NodeChannelState {
     }
 
     /// Append a command to a node's inbox ledger; returns its assigned per-node cursor
-    /// (monotonic, starting at 1). Concurrent enqueues to the SAME node collide on the
-    /// `(node_id, cursor)` primary key — the dev profile is single-writer; the collision
-    /// is a conflict error, never a silent overwrite.
+    /// (monotonic, starting at 1), allocated by [`next_cursor_in_tx`] from the node's
+    /// DURABLE high-water mark (`SIGNOFF-REPAIR.4.3.2`), so it lies above everything
+    /// the node has ever been given — pruned rows included — and the allocation and
+    /// the row commit together.
     ///
     /// Plain channel traffic carries NO admission decision (the decision columns are
     /// NULL — a node would refuse to dispatch it, fail-closed); dispatched WORK items
@@ -681,21 +682,23 @@ impl NodeChannelState {
         thread_id: &str,
         payload: &Value,
     ) -> Result<i64, sqlx::Error> {
-        let mut conn = self.pool.acquire().await?;
-        sqlx::query_scalar(
+        let mut tx = self.pool.begin().await?;
+        let cursor = next_cursor_in_tx(&mut *tx, node_id).await?;
+        let assigned: i64 = sqlx::query_scalar(
             "INSERT INTO node_inbox (node_id, cursor, command_id, tenant_id, thread_id, payload) \
-             VALUES ($1, \
-                     (SELECT COALESCE(MAX(cursor), 0) + 1 FROM node_inbox WHERE node_id = $1), \
-                     $2, $3, $4, $5) \
+             VALUES ($1, $2, $3, $4, $5, $6) \
              RETURNING cursor",
         )
         .bind(node_id)
+        .bind(cursor)
         .bind(command_id)
         .bind(tenant_id)
         .bind(thread_id)
         .bind(payload)
-        .fetch_one(&mut *conn)
-        .await
+        .fetch_one(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(assigned)
     }
 
     /// The inbox row for one command, if this node's ledger holds it — the `.6.2`
@@ -710,9 +713,13 @@ impl NodeChannelState {
         load_command_in_tx(&mut *conn, node_id, command_id).await
     }
 
-    /// The highest cursor in a node's inbox ledger (0 when the node has none).
+    /// The node's cursor high-water mark: the greater of its DURABLE mark
+    /// (`node_inbox_cursors`, `SIGNOFF-REPAIR.4.3.2`) and the highest cursor in its
+    /// ledger — 0 when the node has neither. The mark is what survives a prune; the
+    /// ledger's own maximum is still honoured so a row written past the mark (a
+    /// fixture, a ledger older than the mark) is never numbered under.
     pub async fn current_cursor(&self, node_id: &str) -> Result<i64, sqlx::Error> {
-        sqlx::query_scalar("SELECT COALESCE(MAX(cursor), 0) FROM node_inbox WHERE node_id = $1")
+        sqlx::query_scalar(CURRENT_CURSOR_SQL)
             .bind(node_id)
             .fetch_one(&self.pool)
             .await
@@ -1002,7 +1009,7 @@ impl NodeChannelState {
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         node_id: &str,
     ) -> Result<i64, sqlx::Error> {
-        sqlx::query_scalar("SELECT COALESCE(MAX(cursor), 0) FROM node_inbox WHERE node_id = $1")
+        sqlx::query_scalar(CURRENT_CURSOR_SQL)
             .bind(node_id)
             .fetch_one(&mut **tx)
             .await
@@ -1769,6 +1776,51 @@ where
     .await
 }
 
+/// The node's cursor high-water mark, as [`NodeChannelState::current_cursor`]
+/// reads it: the greater of the durable mark and the ledger's own maximum.
+const CURRENT_CURSOR_SQL: &str = "SELECT GREATEST( \
+     COALESCE((SELECT high_water FROM node_inbox_cursors WHERE node_id = $1), 0), \
+     COALESCE((SELECT MAX(cursor) FROM node_inbox WHERE node_id = $1), 0))";
+
+/// Allocate the next cursor of a node's inbox ledger (`SIGNOFF-REPAIR.4.3.2`).
+///
+/// One row per node (`node_inbox_cursors`, migration `0103`) holds the node's
+/// DURABLE high-water mark, and this statement bumps it as it reads it: the
+/// next cursor is one above the greater of the mark and the ledger's current
+/// maximum, so the mark never goes down and a row written past it is never
+/// numbered under. Every writer allocates here — the two enqueues and the
+/// quarantine replay.
+///
+/// Until this leaf every writer computed `COALESCE(MAX(cursor), 0) + 1` over
+/// the rows that HAPPENED to remain, and the three refusals compared the node's
+/// reported cursor with that same maximum. The retention prune deletes
+/// delivered rows, the top of the ledger included, so a node that had
+/// acknowledged up to N and then had those rows pruned was refused
+/// `cursor_ahead` at every handshake, poll and ack, and every row written
+/// afterwards took a cursor ≤ N that its `cursor > N` replay never offered.
+///
+/// The row is also the natural per-node lock: a second concurrent allocation
+/// waits on it and reads the bumped value, so two writers never compute one
+/// cursor twice (`SIGNOFF-REPAIR.4.3.4` owns proving that).
+pub(crate) async fn next_cursor_in_tx<'e, E>(mut tx: E, node_id: &str) -> Result<i64, sqlx::Error>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = Postgres>,
+{
+    sqlx::query_scalar(
+        "INSERT INTO node_inbox_cursors (node_id, high_water) \
+         VALUES ($1, (SELECT COALESCE(MAX(cursor), 0) FROM node_inbox WHERE node_id = $1) + 1) \
+         ON CONFLICT (node_id) DO UPDATE \
+            SET high_water = GREATEST(node_inbox_cursors.high_water, \
+                                      (SELECT COALESCE(MAX(cursor), 0) FROM node_inbox \
+                                        WHERE node_id = $1)) + 1 \
+         RETURNING high_water",
+    )
+    .bind(node_id)
+    .fetch_one(&mut *tx)
+    .await
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn enqueue_in_tx<'e, E>(
     mut tx: E,
@@ -1786,15 +1838,15 @@ where
     E: std::ops::DerefMut,
     for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = Postgres>,
 {
+    let cursor = next_cursor_in_tx(&mut *tx, node_id).await?;
     sqlx::query_scalar(
         "INSERT INTO node_inbox (node_id, cursor, command_id, tenant_id, thread_id, payload, \
                                  authz_ref, policy_digest, decided_at, revocation_epoch) \
-         VALUES ($1, \
-                 (SELECT COALESCE(MAX(cursor), 0) + 1 FROM node_inbox WHERE node_id = $1), \
-                 $2, $3, $4, $5, $6, $7, $8, $9) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) \
          RETURNING cursor",
     )
     .bind(node_id)
+    .bind(cursor)
     .bind(command_id)
     .bind(tenant_id)
     .bind(thread_id)

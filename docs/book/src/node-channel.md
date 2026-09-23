@@ -183,6 +183,17 @@ disclosed to A (`SIGNOFF-REPAIR.4.3.1`).
 A node that reports a cursor ahead of the server's ledger is **refused** with a
 typed error: its journal saw commands this server cannot reproduce.
 
+The ledger the node is measured against is its **durable high-water mark** —
+one row per node (`node_inbox_cursors`, migration `0103`), bumped by every
+writer in the statement that reads it — and not the highest cursor that
+happens to remain in its inbox. Until `SIGNOFF-REPAIR.4.3.2` it was the
+latter: the retention prune deletes delivered rows, the top of the ledger
+included, so a node that had acknowledged up to N and then had those rows
+pruned was refused `cursor_ahead` at every handshake, poll and ack, and every
+row enqueued or replayed afterwards took a cursor ≤ N that its `cursor > N`
+replay never offered — hidden work, held against the backlog cap. The mark
+never goes down: pruning removes rows, never numbers.
+
 ## Ambiguous attempts on the operator surface
 
 An attempt is **ambiguous** when the node crossed the dispatch boundary and never
@@ -624,6 +635,9 @@ Two operator actions harden the per-node inbox (both on the control API,
 - **Retention** (`rb node prune --node … --min-age-seconds …`): deletes
   DELIVERED rows older than the window — an explicit, measured operator action
   (the response reports `before`/`deleted`/`after`), never a background sweep.
+  Pruning never moves the node's cursor: rows enqueued or replayed afterwards
+  are numbered above everything the node has acknowledged
+  (`SIGNOFF-REPAIR.4.3.2`).
 - **Inspection** (`rb node inbox --node …`): every row's delivery +
   quarantine facts, in cursor order — **for the tenant you name, and only that
   tenant**. The inspection is admitted on the tenant in the request, which

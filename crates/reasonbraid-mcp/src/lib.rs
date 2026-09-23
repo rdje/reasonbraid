@@ -628,6 +628,7 @@ mod tests {
                 "mcp_listen_state",
                 "tenant_bootstrap_requests",
                 "routing_recommendations",
+                "storm_refusals",
                 "resolution_refusals",
                 "tenants",
                 "idempotency",

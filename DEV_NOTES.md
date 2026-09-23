@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — Every storm-control refusal is now recorded, so a storm can actually be seen (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.4`)
+
+`REASONBRAID-REPAIR-0423`.
+
+- 🔴 **Before:** when the server refused a request as a storm control — too many open calls, an agent re-joining its own chain, a chain too deep — the caller got a "429" and nothing was written down. The roadmap's circuit breakers were postponed until "the first multi-tenant storm is observed", and nothing could observe one.
+- ✅ **Now** every such refusal is written down before it is answered, by the one piece of code that is allowed to produce that answer, so no refusal can be given without a record. Each row says which control refused, its limit, who was refused, which thread they named, and the exact words they were given. An administrator lists them with one call.
+- ✅ The breakers' trigger is now a plain question with an answer: have two or more organisations been refused within an hour?
+- ✅ Tested on the existing storm tests: the fifth call in a row and the two chain refusals each appear on the record with the right control, limit and words. Removing the write makes the tests fail. The first run caught that the fan-out record named an internal handle instead of the person; fixed before commit.
+- Technical: migration 0091 `storm_refusals`; `api.rs::refuse_storm` (the only value-spelling of the wire code; storage failure → internal error); four producers routed through it; `GET /v1/admin/storm-refusals` (`TenantAdminInspection::StormRefusals`); `.doctrine/book_surface_verdicts.tsv` admin family `21:-` → `22:-`; 26 checked purge plans gained the table.
+
 ## 2026-09-23 — The last four pre-wake checks each wait on something that does not exist yet (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.4`)
 
 `REASONBRAID-DOC-0138`. A decision; no code changed.

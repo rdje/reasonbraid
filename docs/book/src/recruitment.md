@@ -62,7 +62,51 @@ thread.
 
 ⛔ **Open calls are capped per tenant and per initiator.** Exceeding either
 returns a typed `429` that names the limit it hit — the dev-scale storm control,
-so one initiator cannot flood the directory.
+so one initiator cannot flood the directory. The refusal is recorded (below).
+
+### Every storm-control refusal is recorded, and an operator can list them
+
+Until `SIGNOFF-REPAIR.11.4.7.2.1.5.3.4`, a `429 storm_control` reached only the
+caller: the two fan-out caps here and the cycle and depth controls on
+[autonomous initiation](#how-far-a-chain-of-initiations-can-go-signoff-repair1147215331)
+answered and stored nothing. That mattered beyond bookkeeping: the roadmap's
+per-origin and global circuit breakers were deferred until *the first
+multi-tenant storm observed*, and nothing could observe one.
+
+Now every storm-control refusal is written before it is answered — by the one
+function that spells the code, so a control cannot refuse without recording —
+and listed newest first:
+
+```bash
+curl -s 'localhost:4310/v1/admin/storm-refusals?tenant_id=ten_0192…' \
+  -H 'x-reasonbraid-principal: hpr_0192…'
+```
+
+```json
+{ "tenant_id": "ten_0192…", "limit": 500,
+  "refusals": [
+    { "refusal_id": "srf_…", "initiator": "hpr_0192…",
+      "control": "open_calls_per_initiator", "limit_value": 4, "target": "thr_0192…",
+      "message": "the initiator's open-call fan-out limit (4) is reached",
+      "refused_at": "2026-09-23T10:41:02.117Z" },
+    { "refusal_id": "srf_…", "initiator": "rol_0192…",
+      "control": "autonomous_depth", "limit_value": 3, "target": "thr_0192…",
+      "message": "autonomous initiation depth 4 exceeds the maximum of 3",
+      "refused_at": "2026-09-23T10:40:57.004Z" } ] }
+```
+
+| field | meaning |
+| --- | --- |
+| `control` | the limit's own name: `open_calls_per_tenant`, `open_calls_per_initiator`, `autonomous_cycle`, `autonomous_depth` |
+| `limit_value` | the numeric limit, when the control has one; a cycle has none |
+| `target` | the thread the refused request named, when it named one |
+| `message` | exactly the words the caller was given |
+
+The read needs `tenant_admin` and shows the asking tenant's own refusals only.
+The breakers' trigger is now a question with an answer: two or more tenants
+refused within an hour is *a multi-tenant storm observed*. The breakers
+themselves stay deferred on it, and the condition can be read rather than
+remembered.
 
 ## Answering a call
 

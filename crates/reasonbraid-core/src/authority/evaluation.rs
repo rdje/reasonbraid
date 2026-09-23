@@ -21,8 +21,12 @@ pub enum TenantAdminInspection {
     Usage {},
     AmbiguousAttempts {},
     ResolutionRefusals {},
+    /// `GET /v1/admin/storm-refusals` (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.4`).
+    StormRefusals {},
     Incidents {},
-    AuthorizationRecord { record_id: AuthorizationRecordId },
+    AuthorizationRecord {
+        record_id: AuthorizationRecordId,
+    },
 }
 
 /// Which evaluator produced an admission, not whether a domain effect or response
@@ -115,6 +119,7 @@ enum InspectionWire {
     Usage {},
     AmbiguousAttempts {},
     ResolutionRefusals {},
+    StormRefusals {},
     Incidents {},
     AuthorizationRecord { record_id: AuthorizationRecordId },
 }
@@ -131,6 +136,7 @@ impl<'de> Deserialize<'de> for TenantAdminInspection {
             InspectionWire::Usage {} => Self::Usage {},
             InspectionWire::AmbiguousAttempts {} => Self::AmbiguousAttempts {},
             InspectionWire::ResolutionRefusals {} => Self::ResolutionRefusals {},
+            InspectionWire::StormRefusals {} => Self::StormRefusals {},
             InspectionWire::Incidents {} => Self::Incidents {},
             InspectionWire::AuthorizationRecord { record_id } => {
                 Self::AuthorizationRecord { record_id }

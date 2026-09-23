@@ -410,6 +410,7 @@ tenant administration over that tenant.
 | `GET /v1/admin/nodes/presence` | Known nodes and derived presence |
 | `GET /v1/admin/nodes/ambiguous-attempts` | Open ambiguous attempts the tenant's nodes reported, with the safe resolution actions ([node channel](node-channel.md#ambiguous-attempts-on-the-operator-surface)) |
 | `GET /v1/admin/resolution-refusals` | Refused resource resolutions, newest first, with the words each caller was given ([deployment](deployment.md#every-refused-resolution-is-recorded-and-an-operator-can-list-them)) |
+| `GET /v1/admin/storm-refusals` | Every `429 storm_control` this tenant's callers were answered, newest first, with the control, its limit, the initiator and the thread named ([recruitment](recruitment.md#every-storm-control-refusal-is-recorded-and-an-operator-can-list-them)) |
 | `GET /v1/admin/incidents` | Active incidents — open `incident_review` threads, oldest first ([deployment](deployment.md)) |
 | `GET /v1/admin/grants` | Grant inventory and status |
 | `GET /v1/admin/boundaries` | Enrollment boundaries and status |

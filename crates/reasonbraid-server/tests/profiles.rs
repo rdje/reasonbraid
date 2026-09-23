@@ -107,6 +107,7 @@ async fn pool() -> Option<PgPool> {
             "policy_approvals",
             "policy_decisions",
             "policy_proposals",
+            "storm_refusals",
             "resolution_refusals",
             "tenants",
             "idempotency",
@@ -1680,6 +1681,26 @@ async fn the_open_call_storm_controls_hold_at_the_dev_scale() {
     // The FIFTH open: the typed 429 names the fan-out limit.
     let (status, refused, _key) = open("key-storm-5", &future_deadline, &future_expiry).await;
     assert_eq!(status, 429, "the fan-out cap refuses: {refused}");
+    // `SIGNOFF-REPAIR.11.4.7.2.1.5.3.4`: the refusal is RECORDED before it is
+    // answered, in the caller's words, and the operator can list it.
+    let (status, listed) = get(
+        &client,
+        &base,
+        &format!("/v1/admin/storm-refusals?tenant_id={tenant}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "{listed}");
+    let refusals = listed["refusals"].as_array().unwrap();
+    assert_eq!(refusals.len(), 1, "one refusal so far: {listed}");
+    assert_eq!(refusals[0]["control"], json!("open_calls_per_initiator"));
+    assert_eq!(refusals[0]["limit_value"], json!(4));
+    assert_eq!(refusals[0]["initiator"], json!(human_id));
+    assert_eq!(refusals[0]["target"], json!(storm_thread));
+    assert_eq!(
+        refusals[0]["message"], refused["message"],
+        "the words the caller was given"
+    );
     assert!(
         refused["message"]
             .as_str()
@@ -2020,6 +2041,39 @@ async fn an_autonomous_chain_is_bounded_by_depth_and_refuses_a_cycle() {
         refused["message"].as_str().unwrap().contains("depth 4"),
         "{refused}"
     );
+
+    // `SIGNOFF-REPAIR.11.4.7.2.1.5.3.4`: both storm-control refusals above are
+    // recorded — the cycle with no limit, the depth with the ceiling — newest
+    // first, each naming its initiator and the thread it named as its cause.
+    let (status, listed) = get(
+        &client,
+        &base,
+        &format!("/v1/admin/storm-refusals?tenant_id={tenant}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "{listed}");
+    let refusals = listed["refusals"].as_array().unwrap();
+    assert_eq!(refusals.len(), 2, "{listed}");
+    assert_eq!(
+        refusals[0]["control"],
+        json!("autonomous_depth"),
+        "{listed}"
+    );
+    assert_eq!(refusals[0]["limit_value"], json!(3));
+    assert_eq!(refusals[0]["initiator"], json!(roles[3]));
+    assert_eq!(refusals[0]["target"], json!(t3));
+    assert_eq!(
+        refusals[1]["control"],
+        json!("autonomous_cycle"),
+        "{listed}"
+    );
+    assert!(
+        refusals[1].get("limit_value").is_none(),
+        "a cycle has no number: {listed}"
+    );
+    assert_eq!(refusals[1]["initiator"], json!(roles[0]));
+    assert_eq!(refusals[1]["target"], json!(t1));
 
     // The chain is on the record, so an operator can read it.
     let (status, state) = get(

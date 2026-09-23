@@ -700,6 +700,7 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
             get(inspect_authorization_record),
         )
         .route("/v1/admin/boundaries", get(list_boundaries))
+        .route("/v1/admin/storm-refusals", get(list_storm_refusals))
         .route("/v1/admin/incarnations", get(list_incarnations))
         .route("/v1/admin/runs", get(list_runs))
         .route(
@@ -2749,6 +2750,128 @@ fn refusal_answered(
             error.message.clone(),
         )
     })
+}
+
+/// `GET /v1/admin/storm-refusals?tenant_id=…` — every `429 storm_control` this
+/// tenant's callers were answered, newest first, with the control that refused,
+/// its limit, the initiator, the thread named, and the words the caller was
+/// given (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.4`). Rows are written by
+/// `refuse_storm` itself, so the list cannot disagree with what was answered.
+/// This is what makes the circuit breakers' trigger — *the first multi-tenant
+/// storm observed* — a condition anyone can evaluate.
+///
+/// Uses the own-tenant inspection gate, like the other `/v1/admin/*` reads.
+async fn list_storm_refusals(
+    State(state): State<Arc<ApiState>>,
+    Query(q): Query<AdminListQuery>,
+    headers: HeaderMap,
+) -> Result<Response, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    inspect_tenant_admin(
+        &state,
+        &principal,
+        q.tenant_id,
+        reasonbraid_core::TenantAdminInspection::StormRefusals {},
+        |pool| async move {
+            type Row = (
+                String,
+                String,
+                String,
+                Option<i64>,
+                Option<String>,
+                String,
+                DateTime<Utc>,
+            );
+            let rows: Vec<Row> = sqlx::query_as(
+                "SELECT refusal_id, initiator, control, limit_value, target, message, refused_at \
+                 FROM storm_refusals WHERE tenant_id = $1 \
+                 ORDER BY refused_at DESC, refusal_id DESC LIMIT $2",
+            )
+            .bind(q.tenant_id.to_string())
+            .bind(RESOLUTION_REFUSAL_PAGE)
+            .fetch_all(&pool)
+            .await?;
+            let refusals: Vec<Value> = rows
+                .into_iter()
+                .map(
+                    |(refusal_id, initiator, control, limit_value, target, message, at)| {
+                        let mut row = json!({
+                            "refusal_id": refusal_id,
+                            "initiator": initiator,
+                            "control": control,
+                            "message": message,
+                            "refused_at": at.to_rfc3339(),
+                        });
+                        // Absent optional facts are OMITTED on the wire, never null.
+                        if let Some(limit_value) = limit_value {
+                            row["limit_value"] = json!(limit_value);
+                        }
+                        if let Some(target) = target {
+                            row["target"] = json!(target);
+                        }
+                        row
+                    },
+                )
+                .collect();
+            Ok(Json(json!({
+                "tenant_id": q.tenant_id.to_string(),
+                "refusals": refusals,
+                "limit": RESOLUTION_REFUSAL_PAGE,
+            })))
+        },
+    )
+    .await
+}
+
+/// One storm-control refusal, as `migrations/0091_storm_refusals.sql` stores it.
+struct StormRefusal<'a> {
+    tenant_id: &'a str,
+    initiator: &'a str,
+    /// The limit's own name (`open_calls_per_tenant`, `autonomous_depth`, …).
+    control: &'a str,
+    /// The numeric limit, when the control has one.
+    limit_value: Option<i64>,
+    /// The thread the refused request named, when it named one.
+    target: Option<&'a str>,
+}
+
+/// Record a storm-control refusal and return the `429` that answers it
+/// (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.4`). ⛔ This is the ONLY place the storm
+/// wire code is spelled as a value: a producer that built the error by hand
+/// would be a refusal answered and recorded nowhere, which is the defect this
+/// helper removes; the leaf carries the census that counts the spelling.
+/// Recording is not optional and not best-effort: a storage failure here
+/// is an internal error, because a storm the operator cannot see is worse than
+/// a request refused twice.
+async fn refuse_storm(
+    pool: &PgPool,
+    refusal: StormRefusal<'_>,
+    message: String,
+) -> ControlApiError {
+    let recorded = sqlx::query(
+        "INSERT INTO storm_refusals \
+           (refusal_id, tenant_id, initiator, control, limit_value, target, message) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+    )
+    .bind(format!("srf_{}", uuid::Uuid::now_v7()))
+    .bind(refusal.tenant_id)
+    .bind(refusal.initiator)
+    .bind(refusal.control)
+    .bind(refusal.limit_value)
+    .bind(refusal.target)
+    .bind(&message)
+    .execute(pool)
+    .await;
+    match recorded {
+        Ok(_) => ControlApiError {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            code: "storm_control",
+            message,
+        },
+        Err(error) => ControlApiError::internal_with_log(format!(
+            "a storm-control refusal could not be recorded: {error}"
+        )),
+    }
 }
 
 /// One refused resolution, as `migrations/0088_resolution_refusals.sql` stores it.
@@ -5694,23 +5817,39 @@ async fn create_thread_auto(
         .map_or(threads::MAX_AUTONOMOUS_DEPTH, |declared| {
             declared.min(threads::MAX_AUTONOMOUS_DEPTH)
         });
-    let mut lineage = threads::auto_lineage(
+    let mut lineage = match threads::auto_lineage(
         &role.to_string(),
         parent.as_ref().map(|(id, projection)| (id, projection)),
         ceiling,
-    )
-    .map_err(|refusal| match refusal {
-        threads::LineageRefusal::NotAParticipant => {
-            ControlApiError::unauthorized(refusal.to_string())
+    ) {
+        Ok(lineage) => lineage,
+        Err(refusal @ threads::LineageRefusal::NotAParticipant) => {
+            return Err(ControlApiError::unauthorized(refusal.to_string()));
         }
-        threads::LineageRefusal::Cycle { .. } | threads::LineageRefusal::TooDeep { .. } => {
-            ControlApiError {
-                status: StatusCode::TOO_MANY_REQUESTS,
-                code: "storm_control",
-                message: refusal.to_string(),
-            }
+        Err(refusal) => {
+            // §10.7's cycle and depth controls are storm controls, and each
+            // refusal is recorded before it is answered (`.5.3.4`).
+            let (control, limit_value) = match &refusal {
+                threads::LineageRefusal::Cycle { .. } => ("autonomous_cycle", None),
+                threads::LineageRefusal::TooDeep { ceiling, .. } => {
+                    ("autonomous_depth", Some(i64::from(*ceiling)))
+                }
+                threads::LineageRefusal::NotAParticipant => unreachable!("matched above"),
+            };
+            return Err(refuse_storm(
+                &state.pool,
+                StormRefusal {
+                    tenant_id: &tenant_id.to_string(),
+                    initiator: &principal.id_string(),
+                    control,
+                    limit_value,
+                    target: req.caused_by.as_deref(),
+                },
+                refusal.to_string(),
+            )
+            .await);
         }
-    })?;
+    };
 
     let body_value = serde_json::json!({
         "tenant_id": tenant_id.to_string(),
@@ -5906,29 +6045,46 @@ async fn open_recruitment_call(
     // The dev-scale storm controls (`.4.3`): the per-tenant + per-initiator
     // open-call fan-out caps — the typed 429 names the limit.
     let initiator = actor_handle_for_subject(&principal).to_string();
+    // The record names the PRINCIPAL (`hpr_…`/`rol_…`), which an operator can
+    // resolve; the `agt_` handle above is the fan-out counter's key.
+    let refused_by = principal.id_string();
     let tenant_open =
         crate::recruitment::open_calls_by(&state.pool, Some(&req.tenant_id), None).await?;
     if tenant_open >= crate::recruitment::MAX_OPEN_CALLS_PER_TENANT {
-        return Err(ControlApiError {
-            status: StatusCode::TOO_MANY_REQUESTS,
-            code: "storm_control",
-            message: format!(
+        return Err(refuse_storm(
+            &state.pool,
+            StormRefusal {
+                tenant_id: &req.tenant_id,
+                initiator: &refused_by,
+                control: "open_calls_per_tenant",
+                limit_value: Some(crate::recruitment::MAX_OPEN_CALLS_PER_TENANT),
+                target: Some(&req.thread_id),
+            },
+            format!(
                 "the tenant's open-call fan-out limit ({}) is reached",
                 crate::recruitment::MAX_OPEN_CALLS_PER_TENANT
             ),
-        });
+        )
+        .await);
     }
     let initiator_open =
         crate::recruitment::open_calls_by(&state.pool, None, Some(&initiator)).await?;
     if initiator_open >= crate::recruitment::MAX_OPEN_CALLS_PER_INITIATOR {
-        return Err(ControlApiError {
-            status: StatusCode::TOO_MANY_REQUESTS,
-            code: "storm_control",
-            message: format!(
+        return Err(refuse_storm(
+            &state.pool,
+            StormRefusal {
+                tenant_id: &req.tenant_id,
+                initiator: &refused_by,
+                control: "open_calls_per_initiator",
+                limit_value: Some(crate::recruitment::MAX_OPEN_CALLS_PER_INITIATOR),
+                target: Some(&req.thread_id),
+            },
+            format!(
                 "the initiator's open-call fan-out limit ({}) is reached",
                 crate::recruitment::MAX_OPEN_CALLS_PER_INITIATOR
             ),
-        });
+        )
+        .await);
     }
     let expression = serde_json::to_value(&req.expression)
         .map_err(|e| ControlApiError::invalid_command(format!("expression: {e}")))?;

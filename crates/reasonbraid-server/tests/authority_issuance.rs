@@ -99,6 +99,7 @@ async fn candidate(pool: &PgPool, tenant: TenantId, boundary: &str) -> Authority
         spend_limits: None,
         auto_bounds: None,
         decision_rule_constraints: None,
+        conditions: None,
         delegable: false,
         valid_from,
         expires_at,

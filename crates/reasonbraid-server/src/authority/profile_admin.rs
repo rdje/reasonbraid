@@ -546,8 +546,9 @@ async fn import_after_admission(
             GrantAction::ThreadInvitationRespond,
         ],
         // An imported role's grant carries neither the auto action nor any
-        // bound (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.1`): a card carries a
-        // profile, never authority, so there is nothing to carry.
+        // bound nor any condition (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.1`): a
+        // card carries a profile, never authority, so there is nothing to carry.
+        None,
         None,
         None,
         None,

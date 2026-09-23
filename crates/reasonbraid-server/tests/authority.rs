@@ -126,6 +126,7 @@ fn grant(
         spend_limits: Some(json!({ "amount": 50.0 })),
         auto_bounds: None,
         decision_rule_constraints: None,
+        conditions: None,
         delegable: false,
         valid_from: Utc::now() - Duration::days(1),
         expires_at: Utc::now() + Duration::days(30),

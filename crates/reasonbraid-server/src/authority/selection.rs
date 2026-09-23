@@ -51,7 +51,7 @@ where
         let rows: Vec<GrantRow> = sqlx::query_as(
             "SELECT grant_id, boundary_id, tenant_id, issuer, subject_kind, subject_id, actions, \
                     selector, risk_ceiling, spend_limits, auto_bounds, decision_rule_constraints, \
-                    delegable, valid_from, expires_at, status \
+                    conditions, delegable, valid_from, expires_at, status \
              FROM authority_grants \
              WHERE tenant_id = $1 AND subject_kind = $2 AND subject_id = $3 AND status = 'active' \
                AND ($4::timestamptz IS NULL OR valid_from < $4 \

@@ -3613,6 +3613,165 @@ async fn the_match_surface_classifies_each_candidate_by_its_own_tenant() {
     );
 }
 
+/// `SIGNOFF-REPAIR.11.4.7.2.1.5.4.3` — §4.2's `conditions[]` have a vocabulary:
+/// closed, typed, evaluable. Issuance refuses an unknown kind, an empty list,
+/// a malformed window, and a human carrying one; the operator's list shows a
+/// condition; and the admission denies a grant whose `within_hours` window
+/// excludes the moment, naming the condition, while a window that includes it
+/// admits. Before this vocabulary the field did not exist on the wire at all.
+#[tokio::test]
+async fn a_grants_conditions_are_typed_at_issuance_and_evaluated_at_admission() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "cond-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{human}");
+    let tenant = human["tenant_id"].as_str().unwrap().to_string();
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let now = chrono::Utc::now();
+    let clock = |t: chrono::DateTime<chrono::Utc>| t.format("%H:%M").to_string();
+    let open_window = format!(
+        "{}-{}",
+        clock(now - chrono::Duration::hours(1)),
+        clock(now + chrono::Duration::hours(1))
+    );
+    let shut_window = format!(
+        "{}-{}",
+        clock(now + chrono::Duration::hours(2)),
+        clock(now + chrono::Duration::hours(4))
+    );
+
+    // Issuance refuses what it cannot give a meaning to. An unknown kind and an
+    // extra member are refused by the WIRE TYPE (`deny_unknown_fields`, a
+    // `422` whose body is the decoder's), the empty list and the malformed
+    // window by the issuance rules (`400`, typed).
+    for (name, conditions, expected) in [
+        ("an unknown kind", json!([{ "kind": "on_tuesdays" }]), 422),
+        ("an empty list", json!([]), 400),
+        (
+            "a malformed window",
+            json!([{ "kind": "within_hours", "window": "9-17" }]),
+            400,
+        ),
+        (
+            "an extra member",
+            json!([{ "kind": "within_hours", "window": "09:00-17:00", "tz": "UTC" }]),
+            422,
+        ),
+    ] {
+        let response = client
+            .post(format!("{base}/v1/enrollments"))
+            .json(&json!({
+                "kind": "role", "name": format!("cond-{}", name.replace(' ', "-")), "tenant_id": tenant,
+                "actions": ["thread_create"], "conditions": conditions,
+            }))
+            .send()
+            .await
+            .expect("enroll request");
+        let status = response.status().as_u16();
+        let body = response.text().await.unwrap_or_default();
+        assert_eq!(status, expected, "{name} is refused: {status} {body}");
+    }
+    let (status, refused) = enroll(
+        &client,
+        &base,
+        json!({
+            "kind": "human", "name": "cond-human-2",
+            "conditions": [{ "kind": "within_hours", "window": "09:00-17:00" }],
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "a human's dev grant carries no condition: {refused}"
+    );
+
+    // Two roles that may create threads: one whose window is open now, one shut.
+    let issue = |name: &'static str, window: String| {
+        let client = client.clone();
+        let base = base.clone();
+        let tenant = tenant.clone();
+        async move {
+            let (status, body) = enroll(
+                &client,
+                &base,
+                json!({
+                    "kind": "role", "name": name, "tenant_id": tenant,
+                    "actions": ["thread_create"],
+                    "conditions": [{ "kind": "within_hours", "window": window }],
+                }),
+            )
+            .await;
+            assert_eq!(status, 200, "{body}");
+            (
+                body["principal_id"].as_str().unwrap().to_string(),
+                body["grant_id"].as_str().unwrap().to_string(),
+            )
+        }
+    };
+    let (open_id, open_grant) = issue("cond-open", open_window.clone()).await;
+    let (shut_id, _) = issue("cond-shut", shut_window.clone()).await;
+
+    // The operator's list shows the condition, typed.
+    let (status, listed) = get(
+        &client,
+        &base,
+        &format!("/v1/admin/grants?tenant_id={tenant}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "{listed}");
+    let mine = listed["grants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|g| g["grant_id"] == json!(open_grant))
+        .cloned()
+        .unwrap();
+    assert_eq!(
+        mine["conditions"],
+        json!([{ "kind": "within_hours", "window": open_window }]),
+        "{mine}"
+    );
+
+    // The admission: the shut window denies, naming the condition; the open
+    // window admits the same command.
+    let create = |who: String, key: &'static str| {
+        let client = client.clone();
+        let base = base.clone();
+        let tenant = tenant.clone();
+        async move {
+            create_with(
+                &client,
+                &base,
+                &who,
+                key,
+                json!({ "tenant_id": tenant, "subject": "conditioned", "objective": "probe" }),
+            )
+            .await
+        }
+    };
+    let (status, denied) = create(shut_id, "cond-shut-create").await;
+    assert_eq!(status, 403, "{denied}");
+    assert!(
+        denied["message"]
+            .as_str()
+            .unwrap()
+            .contains("within_hours condition does not hold"),
+        "the denial names the condition: {denied}"
+    );
+    let (status, landed) = create(open_id, "cond-open-create").await;
+    assert_eq!(status, 200, "inside the window the grant admits: {landed}");
+    assert!(landed["thread_id"].as_str().unwrap().starts_with("thr_"));
+}
+
 /// `SIGNOFF-REPAIR.11.4.7.2.1.5.4.1` — §4.2's `decision_rule_constraints`: the
 /// issuer narrows, for one subject, the decision rules the tenant's charter
 /// allows. Declared in the enrolment body, validated at the one grant-creation

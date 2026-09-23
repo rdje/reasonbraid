@@ -956,6 +956,13 @@ pub struct EnrollRequest {
     /// a role without a create action.
     #[serde(default)]
     pub decision_rule_constraints: Option<Vec<String>>,
+    /// §4.2's `conditions[]` (`SIGNOFF-REPAIR.11.4.7.2.1.5.4.3`): the typed
+    /// conditions every admission under this grant must satisfy — today
+    /// `{"kind": "within_hours", "window": "HH:MM-HH:MM"}`. Refused for a
+    /// human (the dev admin set carries no bound), refused empty, refused
+    /// malformed; an unknown kind is refused by the wire type itself.
+    #[serde(default)]
+    pub conditions: Option<Vec<reasonbraid_core::GrantCondition>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1028,6 +1035,11 @@ fn dev_boundary(tenant_id: &TenantId, now: DateTime<Utc>) -> EnrollmentAuthority
     }
 }
 
+// The eighth parameter is the fourth optional bound a grant may carry
+// (`SIGNOFF-REPAIR.11.4.7.2.1.5.4.3`); the two callers pass all four by name in
+// the grant's own field order. A bundle struct is the shape to reach for when a
+// fifth arrives, not a reason to split the builder in two now.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn dev_grant(
     boundary: &EnrollmentAuthorityBoundary,
     issuer: HumanPrincipalId,
@@ -1036,6 +1048,7 @@ pub(crate) fn dev_grant(
     spend_limits: Option<Value>,
     auto_bounds: Option<reasonbraid_core::AutoBounds>,
     decision_rule_constraints: Option<Vec<String>>,
+    conditions: Option<Vec<reasonbraid_core::GrantCondition>>,
 ) -> reasonbraid_core::AuthorityGrant {
     reasonbraid_core::AuthorityGrant {
         grant_id: format!("grt_{}", subject.id_string()),
@@ -1049,6 +1062,7 @@ pub(crate) fn dev_grant(
         spend_limits,
         auto_bounds,
         decision_rule_constraints,
+        conditions,
         delegable: false,
         // Coextensive with the boundary: a grant must never outlive its boundary
         // (the subset checker enforces it; wall-clock skew between enroll calls
@@ -1217,11 +1231,12 @@ async fn enroll_in_guard(
     if kind == "human"
         && (req.spend_limits.is_some()
             || req.auto_bounds.is_some()
-            || req.decision_rule_constraints.is_some())
+            || req.decision_rule_constraints.is_some()
+            || req.conditions.is_some())
     {
         return Err(ControlApiError::invalid_command(
-            "spend_limits, auto_bounds and decision_rule_constraints belong to a role's grant — \
-             a human's dev grant carries the admin set and no bound",
+            "spend_limits, auto_bounds, decision_rule_constraints and conditions belong to a \
+             role's grant — a human's dev grant carries the admin set and no bound",
         ));
     }
     let grant = dev_grant(
@@ -1232,6 +1247,7 @@ async fn enroll_in_guard(
         req.spend_limits.clone(),
         req.auto_bounds.clone(),
         req.decision_rule_constraints.clone(),
+        req.conditions.clone(),
     );
     authority::create_grant_in_guard(tx, &grant)
         .await
@@ -7994,10 +8010,11 @@ async fn list_grants(
                 Option<Value>,
                 Option<Value>,
                 Option<Value>,
+                Option<Value>,
             );
             let rows: Vec<Row> = sqlx::query_as(
         "SELECT grant_id, subject_kind, subject_id, actions, status, valid_from, expires_at, \
-                spend_limits, auto_bounds, decision_rule_constraints \
+                spend_limits, auto_bounds, decision_rule_constraints, conditions \
          FROM authority_grants WHERE tenant_id = $1 ORDER BY valid_from DESC",
     )
     .bind(q.tenant_id.to_string())
@@ -8017,6 +8034,7 @@ async fn list_grants(
                         spend_limits,
                         auto_bounds,
                         decision_rule_constraints,
+                        conditions,
                     )| {
                         let mut grant = json!({
                             "grant_id": grant_id,
@@ -8038,6 +8056,9 @@ async fn list_grants(
                         }
                         if let Some(rules) = decision_rule_constraints {
                             grant["decision_rule_constraints"] = rules;
+                        }
+                        if let Some(conditions) = conditions {
+                            grant["conditions"] = conditions;
                         }
                         grant
                     },

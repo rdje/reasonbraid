@@ -67,6 +67,7 @@ pub(crate) async fn create_grant_in_guard(
     // boundary overrun gives.
     violations.extend(auto_bounds_violations(grant));
     violations.extend(decision_rule_violations(grant));
+    violations.extend(super::conditions::issuance_violations(grant));
     if !violations.is_empty() {
         return Err(GrantCreateError::Refused(GrantRefused { violations }));
     }

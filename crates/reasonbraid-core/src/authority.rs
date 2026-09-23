@@ -469,6 +469,23 @@ pub struct AutoBounds {
     pub audience: Option<Audience>,
 }
 
+/// §4.2's `conditions[]` (`SIGNOFF-REPAIR.11.4.7.2.1.5.4.3`): a CLOSED, typed,
+/// evaluable vocabulary. A condition is a fact the admission checks about the
+/// moment or the target, beyond the grant's actions and window; every member
+/// has an evaluator over facts the admission already holds, is validated at
+/// issuance so an unknown kind never reaches the ledger, and denies with its
+/// own reason. A member without an evaluator is not a member — a declared and
+/// unread condition is the defect the vocabulary exists to prevent.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum GrantCondition {
+    /// The grant acts only inside a daily UTC window, `HH:MM-HH:MM`, start
+    /// inclusive and end exclusive, wrapping midnight when the end is before
+    /// the start — the profile's `operating_hours` format, read by the same
+    /// parser. §4.6's *standing authorization with strict limits*, in time.
+    WithinHours { window: String },
+}
+
 /// A scoped mandate under one boundary (§4.2/§4.4).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -494,6 +511,12 @@ pub struct AuthorityGrant {
     /// since the vocabulary lives there.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decision_rule_constraints: Option<Vec<String>>,
+    /// §4.2's `conditions[]` (`SIGNOFF-REPAIR.11.4.7.2.1.5.4.3`): every listed
+    /// condition must hold at the admission, or the grant denies naming it.
+    /// Absent means unconditional. A present list is non-empty and every
+    /// member well-formed — the server validates at issuance.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conditions: Option<Vec<GrantCondition>>,
     pub delegable: bool,
     pub valid_from: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
@@ -894,6 +917,7 @@ mod tests {
             spend_limits: None,
             auto_bounds: None,
             decision_rule_constraints: None,
+            conditions: None,
             delegable,
             valid_from: Utc.with_ymd_and_hms(2026, 9, 1, 0, 0, 0).unwrap(),
             expires_at: Utc.with_ymd_and_hms(2027, 9, 1, 0, 0, 0).unwrap(),

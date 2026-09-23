@@ -21,8 +21,22 @@ bounds**: `topics` (the only topics an initiation may declare), `max_depth`
 thread may target) — and, for a grant that creates threads, optional
 **`decision_rule_constraints`**: the [decision rules](decision-rules.md) a thread
 this subject creates may declare, by charter wire name, narrower than the
-tenant's charter (`SIGNOFF-REPAIR.11.4.7.2.1.5.4.1`). The
-core evaluator checks the supplied grant against the supplied boundary and returns
+tenant's charter (`SIGNOFF-REPAIR.11.4.7.2.1.5.4.1`) — and, for any role, optional
+**`conditions`** (`SIGNOFF-REPAIR.11.4.7.2.1.5.4.3`): §4.2's `conditions[]`, a
+closed, typed vocabulary of facts every admission under the grant must satisfy
+beyond its actions and window. The first member is
+`{"kind": "within_hours", "window": "HH:MM-HH:MM"}` — the grant acts only inside a
+daily UTC window, start inclusive, end exclusive, wrapping midnight, the profile's
+`operating_hours` format read by the same parser; an admission outside it is
+denied *the grant's within_hours condition does not hold: 17:03 UTC is outside
+`09:00-17:00`*. A condition is refused at issuance when it binds nothing (an
+empty list) or cannot be read (a malformed window), and an unknown kind is
+refused by the wire type. ⛔ A member of the vocabulary is a variant with an
+evaluator, an issuance rule, a control and this paragraph, and nothing else
+counts: a condition the admission cannot evaluate is not declared, because a
+declared-and-unread field is the defect the vocabulary exists to prevent
+(`docs/decisions/2026-09-23_a-grants-conditions-are-a-closed-typed-evaluable-vocabulary.md`).
+The core evaluator checks the supplied grant against the supplied boundary and returns
 an allowed or denied decision.
 
 Bounds are declared where a role's actions are: in the enrolment body, the

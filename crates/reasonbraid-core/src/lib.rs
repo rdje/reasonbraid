@@ -63,8 +63,8 @@ pub use authority::{
     AdministrativeReason, AdministrativeRefusal, AdministrativeTargetId, AdministrativeTextError,
     Audience, AuthorityGrant, AuthorizationDecisionRecord, AuthorizationEvaluation, AutoBounds,
     BoundaryStatus, BoundaryViolation, CacheVerdict, CachedDecision, CachedDecisionKind, Decision,
-    DelegationConstraints, EnrollmentAuthorityBoundary, FailMode, GrantAction, GrantStatus,
-    GrantSubject, ResourceTarget, RiskClass, TargetSelector, TenantAdminInspection,
+    DelegationConstraints, EnrollmentAuthorityBoundary, FailMode, GrantAction, GrantCondition,
+    GrantStatus, GrantSubject, ResourceTarget, RiskClass, TargetSelector, TenantAdminInspection,
     UnknownAuthorityName, CACHED_ALLOW_TTL_SECONDS,
 };
 pub use budget::{BudgetDimensions, BudgetError, ReservationReference};

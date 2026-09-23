@@ -44,6 +44,7 @@ pub use transaction::GuardError as AuthorityTransactionError;
 pub(crate) use transaction::{transact_with_error, GuardMode, Limits, TenantTransaction};
 
 mod breaker;
+mod conditions;
 mod effects;
 mod federation_admin;
 mod node_admin;
@@ -365,8 +366,8 @@ where
         "INSERT INTO authority_grants \
          (grant_id, boundary_id, tenant_id, issuer, subject_kind, subject_id, actions, selector, \
           risk_ceiling, spend_limits, delegable, valid_from, expires_at, status, auto_bounds, \
-          decision_rule_constraints) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)",
+          decision_rule_constraints, conditions) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)",
     )
     .bind(&grant.grant_id)
     .bind(&grant.boundary_id)
@@ -396,6 +397,12 @@ where
             .decision_rule_constraints
             .as_ref()
             .map(|rules| serde_json::to_value(rules).expect("rule names serialize")),
+    )
+    .bind(
+        grant
+            .conditions
+            .as_ref()
+            .map(|conditions| serde_json::to_value(conditions).expect("conditions serialize")),
     )
     .execute(&mut *tx)
     .await?;
@@ -573,27 +580,32 @@ fn boundary_from_row(row: BoundaryRow) -> Option<EnrollmentAuthorityBoundary> {
     })
 }
 
-type GrantRow = (
-    String,
-    String,
-    String,
-    String,
-    String,
-    String,
-    Value,
-    Value,
-    String,
-    Option<Value>,
-    Option<Value>,
-    Option<Value>,
-    bool,
-    DateTime<Utc>,
-    DateTime<Utc>,
-    String,
-);
+/// One stored grant row, decoded by column name. A named struct rather than a
+/// tuple because sqlx decodes tuples of at most sixteen columns and the grant
+/// carries seventeen since `conditions` (`SIGNOFF-REPAIR.11.4.7.2.1.5.4.3`).
+#[derive(sqlx::FromRow)]
+struct GrantRow {
+    grant_id: String,
+    boundary_id: String,
+    tenant_id: String,
+    issuer: String,
+    subject_kind: String,
+    subject_id: String,
+    actions: Value,
+    selector: Value,
+    risk_ceiling: String,
+    spend_limits: Option<Value>,
+    auto_bounds: Option<Value>,
+    decision_rule_constraints: Option<Value>,
+    conditions: Option<Value>,
+    delegable: bool,
+    valid_from: DateTime<Utc>,
+    expires_at: DateTime<Utc>,
+    status: String,
+}
 
 fn grant_from_row(row: GrantRow) -> Option<AuthorityGrant> {
-    let (
+    let GrantRow {
         grant_id,
         boundary_id,
         tenant_id,
@@ -606,11 +618,12 @@ fn grant_from_row(row: GrantRow) -> Option<AuthorityGrant> {
         spend_limits,
         auto_bounds,
         decision_rule_constraints,
+        conditions,
         delegable,
         valid_from,
         expires_at,
         status,
-    ) = row;
+    } = row;
     Some(AuthorityGrant {
         grant_id,
         boundary_id,
@@ -629,6 +642,9 @@ fn grant_from_row(row: GrantRow) -> Option<AuthorityGrant> {
             .map(serde_json::from_value)
             .transpose()
             .ok()?,
+        // A stored condition list that is not the typed vocabulary is a
+        // malformed grant, not an unconditional one: the row fails whole.
+        conditions: conditions.map(serde_json::from_value).transpose().ok()?,
         delegable,
         valid_from,
         expires_at,
@@ -782,6 +798,17 @@ fn evaluate(
                 authz.action.as_str()
             ),
         };
+    }
+    // §4.2's `conditions[]` (`SIGNOFF-REPAIR.11.4.7.2.1.5.4.3`): every listed
+    // condition holds at this admission, or the grant denies naming it — after
+    // the action and before the target kind, because a condition is a fact
+    // about the moment or the target that a covered action must still satisfy.
+    if let Some(conditions) = &grant.conditions {
+        for condition in conditions {
+            if let Err(reason) = conditions::holds(condition, at) {
+                return Decision::Denied { reason };
+            }
+        }
     }
     let target_kind_allowed = match authz.action {
         // ⚠️ `SIGNOFF-REPAIR.9.3.4.1`: the five administrative verbs join the

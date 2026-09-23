@@ -433,6 +433,17 @@ lapsed, sent after, is refused and stored as the command's rejection:
 unauthorized — the node `rol_0192…` does not run role `rol_0193…`: its result is not the role's
 ```
 
+**Ending the agreement stops the work already on its way** (`SIGNOFF-REPAIR.5.3.6`).
+Once either side revokes its recruitment direction, or the agreement expires,
+the origin node is no longer **offered** the importing tenant's queued work —
+the delivery path offers a node another tenant's row only while the role it
+names still runs on that node — and the node's next handshake or poll drops the
+importing tenant from the set of tenants it may act for, so a command it
+already holds has no revocation reference and is refused at its dispatch gate.
+Until this repair only NEW acts refused: work queued before the revocation,
+thread subject and objective included, still reached the origin machine and
+could still run there.
+
 **Each delivery leaves a receipt on both sides** (`SIGNOFF-REPAIR.5.3.5.3.3`).
 When the origin node acknowledges the work item, the importing tenant records an
 `origin_delivery` receipt naming the acknowledgement and the origin tenant an

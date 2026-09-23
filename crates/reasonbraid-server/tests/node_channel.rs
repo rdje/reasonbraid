@@ -1447,14 +1447,15 @@ async fn poll_returns_the_tail_after_a_cursor() {
     server.crash();
 }
 
-/// `SIGNOFF-REPAIR.5.3.5.3.2` — the handshake and the poll carry the CURRENT
-/// revocation epoch of every tenant whose work the node holds: its own, and
-/// each tenant with a command in its inbox — and a bump of one tenant's epoch
-/// moves that tenant's entry alone. As found both responses carried ONE epoch,
-/// the node's own tenant's, so a node holding another tenant's command had no
-/// reference to judge it by.
+/// `SIGNOFF-REPAIR.5.3.5.3.2`/`.5.3.6` — the handshake and the poll carry the
+/// CURRENT revocation epoch of every tenant the node may act for NOW: its own,
+/// and each tenant with an identity bound to it. A row of another tenant that
+/// merely sits in the inbox, with no identity bound here, earns that tenant no
+/// entry — REPAIR-0449 sent every tenant in the inbox, which kept a departed
+/// tenant's epoch alive on the node; the bound case is the origin-binding
+/// control's (`profiles.rs`). A bump moves the served tenant's entry.
 #[tokio::test]
-async fn the_handshake_and_poll_carry_every_held_tenants_epoch() {
+async fn the_handshake_and_poll_carry_the_epochs_of_the_tenants_the_node_serves() {
     let _guard = channel_guard().await;
     let Some(pool) = pool().await else { return };
     let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
@@ -1504,21 +1505,36 @@ async fn the_handshake_and_poll_carry_every_held_tenants_epoch() {
     let own_epoch = tenant_epoch(&pool, own).await;
     assert_eq!(
         handshake.revocation_epochs,
-        std::collections::BTreeMap::from([(own.to_string(), own_epoch), (other.to_string(), 4)]),
-        "the handshake carries both held tenants' epochs"
+        std::collections::BTreeMap::from([(own.to_string(), own_epoch)]),
+        "an unbound tenant's inbox row earns it no epoch on this node"
+    );
+    assert!(
+        handshake.replay.iter().all(|c| c.tenant_id == own),
+        "nor is its row offered: {:?}",
+        handshake
+            .replay
+            .iter()
+            .map(|c| &c.tenant_id)
+            .collect::<Vec<_>>()
     );
 
     sqlx::query("UPDATE tenants SET revocation_epoch = revocation_epoch + 1 WHERE tenant_id = $1")
-        .bind(other)
+        .bind(own)
         .execute(&pool)
         .await
-        .expect("bump the other tenant");
-    let tail = channel.poll(1).await.expect("poll");
+        .expect("bump the node's own tenant");
+    let tail = channel.poll(0).await.expect("poll");
     assert_eq!(
         tail.revocation_epochs,
-        std::collections::BTreeMap::from([(own.to_string(), own_epoch), (other.to_string(), 5)]),
-        "the poll moves the bumped tenant's epoch alone"
+        std::collections::BTreeMap::from([(own.to_string(), own_epoch + 1)]),
+        "the poll moves the served tenant's epoch"
     );
+    // The shared fixture tenant goes back as it was found.
+    sqlx::query("UPDATE tenants SET revocation_epoch = revocation_epoch - 1 WHERE tenant_id = $1")
+        .bind(own)
+        .execute(&pool)
+        .await
+        .expect("restore the node's own tenant");
     server.crash();
 }
 
@@ -3547,7 +3563,20 @@ async fn a_revoked_nodes_withheld_work_is_delivered_to_its_replacement() {
 
     // The fixture must be able to deliver at all, or every assertion below is
     // vacuous (`TOOLBOX.md`: suspect the fixture before believing a number).
-    enqueue(&state, &node_id, "cmd_before_revocation").await;
+    // The work is the node's OWN tenant's, as every dispatch writes it: the
+    // shared `enqueue` helper's fixed tenant is not this node's, and since
+    // `SIGNOFF-REPAIR.5.3.6` a row of a tenant the node does not serve is
+    // never offered.
+    state
+        .enqueue(
+            &node_id,
+            "cmd_before_revocation",
+            &tenant,
+            "thr_00000000-0000-7000-8000-000000000000",
+            &json!({ "operation": "contribute", "command_id": "cmd_before_revocation" }),
+        )
+        .await
+        .expect("enqueue under the node's tenant");
     let healthy = channel.poll(0).await.expect("the healthy node polls");
     assert_eq!(
         healthy.commands.len(),
@@ -3569,7 +3598,16 @@ async fn a_revoked_nodes_withheld_work_is_delivered_to_its_replacement() {
         .unwrap();
     assert_eq!(response.status().as_u16(), 200, "the revocation succeeds");
 
-    enqueue(&state, &node_id, "cmd_after_revocation").await;
+    state
+        .enqueue(
+            &node_id,
+            "cmd_after_revocation",
+            &tenant,
+            "thr_00000000-0000-7000-8000-000000000000",
+            &json!({ "operation": "contribute", "command_id": "cmd_after_revocation" }),
+        )
+        .await
+        .expect("enqueue under the node's tenant");
     let revoked = channel
         .poll(0)
         .await

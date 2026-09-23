@@ -329,9 +329,10 @@ pub struct HandshakeResponse {
     /// fenced write carries it, so a stale session's writes and renewals are
     /// refused even when they race a newer handshake.
     pub lease_epoch: i64,
-    /// The CURRENT revocation epoch of every tenant whose work this node holds —
-    /// its own, and each tenant with a command in its inbox
-    /// (`SIGNOFF-REPAIR.5.3.5.3.2`, ADR-008). The node stores them per tenant
+    /// The CURRENT revocation epoch of every tenant this node may act for NOW —
+    /// its own, and each tenant with an identity bound to it
+    /// (`SIGNOFF-REPAIR.5.3.5.3.2`, ADR-008; the complete set since `.5.3.6`,
+    /// which the node adopts wholesale). The node stores them per tenant
     /// and evaluates each cached admission decision against ITS tenant's
     /// epoch at the dispatch boundary. Until this map the response carried one
     /// epoch, the node's own tenant's, and a node holding two tenants' work
@@ -736,15 +737,20 @@ impl NodeChannelState {
         node_id: &str,
     ) -> Result<(BTreeMap<String, i64>, DateTime<Utc>), sqlx::Error> {
         // ONE statement, so every epoch and the clock are read from one
-        // snapshot. The tenants are the node's own and every tenant with a row
-        // in its inbox (`SIGNOFF-REPAIR.5.3.5.3.2`): a superset of what the
-        // node holds, which costs a few map entries and never omits a tenant
-        // whose command the node could be judging.
+        // snapshot. The tenants are exactly the ones the node may act for NOW
+        // (`SIGNOFF-REPAIR.5.3.6`): its own, and each tenant with an identity
+        // whose work `role_execution` resolves to this node. The node adopts
+        // the map WHOLESALE, so a tenant that leaves it — its origin binding's
+        // agreement revoked or expired — leaves the node's journal too, and a
+        // command of that tenant the node still holds has no epoch reference
+        // and is refused at the dispatch gate. (REPAIR-0449 sent every tenant
+        // with a row in the inbox, which kept a departed tenant's epoch alive.)
         let rows: Vec<(String, i64, DateTime<Utc>)> = sqlx::query_as(
             "SELECT t.tenant_id, t.revocation_epoch, clock_timestamp() \
              FROM tenants t \
              WHERE t.tenant_id IN (SELECT n.tenant_id FROM nodes n WHERE n.node_id = $1) \
-                OR t.tenant_id IN (SELECT i.tenant_id FROM node_inbox i WHERE i.node_id = $1) \
+                OR t.tenant_id IN (SELECT re.tenant_id FROM role_execution re \
+                                   WHERE re.node_id = $1) \
              ORDER BY t.tenant_id",
         )
         .bind(node_id)
@@ -939,6 +945,10 @@ impl NodeChannelState {
                    AND EXISTS (SELECT 1 FROM node_certificates c \
                                WHERE c.node_id = $1 \
                                  AND c.revoked_at IS NULL AND c.expires_at > now()) \
+                   AND (node_inbox.tenant_id = (SELECT n.tenant_id FROM nodes n WHERE n.node_id = $1) \
+                        OR EXISTS (SELECT 1 FROM role_execution re \
+                                   WHERE re.role_id = node_inbox.payload->>'agent_role' \
+                                     AND re.node_id = $1)) \
                  ORDER BY cursor LIMIT $3 \
              ), marked AS ( \
                  UPDATE node_inbox SET offered_at = now() \

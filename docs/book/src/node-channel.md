@@ -853,9 +853,13 @@ only explicitly cacheable decisions; §11.1: the minimum authorized state). A
 delivered command carries `authz_ref` (the admitting authorization record),
 `policy_digest`, `decided_at`, and `revocation_epoch` — the tenant's epoch **at
 decision time**. The handshake and poll responses carry `revocation_epochs`, the
-**current** epoch of every tenant whose work the node holds — its own, and each
-tenant with a command in its inbox — and the server's own clock as
-`server_time`:
+**current** epoch of every tenant the node may act for **now** — its own, and
+each tenant with an identity [bound to it](profiles.md#where-an-imported-identity-runs)
+— and the server's own clock as `server_time`. The node adopts the map
+**wholesale** (`SIGNOFF-REPAIR.5.3.6`): a tenant the next response does not
+name is dropped from its journal, so a command of that tenant it still holds
+has no reference and is refused. The replay likewise offers a node another
+tenant's row only while the role the row names still runs on that node:
 
 ```json
 "revocation_epochs": { "ten_0192…(own)": 3, "ten_0193…(another)": 5 }

@@ -1010,14 +1010,19 @@ impl Journal {
         )
     }
 
-    /// Record the epochs a handshake/poll carried, one row per tenant, in one
-    /// transaction (idempotent overwrite). A tenant the response does not name
-    /// keeps the epoch last recorded for it.
+    /// Adopt the epochs a handshake/poll carried as the COMPLETE set of tenants
+    /// this node may act for (`SIGNOFF-REPAIR.5.3.6`), in one transaction: a
+    /// tenant the response does not name is REMOVED, so a command of a tenant
+    /// the node no longer serves — its origin binding's agreement ended — has
+    /// no reference and is refused at the dispatch gate.
     pub async fn set_revocation_epochs(
         &self,
         epochs: &std::collections::BTreeMap<String, i64>,
     ) -> Result<(), JournalError> {
         let mut tx = self.pool.begin().await?;
+        sqlx::query("DELETE FROM tenant_epochs")
+            .execute(&mut *tx)
+            .await?;
         for (tenant_id, epoch) in epochs {
             sqlx::query(
                 "INSERT INTO tenant_epochs (tenant_id, epoch) VALUES (?, ?) \
@@ -1032,8 +1037,8 @@ impl Journal {
         Ok(())
     }
 
-    /// Record one tenant's epoch — [`Self::set_revocation_epochs`] for a single
-    /// tenant.
+    /// Adopt a set of ONE tenant — [`Self::set_revocation_epochs`] with a
+    /// single entry, so every other tenant's epoch is removed.
     pub async fn set_revocation_epoch_for(
         &self,
         tenant_id: &str,

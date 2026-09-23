@@ -4645,7 +4645,7 @@ async fn an_origin_bound_identity_runs_on_the_origin_node_while_the_agreement_st
         hex_bytes(&cert_hex),
         key_from_hex(&key_hex),
     );
-    channel
+    let origin_handshake = channel
         .handshake(&reasonbraid_node::HandshakeRequest {
             channel_version: reasonbraid_node::CHANNEL_VERSION,
             node_id: role_b.clone(),
@@ -4658,6 +4658,15 @@ async fn an_origin_bound_identity_runs_on_the_origin_node_while_the_agreement_st
         })
         .await
         .expect("the origin node handshakes");
+    // While the binding stands the origin node serves BOTH tenants.
+    assert!(
+        origin_handshake
+            .revocation_epochs
+            .contains_key(&world.tenant)
+            && origin_handshake.revocation_epochs.contains_key(&tenant_b),
+        "{:?}",
+        origin_handshake.revocation_epochs
+    );
     let fold = |work_thread: String, tag: &'static str| {
         let channel = channel.clone();
         let pool = pool.clone();
@@ -4875,6 +4884,49 @@ async fn an_origin_bound_identity_runs_on_the_origin_node_while_the_agreement_st
             .await
             .expect("the resolution");
     assert_eq!(bound, None, "no agreement, no machine");
+    // `SIGNOFF-REPAIR.5.3.5.3`/`.5.3.6`: work ALREADY queued for the identity
+    // before the revocation is not offered to the origin node after it, and
+    // the node's epoch map no longer names the importing tenant — so nothing
+    // it still holds for that tenant has a reference to dispatch under.
+    let acked_up_to: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(MAX(cursor), 0) FROM node_inbox \
+         WHERE node_id = $1 AND acknowledged_at IS NOT NULL",
+    )
+    .bind(&role_b)
+    .fetch_one(&pool)
+    .await
+    .expect("the acknowledged prefix");
+    let queued_for_a: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM node_inbox WHERE node_id = $1 AND tenant_id = $2 AND cursor > $3",
+    )
+    .bind(&role_b)
+    .bind(&world.tenant)
+    .bind(acked_up_to)
+    .fetch_one(&pool)
+    .await
+    .expect("count");
+    assert!(
+        queued_for_a > 0,
+        "the importing tenant still has queued work on the origin node"
+    );
+    let after = channel
+        .poll(acked_up_to)
+        .await
+        .expect("the origin node polls");
+    assert!(
+        after.commands.iter().all(|c| c.tenant_id != world.tenant),
+        "no importing-tenant work is offered after the revocation: {:?}",
+        after
+            .commands
+            .iter()
+            .map(|c| (&c.command_id, &c.tenant_id))
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        !after.revocation_epochs.contains_key(&world.tenant),
+        "the node may no longer act for the importing tenant: {:?}",
+        after.revocation_epochs
+    );
     let (status, read) = get(
         &client,
         &base,

@@ -663,3 +663,61 @@ async fn each_command_is_judged_by_its_own_tenants_epoch() {
         "A's command is judged by A's epoch, not B's"
     );
 }
+
+/// `SIGNOFF-REPAIR.5.3.6` — the epoch map a response carries is the COMPLETE
+/// set of tenants the node may act for: a tenant left out of the next map
+/// loses its reference, and a command of that tenant the node still holds is
+/// refused at the gate instead of dispatching under the epoch it last saw.
+#[tokio::test]
+async fn a_tenant_left_out_of_the_map_loses_its_reference() {
+    let (_fixture, node) = dummy_node("tenant-departs").await;
+    let (a, b) = (
+        "ten_00000000-0000-7000-8000-00000000000a",
+        "ten_00000000-0000-7000-8000-00000000000b",
+    );
+    node.journal()
+        .set_revocation_epochs(&std::collections::BTreeMap::from([
+            (a.to_string(), 7),
+            (b.to_string(), 9),
+        ]))
+        .await
+        .expect("both served");
+    let cmd_a = seed_tenant_command(node.journal(), "departed-a", a, 7).await;
+    // The next response no longer names A (its binding ended).
+    node.journal()
+        .set_revocation_epochs(&std::collections::BTreeMap::from([(b.to_string(), 9)]))
+        .await
+        .expect("only B served");
+    assert_eq!(
+        node.journal().revocation_epoch_for(a).await.expect("read"),
+        None
+    );
+    let worker = Worker::new(
+        node.clone(),
+        completing_adapter(),
+        LocalBudget::new(BudgetDimensions {
+            calls: Some(100),
+            input_tokens: Some(100_000),
+            output_tokens: Some(100_000),
+            wall_clock_seconds: Some(10_000),
+        }),
+        Duration::from_secs(1),
+    );
+    let item = node
+        .journal()
+        .work_items()
+        .await
+        .expect("work items")
+        .into_iter()
+        .find(|w| w.command_id == cmd_a)
+        .expect("the held command");
+    worker
+        .process(&item)
+        .await
+        .expect("a refusal is not an error");
+    assert_eq!(
+        latest_status(node.journal(), &cmd_a).await.as_deref(),
+        Some("failed_before_dispatch"),
+        "a departed tenant's held command does not dispatch"
+    );
+}

@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — Ending a partnership now also stops work that was already on its way (`SIGNOFF-REPAIR.5.3.6`)
+
+`REASONBRAID-REPAIR-0454`. Completes the federation work (`SIGNOFF-REPAIR.5.3`) and with it the directory, recruitment and federation lane (`SIGNOFF-REPAIR.5`).
+
+- 🔴 **Before:** after a partnership ended, new work for a partner's agent was refused, but work already queued could still be sent to the partner's machine (topic included) and run there.
+- ✅ **Now:** the partner's machine is no longer offered that queued work, and on its next check-in it is told it no longer works for the importing organisation, so anything it already holds for them is refused instead of run.
+- ✅ Tested: the new checks failed on the old code and pass now; two deliberately broken versions (the machine keeping the old organisation; the server listing organisations by inbox contents) were each caught; twelve suites pass, including the end-to-end CLI.
+- Technical: `replay`'s tail gains `(row tenant = node tenant OR role_execution(payload->>'agent_role').node_id = node)`; `epochs_and_server_time` = own tenant ∪ `role_execution.tenant_id WHERE node_id = node`; node `set_revocation_epochs` deletes then inserts (wholesale). Controls: node `a_tenant_left_out_of_the_map_loses_its_reference`; server `the_handshake_and_poll_carry_the_epochs_of_the_tenants_the_node_serves` (re-expressed); the origin profiles control's post-revocation poll arm. Mutants M2 (merge) and M3 (inbox tenants) caught. Fixture fix: `a_revoked_nodes_withheld_work_is_delivered_to_its_replacement` enqueues under its node's tenant.
+
 ## 2026-09-23 — Each delivery to a partner's machine now leaves an audit receipt on both sides (`SIGNOFF-REPAIR.5.3.5.3.3`)
 
 `REASONBRAID-REPAIR-0453`. Completes cross-organisation recruitment (`SIGNOFF-REPAIR.5.3.5`).

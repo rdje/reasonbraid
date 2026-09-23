@@ -7,7 +7,8 @@
 //! server suites. This stub answers the three writes a reconcile and a delivery
 //! make (`handshake`, `events`, `ack`) with the channel's OWN response types, so
 //! the node's client parses exactly what it parses in production, and it records
-//! every event it receives for the control to inspect.
+//! every event it receives for the control to inspect. `poll` answers an empty
+//! tail, so a control can drive `Worker::tick` (`SIGNOFF-REPAIR.4.4.5.2`).
 //!
 //! ⚠️ It is a stub, not a server. It verifies no certificate proof, keeps no
 //! inbox, replays nothing and folds nothing; a control that needs any of those
@@ -23,7 +24,9 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::routing::post;
 use axum::{Json, Router};
-use reasonbraid_node::{AckResponse, EventReceipt, HandshakeResponse, Node, CHANNEL_VERSION};
+use reasonbraid_node::{
+    AckResponse, EventReceipt, HandshakeResponse, Node, PollResponse, CHANNEL_VERSION,
+};
 use serde_json::Value;
 
 /// The fencing token every handshake issues.
@@ -39,6 +42,10 @@ pub struct ReceivedEvent {
 
 #[derive(Default)]
 struct Recorded {
+    /// The epoch map every handshake and poll answers with. A response's map is
+    /// the COMPLETE set of tenants the node may act for, and the node replaces
+    /// its own with it, so a control that ticks must name its tenants here.
+    revocation_epochs: BTreeMap<String, i64>,
     handshakes: u32,
     events: Vec<ReceivedEvent>,
 }
@@ -51,13 +58,23 @@ pub struct StubControlPlane {
 }
 
 impl StubControlPlane {
-    /// Bind a loopback port and serve until dropped.
+    /// Bind a loopback port and serve until dropped, answering an EMPTY epoch map.
     pub async fn start() -> Self {
-        let recorded = Arc::new(Mutex::new(Recorded::default()));
+        Self::start_with_epochs(BTreeMap::new()).await
+    }
+
+    /// [`StubControlPlane::start`], answering `revocation_epochs` on every
+    /// handshake and poll.
+    pub async fn start_with_epochs(revocation_epochs: BTreeMap<String, i64>) -> Self {
+        let recorded = Arc::new(Mutex::new(Recorded {
+            revocation_epochs,
+            ..Recorded::default()
+        }));
         let app = Router::new()
             .route("/v1/nodes/handshake", post(handshake))
             .route("/v1/nodes/events", post(events))
             .route("/v1/nodes/ack", post(ack))
+            .route("/v1/nodes/poll", post(poll))
             .with_state(recorded.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
@@ -115,10 +132,15 @@ impl Drop for StubControlPlane {
 }
 
 /// A handshake with nothing to replay: no commands, no directives, no known
-/// events, and an EMPTY epoch map — a control sets the epochs it needs on the
-/// journal AFTER reconciling, which is when the gate reads them.
+/// events, and the configured epoch map (EMPTY unless the control named one; a
+/// control that never ticks sets its epochs on the journal AFTER reconciling,
+/// which is when the gate reads them).
 async fn handshake(State(recorded): State<Arc<Mutex<Recorded>>>) -> Json<HandshakeResponse> {
-    recorded.lock().expect("not poisoned").handshakes += 1;
+    let revocation_epochs = {
+        let mut recorded = recorded.lock().expect("not poisoned");
+        recorded.handshakes += 1;
+        recorded.revocation_epochs.clone()
+    };
     let now = chrono::Utc::now();
     Json(HandshakeResponse {
         channel_version: CHANNEL_VERSION,
@@ -129,10 +151,32 @@ async fn handshake(State(recorded): State<Arc<Mutex<Recorded>>>) -> Json<Handsha
         fencing_token: STUB_TOKEN.to_string(),
         lease_expires_at: now + chrono::Duration::hours(1),
         lease_epoch: 1,
-        revocation_epochs: BTreeMap::new(),
+        revocation_epochs,
         server_time: now,
         offers_pending: 0,
     })
+}
+
+/// An empty delivery tail under the configured epoch map.
+async fn poll(
+    State(recorded): State<Arc<Mutex<Recorded>>>,
+    Json(body): Json<Value>,
+) -> Result<Json<PollResponse>, StatusCode> {
+    if !issued(&body) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let revocation_epochs = recorded
+        .lock()
+        .expect("not poisoned")
+        .revocation_epochs
+        .clone();
+    Ok(Json(PollResponse {
+        channel_version: CHANNEL_VERSION,
+        current_cursor: 0,
+        commands: Vec::new(),
+        revocation_epochs,
+        server_time: chrono::Utc::now(),
+    }))
 }
 
 fn issued(body: &Value) -> bool {

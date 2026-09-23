@@ -217,6 +217,30 @@ row enqueued or replayed afterwards took a cursor ≤ N that its `cursor > N`
 replay never offered — hidden work, held against the backlog cap. The mark
 never goes down: pruning removes rows, never numbers.
 
+### What stops the work loop, and what does not
+
+The reference node (`rb-node`) sorts a worker failure into one of three kinds
+(`SIGNOFF-REPAIR.4.4.5.2`):
+
+| Kind | Examples | What the node does |
+| --- | --- | --- |
+| The **channel's** | the worker's poll failed; the node's send of a finished result failed; a dispatch was refused because the node is not schedulable | reconcile and resume: the reconcile re-handshakes and re-emits every pending result under its original id |
+| A **fact about one attempt** | the provider's response was lost and no status lookup can prove it (`outcome_unknown`) | nothing to recover: the attempt is already journaled, the worker logs it and moves on, and the retry gate owns the item (a retry needs the explicit possible-duplicate authorization) |
+| One **item's** | the item's payload cannot be read | the item is dead-lettered, once, and the tick goes on to the other items; the server quarantines it for an operator |
+
+Anything else (a journal the node cannot write, for instance) still stops the
+process. The decision is `WorkerError::calls_for_reconcile()`, in the library,
+so it is tested there rather than inside the binary.
+
+Before this repair a failed send and an unknown outcome both stopped the node
+process, and one unreadable item abandoned every item after it in the same
+tick. An example log from the item case:
+
+```text
+worker: nod_… dead-lettered cmd_… (reason: malformed work payload: unreadable reservation: …)
+worker: nod_… emitted a contribute result for cmd_…
+```
+
 ## Ambiguous attempts on the operator surface
 
 An attempt is **ambiguous** when the node crossed the dispatch boundary and never

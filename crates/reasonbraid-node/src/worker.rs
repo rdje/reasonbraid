@@ -68,15 +68,19 @@ impl fmt::Display for WorkerError {
 
 impl WorkerError {
     /// Whether the node's remedy is to reconcile and resume the work loop, rather
-    /// than to stop. A channel failure is one: the reconcile re-handshakes and
-    /// re-emits anything pending under its original id. A dispatch refused on a
-    /// node that is not schedulable is the other (`SIGNOFF-REPAIR.4.4.4.2.2`): the
-    /// reconcile is what makes it schedulable. `rb-node`'s loop asks this, so the
-    /// decision is testable here rather than buried in a binary.
+    /// than to stop. A channel failure is one, whether the worker's own call
+    /// failed or the node's send of a result did (`SIGNOFF-REPAIR.4.4.5.2`): the
+    /// reconcile re-handshakes and re-emits anything pending under its original
+    /// id. A dispatch refused on a node that is not schedulable is the other
+    /// (`SIGNOFF-REPAIR.4.4.4.2.2`): the reconcile is what makes it schedulable.
+    /// `rb-node`'s loop asks this, so the decision is testable here rather than
+    /// buried in a binary.
     pub fn calls_for_reconcile(&self) -> bool {
         matches!(
             self,
-            WorkerError::Channel(_) | WorkerError::Node(NodeError::NotSchedulable)
+            WorkerError::Channel(_)
+                | WorkerError::Node(NodeError::Channel(_))
+                | WorkerError::Node(NodeError::NotSchedulable)
         )
     }
 }
@@ -206,7 +210,20 @@ impl<A: Adapter> Worker<A> {
         }
 
         for item in self.node.journal().work_items().await? {
-            self.process(&item).await?;
+            match self.process(&item).await {
+                Ok(()) => {}
+                // One ITEM's failure (`SIGNOFF-REPAIR.4.4.5.2`): its payload cannot
+                // be read, so it can never dispatch, and the items after it have
+                // nothing to do with it. It is dead-lettered (once: the report
+                // dedups, so a stuck item is not re-reported every tick) and the
+                // tick goes on. A channel, journal or schedulability failure is
+                // the whole node's, and still ends the tick.
+                Err(WorkerError::MalformedPayload(detail)) => {
+                    self.report_dead_letter(&item, &format!("malformed work payload: {detail}"))
+                        .await?;
+                }
+                Err(e) => return Err(e),
+            }
         }
         Ok(())
     }
@@ -453,7 +470,7 @@ impl<A: Adapter> Worker<A> {
                 "usage": report.usage,
             }),
         };
-        let report = execute_attempt_emitting(
+        let report = match execute_attempt_emitting(
             self.node.journal(),
             &self.adapter,
             &operation_id,
@@ -462,7 +479,25 @@ impl<A: Adapter> Worker<A> {
             &self.local,
             &build_result,
         )
-        .await?;
+        .await
+        {
+            Ok(report) => report,
+            // An unknown outcome is a FACT about this attempt, and the supervisor
+            // has already journaled it `outcome_unknown` (`SIGNOFF-REPAIR.4.4.5.2`).
+            // Nothing about the node needs recovering: the retry gate owns the
+            // item from here, and retries it only with the explicit
+            // possible-duplicate authorization. So it is reported, not raised;
+            // raising it stopped the node process.
+            Err(SupervisorError::OutcomeUnknown { attempt_id, detail }) => {
+                eprintln!(
+                    "worker: attempt {attempt_id} of {} ended `outcome_unknown` ({detail}) — \
+                     journaled; the retry gate owns it",
+                    item.command_id
+                );
+                return Ok(());
+            }
+            Err(e) => return Err(e.into()),
+        };
         match &report.result_event {
             Some(event) => {
                 match self
@@ -588,13 +623,19 @@ impl<A: Adapter> Worker<A> {
 mod tests {
     use super::*;
 
-    /// The run loop's decision (`SIGNOFF-REPAIR.4.4.4.2.2`): a channel failure
-    /// and a dispatch refused on an unschedulable node both reconcile; every
-    /// other worker error still stops the loop (what `.4.4.5` narrows next).
+    /// The run loop's decision (`SIGNOFF-REPAIR.4.4.4.2.2`, `.4.4.5.2`): a channel
+    /// failure, the node's failed send, and a dispatch refused on an unschedulable
+    /// node all reconcile; a malformed payload or journal is not a channel's to
+    /// fix.
     #[test]
     fn a_refused_dispatch_on_an_unschedulable_node_calls_for_reconcile() {
         assert!(WorkerError::Node(NodeError::NotSchedulable).calls_for_reconcile());
         assert!(WorkerError::Channel(ChannelError::NotEnrolled).calls_for_reconcile());
+        assert!(
+            WorkerError::Node(NodeError::Channel(ChannelError::NotAuthenticated))
+                .calls_for_reconcile(),
+            "a failed send of a result is a channel loss (`SIGNOFF-REPAIR.4.4.5.2`)"
+        );
         assert!(!WorkerError::MalformedPayload("x".to_string()).calls_for_reconcile());
         assert!(
             !WorkerError::Node(NodeError::MalformedJournal("x".to_string())).calls_for_reconcile()

@@ -442,14 +442,15 @@ async fn the_replacement_ritual_recovers_a_lost_node() {
             std::time::Duration::from_millis(50),
         );
         // One tick: the dispatch crosses the boundary, the response is lost, and
-        // the supervisor surfaces the ambiguity as the honest `OutcomeUnknown`
-        // error — never a silent retry, never a fabricated terminal.
-        match worker.tick().await {
-            Err(reasonbraid_node::WorkerError::Supervision(
-                reasonbraid_node::SupervisorError::OutcomeUnknown { .. },
-            )) => {}
-            other => panic!("the lost response must surface the honest ambiguity, got {other:?}"),
-        }
+        // the supervisor journals the honest `outcome_unknown` — never a silent
+        // retry, never a fabricated terminal. The worker REPORTS it rather than
+        // raising it (`SIGNOFF-REPAIR.4.4.5.2`): it is a fact about this attempt,
+        // already journaled and owned by the retry gate, and raising it stopped
+        // the node process. The journal below is the evidence.
+        worker
+            .tick()
+            .await
+            .expect("an unknown outcome is journaled, not a failure of the worker");
         let refreshed = node.journal().work_items().await.expect("work items");
         let operation_id = refreshed[0]
             .operation_id

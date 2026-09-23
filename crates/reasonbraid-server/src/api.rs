@@ -8962,10 +8962,15 @@ struct DispatchSpec<'a> {
 /// reason, so the node's budget gate journals `failed_before_dispatch` instead of
 /// contacting a provider: the denial is visible and bounded at both boundaries.
 ///
-/// Dev rule (recorded in `docs/decisions/2026-09-07_node-channel-wiring.md`): a
-/// node id IS the agent role wire id it serves — one node, one role — until the
-/// Phase 1 directory exists. The work item's command id correlates it with the
-/// thread event that produced it (`work_{event_id}`).
+/// The target NODE is the one the role's work runs on, resolved through
+/// `role_execution` (`SIGNOFF-REPAIR.5.3.5.3.1.3`): the role's own id under the
+/// dev rule (`docs/decisions/2026-09-07_node-channel-wiring.md` — one node, one
+/// role), the ORIGIN node for an origin-bound import while its recruitment
+/// agreement stands, and none otherwise — refused, never enqueued where no node
+/// reads it. The work item keeps the dispatching tenant and its admission, so
+/// an origin node judges it by THAT tenant's epoch (`SIGNOFF-REPAIR.5.3.5.3.2`).
+/// The command id correlates it with the thread event that produced it
+/// (`work_{event_id}`).
 async fn dispatch_work_in_tx<'e, E>(
     mut tx: E,
     spec: &DispatchSpec<'_>,
@@ -8974,15 +8979,31 @@ where
     E: std::ops::DerefMut,
     for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
 {
+    // The node the role's work runs on — asked before anything is reserved or
+    // counted, because every later step is about THAT node.
+    let resolved: Option<Option<String>> =
+        sqlx::query_scalar("SELECT node_id FROM role_execution WHERE role_id = $1")
+            .bind(spec.agent_role)
+            .fetch_optional(&mut *tx)
+            .await?;
+    let Some(node) = resolved.flatten() else {
+        return Err(ControlApiError::invalid_transition(format!(
+            "the role `{}` runs on no node: it is bound to its origin's node and the \
+             recruitment agreement with the origin no longer stands",
+            spec.agent_role
+        ))
+        .into());
+    };
     // §10.7's maximum offline backlog (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.3`),
     // asked FIRST so a refused dispatch reserves no budget: a node already
     // holding the cap's worth of undelivered work is handed nothing more, and
     // the command that would have handed it rolls back — an invitation exists
     // iff its work does, so the work is refused rather than silently dropped.
-    let undelivered = node_channel::undelivered_in_tx(&mut *tx, spec.agent_role).await?;
+    // Counted on the RESOLVED node, which is the one that would hold it.
+    let undelivered = node_channel::undelivered_in_tx(&mut *tx, &node).await?;
     if undelivered >= node_channel::MAX_OFFLINE_BACKLOG {
         return Err(DispatchRefusal::OfflineBacklog {
-            node: spec.agent_role.to_string(),
+            node,
             undelivered,
             cap: node_channel::MAX_OFFLINE_BACKLOG,
         });
@@ -9043,7 +9064,7 @@ where
     );
     node_channel::enqueue_in_tx(
         &mut *tx,
-        spec.agent_role,
+        &node,
         &format!("work_{}", spec.trigger_event_id),
         &spec.tenant_id.to_string(),
         &spec.thread_id.to_string(),

@@ -406,14 +406,27 @@ identity carries no `node_id`: the node belongs to the origin tenant, and naming
 it would tell the third tenant that the other two federate. An identity whose
 agreement no longer stands resolves to no node and is listed nowhere.
 
-⚠️ What the `origin` binding does **not** do yet: deliver work. A call can seat
-an origin-bound identity, and the directory lists it; the work that follows is
-still dispatched by the role id. Routing it to
-the origin's node waits on that node judging each command by its own tenant's
-revocation epoch (`SIGNOFF-REPAIR.5.3.5.3.2`), because a node that executes for
-two tenants must not judge one tenant's admission by the other's. The binding
-cannot be changed after the import: a repeat import is a replay, whatever
-`execution` it names.
+**Its work goes to the origin's node** (`SIGNOFF-REPAIR.5.3.5.3.1.3`). When an
+origin-bound identity accepts an invitation in the importing tenant, the work
+item is enqueued in the **origin node's** inbox — still as the importing
+tenant's command, carrying the importing tenant's admission and revocation
+epoch, which the node now judges it by (see [cached
+decisions](node-channel.md#cached-decisions-152-adr-008)). The offline-backlog
+cap is counted on that node, because it is the one that would hold the work.
+When the binding resolves to no node, the accept is refused rather than the
+work enqueued where nothing reads it:
+
+```text
+409 invalid_transition — the role `rol_0192…` runs on no node: it is bound to its origin's node and the recruitment agreement with the origin no longer stands
+```
+
+⚠️ What the `origin` binding does **not** do yet: take the origin node's
+**result** back. The server still attributes a node's result to the role of the
+node's own id, so a result the origin node sends for the imported identity's
+work is judged as the origin role's — which is not a participant in the
+importing tenant's thread — and rejected (`SIGNOFF-REPAIR.5.3.5.3.1.4`). The
+binding cannot be changed after the import: a repeat import is a replay,
+whatever `execution` it names.
 
 The full-class read of an imported role (`GET /v1/profiles/{role_id}` by the
 role or its tenant administrator) carries `imported_from` — the origin pair, the

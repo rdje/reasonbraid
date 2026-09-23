@@ -4567,6 +4567,88 @@ async fn an_origin_bound_identity_runs_on_the_origin_node_while_the_agreement_st
         "a third tenant is not told the origin node: {foreign}"
     );
 
+    // `SIGNOFF-REPAIR.5.3.5.3.1.3`: the identity's WORK reaches the origin
+    // node — invited to a thread of the importing tenant, its accept enqueues
+    // the work item in the ORIGIN node's inbox, under the IMPORTING tenant
+    // (whose admission and epoch it carries).
+    let invite_and_accept = |label: &'static str| {
+        let client = client.clone();
+        let base = base.clone();
+        let human = world.human_id.clone();
+        let tenant = world.tenant.clone();
+        let local = local.clone();
+        async move {
+            let thread =
+                create_thread(&client, &base, &human, &tenant, &format!("{label}-thread")).await;
+            let (status, invited) = thread_command(
+                &client,
+                &base,
+                &thread,
+                &human,
+                &format!("{label}-invite"),
+                "thread.invite",
+                json!({ "tenant_id": tenant, "agent_role": local }),
+            )
+            .await;
+            assert_eq!(status, 200, "{invited}");
+            let answer = thread_command(
+                &client,
+                &base,
+                &thread,
+                &local,
+                &format!("{label}-accept"),
+                "thread.accept_invitation",
+                json!({ "tenant_id": tenant }),
+            )
+            .await;
+            (thread, answer)
+        }
+    };
+    let (thread, (status, accepted)) = invite_and_accept("bind-origin-work").await;
+    assert_eq!(status, 200, "the origin-bound identity accepts: {accepted}");
+    let delivered: Vec<(String, String)> = sqlx::query_as(
+        "SELECT node_id, tenant_id FROM node_inbox WHERE thread_id = $1 AND command_id LIKE 'work_%'",
+    )
+    .bind(&thread)
+    .fetch_all(&pool)
+    .await
+    .expect("the work item");
+    assert_eq!(
+        delivered,
+        vec![(role_b.clone(), world.tenant.clone())],
+        "the work is on the ORIGIN node, under the importing tenant"
+    );
+    // §10.7's offline backlog is counted on the node that would HOLD the work:
+    // the origin node at its cap refuses the bound identity's next accept.
+    let held: i64 = sqlx::query_scalar("SELECT count(*) FROM node_inbox WHERE node_id = $1")
+        .bind(&role_b)
+        .fetch_one(&pool)
+        .await
+        .expect("count");
+    for n in held..reasonbraid_server::MAX_OFFLINE_BACKLOG {
+        sqlx::query(
+            "INSERT INTO node_inbox (node_id, cursor, command_id, tenant_id, thread_id, payload) \
+             VALUES ($1, (SELECT COALESCE(MAX(cursor), 0) + 1 FROM node_inbox WHERE node_id = $1), \
+                     $2, $3, $4, '{}'::jsonb)",
+        )
+        .bind(&role_b)
+        .bind(format!("cmd_origin_backlog_{n}"))
+        .bind(&tenant_b)
+        .bind(&thread)
+        .execute(&pool)
+        .await
+        .expect("seed an undelivered row on the origin node");
+    }
+    let (_, (status, refused)) = invite_and_accept("bind-origin-backlog").await;
+    assert_eq!(status, 429, "the origin node's backlog refuses: {refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("offline backlog"),
+        "{refused}"
+    );
+
     // A revoked direction: the binding resolves to no node, and the join is
     // refused for want of one.
     let (status, revoked) = post(
@@ -4633,6 +4715,25 @@ async fn an_origin_bound_identity_runs_on_the_origin_node_while_the_agreement_st
             .unwrap()
             .contains("no enrolled node"),
         "{refused}"
+    );
+    // And its work is refused rather than enqueued where no node reads it.
+    let (thread, (status, refused)) = invite_and_accept("bind-origin-lapsed").await;
+    assert_eq!(status, 409, "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("runs on no node"),
+        "the refusal says why: {refused}"
+    );
+    let queued: i64 = sqlx::query_scalar("SELECT count(*) FROM node_inbox WHERE thread_id = $1")
+        .bind(&thread)
+        .fetch_one(&pool)
+        .await
+        .expect("count");
+    assert_eq!(
+        queued, 0,
+        "nothing is enqueued for an identity that runs nowhere"
     );
 }
 

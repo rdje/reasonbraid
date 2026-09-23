@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — A partner's agent now receives its work on the partner's own machine (`SIGNOFF-REPAIR.5.3.5.3.1.3`)
+
+`REASONBRAID-REPAIR-0450`.
+
+- 🔴 **Before:** a partner agent bound to its home machine could join a conversation, but the work that followed was addressed to a machine that doesn't exist and sat there unread.
+- ✅ **Now:** the work goes to the partner's machine, still as the importing organisation's job, so that machine checks it against the importing organisation's revocations (the previous step made that possible). The "too much unread work" safety limit is counted on the machine that will actually hold it. If the partnership has ended, accepting new work is refused with a clear reason instead of silently queueing it.
+- ⚠️ **Not yet:** the partner machine's *answer* is still credited to the wrong identity and rejected. That's the next task, and the book says so.
+- ✅ Tested: the new checks failed on the old code and pass now; two deliberately broken versions (wrong inbox; limit counted on the wrong machine) were each caught; the profile, work, channel and invitation suites pass.
+- Technical: `dispatch_work_in_tx` resolves `role_execution.node_id` first (none → `409 invalid_transition` *runs on no node*), counts `undelivered_in_tx` and enqueues on the resolved node; the item keeps the dispatching tenant, admission and decision epoch. Control grown: the origin test's work, backlog and lapsed-binding arms; mutants M1 (enqueue on role) and M2 (backlog on role) caught. Opened `.5.3.5.3.1.4` (the result path).
+
 ## 2026-09-23 — A machine working for two organisations now checks each job against the right organisation's revocations (`SIGNOFF-REPAIR.5.3.5.3.2`)
 
 `REASONBRAID-REPAIR-0449`.

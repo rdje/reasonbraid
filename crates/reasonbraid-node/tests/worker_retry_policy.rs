@@ -2,8 +2,12 @@
 //! worker before any gate — a reserved pre-dispatch refusal re-dispatches
 //! bounded, a budget-denied item is terminal (no reservation = the server said
 //! no, retrying cannot change it), an ambiguous outcome refuses without the
-//! explicit possible-duplicate authorization and re-dispatches with it. All
-//! legs never contact a channel: the dummy node is enough.
+//! explicit possible-duplicate authorization and re-dispatches with it. The
+//! refusing legs never contact a channel, so the dummy node is enough; the legs
+//! that re-dispatch need a schedulable node (`SIGNOFF-REPAIR.4.4.4.2.2`), so they
+//! reconcile against the stub control plane and read the delivered result there.
+
+mod support;
 
 use std::time::Duration;
 
@@ -16,6 +20,7 @@ use reasonbraid_core::fixture::Fixture;
 use reasonbraid_core::BudgetDimensions;
 use reasonbraid_node::{CommandInput, Journal, LocalBudget, Node, Worker};
 use serde_json::{json, Value};
+use support::control_plane::{reconciled_node, StubControlPlane};
 
 /// A fixture directory for one test, created exclusively on the repository's own
 /// volume and REMOVED when the test passes (`SIGNOFF-REPAIR.11.2.1.3.2.4`). A
@@ -44,6 +49,15 @@ async fn dummy_node(name: &str) -> (Fixture, Node) {
     .await
     .expect("open node");
     (fixture, node)
+}
+
+/// A node reconciled against a stub control plane, so it is `Schedulable` and may
+/// dispatch. The bindings drop right to left: the node, its fixture, the stub.
+async fn schedulable_node(name: &str) -> (StubControlPlane, Fixture, Node) {
+    let stub = StubControlPlane::start().await;
+    let fixture = journal_fixture(name);
+    let node = reconciled_node(&stub, &fixture.join("node.db")).await;
+    (stub, fixture, node)
 }
 
 fn completing_adapter() -> FakeAdapter {
@@ -130,11 +144,15 @@ async fn attempt_count(journal: &Journal, operation_id: &str) -> usize {
         .len()
 }
 
-/// Exactly one work result waits in the journal for `operation_id`, naming the
-/// attempt that completed (`SIGNOFF-REPAIR.4.4.4.1`). Before the repair the
-/// completion was journaled and the undeliverable result was dropped with an
+/// Exactly one work result was DELIVERED for `operation_id`, naming the attempt
+/// that completed, and none is left pending (`SIGNOFF-REPAIR.4.4.4.1`,
+/// `.4.4.4.2.2`). Before `.4.4.4.1` the undeliverable result was dropped with an
 /// error, which these controls accepted as proof that the dispatch happened.
-async fn assert_one_pending_result(journal: &Journal, operation_id: &str) {
+async fn assert_one_delivered_result(
+    stub: &StubControlPlane,
+    journal: &Journal,
+    operation_id: &str,
+) {
     let completed: Vec<String> = journal
         .attempts_for_operation(operation_id)
         .await
@@ -144,22 +162,29 @@ async fn assert_one_pending_result(journal: &Journal, operation_id: &str) {
         .map(|a| a.attempt_id)
         .collect();
     assert_eq!(completed.len(), 1, "exactly one completed attempt");
-    let pending: Vec<Value> = journal
-        .pending_events()
-        .await
-        .expect("pending events")
+    let delivered: Vec<Value> = stub
+        .events()
         .into_iter()
         .filter(|e| e.operation_id == operation_id)
-        .map(|e| serde_json::from_str(&e.payload).expect("a JSON payload"))
+        .map(|e| e.payload)
         .collect();
-    assert_eq!(pending.len(), 1, "one result waits: {pending:?}");
-    assert_eq!(pending[0]["kind"], "work_result");
-    assert_eq!(pending[0]["attempt_id"], completed[0]);
+    assert_eq!(delivered.len(), 1, "one result delivered: {delivered:?}");
+    assert_eq!(delivered[0]["kind"], "work_result");
+    assert_eq!(delivered[0]["attempt_id"], completed[0]);
+    assert!(
+        journal
+            .pending_events()
+            .await
+            .expect("pending events")
+            .iter()
+            .all(|e| e.operation_id != operation_id),
+        "a delivered result is not left pending"
+    );
 }
 
 #[tokio::test]
 async fn a_reserved_pre_dispatch_refusal_redispatches() {
-    let (_fixture, node) = dummy_node("retry-pre-dispatch").await;
+    let (stub, _fixture, node) = schedulable_node("retry-pre-dispatch").await;
     let payload = work_payload(true, false);
     let (_command_id, operation_id) = seed_command(node.journal(), "a", &payload).await;
 
@@ -190,14 +215,13 @@ async fn a_reserved_pre_dispatch_refusal_redispatches() {
         .into_iter()
         .find(|w| w.command_id == "cmd_a")
         .expect("seeded item");
-    // The re-dispatch RUNS: the fresh attempt reaches the adapter and
-    // completes, and its result waits in the journal for the next reconcile
-    // (`SIGNOFF-REPAIR.4.4.4.1` — this node was never reconciled).
+    // The re-dispatch RUNS: the fresh attempt reaches the adapter, completes,
+    // and its result is delivered.
     worker
         .process(&item)
         .await
-        .expect("the re-dispatch completes; its result waits in the journal");
-    assert_one_pending_result(node.journal(), &operation_id).await;
+        .expect("the re-dispatch completes and delivers its result");
+    assert_one_delivered_result(&stub, node.journal(), &operation_id).await;
     assert_eq!(
         attempt_count(node.journal(), &operation_id).await,
         2,
@@ -295,7 +319,7 @@ async fn an_ambiguous_outcome_refuses_without_the_authorization() {
 
 #[tokio::test]
 async fn an_authorized_ambiguous_outcome_redispatches() {
-    let (_fixture, node) = dummy_node("retry-authorized").await;
+    let (stub, _fixture, node) = schedulable_node("retry-authorized").await;
     let payload = work_payload(true, true); // the explicit possible-duplicate authorization
     let (_command_id, operation_id) = seed_command(node.journal(), "d", &payload).await;
 
@@ -330,8 +354,8 @@ async fn an_authorized_ambiguous_outcome_redispatches() {
     worker
         .process(&item)
         .await
-        .expect("the authorized retry completes; its result waits in the journal");
-    assert_one_pending_result(node.journal(), &operation_id).await;
+        .expect("the authorized retry completes and delivers its result");
+    assert_one_delivered_result(&stub, node.journal(), &operation_id).await;
     assert_eq!(
         attempt_count(node.journal(), &operation_id).await,
         2,

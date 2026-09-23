@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — A machine that is not properly connected no longer starts paid work (`SIGNOFF-REPAIR.4.4.4.2.2`)
+
+`REASONBRAID-REPAIR-0464`. Closes the fourth recovery gap found by `REASONBRAID-DOC-0153`.
+
+- 🔴 **Before:** a machine whose reconnect had failed still sent work to the provider and paid for it, although it could not yet deliver the answer. If it ever noticed, it shut itself down.
+- ✅ **Now:** such a machine refuses to start paid work. The work waits untouched, and the machine reconnects and carries on instead of shutting down. Safety checks that need no connection still run first.
+- ✅ Tested: a new check failed on the old code (the machine did the work) and passes now; eleven existing checks now run on properly connected test machines; 89 machine tests, six live suites (91 tests) and the full two-machine demonstration pass; three deliberately broken versions were all caught; strict lint clean.
+- Technical: gate in `Worker::process` after the retry and cached-decision gates, before `execute_attempt_emitting`, returning `WorkerError::Node(NodeError::NotSchedulable)` with nothing journaled; `WorkerError::calls_for_reconcile()` (`Channel` | `Node(NotSchedulable)`) drives `rb-node`'s loop; `support::control_plane::reconciled_node` shared by `worker_cached_decision` (6), `worker_retry_policy` (2) and `worker_dead_letter` (3). Mutants 3/3 caught (`worker.rs:376:12 delete !`, `calls_for_reconcile → true/false`).
+
 ## 2026-09-23 — The machine's own tests can now see an answer being sent (`SIGNOFF-REPAIR.4.4.4.2.1`)
 
 `REASONBRAID-REPAIR-0463`. Test equipment for the fourth recovery gap; no product behaviour changed.

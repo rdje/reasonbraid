@@ -1,7 +1,8 @@
 //! Delivery of a completed work result (`SIGNOFF-REPAIR.4.4.4.1`, made testable
 //! in-crate by `SIGNOFF-REPAIR.4.4.4.2.1`): a schedulable node sends its result at
 //! once; a node that is not schedulable keeps it pending, and the next reconcile
-//! delivers it under its ORIGINAL id. Both run against a stub control plane the
+//! delivers it under its ORIGINAL id; and a node that is not schedulable never
+//! dispatches at all (`SIGNOFF-REPAIR.4.4.4.2.2`). Both run against a stub control plane the
 //! node really reconciles with; until it existed only the live server suites could
 //! see a result leave the node.
 
@@ -13,7 +14,10 @@ use chrono::Utc;
 use reasonbraid_adapter::{AdapterCapabilities, FakeAdapter, ScriptStep, StatusLookupSpec};
 use reasonbraid_core::fixture::Fixture;
 use reasonbraid_core::BudgetDimensions;
-use reasonbraid_node::{CommandInput, Journal, LocalBudget, Node, Worker};
+use reasonbraid_node::{
+    CommandInput, EventDelivery, Journal, LocalBudget, Node, NodeError, ResultEvent, Worker,
+    WorkerError,
+};
 use serde_json::json;
 use support::control_plane::StubControlPlane;
 
@@ -38,25 +42,14 @@ async fn node_at(stub: &StubControlPlane, name: &str) -> (Fixture, Node) {
 
 /// A worker whose adapter completes with the content `delivered`.
 fn worker(node: &Node) -> Worker<FakeAdapter> {
+    worker_with(node, completing_adapter())
+}
+
+/// A worker driving `adapter` with an ample local budget.
+fn worker_with(node: &Node, adapter: FakeAdapter) -> Worker<FakeAdapter> {
     Worker::new(
         node.clone(),
-        FakeAdapter::new(
-            vec![
-                ScriptStep::EmitChunk {
-                    chunk: "delivered".to_string(),
-                },
-                ScriptStep::Complete { usage: None },
-            ],
-            StatusLookupSpec::Unsupported,
-            AdapterCapabilities {
-                streaming: false,
-                cancellation: reasonbraid_adapter::CancellationStrength::BestEffort,
-                provider_idempotency: false,
-                status_lookup: false,
-                tool_support: false,
-                policy_injection: reasonbraid_adapter::PolicyInjectionMode::None,
-            },
-        ),
+        adapter,
         LocalBudget::new(BudgetDimensions {
             calls: Some(100),
             input_tokens: Some(100_000),
@@ -64,6 +57,27 @@ fn worker(node: &Node) -> Worker<FakeAdapter> {
             wall_clock_seconds: Some(10_000),
         }),
         Duration::from_secs(1),
+    )
+}
+
+/// An adapter that completes with the content `delivered`.
+fn completing_adapter() -> FakeAdapter {
+    FakeAdapter::new(
+        vec![
+            ScriptStep::EmitChunk {
+                chunk: "delivered".to_string(),
+            },
+            ScriptStep::Complete { usage: None },
+        ],
+        StatusLookupSpec::Unsupported,
+        AdapterCapabilities {
+            streaming: false,
+            cancellation: reasonbraid_adapter::CancellationStrength::BestEffort,
+            provider_idempotency: false,
+            status_lookup: false,
+            tool_support: false,
+            policy_injection: reasonbraid_adapter::PolicyInjectionMode::None,
+        },
     )
 }
 
@@ -176,34 +190,73 @@ async fn a_schedulable_nodes_result_is_delivered_at_once() {
     );
 }
 
-/// THE deferral, end to end: a node that is not schedulable completes the work,
-/// keeps the result pending instead of losing it, and its next reconcile delivers
-/// it exactly once, under the id the journal minted with the completion.
+/// THE deferral, end to end. A completed attempt's result is journaled pending in
+/// the same transaction as the completion (`SIGNOFF-REPAIR.4.4.4.1`); a node that
+/// is not schedulable DEFERS it rather than erroring, sends nothing, and its next
+/// reconcile delivers it exactly once under the id minted with the completion.
+/// The same pending row is what a node that died just past the transaction
+/// leaves behind, so this is also the crash path. (`process` can no longer reach
+/// a deferral on its own: since `.4.4.4.2.2` an unschedulable node never
+/// dispatches. The delivery API is driven directly.)
 #[tokio::test]
 async fn a_deferred_result_is_delivered_by_the_next_reconcile_under_its_id() {
     let stub = StubControlPlane::start().await;
     let (_fixture, node) = node_at(&stub, "deferred").await;
     let command_id = seed_allowed_work(node.journal(), "deferred").await;
-    let items = node.journal().work_items().await.expect("work items");
-    worker(&node)
-        .process(&items[0])
+    let operation_id = node
+        .journal()
+        .ensure_operation(&command_id, Utc::now())
         .await
-        .expect("the dispatch completes; the result is deferred, not an error");
+        .expect("operation")
+        .operation_id;
+    node.journal()
+        .prepare_attempt("patt_deferred", &operation_id, Utc::now())
+        .await
+        .expect("prepare");
+    node.journal()
+        .record_dispatch("patt_deferred", None, Utc::now())
+        .await
+        .expect("dispatch");
+    let event = ResultEvent {
+        event_id: "evt_deferred".to_string(),
+        payload: json!({
+            "kind": "work_result",
+            "attempt_id": "patt_deferred",
+            "content": "delivered",
+        }),
+    };
+    node.journal()
+        .record_completed_with_event("patt_deferred", None, &event, Utc::now())
+        .await
+        .expect("the completion and its result, together");
 
-    let pending = node.journal().pending_events().await.expect("pending");
-    assert_eq!(pending.len(), 1, "the result waits in the journal");
+    let delivery = node
+        .deliver_journaled_event(&operation_id, &event.event_id, &event.payload)
+        .await
+        .expect("a deferral is not an error");
+    assert_eq!(delivery, EventDelivery::Deferred);
     assert!(
         stub.events().is_empty(),
         "nothing was sent while unschedulable"
     );
-    let deferred_id = pending[0].event_id.clone();
+    assert_eq!(
+        node.journal()
+            .pending_events()
+            .await
+            .expect("pending")
+            .len(),
+        1,
+        "the result waits in the journal"
+    );
 
     node.reconcile().await.expect("reconcile");
-    let (_, attempt_id) = completed_attempt(node.journal(), &command_id).await;
     let received = stub.events();
     assert_eq!(received.len(), 1, "the reconcile delivered it exactly once");
-    assert_eq!(received[0].event_id, deferred_id, "under its original id");
-    assert_eq!(received[0].payload["attempt_id"], attempt_id);
+    assert_eq!(
+        received[0].event_id, "evt_deferred",
+        "under its original id"
+    );
+    assert_eq!(received[0].operation_id, operation_id);
     assert_eq!(received[0].payload["content"], "delivered");
     assert!(
         node.journal()
@@ -240,4 +293,57 @@ async fn the_stub_refuses_a_delivery_under_a_token_it_never_issued() {
         "an unissued token is refused"
     );
     assert!(stub.events().is_empty(), "and nothing is recorded");
+}
+
+/// THE refusal (`SIGNOFF-REPAIR.4.4.4.2.2`): a node that is not schedulable spends
+/// NOTHING. Its local gates allow the work, and the dispatch is still refused
+/// before the adapter is reached: no attempt is journaled, the item stays
+/// untouched for after the reconcile, and the worker reports `NotSchedulable`
+/// so the run loop reconciles. Before the repair this node invoked the provider,
+/// paying for work it could not yet deliver.
+#[tokio::test]
+async fn an_unschedulable_node_spends_nothing() {
+    let stub = StubControlPlane::start().await;
+    let (_fixture, node) = node_at(&stub, "unschedulable").await;
+    let command_id = seed_allowed_work(node.journal(), "unschedulable").await;
+    let adapter = completing_adapter();
+    let invocations = adapter.invocation_counter();
+    let worker = worker_with(&node, adapter);
+    let items = node.journal().work_items().await.expect("work items");
+
+    let refused = worker.process(&items[0]).await;
+    assert!(
+        matches!(refused, Err(WorkerError::Node(NodeError::NotSchedulable))),
+        "the worker reports the node unschedulable: {refused:?}"
+    );
+    assert_eq!(
+        invocations.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "the provider was never reached"
+    );
+    let item = node
+        .journal()
+        .work_items()
+        .await
+        .expect("work items")
+        .into_iter()
+        .find(|w| w.command_id == command_id)
+        .expect("the item");
+    assert_eq!(
+        item.latest_attempt_status, None,
+        "no attempt was journaled; the item waits intact"
+    );
+
+    // Once reconciled, the same item dispatches and its result is delivered.
+    node.reconcile().await.expect("reconcile");
+    node.journal()
+        .set_revocation_epoch_for(TENANT, 7)
+        .await
+        .expect("the gate's epoch, after the reconcile replaced the map");
+    worker
+        .process(&items[0])
+        .await
+        .expect("a schedulable node dispatches");
+    assert_eq!(invocations.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert_eq!(stub.events().len(), 1, "and delivers");
 }

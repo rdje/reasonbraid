@@ -66,6 +66,21 @@ impl fmt::Display for WorkerError {
     }
 }
 
+impl WorkerError {
+    /// Whether the node's remedy is to reconcile and resume the work loop, rather
+    /// than to stop. A channel failure is one: the reconcile re-handshakes and
+    /// re-emits anything pending under its original id. A dispatch refused on a
+    /// node that is not schedulable is the other (`SIGNOFF-REPAIR.4.4.4.2.2`): the
+    /// reconcile is what makes it schedulable. `rb-node`'s loop asks this, so the
+    /// decision is testable here rather than buried in a binary.
+    pub fn calls_for_reconcile(&self) -> bool {
+        matches!(
+            self,
+            WorkerError::Channel(_) | WorkerError::Node(NodeError::NotSchedulable)
+        )
+    }
+}
+
 impl std::error::Error for WorkerError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
@@ -352,6 +367,21 @@ impl<A: Adapter> Worker<A> {
             }
         }
 
+        // THE schedulability gate (`SIGNOFF-REPAIR.4.4.4.2.2`): a node that has
+        // not completed its reconcile spends NOTHING. It comes after the two
+        // gates above, which decide from journaled facts alone, and before the
+        // supervisor, whose first act toward a provider is the paid one. Nothing
+        // is journaled: the item is untouched and dispatches after the reconcile
+        // the caller runs on this error (`rb-node`'s loop does).
+        if !self.node.is_schedulable().await {
+            eprintln!(
+                "worker: {} is not schedulable; the dispatch of {} waits for the reconcile",
+                self.node.node_id(),
+                item.command_id
+            );
+            return Err(WorkerError::Node(NodeError::NotSchedulable));
+        }
+
         let work_kind = payload
             .get("kind")
             .and_then(|v| v.as_str())
@@ -557,6 +587,19 @@ impl<A: Adapter> Worker<A> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The run loop's decision (`SIGNOFF-REPAIR.4.4.4.2.2`): a channel failure
+    /// and a dispatch refused on an unschedulable node both reconcile; every
+    /// other worker error still stops the loop (what `.4.4.5` narrows next).
+    #[test]
+    fn a_refused_dispatch_on_an_unschedulable_node_calls_for_reconcile() {
+        assert!(WorkerError::Node(NodeError::NotSchedulable).calls_for_reconcile());
+        assert!(WorkerError::Channel(ChannelError::NotEnrolled).calls_for_reconcile());
+        assert!(!WorkerError::MalformedPayload("x".to_string()).calls_for_reconcile());
+        assert!(
+            !WorkerError::Node(NodeError::MalformedJournal("x".to_string())).calls_for_reconcile()
+        );
+    }
 
     /// The skip decision: only a missing or `prepared` attempt is safe to execute.
     #[test]

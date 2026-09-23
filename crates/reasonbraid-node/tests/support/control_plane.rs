@@ -16,13 +16,14 @@
 //! stub never issued is refused, so a node cannot reach it without a handshake.
 
 use std::collections::BTreeMap;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::routing::post;
 use axum::{Json, Router};
-use reasonbraid_node::{AckResponse, EventReceipt, HandshakeResponse, CHANNEL_VERSION};
+use reasonbraid_node::{AckResponse, EventReceipt, HandshakeResponse, Node, CHANNEL_VERSION};
 use serde_json::Value;
 
 /// The fencing token every handshake issues.
@@ -85,6 +86,26 @@ impl StubControlPlane {
     pub fn events(&self) -> Vec<ReceivedEvent> {
         self.recorded.lock().expect("not poisoned").events.clone()
     }
+}
+
+/// A node journaling at `journal`, pointed at `stub` and RECONCILED against it,
+/// so it is `Schedulable` and may dispatch (`SIGNOFF-REPAIR.4.4.4.2.2`: an
+/// unschedulable node spends nothing). The reconcile replaces the journal's
+/// epoch map with the stub's EMPTY one, so a control sets its epochs and server
+/// time AFTER this returns.
+pub async fn reconciled_node(stub: &StubControlPlane, journal: &Path) -> Node {
+    let key = rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256).expect("keypair");
+    let node = Node::open(
+        journal,
+        stub.base_url(),
+        "nod_00000000-0000-7000-8000-000000000001".to_string(),
+        vec![0x00, 0x01, 0x02],
+        key,
+    )
+    .await
+    .expect("open node");
+    node.reconcile().await.expect("reconcile against the stub");
+    node
 }
 
 impl Drop for StubControlPlane {

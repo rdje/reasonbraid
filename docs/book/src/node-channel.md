@@ -635,10 +635,10 @@ is the attempt complete while its result exists only in memory:
 | before the transaction commits | the attempt still `dispatched` | recovery marks it `outcome_unknown`; §11.3's proof or an operator adjudicates |
 | after it commits | the attempt `completed` **and** the event pending | the reconcile re-emits the event with its original id |
 
-A result produced while the node is **not schedulable** is handled the same
-way. The worker delivers the already-journaled event only when the node is
-`Schedulable`; otherwise the event stays pending, the worker logs *the next
-reconcile delivers it*, and the reconcile does. The node's own tests check
+A result the node cannot deliver at once is handled the same way. The worker
+delivers the already-journaled event only while the node is `Schedulable`;
+otherwise the event stays pending, the worker logs *the next reconcile
+delivers it*, and the reconcile does. The node's own tests check
 both paths against a stub control plane the node really reconciles with: an
 immediate delivery, and a deferred result delivered exactly once, under its
 original id (`worker_delivery`). Before this repair the two
@@ -655,21 +655,39 @@ attempts         patt_…  completed
 outgoing_events  evt_…   pending   {"kind":"work_result","attempt_id":"patt_…","content":"…"}
 ```
 
-⚠️ Refusing to *dispatch* on a node that is not schedulable is a separate
-repair (`SIGNOFF-REPAIR.4.4.4.2`, pending). Today such a node can still spend
-on a dispatch; what this repair guarantees is that the result of that spend
-is kept.
+A node that is not schedulable does not start paid work at all (next
+section), so a deferral now arises from a crash, or from a node that stops
+being schedulable while an attempt is running.
 
 ## Schedulability gate
 
 A node is `Offline → Reconciling → Schedulable`, and it becomes `Schedulable`
 **only** after the full handshake round-trip is applied: crashed attempts
 classified, replay journaled, directives applied, pending results re-emitted
-(or acknowledged as known), cursor acknowledged on both sides. A new event
-(`emit_event`) is refused until then. A work result the journal already holds
-is not refused: it stays pending and the reconcile delivers it (above). Any
-failure drops the node back to `Offline`; retrying the whole protocol is
-always safe because every step is idempotent.
+(or acknowledged as known), cursor acknowledged on both sides. Any failure
+drops the node back to `Offline`; retrying the whole protocol is always safe
+because every step is idempotent.
+
+Until the node is `Schedulable`:
+
+| What is attempted | What happens |
+| --- | --- |
+| A dispatch of delivered work | **Refused before the provider is reached** (`SIGNOFF-REPAIR.4.4.4.2.2`). The retry gate and the cached-decision gate still run first, since they decide from journaled facts alone. Nothing is journaled for the refusal, the item waits untouched, and the worker reports `NotSchedulable`. |
+| A new event (`emit_event`) | Refused with `NotSchedulable`. |
+| Delivering a work result the journal already holds | Deferred, not refused: the result stays pending and the reconcile delivers it (above). |
+
+`rb-node` answers a `NotSchedulable` refusal the way it answers a lost
+channel: it reconciles and resumes, rather than exiting and abandoning the
+work it declined to start. The log reads:
+
+```text
+worker: nod_… is not schedulable; the dispatch of cmd_… waits for the reconcile
+rb-node: worker node error: the node is not schedulable yet — reconcile first — reconciling
+rb-node: reconciled
+```
+
+Before this repair a node whose reconcile had failed still dispatched: it
+paid the provider for work it could not yet deliver.
 
 ## Inbox hardening (`.1.2.3`)
 

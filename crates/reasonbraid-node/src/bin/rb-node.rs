@@ -16,7 +16,7 @@ use reasonbraid_adapter::{
     StatusLookupSpec,
 };
 use reasonbraid_core::BudgetDimensions;
-use reasonbraid_node::{LocalBudget, Node, NodeChannel, Worker, WorkerError};
+use reasonbraid_node::{LocalBudget, Node, NodeChannel, Worker};
 
 #[derive(Debug, Parser)]
 #[command(name = "rb-node", version, about = "ReasonBraid node worker (Phase 0)")]
@@ -207,26 +207,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     loop {
-        match worker.run().await {
+        let reason = match worker.run().await {
             Ok(()) => unreachable!("the work loop runs until an error"),
-            Err(WorkerError::Channel(e)) => {
-                // The channel died: reconcile (re-emitting anything pending with
-                // its ORIGINAL id) and resume — nothing accepted is lost, nothing
-                // duplicated.
-                eprintln!("rb-node: channel lost ({e}) — reconciling");
-                match node.reconcile().await {
-                    Ok(()) => {
-                        eprintln!("rb-node: reconciled");
-                    }
-                    Err(e) => {
-                        eprintln!("rb-node: reconcile failed ({e}) — retrying in 1s");
-                        tokio::time::sleep(Duration::from_secs(1)).await;
-                    }
-                }
-            }
+            // A channel failure, or a dispatch refused on a node a failed
+            // reconcile left `Offline` (`SIGNOFF-REPAIR.4.4.4.2.2`): reconcile
+            // (re-emitting anything pending with its ORIGINAL id) and resume —
+            // nothing accepted is lost, nothing duplicated, and the work the
+            // worker declined to start is not abandoned.
+            Err(e) if e.calls_for_reconcile() => e.to_string(),
             Err(e) => {
                 eprintln!("rb-node: fatal worker error: {e}");
                 std::process::exit(1);
+            }
+        };
+        eprintln!("rb-node: {reason} — reconciling");
+        match node.reconcile().await {
+            Ok(()) => {
+                eprintln!("rb-node: reconciled");
+            }
+            Err(e) => {
+                eprintln!("rb-node: reconcile failed ({e}) — retrying in 1s");
+                tokio::time::sleep(Duration::from_secs(1)).await;
             }
         }
     }

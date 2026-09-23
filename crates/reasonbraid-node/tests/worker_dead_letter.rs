@@ -1,7 +1,11 @@
 //! Worker dead-letter tests (`PHASE-2.2.4`): a terminal refusal reports the
 //! dead letter ONCE (the outgoing-events dedup), and a replayed delivery's
 //! FRESH admission decision resets the retry count — the re-dispatch runs
-//! under the new decision, not the dead one.
+//! under the new decision, not the dead one. Every leg dispatches, so each runs
+//! on a node reconciled against the stub control plane
+//! (`SIGNOFF-REPAIR.4.4.4.2.2`: an unschedulable node spends nothing).
+
+mod support;
 
 use std::time::Duration;
 
@@ -14,6 +18,7 @@ use reasonbraid_core::fixture::Fixture;
 use reasonbraid_core::BudgetDimensions;
 use reasonbraid_node::{CommandInput, Journal, LocalBudget, Node, Worker};
 use serde_json::{json, Value};
+use support::control_plane::{reconciled_node, StubControlPlane};
 
 /// A fixture directory for one test, created exclusively on the repository's own
 /// volume and REMOVED when the test passes (`SIGNOFF-REPAIR.11.2.1.3.2.4`). A
@@ -22,26 +27,13 @@ fn journal_fixture(name: &str) -> Fixture {
     Fixture::create("dead-letter-tests", name).expect("the fixture directory is new")
 }
 
-/// A node whose channel base points nowhere — the refusal legs never touch it.
-///
-/// 🔴 The guard comes back FIRST in the tuple and that is load-bearing: a `let`
-/// statement drops its bindings in reverse declaration order, and a tuple
-/// pattern's bindings count left to right, so `let (_fixture, node)` drops the
-/// NODE first and the fixture last. The other order would remove the directory
-/// while the node still held its SQLite file open.
-async fn dummy_node(name: &str) -> (Fixture, Node) {
-    let key = rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256).expect("keypair");
+/// A node reconciled against a stub control plane, so it is `Schedulable` and may
+/// dispatch. The bindings drop right to left: the node, its fixture, the stub.
+async fn schedulable_node(name: &str) -> (StubControlPlane, Fixture, Node) {
+    let stub = StubControlPlane::start().await;
     let fixture = journal_fixture(name);
-    let node = Node::open(
-        fixture.join("node.db"),
-        "http://127.0.0.1:1",
-        "nod_00000000-0000-7000-8000-000000000001".to_string(),
-        vec![0x00, 0x01, 0x02],
-        key,
-    )
-    .await
-    .expect("open node");
-    (fixture, node)
+    let node = reconciled_node(&stub, &fixture.join("node.db")).await;
+    (stub, fixture, node)
 }
 
 fn refusing_adapter() -> FakeAdapter {
@@ -126,7 +118,7 @@ async fn seed_command(
 /// report.
 #[tokio::test]
 async fn a_terminal_refusal_reports_the_dead_letter_once() {
-    let (_fixture, node) = dummy_node("dead-letter-once").await;
+    let (stub, _fixture, node) = schedulable_node("dead-letter-once").await;
     let (_command_id, operation_id) = seed_command(node.journal(), "x", Utc::now(), 7).await;
 
     let worker = Worker::new(
@@ -173,6 +165,14 @@ async fn a_terminal_refusal_reports_the_dead_letter_once() {
         .filter(|e| e.payload.contains("work_dead_lettered"))
         .count();
     assert_eq!(dead_letters, 1, "the dead letter is reported exactly once");
+    assert_eq!(
+        stub.events()
+            .iter()
+            .filter(|e| e.payload["kind"] == "work_dead_lettered")
+            .count(),
+        1,
+        "and reaches the control plane exactly once"
+    );
     assert!(
         node.journal()
             .has_dead_letter(&operation_id)
@@ -187,7 +187,7 @@ async fn a_terminal_refusal_reports_the_dead_letter_once() {
 /// decision) — the re-dispatch runs.
 #[tokio::test]
 async fn a_replayed_delivery_refreshes_the_decision_and_redispatches() {
-    let (_fixture, node) = dummy_node("dead-letter-replay").await;
+    let (_stub, _fixture, node) = schedulable_node("dead-letter-replay").await;
     let decided_at = Utc::now() - chrono::Duration::seconds(600);
     let (command_id, operation_id) = seed_command(node.journal(), "y", decided_at, 7).await;
 
@@ -273,7 +273,7 @@ async fn a_replayed_delivery_refreshes_the_decision_and_redispatches() {
 /// is the fail-OPEN direction, which is why it is worth a control of its own.
 #[tokio::test]
 async fn the_retry_bound_still_trips_when_this_clock_runs_behind_the_server() {
-    let (_fixture, node) = dummy_node("retry-clock-behind").await;
+    let (_stub, _fixture, node) = schedulable_node("retry-clock-behind").await;
 
     // This node is 600 s behind: the server's clock reads 600 s AFTER ours.
     let node_now = Utc::now();

@@ -2,8 +2,13 @@
 //! decision the delivery carries is evaluated at the dispatch boundary — a fresh,
 //! epoch-current cached allow dispatches; an expired, epoch-stale, denied, or
 //! MISSING decision refuses the irreversible write (fail-closed, journaled as
-//! `failed_before_dispatch`). These legs never contact a channel: the refusal
-//! happens before any adapter or transport use, so a dummy node works.
+//! `failed_before_dispatch`). The REFUSAL legs never contact a channel: the
+//! refusal happens before any adapter or transport use, so a dummy node works.
+//! The legs that DISPATCH need a schedulable node (`SIGNOFF-REPAIR.4.4.4.2.2`: an
+//! unschedulable one spends nothing), so they reconcile against the stub control
+//! plane first and read the delivered result from it.
+
+mod support;
 
 use std::time::Duration;
 
@@ -13,6 +18,7 @@ use reasonbraid_core::fixture::Fixture;
 use reasonbraid_core::{BudgetDimensions, CACHED_ALLOW_TTL_SECONDS};
 use reasonbraid_node::{Journal, LocalBudget, Node, Worker};
 use serde_json::{json, Value};
+use support::control_plane::{reconciled_node, StubControlPlane};
 
 /// A fixture directory for one test, created exclusively on the repository's own
 /// volume and REMOVED when the test passes (`SIGNOFF-REPAIR.11.2.1.3.2.4`). A
@@ -41,6 +47,17 @@ async fn dummy_node(name: &str) -> (Fixture, Node) {
     .await
     .expect("open node");
     (fixture, node)
+}
+
+/// A node reconciled against a stub control plane, so it is `Schedulable` and may
+/// dispatch. The reconcile replaces the journal's epoch map with the stub's EMPTY
+/// one, so a control sets its epochs and server time AFTER this returns. The
+/// bindings drop right to left: the node, then its fixture, then the stub.
+async fn schedulable_node(name: &str) -> (StubControlPlane, Fixture, Node) {
+    let stub = StubControlPlane::start().await;
+    let fixture = journal_fixture(name);
+    let node = reconciled_node(&stub, &fixture.join("node.db")).await;
+    (stub, fixture, node)
 }
 
 fn completing_adapter() -> FakeAdapter {
@@ -128,14 +145,16 @@ async fn latest_status(journal: &Journal, command_id: &str) -> Option<String> {
     item.latest_attempt_status
 }
 
-/// The one work result a completed dispatch leaves waiting in the journal
-/// (`SIGNOFF-REPAIR.4.4.4.1`). This node was never reconciled, so it cannot
-/// deliver; the result must stay pending for the next reconcile to re-emit,
-/// naming the attempt that produced it. Before the repair the completion was
-/// journaled, the emission refused with an error, and the result existed
-/// nowhere, so these controls accepted a paid result's loss as proof that the
-/// dispatch happened.
-async fn pending_result_for(journal: &Journal, command_id: &str) -> Value {
+/// The one work result a completed dispatch DELIVERED to the stub, naming the
+/// attempt that produced it, with nothing left pending (`SIGNOFF-REPAIR.4.4.4.1`,
+/// `.4.4.4.2.2`). Before `.4.4.4.1` the undeliverable result was dropped with an
+/// error, and these controls accepted that loss as proof that the dispatch
+/// happened; the delivered result is the proof now.
+async fn delivered_result_for(
+    stub: &StubControlPlane,
+    journal: &Journal,
+    command_id: &str,
+) -> Value {
     let operation_id = journal
         .work_items()
         .await
@@ -153,20 +172,27 @@ async fn pending_result_for(journal: &Journal, command_id: &str) -> Value {
         .map(|a| a.attempt_id)
         .collect();
     assert_eq!(completed.len(), 1, "exactly one completed attempt");
-    let pending: Vec<Value> = journal
-        .pending_events()
-        .await
-        .expect("pending events")
+    let delivered: Vec<Value> = stub
+        .events()
         .into_iter()
         .filter(|e| e.operation_id == operation_id)
-        .map(|e| serde_json::from_str(&e.payload).expect("a JSON payload"))
+        .map(|e| e.payload)
         .collect();
     assert_eq!(
-        pending.len(),
+        delivered.len(),
         1,
-        "the completed dispatch left exactly one result waiting: {pending:?}"
+        "the completed dispatch delivered exactly one result: {delivered:?}"
     );
-    let result = pending.into_iter().next().unwrap();
+    assert!(
+        journal
+            .pending_events()
+            .await
+            .expect("pending events")
+            .iter()
+            .all(|e| e.operation_id != operation_id),
+        "a delivered result is not left pending"
+    );
+    let result = delivered.into_iter().next().unwrap();
     assert_eq!(result["kind"], "work_result");
     assert_eq!(result["command_id"], command_id);
     assert_eq!(
@@ -283,7 +309,7 @@ async fn a_command_without_a_cached_decision_refuses_the_dispatch() {
 
 #[tokio::test]
 async fn a_fresh_epoch_current_cached_allow_dispatches() {
-    let (_fixture, node) = dummy_node("fresh").await;
+    let (stub, _fixture, node) = schedulable_node("fresh").await;
     node.journal()
         .set_revocation_epoch_for("ten_00000000-0000-7000-8000-000000000000", 7)
         .await
@@ -302,20 +328,19 @@ async fn a_fresh_epoch_current_cached_allow_dispatches() {
     );
 
     let items = node.journal().work_items().await.expect("work items");
-    // The dispatch proceeds through the gate; the supervisor runs the adapter
-    // and the attempt COMPLETES. This node was never reconciled, so the result
-    // cannot be delivered: it waits in the journal, and what proves the gate
-    // allowed the dispatch is the completed attempt and its waiting result.
+    // The dispatch proceeds through the gate; the supervisor runs the adapter,
+    // the attempt COMPLETES, and its result is delivered: the completed attempt
+    // and the delivered result are what prove the gate allowed the dispatch.
     worker
         .process(&items[0])
         .await
-        .expect("the dispatch completes; its result waits in the journal");
+        .expect("the dispatch completes and delivers its result");
     assert_eq!(
         latest_status(node.journal(), &command_id).await.as_deref(),
         Some("completed"),
         "a fresh, epoch-current cached allow reaches the adapter and completes"
     );
-    let result = pending_result_for(node.journal(), &command_id).await;
+    let result = delivered_result_for(&stub, node.journal(), &command_id).await;
     assert_eq!(result["content"], "done", "the result carries the content");
 }
 
@@ -323,7 +348,7 @@ async fn a_fresh_epoch_current_cached_allow_dispatches() {
 /// decision allows, and the budget gate (unchanged) still refuses the dispatch.
 #[tokio::test]
 async fn the_budget_gate_still_runs_after_the_cached_decision_allows() {
-    let (_fixture, node) = dummy_node("budget").await;
+    let (_stub, _fixture, node) = schedulable_node("budget").await;
     node.journal()
         .set_revocation_epoch_for("ten_00000000-0000-7000-8000-000000000000", 7)
         .await
@@ -418,7 +443,7 @@ fn worker_with_ample_budget(node: &Node) -> Worker<FakeAdapter> {
 /// describe what it actually proves.
 #[tokio::test]
 async fn a_replayed_decision_dispatches_however_old_the_first_delivery_was() {
-    let (_fixture, node) = dummy_node("replay-anchor").await;
+    let (stub, _fixture, node) = schedulable_node("replay-anchor").await;
     node.journal()
         .set_revocation_epoch_for("ten_00000000-0000-7000-8000-000000000000", 7)
         .await
@@ -441,17 +466,17 @@ async fn a_replayed_decision_dispatches_however_old_the_first_delivery_was() {
     let worker = worker_with_ample_budget(&node);
     let items = node.journal().work_items().await.expect("work items");
     // The dispatch proceeds and completes; the completed attempt and its
-    // waiting result are what prove the gate ALLOWED it.
+    // delivered result are what prove the gate ALLOWED it.
     worker
         .process(&items[0])
         .await
-        .expect("the dispatch completes; its result waits in the journal");
+        .expect("the dispatch completes and delivers its result");
     assert_eq!(
         latest_status(node.journal(), &command_id).await.as_deref(),
         Some("completed"),
         "a replayed admission is fresh from ITS delivery, however old the first was"
     );
-    pending_result_for(node.journal(), &command_id).await;
+    delivered_result_for(&stub, node.journal(), &command_id).await;
 }
 
 // ── `.3.4.3.1.2`: the node evaluates server instants in the server's terms ──
@@ -471,7 +496,7 @@ async fn a_replayed_decision_dispatches_however_old_the_first_delivery_was() {
 /// node did no work at all, fail-closed, with a reason line whose epochs match.
 #[tokio::test]
 async fn a_node_clock_ahead_of_the_server_still_dispatches() {
-    let (_fixture, node) = dummy_node("clock-ahead").await;
+    let (stub, _fixture, node) = schedulable_node("clock-ahead").await;
     node.journal()
         .set_revocation_epoch_for("ten_00000000-0000-7000-8000-000000000000", 7)
         .await
@@ -498,17 +523,17 @@ async fn a_node_clock_ahead_of_the_server_still_dispatches() {
     let worker = worker_with_ample_budget(&node);
     let items = node.journal().work_items().await.expect("work items");
     // The dispatch proceeds and completes; the completed attempt and its
-    // waiting result are what prove the gate ALLOWED it.
+    // delivered result are what prove the gate ALLOWED it.
     worker
         .process(&items[0])
         .await
-        .expect("the dispatch completes; its result waits in the journal");
+        .expect("the dispatch completes and delivers its result");
     assert_eq!(
         latest_status(node.journal(), &command_id).await.as_deref(),
         Some("completed"),
         "a node whose clock runs ahead must still do its work"
     );
-    pending_result_for(node.journal(), &command_id).await;
+    delivered_result_for(&stub, node.journal(), &command_id).await;
 }
 
 /// The other direction, which `.3.4.3` bounded and this leaf now corrects: the
@@ -559,7 +584,7 @@ async fn a_node_clock_behind_the_server_gets_exactly_one_window() {
 /// blanket allow or a blanket refusal.
 #[tokio::test]
 async fn a_node_clock_behind_the_server_still_dispatches_a_fresh_decision() {
-    let (_fixture, node) = dummy_node("clock-behind-fresh").await;
+    let (stub, _fixture, node) = schedulable_node("clock-behind-fresh").await;
     node.journal()
         .set_revocation_epoch_for("ten_00000000-0000-7000-8000-000000000000", 7)
         .await
@@ -586,12 +611,12 @@ async fn a_node_clock_behind_the_server_still_dispatches_a_fresh_decision() {
     worker
         .process(&items[0])
         .await
-        .expect("the dispatch completes; its result waits in the journal");
+        .expect("the dispatch completes and delivers its result");
     assert_eq!(
         latest_status(node.journal(), &command_id).await.as_deref(),
         Some("completed"),
     );
-    pending_result_for(node.journal(), &command_id).await;
+    delivered_result_for(&stub, node.journal(), &command_id).await;
 }
 
 /// Journal one command of `tenant_id`, decided under `revocation_epoch`, now.
@@ -641,7 +666,7 @@ async fn seed_tenant_command(
 /// B's revocation — or B's stale allow admitted under A's epoch.
 #[tokio::test]
 async fn each_command_is_judged_by_its_own_tenants_epoch() {
-    let (_fixture, node) = dummy_node("per-tenant-epoch").await;
+    let (stub, _fixture, node) = schedulable_node("per-tenant-epoch").await;
     let (a, b, c) = (
         "ten_00000000-0000-7000-8000-00000000000a",
         "ten_00000000-0000-7000-8000-00000000000b",
@@ -702,17 +727,17 @@ async fn each_command_is_judged_by_its_own_tenants_epoch() {
         "a tenant with no epoch reference is refused"
     );
     // A: decided under 7, A is at 7 — dispatches despite B's bump; its
-    // completed attempt and waiting result prove the gate let it through.
+    // completed attempt and delivered result prove the gate let it through.
     worker
         .process(&item(cmd_a.clone()).await)
         .await
-        .expect("the dispatch completes; its result waits in the journal");
+        .expect("the dispatch completes and delivers its result");
     assert_eq!(
         latest_status(node.journal(), &cmd_a).await.as_deref(),
         Some("completed"),
         "A's command is judged by A's epoch, not B's"
     );
-    pending_result_for(node.journal(), &cmd_a).await;
+    delivered_result_for(&stub, node.journal(), &cmd_a).await;
 }
 
 /// `SIGNOFF-REPAIR.5.3.6` — the epoch map a response carries is the COMPLETE

@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-23 — The machine-inbox checklist checked against the code: four gaps found and scheduled (`SIGNOFF-REPAIR.4.3`)
+
+`REASONBRAID-DOC-0152`. A review; no code changed.
+
+- 🔴 One machine can, by reusing a message id, cause another machine's finished answer to be ignored, or be told about another machine's receipts.
+- 🔴 If an operator clears out a machine's old delivered work entirely, the machine can be locked out, and later work can be silently skipped.
+- 🔴 Two machines holding a job with the same name in one organisation would have only one answer counted.
+- 🔴 Two jobs sent to one machine at the same instant can collide, and one is refused.
+- ✅ All four are scheduled in order of risk, each to be proven with a failing test first.
+
 ## 2026-09-23 — Ending a partnership now also stops work that was already on its way (`SIGNOFF-REPAIR.5.3.6`)
 
 `REASONBRAID-REPAIR-0454`. Completes the federation work (`SIGNOFF-REPAIR.5.3`) and with it the directory, recruitment and federation lane (`SIGNOFF-REPAIR.5`).

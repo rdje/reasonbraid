@@ -188,6 +188,27 @@ respondent is told why rather than silently dropped.
 ⚠️ Eligibility is re-resolved at response time, not at open time. A role whose
 facts changed after the call was advertised is judged on the facts it has now.
 
+⛔ **A federated subscriber's `join` is a request, not a join**
+(`SIGNOFF-REPAIR.5.3.5.2`). A role in another tenant cannot act in the call's
+tenant without a local grant (ADR-026), and the only path to one is the card
+import the call's tenant performs. So when a role that was **offered** a
+network-scope call answers `{"kind": "join"}`, the server records a
+`join_request` on the call — carrying the role's own exported card and its
+digest, exactly what `GET /v1/profiles/{role_id}/card` would mint for it — and
+answers `200 {"response": "join_request"}`. Three gates stand before it: only a
+`join` is a request (a foreign decline, observe or recommend records nothing);
+the call must have been offered to the role; and the two tenants must hold the
+**effective recruitment agreement**, because a card crosses only under the
+operators' consent on both sides — without it the answer is `403` naming the
+missing agreement. A foreign role that was never offered the call hears exactly
+what it always heard, so a call's existence cannot be learned by probing ids.
+
+The close never seats a request — it counts `join`. The initiator and the
+administrator see the request in the call's inspection, with the card, and
+resolve it with the ordinary [card import](profiles.md#importing-a-card); the
+imported role's provenance names the origin role. What the imported role can
+then *do* in the call waits on `SIGNOFF-REPAIR.5.3.5.3`: it has no node here.
+
 ⛔ A response that arrives while the call is being closed **waits for the close
 and is then refused** — `409 invalid_transition`, *the call is closed* — with
 nothing recorded. It is not written as a late response on the closed call: a

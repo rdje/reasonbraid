@@ -336,6 +336,31 @@ pub async fn record_response(
     Ok(())
 }
 
+/// A federated subscriber's JOIN REQUEST (`SIGNOFF-REPAIR.5.3.5.2`): stored in
+/// the same table as the responses, under a kind the wire never carries —
+/// `join_request` — so the close, which counts `join`, never seats it, and the
+/// inspection, which lists every response, shows it to the initiator and the
+/// administrator with the card the role exported for them. One per respondent,
+/// the second overwriting the first, as every response does.
+pub async fn record_join_request(
+    conn: &mut sqlx::PgConnection,
+    call_id: &str,
+    respondent: &str,
+    payload: &Value,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO recruitment_responses (response_id, call_id, respondent, response_kind, payload) \
+         VALUES ('rsp_' || gen_random_uuid()::text, $1, $2, 'join_request', $3) \
+         ON CONFLICT (call_id, respondent) DO UPDATE SET response_kind = 'join_request', payload = $3",
+    )
+    .bind(call_id)
+    .bind(respondent)
+    .bind(payload)
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
 /// The responses so far (the panel snapshot's raw material). The close reads
 /// them on its transaction after the call row is locked, so no response lands
 /// between that read and the snapshot (`SIGNOFF-REPAIR.5.2.4`); the

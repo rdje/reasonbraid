@@ -3167,6 +3167,287 @@ async fn a_network_scope_call_is_offered_across_an_effective_directory_agreement
     );
 }
 
+/// `SIGNOFF-REPAIR.5.3.5.2` — a federated subscriber's `join` is a recorded
+/// join REQUEST carrying its card, under the effective recruitment agreement;
+/// the close never seats it, the inspection shows it, and the call's tenant
+/// resolves it with the ordinary import. Before this repair the foreign
+/// response was `403` and left no trace.
+#[tokio::test]
+async fn a_federated_subscribers_join_is_a_recorded_request() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let world = call_world(&client, &base, "join-req", 1).await;
+    // The local joiner too must show its capability at network scope for a
+    // network-scope call, and its owner re-attests after the rewrite.
+    let mut outward_a = visibility_profile();
+    outward_a["visibility"]["capabilities"] = json!("network");
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{}", world.roles[0]),
+        &world.roles[0],
+        &outward_a,
+    )
+    .await;
+    assert_eq!(status, 200);
+    let (status, _) = post(
+        &client,
+        &base,
+        &format!("/v1/profiles/{}/attest", world.roles[0]),
+        &world.human_id,
+        &json!({ "taxonomy_id": "code_review", "evidence_ref": "evt_join-req/a" }),
+    )
+    .await;
+    assert_eq!(status, 200, "A's owner re-attests");
+    let (status, human_b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "join-req-b" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{human_b}");
+    let b_admin = human_b["principal_id"].as_str().unwrap().to_string();
+    let tenant_b = human_b["tenant_id"].as_str().unwrap().to_string();
+    let (status, role_b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "join-req-role", "tenant_id": tenant_b }),
+    )
+    .await;
+    assert_eq!(status, 200, "{role_b}");
+    let role_b = role_b["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &b_admin, &tenant_b, &role_b).await;
+    // A network-scope requirement is met only by a claim VISIBLE at network
+    // scope and attested as the expression demands — the offer goes by
+    // interests, the eligibility by the claims, and a role that hides its
+    // capabilities from the network is offered and then found ineligible.
+    let mut outward = visibility_profile();
+    outward["visibility"]["capabilities"] = json!("network");
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_b}"),
+        &role_b,
+        &outward,
+    )
+    .await;
+    assert_eq!(status, 200);
+    let (status, _) = post(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_b}/attest"),
+        &b_admin,
+        &json!({ "taxonomy_id": "code_review", "evidence_ref": "evt_join-req/b" }),
+    )
+    .await;
+    assert_eq!(status, 200, "B's owner attests");
+    let pair = |directory: bool, recruitment: bool| {
+        let client = client.clone();
+        let base = base.clone();
+        let a = (world.human_id.clone(), world.tenant.clone());
+        let b = (b_admin.clone(), tenant_b.clone());
+        async move {
+            for (admin, tenant, remote) in [(&a.0, &a.1, &b.1), (&b.0, &b.1, &a.1)] {
+                let (status, body) = post(
+                    &client,
+                    &base,
+                    "/v1/federation-agreements",
+                    admin,
+                    &json!({
+                        "tenant_id": tenant,
+                        "remote_tenant_id": remote,
+                        "directory_visibility": directory,
+                        "recruitment": recruitment,
+                    }),
+                )
+                .await;
+                assert_eq!(status, 200, "{body}");
+            }
+            for (admin, tenant, remote) in [(&a.0, &a.1, &b.1), (&b.0, &b.1, &a.1)] {
+                let (status, body) = post(
+                    &client,
+                    &base,
+                    "/v1/federation-agreements/accept",
+                    admin,
+                    &json!({ "tenant_id": tenant, "remote_tenant_id": remote }),
+                )
+                .await;
+                assert_eq!(status, 200, "{body}");
+            }
+        }
+    };
+
+    // 1. Directory agreement only: the offer reaches B's role, and its join
+    //    is refused — a request carries a card, and a card crosses only under
+    //    the recruitment agreement.
+    pair(true, false).await;
+    let mut body = call_body(&world, 1, 4);
+    body["expression"]["scope"] = json!("network");
+    let (status, opened) = post(&client, &base, "/v1/calls", &world.human_id, &body).await;
+    assert_eq!(status, 200, "{opened}");
+    assert_eq!(
+        opened["offered_to"],
+        json!(2),
+        "A's role and B's role: {opened}"
+    );
+    let call_id = opened["call_id"].as_str().unwrap().to_string();
+    let respond = format!("/v1/calls/{call_id}/respond");
+    let (status, refused) = post(
+        &client,
+        &base,
+        &respond,
+        &role_b,
+        &json!({ "kind": "join" }),
+    )
+    .await;
+    assert_eq!(status, 403, "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("no effective recruitment agreement"),
+        "the refusal names the missing consent: {refused}"
+    );
+
+    // 2. The recruitment agreement too: the join is recorded as a REQUEST
+    //    carrying B's role's card.
+    pair(true, true).await;
+    let (status, requested) = post(
+        &client,
+        &base,
+        &respond,
+        &role_b,
+        &json!({ "kind": "join" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{requested}");
+    assert_eq!(requested["response"], json!("join_request"), "{requested}");
+    let (status, inspected) = get(
+        &client,
+        &base,
+        &format!("/v1/calls/{call_id}"),
+        &world.human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "{inspected}");
+    let request = inspected["responses"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["respondent"] == json!(role_b))
+        .cloned()
+        .expect("the request is listed for the initiator");
+    assert_eq!(request["kind"], json!("join_request"), "{request}");
+    assert_eq!(request["payload"]["origin_tenant_id"], json!(tenant_b));
+    assert_eq!(request["payload"]["card"]["origin_role_id"], json!(role_b));
+    assert!(
+        request["payload"]["digest"]
+            .as_str()
+            .unwrap()
+            .starts_with("sha256:"),
+        "{request}"
+    );
+
+    // 3. A decline from a foreign role records nothing and answers as before;
+    //    a foreign role that was never offered learns nothing new.
+    let (status, refused) = post(
+        &client,
+        &base,
+        &respond,
+        &role_b,
+        &json!({ "kind": "decline", "reason": "busy" }),
+    )
+    .await;
+    assert_eq!(status, 403, "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("only a principal enrolled"),
+        "{refused}"
+    );
+    let (status, aloof) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "join-req-aloof", "tenant_id": tenant_b }),
+    )
+    .await;
+    assert_eq!(status, 200, "{aloof}");
+    let aloof = aloof["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &b_admin, &tenant_b, &aloof).await;
+    let mut other = visibility_profile();
+    other["interests"] = json!(["knot theory"]);
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{aloof}"),
+        &aloof,
+        &other,
+    )
+    .await;
+    assert_eq!(status, 200);
+    let (status, refused) =
+        post(&client, &base, &respond, &aloof, &json!({ "kind": "join" })).await;
+    assert_eq!(status, 403, "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("only a principal enrolled"),
+        "an un-offered foreign role hears the old words: {refused}"
+    );
+
+    // 4. The close seats the local joiner and never the request.
+    let (status, joined) = post(
+        &client,
+        &base,
+        &respond,
+        &world.roles[0],
+        &json!({ "kind": "join" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{joined}");
+    let (status, closed) = post(
+        &client,
+        &base,
+        &format!("/v1/calls/{call_id}/close"),
+        &world.human_id,
+        &json!({}),
+    )
+    .await;
+    assert_eq!(status, 200, "{closed}");
+    assert_eq!(closed["panel"], json!([world.roles[0]]), "{closed}");
+
+    // 5. The call's administrator resolves the request with the ordinary
+    //    import of the card it carries; the provenance names B's role.
+    let (status, imported) = post(
+        &client,
+        &base,
+        "/v1/profiles/cards/import",
+        &world.human_id,
+        &json!({
+            "tenant_id": world.tenant,
+            "card": request["payload"]["card"],
+            "digest": request["payload"]["digest"],
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the import lands from the request's card: {imported}"
+    );
+    let origin: String =
+        sqlx::query_scalar("SELECT origin_role_id FROM card_imports WHERE role_id = $1")
+            .bind(imported["role_id"].as_str().unwrap())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(origin, role_b);
+}
+
 /// `SIGNOFF-REPAIR.11.4.7.2.1.5.4.1` — §4.2's `decision_rule_constraints`: the
 /// issuer narrows, for one subject, the decision rules the tenant's charter
 /// allows. Declared in the enrolment body, validated at the one grant-creation

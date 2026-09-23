@@ -6400,11 +6400,52 @@ pub(crate) async fn respond_to_call_core(
     // call. Those two kinds set `participation = false`, so the eligibility
     // gate below is skipped entirely and nothing else in the path ever looks
     // at the respondent.
-    let respondent_tenant = reader_tenant(pool, principal).await?;
-    if respondent_tenant.as_deref() != Some(call.tenant_id.as_str()) {
+    let Some(respondent_tenant) = reader_tenant(pool, principal).await? else {
         return Err(ControlApiError::unauthorized(
             "only a principal enrolled in the call's tenant responds to it",
         ));
+    };
+    let foreign = respondent_tenant != call.tenant_id;
+    if foreign {
+        // A federated subscriber (`SIGNOFF-REPAIR.5.3.5.2`): its `join` is a
+        // REQUEST, never a join — it cannot act in this tenant without a local
+        // grant (ADR-026), and the only path to one is the card import the
+        // call's tenant performs. Three gates, and the first two answer with
+        // the same words an un-offered foreign principal has always heard, so
+        // a call's existence is not learned by probing its id:
+        //   (1) only a `join` is a request — a foreign decline, observe or
+        //       recommend has no local meaning and records nothing;
+        //   (2) the call must have been OFFERED to this role, which happens
+        //       only for a network-scope call under the directory agreement;
+        //   (3) the request carries the role's card, and a card crosses only
+        //       under the EFFECTIVE recruitment agreement — the operators'
+        //       consent, on both sides, that ADR-026 asks for.
+        let old_answer = "only a principal enrolled in the call's tenant responds to it";
+        if !matches!(response, crate::recruitment::RecruitmentResponse::Join) {
+            return Err(ControlApiError::unauthorized(old_answer));
+        }
+        let offered: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM recruitment_offers WHERE call_id = $1 AND role_id = $2)",
+        )
+        .bind(call_id)
+        .bind(&respondent)
+        .fetch_one(&mut *tx)
+        .await?;
+        if !offered {
+            return Err(ControlApiError::unauthorized(old_answer));
+        }
+        if !crate::federation::has_effective_recruitment_agreement_in_tx(
+            &mut tx,
+            &call.tenant_id,
+            &respondent_tenant,
+        )
+        .await?
+        {
+            return Err(ControlApiError::unauthorized(format!(
+                "no effective recruitment agreement between the call's tenant and `{respondent_tenant}` — \
+                 a join request carries the role's card, and a card crosses only under one"
+            )));
+        }
     }
     if call.status != "open" {
         return Err(ControlApiError::invalid_transition(format!(
@@ -6441,6 +6482,35 @@ pub(crate) async fn respond_to_call_core(
                 verdict.reasons.join("; ")
             )));
         }
+    }
+    if foreign {
+        // The request IS the role's own export, attached for the call's tenant
+        // to import: the same card `GET /v1/profiles/{role_id}/card` would
+        // mint for it, with its digest, so the import's digest rung re-derives
+        // it exactly. Recorded under `join_request`, which the close never
+        // seats and the inspection shows.
+        let Some((card, digest)) = mint_card(pool, &respondent).await? else {
+            return Err(ControlApiError::unauthorized(
+                "the respondent has no profile to export with its request",
+            ));
+        };
+        crate::recruitment::record_join_request(
+            &mut tx,
+            call_id,
+            &respondent,
+            &json!({
+                "origin_tenant_id": respondent_tenant,
+                "card": card,
+                "digest": digest,
+            }),
+        )
+        .await?;
+        tx.commit().await?;
+        return Ok(json!({
+            "call_id": call_id,
+            "respondent": respondent,
+            "response": "join_request",
+        }));
     }
     crate::recruitment::record_response(&mut tx, call_id, &respondent, response).await?;
     tx.commit().await?;
@@ -7317,28 +7387,42 @@ async fn get_profile_card(
             "only the role itself or its tenant admin exports the portable card",
         ));
     }
-    let Some(current) = crate::profiles::current_profile(&state.pool, &role_id).await? else {
+    let Some((card, digest)) = mint_card(&state.pool, &role_id).await? else {
         return Err(ControlApiError::not_found(format!(
             "no profile for `{role_id}`"
         )));
+    };
+    Ok(Json(json!({ "card": card, "digest": digest })))
+}
+
+/// The card a role exports, minted from its current profile: the export and
+/// the federated join request (`SIGNOFF-REPAIR.5.3.5.2`) mint the same card,
+/// because the request IS the role's own export, attached for the call's
+/// tenant. `None` when the role has no profile to export.
+async fn mint_card(
+    pool: &PgPool,
+    role_id: &str,
+) -> Result<Option<(crate::cards::AgentCard, String)>, ControlApiError> {
+    let Some(current) = crate::profiles::current_profile(pool, role_id).await? else {
+        return Ok(None);
     };
     let profile: crate::profiles::AgentProfile =
         serde_json::from_value(current.profile).map_err(|e| {
             ControlApiError::internal_with_log(format!("stored profile no longer parses: {e}"))
         })?;
-    let origin_tenant = role_tenant(&state.pool, &role_id)
-        .await?
-        .ok_or_else(|| ControlApiError::not_found(format!("no role `{role_id}`")))?;
+    let Some(origin_tenant) = role_tenant(pool, role_id).await? else {
+        return Ok(None);
+    };
     let card = crate::cards::AgentCard {
         schema_version: crate::cards::CARD_SCHEMA_VERSION.to_string(),
         origin_tenant_id: origin_tenant,
-        origin_role_id: role_id,
+        origin_role_id: role_id.to_string(),
         profile,
         exported_at: Utc::now().to_rfc3339(),
     };
     let digest = crate::cards::digest_of(&card)
         .map_err(|e| ControlApiError::internal_with_log(format!("the card digests: {e}")))?;
-    Ok(Json(json!({ "card": card, "digest": digest })))
+    Ok(Some((card, digest)))
 }
 
 /// The card import body: the importing tenant + the card + the digest the

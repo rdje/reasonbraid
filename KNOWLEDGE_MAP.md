@@ -255,6 +255,7 @@
 - [`2026-09-23_no-call-transition-is-one-transaction-and-the-minimum-is-checked-before-the-filter.md`](docs/decisions/2026-09-23_no-call-transition-is-one-transaction-and-the-minimum-is-checked-before-the-filter.md)
 - [`2026-09-23_of-the-four-missing-grant-fields-one-is-owed-now-one-waits-on-a-domain-one-on-the-director-and-one-is-two-halves.md`](docs/decisions/2026-09-23_of-the-four-missing-grant-fields-one-is-owed-now-one-waits-on-a-domain-one-on-the-director-and-one-is-two-halves.md)
 - [`2026-09-23_the-auto-grants-bounds-have-no-producer.md`](docs/decisions/2026-09-23_the-auto-grants-bounds-have-no-producer.md)
+- [`2026-09-23_the-federation-goal-line-two-items-met-two-live-defects-and-the-calls-remote-form-unbuilt.md`](docs/decisions/2026-09-23_the-federation-goal-line-two-items-met-two-live-defects-and-the-calls-remote-form-unbuilt.md)
 - [`2026-09-23_the-four-node-local-wake-items-each-wait-on-a-fact-that-does-not-exist-yet.md`](docs/decisions/2026-09-23_the-four-node-local-wake-items-each-wait-on-a-fact-that-does-not-exist-yet.md)
 - [`2026-09-23_the-node-to-role-binding-is-a-ledger-fact-not-a-registry-before-g9.md`](docs/decisions/2026-09-23_the-node-to-role-binding-is-a-ledger-fact-not-a-registry-before-g9.md)
 - [`2026-09-23_the-wake-checklist-is-a-node-gate-and-the-auto-grant-carries-six-bounds.md`](docs/decisions/2026-09-23_the-wake-checklist-is-a-node-gate-and-the-auto-grant-carries-six-bounds.md)

@@ -38,38 +38,48 @@ pub struct IndicatorGroup {
 pub struct DependenceIndicator {
     pub attribute: &'static str,
     pub groups: Vec<IndicatorGroup>,
+    /// The members that do not declare this attribute — unknown, never
+    /// counted as variation (`SIGNOFF-REPAIR.5.1.3`).
+    pub undeclared: usize,
     pub explanation: String,
 }
 
 /// One observable condition the shipped facts carry: its display name and
 /// the picker that reads it from a member's facts.
-type AttributePicker = (&'static str, fn(&MemberFacts) -> Option<&str>);
+pub type AttributePicker = (&'static str, fn(&MemberFacts) -> Option<&str>);
 
-/// The pure computation over the §10.4 observable conditions the shipped
-/// facts carry: the common provider, the model family, the harness, the
-/// declared lineage, and the owner.
+/// The §10.4 observable conditions the shipped facts carry — the common
+/// provider, the model family, the harness, the declared lineage and the
+/// owner. The indicators and the ranking's diversity feature read this ONE
+/// list, so the two never disagree about what a dependence attribute is.
+pub const ATTRIBUTES: [AttributePicker; 5] = [
+    ("provider", |m: &MemberFacts| m.provider.as_deref()),
+    ("model_family", |m: &MemberFacts| m.model_family.as_deref()),
+    ("harness", |m: &MemberFacts| m.harness.as_deref()),
+    ("lineage", |m: &MemberFacts| m.lineage.as_deref()),
+    ("owner", |m: &MemberFacts| m.owner.as_deref()),
+];
+
+/// The pure computation over the [`ATTRIBUTES`]. A member that does not
+/// declare an attribute is counted as `undeclared` and is never evidence of
+/// variation: *varies* needs two declarers (`SIGNOFF-REPAIR.5.1.3`).
 pub fn dependence_indicators(members: &[MemberFacts]) -> Vec<DependenceIndicator> {
-    let attributes: [AttributePicker; 5] = [
-        ("provider", |m: &MemberFacts| m.provider.as_deref()),
-        ("model_family", |m: &MemberFacts| m.model_family.as_deref()),
-        ("harness", |m: &MemberFacts| m.harness.as_deref()),
-        ("lineage", |m: &MemberFacts| m.lineage.as_deref()),
-        ("owner", |m: &MemberFacts| m.owner.as_deref()),
-    ];
-
-    attributes
+    ATTRIBUTES
         .into_iter()
         .map(|(attribute, pick)| {
             let mut by_value: std::collections::BTreeMap<&str, Vec<&str>> =
                 std::collections::BTreeMap::new();
+            let mut undeclared = 0usize;
             for member in members {
-                if let Some(value) = pick(member) {
-                    by_value
+                match pick(member) {
+                    Some(value) => by_value
                         .entry(value)
                         .or_default()
-                        .push(member.role_id.as_str());
+                        .push(member.role_id.as_str()),
+                    None => undeclared += 1,
                 }
             }
+            let declared = members.len() - undeclared;
             let groups: Vec<IndicatorGroup> = by_value
                 .into_iter()
                 .filter(|(_, ids)| ids.len() >= 2)
@@ -79,22 +89,31 @@ pub fn dependence_indicators(members: &[MemberFacts]) -> Vec<DependenceIndicator
                 })
                 .collect();
             let shared_members: usize = groups.iter().map(|g| g.members.len()).sum();
-            let explanation = if groups.is_empty() {
+            let total = members.len();
+            let mut explanation = if declared == 0 {
+                format!("no panel member declares a {attribute}, so nothing is known about it")
+            } else if declared == 1 {
+                format!("only 1 of {total} panel members declares a {attribute}, so nothing is compared")
+            } else if groups.is_empty() {
                 format!(
-                    "no two panel members share a {attribute} (the attribute varies across the panel)"
+                    "no two panel members share a {attribute} (it varies across the {declared} that declare one)"
                 )
             } else {
                 format!(
                     "{} of {} panel members share a {attribute} with at least one other ({} overlap group{})",
                     shared_members,
-                    members.len(),
+                    total,
                     groups.len(),
                     if groups.len() == 1 { "" } else { "s" }
                 )
             };
+            if undeclared > 0 && declared >= 2 {
+                explanation.push_str(&format!("; {undeclared} of {total} do not declare one"));
+            }
             DependenceIndicator {
                 attribute,
                 groups,
+                undeclared,
                 explanation,
             }
         })
@@ -191,6 +210,38 @@ mod tests {
         for indicator in &indicators {
             assert!(indicator.groups.is_empty(), "{indicator:?}");
         }
+    }
+
+    /// `SIGNOFF-REPAIR.5.1.3` shape (b): an attribute nobody declares is
+    /// unknown, not variation, and the undeclared are counted. As found the
+    /// silent attribute read *varies across the panel*, and a member without
+    /// a provider was folded into the variation of those with one.
+    #[test]
+    fn an_undeclared_attribute_is_unknown_not_variation() {
+        let members = vec![
+            member("rol_a", Some("openai"), None, None, None),
+            member("rol_b", Some("anthropic"), None, None, None),
+            member("rol_c", None, None, None, None),
+        ];
+        let indicators = dependence_indicators(&members);
+        let find = |name: &str| {
+            let indicator = indicators.iter().find(|i| i.attribute == name).unwrap();
+            serde_json::to_value(indicator).unwrap()
+        };
+        let harness = find("harness");
+        let text = harness["explanation"].as_str().unwrap();
+        assert!(
+            !text.contains("varies"),
+            "nobody declares a harness: {text}"
+        );
+        assert!(text.contains("no panel member declares"), "{text}");
+        assert_eq!(harness["undeclared"], serde_json::json!(3), "{harness}");
+
+        let provider = find("provider");
+        let text = provider["explanation"].as_str().unwrap();
+        assert!(text.contains("varies across the 2"), "{text}");
+        assert!(text.contains("1 of 3 do not declare"), "{text}");
+        assert_eq!(provider["undeclared"], serde_json::json!(1), "{provider}");
     }
 
     /// The owner overlap rides (the role-template dependence).

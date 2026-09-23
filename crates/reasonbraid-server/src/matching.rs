@@ -384,6 +384,74 @@ impl RankingPreferences {
     }
 }
 
+/// The diversity score and its explanation (`.6.2`, `SIGNOFF-REPAIR.5.1.3`):
+/// the mean over the five dependence attributes of what each one shows.
+///
+/// An attribute counts only when it is KNOWN on both sides: the candidate
+/// declares it and at least one other candidate declares the same attribute.
+/// It then scores `1 −` the share of those declarers holding the candidate's
+/// value — compared attribute to attribute, so a provider named `x` never
+/// matches a harness named `x`. Every other attribute scores 0: unknown
+/// contributes nothing. Dividing by all five, not by the known ones, is what
+/// keeps silence from paying — a fact left undeclared scores what a fact
+/// shared with everyone scores, never more, so declaring less cannot rank
+/// higher. ⛔ Until this repair an absent fact read as variation: a candidate
+/// with none scored the maximum, `1.0`.
+fn diversity(
+    mine: Option<&crate::dependence::MemberFacts>,
+    others: &[&crate::dependence::MemberFacts],
+) -> (f64, String) {
+    let attributes = crate::dependence::ATTRIBUTES;
+    let mut sum = 0.0f64;
+    let mut compared: Vec<String> = Vec::new();
+    if let Some(mine) = mine {
+        for (attribute, pick) in attributes {
+            let Some(value) = pick(mine) else { continue };
+            let declarers: Vec<&str> = others.iter().filter_map(|o| pick(o)).collect();
+            if declarers.is_empty() {
+                continue;
+            }
+            let sharers = declarers.iter().filter(|v| **v == value).count();
+            sum += 1.0 - sharers as f64 / declarers.len() as f64;
+            compared.push(if sharers == 0 {
+                format!(
+                    "its {attribute} is shared by none of the {}",
+                    declarers.len()
+                )
+            } else {
+                format!(
+                    "its {attribute} is shared by {sharers} of the {} ({:.0}%)",
+                    declarers.len(),
+                    sharers as f64 / declarers.len() as f64 * 100.0
+                )
+            });
+        }
+    }
+    let total = attributes.len();
+    if compared.is_empty() {
+        return (
+            0.0,
+            format!(
+                "none of the {total} dependence attributes is known for both this candidate and \
+                 another (unknown contributes nothing)"
+            ),
+        );
+    }
+    let mut explanation = format!(
+        "compared on {} of the {total} dependence attributes, each against the other \
+         candidates declaring it: {}",
+        compared.len(),
+        compared.join("; ")
+    );
+    if compared.len() < total {
+        explanation.push_str(&format!(
+            "; the other {} contribute nothing",
+            total - compared.len()
+        ));
+    }
+    (sum / total as f64, explanation)
+}
+
 /// The ranking order: the higher total first, ties by role id. `total_cmp`
 /// keeps it a total order whatever the totals are; the match surface merges
 /// its per-scope groups by this same key.
@@ -426,10 +494,9 @@ pub fn rank(
 }
 
 /// The rank with the dependence facts (`.6.2`): the diversity feature scores
-/// each candidate by the INVERSE of their heaviest attribute overlap with the
-/// OTHER eligible candidates — a candidate whose provider is unique among the
-/// panel scores 1.0; two sharers score lower. No dependence facts → the
-/// feature scores 0 (unknown contributes nothing, never a guess).
+/// each candidate by how little its KNOWN dependence facts overlap the OTHER
+/// eligible candidates' ([`diversity`]). No dependence facts → the feature
+/// scores 0 (unknown contributes nothing, never a guess).
 pub fn rank_with_dependence(
     expression: &EligibilityExpression,
     candidates: &[(EligibilityCandidate, EligibilityVerdict)],
@@ -519,49 +586,21 @@ pub fn rank_with_dependence(
                 _ => 0.0,
             };
 
-            // The diversity feature (`.6.2`): the inverse of the heaviest
-            // attribute overlap with the OTHER eligible candidates.
-            let diversity_score = match dependence {
-                None => 0.0,
+            // The diversity feature (`.6.2`), over KNOWN facts only
+            // (`SIGNOFF-REPAIR.5.1.3`): see [`diversity`].
+            let (diversity_score, diversity_explanation) = match dependence {
+                None => (
+                    0.0,
+                    "no dependence facts are loaded (the feature contributes nothing)".to_string(),
+                ),
                 Some(facts) => {
-                    let mine = facts.get(&candidate.role_id);
                     let others: Vec<&crate::dependence::MemberFacts> = candidates
                         .iter()
                         .filter(|(_, v)| v.eligible)
                         .filter(|(c, _)| c.role_id != candidate.role_id)
                         .filter_map(|(c, _)| facts.get(&c.role_id))
                         .collect();
-                    let mut heaviest = 0.0f64;
-                    if let Some(mine) = mine {
-                        for value in [
-                            &mine.provider,
-                            &mine.model_family,
-                            &mine.harness,
-                            &mine.lineage,
-                            &mine.owner,
-                        ]
-                        .into_iter()
-                        .flatten()
-                        {
-                                let sharers = others
-                                    .iter()
-                                    .filter(|o| {
-                                        o.provider.as_ref() == Some(value)
-                                            || o.model_family.as_ref() == Some(value)
-                                            || o.harness.as_ref() == Some(value)
-                                            || o.lineage.as_ref() == Some(value)
-                                            || o.owner.as_ref() == Some(value)
-                                    })
-                                    .count();
-                                if !others.is_empty() {
-                                    let fraction = sharers as f64 / others.len() as f64;
-                                    if fraction > heaviest {
-                                        heaviest = fraction;
-                                    }
-                                }
-                        }
-                    }
-                    1.0 - heaviest
+                    diversity(facts.get(&candidate.role_id), &others)
                 }
             };
 
@@ -618,16 +657,7 @@ pub fn rank_with_dependence(
                     feature: "diversity",
                     score: diversity_score,
                     contribution: preferences.diversity * diversity_score,
-                    explanation: if dependence.is_none() {
-                        "no dependence facts are loaded (the feature contributes nothing)".to_string()
-                    } else if diversity_score >= 1.0 {
-                        "the candidate varies across the panel's dependence attributes".to_string()
-                    } else {
-                        format!(
-                            "the candidate shares a dependence attribute with {:.0}% of the other candidates",
-                            (1.0 - diversity_score) * 100.0
-                        )
-                    },
+                    explanation: diversity_explanation,
                 },
             ];
             let total: f64 = features.iter().map(|f| f.contribution).sum();
@@ -1172,6 +1202,129 @@ mod tests {
             .find(|f| f.feature == "diversity")
             .unwrap();
         assert_eq!(diversity.score, 0.0, "{ranked:?}");
+    }
+
+    /// One candidate's dependence facts, for the `.5.1.3` controls.
+    fn facts_of(
+        role: &str,
+        provider: Option<&str>,
+        harness: Option<&str>,
+        owner: Option<&str>,
+    ) -> crate::dependence::MemberFacts {
+        crate::dependence::MemberFacts {
+            role_id: role.to_string(),
+            provider: provider.map(str::to_string),
+            model_family: None,
+            harness: harness.map(str::to_string),
+            lineage: None,
+            owner: owner.map(str::to_string),
+        }
+    }
+
+    /// Rank `roles` (every one eligible) with `facts`; each role's diversity
+    /// feature, in role order.
+    fn diversity_by_role(
+        roles: &[&str],
+        facts: Vec<crate::dependence::MemberFacts>,
+    ) -> Vec<(String, f64, String)> {
+        let expression = EligibilityExpression::default();
+        let candidates: Vec<(EligibilityCandidate, EligibilityVerdict)> = roles
+            .iter()
+            .map(|role| {
+                let c = candidate(role, Some(profile_with(vec![], vec![])));
+                let v = eligible(&expression, &c, at());
+                (c, v)
+            })
+            .collect();
+        let facts: std::collections::HashMap<String, crate::dependence::MemberFacts> =
+            facts.into_iter().map(|f| (f.role_id.clone(), f)).collect();
+        let mut out: Vec<(String, f64, String)> = rank_with_dependence(
+            &expression,
+            &candidates,
+            &RankingPreferences::default(),
+            Some(&facts),
+        )
+        .into_iter()
+        .map(|r| {
+            let d = r
+                .features
+                .iter()
+                .find(|f| f.feature == "diversity")
+                .unwrap();
+            (r.role_id.clone(), d.score, d.explanation.clone())
+        })
+        .collect();
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out
+    }
+
+    /// `SIGNOFF-REPAIR.5.1.3` shape (a): a candidate with no known fact — no
+    /// entry at all, or an entry declaring nothing — scores 0, and says the
+    /// unknown contributes nothing. As found both scored the maximum, `1.0`.
+    #[test]
+    fn a_candidate_with_no_known_fact_scores_zero_diversity() {
+        let scored = diversity_by_role(
+            &["rol_a", "rol_b", "rol_c", "rol_d"],
+            vec![
+                facts_of("rol_a", Some("openai"), None, None),
+                facts_of("rol_b", Some("anthropic"), None, None),
+                facts_of("rol_d", None, None, None),
+            ],
+        );
+        for (role, score, explanation) in &scored[2..] {
+            assert_eq!(*score, 0.0, "{role} knows nothing: {scored:?}");
+            assert!(
+                explanation.contains("unknown contributes nothing"),
+                "{role}: {explanation}"
+            );
+        }
+        assert!(
+            scored[0].1 > 0.0,
+            "a declared, unshared provider scores: {scored:?}"
+        );
+    }
+
+    /// `SIGNOFF-REPAIR.5.1.3` shape (a): declaring less never ranks higher. A
+    /// candidate that also declares a provider nobody shares scores ABOVE one
+    /// that leaves it undeclared; as found the two tied at `1.0`.
+    #[test]
+    fn declaring_an_unshared_fact_ranks_above_leaving_it_undeclared() {
+        let scored = diversity_by_role(
+            &["rol_a", "rol_c", "rol_d"],
+            vec![
+                facts_of("rol_a", Some("openai"), None, Some("own1")),
+                facts_of("rol_c", None, None, Some("own3")),
+                facts_of("rol_d", Some("anthropic"), None, Some("own4")),
+            ],
+        );
+        let (c, d) = (&scored[1], &scored[2]);
+        assert!(
+            d.1 > c.1,
+            "the declarer ranks above the silent one: {scored:?}"
+        );
+        assert!(c.2.contains("compared on 1 of the 5"), "{}", c.2);
+        assert!(d.2.contains("compared on 2 of the 5"), "{}", d.2);
+    }
+
+    /// `SIGNOFF-REPAIR.5.1.3` shape (c): the sharer test compares a value
+    /// with the SAME attribute. A provider named `x` beside a harness named
+    /// `x` is no overlap; as found it was a full one and scored `0`.
+    #[test]
+    fn the_sharer_test_compares_the_same_attribute_only() {
+        let scored = diversity_by_role(
+            &["rol_a", "rol_b"],
+            vec![
+                facts_of("rol_a", Some("x"), None, Some("own1")),
+                facts_of("rol_b", None, Some("x"), Some("own2")),
+            ],
+        );
+        for (role, score, explanation) in &scored {
+            assert!(*score > 0.0, "{role} shares nothing: {scored:?}");
+            assert!(
+                !explanation.contains("provider") && !explanation.contains("harness"),
+                "only the owner is known on both sides: {explanation}"
+            );
+        }
     }
 
     /// The tie-break is deterministic (the role id order).

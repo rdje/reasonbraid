@@ -238,6 +238,51 @@ with the panel, so why this panel was chosen survives the call.
 ⛔ The snapshot is taken at close. Roles that join, change or become ineligible
 afterwards do not alter it — that is what makes it a record rather than a view.
 
+### What the panel is known to share
+
+The close ranks the joiners with the [six features](profiles.md#matching-the-directory),
+all weighted `1`, and it is the one surface that loads the **dependence
+facts** the `diversity` feature needs. Each joiner has five, read at close:
+`provider`, `model_family` and `harness` from the role's latest incarnation,
+`owner` (the call's tenant), and `lineage`, which nothing declares yet.
+
+**Only a fact known on both sides counts** (`SIGNOFF-REPAIR.5.1.3`). For each
+of the five, a joiner that declares it is compared with the *other* joiners
+that declare the **same** attribute, and scores `1 −` the share of them holding
+its value. Every other attribute scores 0. The feature is the mean over all
+five:
+
+| Joiners | `diversity` of A |
+| --- | --- |
+| A `provider: openai`, B `provider: openai`, C `provider: anthropic` | provider shared by 1 of 2 → (1 − 0.5) / 5 = **0.1** |
+| A `provider: openai`, B `provider: anthropic` | provider shared by none → 1 / 5 = **0.2** |
+| A declares nothing | **0** — *none of the 5 dependence attributes is known for both this candidate and another (unknown contributes nothing)* |
+| A `provider: x`, B `harness: x` | the provider meets no other provider → **0**; a provider is never compared with a harness |
+
+Dividing by five, not by the facts a joiner happens to declare, is deliberate:
+an undeclared fact scores exactly what a fact shared with everyone scores, so
+**declaring less can never rank a joiner higher**. The explanation names every
+attribute it compared and how many it could not.
+
+The snapshot also stores one **dependence indicator** per attribute: the groups
+of two or more panelists sharing a value, and how many declare nothing. The
+wording separates the three cases:
+
+```text
+2 of 2 panel members share a provider with at least one other (1 overlap group)
+no two panel members share a provider (it varies across the 2 that declare one); 1 of 3 do not declare one
+no panel member declares a lineage, so nothing is known about it
+```
+
+These are **indicators, never an independence claim** (§10.4): they say what
+the panel is known to share, not how likely its members are to fail together.
+
+⚠️ Until that repair an absent fact read as variation. A joiner with no facts
+scored the maximum diversity, `1.0`; leaving a shared provider undeclared hid
+the overlap; an attribute nobody declared was reported as *varies across the
+panel*; and a value was matched against all five of another joiner's facts,
+so a provider named `x` counted as sharing with a harness named `x`.
+
 **The minimum is a minimum on the selected panel** (`SIGNOFF-REPAIR.5.2.5`).
 Eligibility is re-resolved at close against each joiner's current facts, and a
 joiner who no longer satisfies the expression is dropped before ranking. The

@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — Unknown facts about an agent no longer count as variety on a panel (`SIGNOFF-REPAIR.5.1.3`)
+
+`REASONBRAID-REPAIR-0444`.
+
+- 🔴 **Before:** when a call closes, the panel is ranked partly on variety — agents on different providers or tools are less likely to fail the same way. But missing information was counted as variety. An agent with no facts at all got the best possible score, an agent could hide a shared provider by not declaring it, a fact nobody declared was reported as "varies across the panel", and a provider named "x" was counted as matching a *tool* named "x".
+- ✅ **Now:** only facts that are actually known count, and each is compared only with the same kind of fact. Unknown scores zero, so declaring less can never help. The panel record now says how many agents did not declare each fact, and says "nobody declares this" instead of "varies".
+- ✅ The book explains the variety score with worked examples, for the first time.
+- ✅ Tested: four new tests (one per problem) failed on the old code and pass now; two deliberately broken versions of the fix were each caught; the full profile suite passes (86).
+- Technical: `matching::diversity(mine, others)` — mean over `dependence::ATTRIBUTES` (now `pub`, the one list) of `1 − sharers/declarers` per attribute known on both sides, else 0, denominator 5; `DependenceIndicator.undeclared` + the explanation cases (none / one / varies across K / groups; `; M of N do not declare one`). Controls: units (a1) `a_candidate_with_no_known_fact_scores_zero_diversity`, (a2) `declaring_an_unshared_fact_ranks_above_leaving_it_undeclared`, (c) `the_sharer_test_compares_the_same_attribute_only`, (b) `an_undeclared_attribute_is_unknown_not_variation`; the snapshot control's `lineage` arm. Mutants M1 (mean over declared) and M2 (any-attribute sharer) caught. Record: `docs/decisions/2026-09-23_diversity-is-a-mean-over-five-attributes-and-unknown-scores-zero.md`.
+
 ## 2026-09-23 — A search's ranking weights must be between 0 and 1 (`SIGNOFF-REPAIR.5.1.4`)
 
 `REASONBRAID-REPAIR-0443`.

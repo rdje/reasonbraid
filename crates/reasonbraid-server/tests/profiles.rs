@@ -5502,6 +5502,17 @@ async fn the_panel_snapshot_carries_the_dependence_indicators() {
         2,
         "both members ride: {inspected}"
     );
+    // `SIGNOFF-REPAIR.5.1.3`: no incarnation declares a lineage, and the
+    // stored indicator says so — unknown and counted, never *varies*.
+    let lineage = indicators
+        .iter()
+        .find(|i| i["attribute"] == json!("lineage"))
+        .expect("the lineage indicator");
+    assert_eq!(lineage["undeclared"], json!(2), "{inspected}");
+    assert!(
+        !lineage["explanation"].as_str().unwrap().contains("varies"),
+        "an undeclared lineage is not variation: {inspected}"
+    );
 }
 
 /// THE `.4.1.2` acceptance: the typed §12.1 reference submits; the SAME

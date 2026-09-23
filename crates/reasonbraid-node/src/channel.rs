@@ -236,6 +236,14 @@ pub struct HandshakeResponse {
     pub revocation_epoch: i64,
     /// The server's own clock when it answered (`SIGNOFF-REPAIR.3.4.3.1.2`).
     pub server_time: chrono::DateTime<chrono::Utc>,
+    /// Open recruitment offers awaiting this node's role, unanswered
+    /// (`SIGNOFF-REPAIR.5.3.5.1.1`): a notification, never work. `default`, so
+    /// a newer node reads an older server's answer as zero; the reverse — an
+    /// older node against a newer server — is refused by `deny_unknown_fields`,
+    /// which is this contract's stance under one channel version, and the two
+    /// ship together.
+    #[serde(default)]
+    pub offers_pending: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

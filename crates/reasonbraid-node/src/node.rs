@@ -243,6 +243,18 @@ impl Node {
         self.journal
             .record_server_time(response.server_time, sent, received)
             .await?;
+        // 3.7 The prompt half of a recruitment advertisement
+        //     (`SIGNOFF-REPAIR.5.3.5.1.1`): the server counted the open offers
+        //     awaiting this node's role. It is a notification, not work — the
+        //     offers are read as the role (`GET /v1/calls/offered`), and what a
+        //     node does with them beyond saying so is the adapter's or the
+        //     operator's, not this loop's.
+        if response.offers_pending > 0 {
+            eprintln!(
+                "node: {} open recruitment offer(s) await this node's role — GET /v1/calls/offered lists them",
+                response.offers_pending
+            );
+        }
 
         // 4. Journal the replay, deduplicated by command id (a duplicated command never
         //    creates a second local operation). The admission decision metadata rides

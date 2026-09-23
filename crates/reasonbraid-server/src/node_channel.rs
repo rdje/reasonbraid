@@ -335,6 +335,13 @@ pub struct HandshakeResponse {
     /// (`SIGNOFF-REPAIR.3.4.3.1.2`). The node measures its offset against this
     /// and evaluates the server instants it was sent in the server's terms.
     pub server_time: DateTime<Utc>,
+    /// How many OPEN recruitment calls, inside their join window, are offered
+    /// to this node's role and unanswered by it (`SIGNOFF-REPAIR.5.3.5.1.1`) —
+    /// the prompt half of §10.5's advertisement. It is a NOTIFICATION, not
+    /// work: an offer has no admission and nothing to run, so it never rides
+    /// the inbox; the node reads the offers as its role (`GET /v1/calls/offered`).
+    /// Zero when the node is not a role's node.
+    pub offers_pending: i64,
 }
 
 /// A node-emitted event (a result, with its ORIGINAL id — `§17.4` step 5).
@@ -720,6 +727,24 @@ impl NodeChannelState {
             "SELECT t.revocation_epoch, clock_timestamp() \
              FROM tenants t JOIN nodes n ON n.tenant_id = t.tenant_id \
              WHERE n.node_id = $1",
+        )
+        .bind(node_id)
+        .fetch_one(&self.pool)
+        .await
+    }
+
+    /// The open, in-window, unanswered offers for the role this node runs
+    /// (`SIGNOFF-REPAIR.5.3.5.1.1`). Under the dev rule the node id IS the role
+    /// id (DOC-0139); a node that is no role's node counts zero, because no
+    /// offer names it.
+    pub async fn offers_pending(&self, node_id: &str) -> Result<i64, sqlx::Error> {
+        sqlx::query_scalar(
+            "SELECT count(*) FROM recruitment_offers o \
+             JOIN recruitment_calls c ON c.call_id = o.call_id \
+             WHERE o.role_id = $1 AND c.status = 'open' \
+               AND c.join_deadline > now() AND c.expires_at > now() \
+               AND NOT EXISTS (SELECT 1 FROM recruitment_responses r \
+                               WHERE r.call_id = c.call_id AND r.respondent = $1)",
         )
         .bind(node_id)
         .fetch_one(&self.pool)
@@ -1910,6 +1935,9 @@ async fn handshake(
     let (fencing_token, lease_epoch, lease_expires_at) =
         state.issue_lease(&req.node_id, Utc::now()).await?;
     let (revocation_epoch, server_time) = state.epoch_and_server_time(&req.node_id).await?;
+    // The prompt half of the advertisement (`SIGNOFF-REPAIR.5.3.5.1.1`): the
+    // node is told how many offers await its role, and reads them as its role.
+    let offers_pending = state.offers_pending(&req.node_id).await?;
 
     Ok(Json(HandshakeResponse {
         channel_version: CHANNEL_VERSION,
@@ -1922,6 +1950,7 @@ async fn handshake(
         revocation_epoch,
         lease_epoch,
         server_time,
+        offers_pending,
     }))
 }
 

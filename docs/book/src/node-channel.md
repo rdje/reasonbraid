@@ -166,6 +166,13 @@ guidance and the fresh lease:
 - **known_events** — server-held receipts for the node's pending operations,
   so a result whose acknowledgement was lost is not re-sent.
 - **fencing_token + lease_expires_at** — the new lease (see above).
+- **offers_pending** — how many open recruitment calls, inside their join
+  window, are offered to this node's role and unanswered by it
+  (`SIGNOFF-REPAIR.5.3.5.1.1`). A notification, never work: an offer has no
+  admission and nothing to run, so it does not ride the inbox; the node reads
+  the offers as its role with `GET /v1/calls/offered`, and the reference node
+  says so on its log when the count is positive. A node that is no role's node
+  reads zero.
 
 A node that reports a cursor ahead of the server's ledger is **refused** with a
 typed error: its journal saw commands this server cannot reproduce.

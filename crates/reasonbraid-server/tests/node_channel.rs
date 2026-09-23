@@ -332,6 +332,114 @@ async fn fresh_node_handshake_plays_the_whole_inbox_and_becomes_schedulable() {
     server.crash();
 }
 
+/// `SIGNOFF-REPAIR.5.3.5.1.1` — an online node is told how many open offers
+/// await its role: the handshake carries `offers_pending`, counting the
+/// role's open, in-window, unanswered offers, so a node learns promptly that a
+/// call wants it without an offer ever riding the inbox as work. Until this
+/// field a role learned of an offer only by asking.
+#[tokio::test]
+async fn an_online_node_is_told_how_many_offers_await_its_role() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
+    let server = TestServer::start(&pool).await;
+    let tenant = "ten_00000000-0000-7000-8000-000000000000";
+    let node_id = "rol_00000000-0000-7000-8000-00000000000f".to_string();
+    let (cert_der, key_der) = seed_node(&pool, &node_id).await;
+    // The dev rule: the node IS the role, so the offer names the node id.
+    sqlx::query(
+        "INSERT INTO agent_roles (role_id, tenant_id, name) VALUES ($1, $2, 'offered-role')",
+    )
+    .bind(&node_id)
+    .bind(tenant)
+    .execute(&pool)
+    .await
+    .expect("seed the role");
+    let seed_call = |call_id: &'static str, status: &'static str, deadline_hours: i64| {
+        let pool = pool.clone();
+        let node_id = node_id.clone();
+        async move {
+            sqlx::query(
+                "INSERT INTO recruitment_calls \
+                 (call_id, tenant_id, thread_id, initiator, expression, join_deadline, expires_at, status) \
+                 VALUES ($1, $2, 'thr_00000000-0000-7000-8000-000000000000', 'agt_seed', '{}'::jsonb, \
+                         now() + ($3 || ' hours')::interval, now() + ($3 || ' hours')::interval + interval '1 hour', $4)",
+            )
+            .bind(call_id)
+            .bind(tenant)
+            .bind(deadline_hours.to_string())
+            .bind(status)
+            .execute(&pool)
+            .await
+            .expect("seed the call");
+            sqlx::query(
+                "INSERT INTO recruitment_offers (offer_id, call_id, role_id) VALUES ('ofr_' || $1, $1, $2)",
+            )
+            .bind(call_id)
+            .bind(&node_id)
+            .execute(&pool)
+            .await
+            .expect("seed the offer");
+        }
+    };
+    seed_call("cal_offered_open", "open", 1).await;
+    assert_eq!(
+        state.offers_pending(&node_id).await.unwrap(),
+        1,
+        "one open, in-window, unanswered offer"
+    );
+
+    let channel = reasonbraid_node::NodeChannel::new(
+        server.base_url(),
+        node_id.clone(),
+        cert_der.clone(),
+        key_from_der(&key_der),
+    );
+    let handshake = || {
+        let channel = &channel;
+        let node_id = node_id.clone();
+        async move {
+            channel
+                .handshake(&reasonbraid_node::HandshakeRequest {
+                    channel_version: reasonbraid_node::CHANNEL_VERSION,
+                    node_id,
+                    last_acked_cursor: 0,
+                    pending_operations: vec![],
+                    ambiguous_attempts: vec![],
+                    cert_der: String::new(),
+                    proof_signature: String::new(),
+                    nonce: String::new(),
+                })
+                .await
+                .expect("handshake")
+        }
+    };
+    assert_eq!(
+        handshake().await.offers_pending,
+        1,
+        "the handshake carries the count"
+    );
+
+    // Answered: no longer pending. A closed call and a lapsed window never count.
+    sqlx::query(
+        "INSERT INTO recruitment_responses (response_id, call_id, respondent, response_kind) \
+         VALUES ('rsp_offered_1', 'cal_offered_open', $1, 'join')",
+    )
+    .bind(&node_id)
+    .execute(&pool)
+    .await
+    .expect("answer");
+    seed_call("cal_offered_closed", "closed", 1).await;
+    seed_call("cal_offered_lapsed", "open", -1).await;
+    assert_eq!(
+        handshake().await.offers_pending,
+        0,
+        "an answered, a closed and a lapsed offer are not pending"
+    );
+    server.crash();
+}
+
 /// THE cursor-resume acceptance: a reconnect reports the last acknowledged cursor and
 /// the server replays ONLY the tail — the node never re-journals what it already holds.
 #[tokio::test]

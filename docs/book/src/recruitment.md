@@ -163,13 +163,15 @@ window and **no `thread_id`**: the thread lives in a tenant whose records the
 role cannot read, and cross-tenant existence is not leaked
 (`SIGNOFF-REPAIR.5.3.5.1.2`). The thread is named when a join lands.
 
-⛔ **This is the durable half of the advertisement, and only that**
-(`SIGNOFF-REPAIR.5.3.5.1`). The offer row is written when the call opens and
-survives the role's node being offline, and this read is how the node learns of
-it when it next asks. Until this read an offer was a row nothing carried
-further: a role learned of a call out of band and answered by its id. The
-prompt half — telling an online node that an offer is waiting rather than
-waiting for it to ask — is `SIGNOFF-REPAIR.5.3.5.1.1`.
+⛔ **This is the durable half of the advertisement** (`SIGNOFF-REPAIR.5.3.5.1`).
+The offer row is written when the call opens and survives the role's node being
+offline, and this read is how the node learns of it when it next asks. Until
+this read an offer was a row nothing carried further: a role learned of a call
+out of band and answered by its id. The prompt half is the node channel's
+handshake, which carries `offers_pending` — the count of open, in-window,
+unanswered offers for the node's role — so an online node is told rather than
+left to ask (`SIGNOFF-REPAIR.5.3.5.1.1`, [the node channel](node-channel.md#reconnect-and-cursor-resume)).
+An offer never rides the inbox as work: it has no admission and nothing to run.
 
 ## Answering a call
 

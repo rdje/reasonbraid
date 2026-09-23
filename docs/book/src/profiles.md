@@ -390,9 +390,25 @@ fallback. The same resolution feeds a call's close, so a panel's dependence
 facts for an origin-bound member are the **origin machine's** provider, model
 and harness.
 
+**The directory lists it** (`SIGNOFF-REPAIR.5.3.5.3.1.2`). The match and
+`GET /v1/directory/presence` list every enrolled node as the role of its own id
+**and** every origin-bound identity on the node it resolves to — under the
+importing tenant, which is the identity's own, and with its own profile. The
+importing tenant's presence entry names both:
+
+```json
+{ "role_id": "rol_0192…(the imported identity)", "node_id": "rol_0192…(the origin role's node)", "state": "offline", "hold": null, "profile": { … } }
+```
+
+Every presence entry carries `role_id` now; for a node listed under the dev
+rule it equals `node_id`. A **third** tenant's network view of an origin-bound
+identity carries no `node_id`: the node belongs to the origin tenant, and naming
+it would tell the third tenant that the other two federate. An identity whose
+agreement no longer stands resolves to no node and is listed nowhere.
+
 ⚠️ What the `origin` binding does **not** do yet: deliver work. A call can seat
-an origin-bound identity, and the directory match and presence reads do not list
-it yet; the work that follows is still dispatched by the role id. Routing it to
+an origin-bound identity, and the directory lists it; the work that follows is
+still dispatched by the role id. Routing it to
 the origin's node waits on that node judging each command by its own tenant's
 revocation epoch (`SIGNOFF-REPAIR.5.3.5.3.2`), because a node that executes for
 two tenants must not judge one tenant's admission by the other's. The binding

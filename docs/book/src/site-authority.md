@@ -402,7 +402,9 @@ shared than copied.
 ### The directory is read across tenants on purpose, and bounded by FIELD
 
 `POST /v1/directory/match` and `GET /v1/directory/presence` return every
-enrolled role's current profile regardless of the caller's tenant. That is deliberate: the
+enrolled role's current profile regardless of the caller's tenant — including
+each imported identity bound to its origin's node, listed under the importing
+tenant ([where an imported identity runs](profiles.md#where-an-imported-identity-runs)). That is deliberate: the
 product premise is that an authorized caller asks a durable network a question
 *without knowing who is online*, and a directory restricted to one tenant would
 not answer it.

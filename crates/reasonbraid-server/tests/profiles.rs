@@ -4403,6 +4403,77 @@ async fn an_origin_bound_identity_runs_on_the_origin_node_while_the_agreement_st
         "the close reads the ORIGIN machine's incarnation: {inspected}"
     );
 
+    // `SIGNOFF-REPAIR.5.3.5.3.1.2`: the importing tenant's directory lists the
+    // origin-bound identity — its match finds it, and its presence names the
+    // identity AND the node it runs on.
+    let listed = || {
+        let client = client.clone();
+        let base = base.clone();
+        let human = world.human_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/directory/match"))
+                .header(PRINCIPAL_HEADER, &human)
+                .json(&json!({ "expression": {
+                    "scope": "tenant",
+                    "capabilities": [{ "taxonomy_id": "code_review", "min_confidence": "owner_attested" }],
+                    "presence_states": ["available", "offline"],
+                }}))
+                .send()
+                .await
+                .expect("match request");
+            assert_eq!(response.status().as_u16(), 200, "the match resolves");
+            let matched: Value = response.json().await.unwrap();
+            let (status, presence) = get(&client, &base, "/v1/directory/presence", &human).await;
+            assert_eq!(status, 200, "{presence}");
+            (matched, presence)
+        }
+    };
+    let (matched, presence) = listed().await;
+    assert!(
+        matched["candidates"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c["role_id"] == json!(local)),
+        "the importing tenant's match finds the origin-bound identity: {matched}"
+    );
+    let entry = presence["own_tenant"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["role_id"] == json!(local))
+        .cloned()
+        .unwrap_or_else(|| panic!("the presence lists the identity: {presence}"));
+    assert_eq!(
+        entry["node_id"],
+        json!(role_b),
+        "on the origin node: {entry}"
+    );
+    // A THIRD tenant reads the identity at the network view and never learns
+    // which tenant's node it runs on — that would disclose the federation.
+    let (status, third) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "bind-origin-third" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{third}");
+    let third_id = third["principal_id"].as_str().unwrap().to_string();
+    let (status, seen) = get(&client, &base, "/v1/directory/presence", &third_id).await;
+    assert_eq!(status, 200, "{seen}");
+    let foreign = seen["network"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["role_id"] == json!(local))
+        .cloned()
+        .unwrap_or_else(|| panic!("the network view lists the identity: {seen}"));
+    assert!(
+        foreign.get("node_id").is_none(),
+        "a third tenant is not told the origin node: {foreign}"
+    );
+
     // A revoked direction: the binding resolves to no node, and the join is
     // refused for want of one.
     let (status, revoked) = post(
@@ -4439,6 +4510,20 @@ async fn an_origin_bound_identity_runs_on_the_origin_node_while_the_agreement_st
         json!(null),
         "it resolves nowhere: {read}"
     );
+    let (matched, presence) = listed().await;
+    for (surface, body, key) in [
+        ("match", &matched, "candidates"),
+        ("presence", &presence["own_tenant"], "nodes"),
+    ] {
+        assert!(
+            !body[key]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|c| c["role_id"] == json!(local)),
+            "the {surface} lists no identity that runs nowhere: {body}"
+        );
+    }
     let call_id = open_call().await;
     let (status, refused) = post(
         &client,

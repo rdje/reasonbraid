@@ -6872,6 +6872,57 @@ struct MatchRequest {
     preferences: crate::matching::RankingPreferences,
 }
 
+/// The directory's rows, one per listed identity (`SIGNOFF-REPAIR.5.3.5.3.1.2`),
+/// as `d (role_id, node_id, tenant_id, online, suspended, last_seen_at,
+/// lease_expires_at, concurrency, profile, in_flight)`:
+///
+/// - every enrolled node, as the role of its own id — the dev rule, and the
+///   only rows before this repair (a node with no profile still lists, as the
+///   presence always showed it);
+/// - every ORIGIN-bound identity, on the node `role_execution` resolves it to,
+///   under its OWN tenant (the importing one, which decides the reader's
+///   class) and with its OWN profile. An identity whose agreement no longer
+///   stands resolves to no node and is not listed.
+///
+/// The profile and the declared concurrency are always the ROLE's; the
+/// presence columns are always the NODE's.
+const DIRECTORY_ROWS: &str = "(\
+    SELECT np.node_id AS role_id, np.node_id, np.tenant_id, np.online, np.suspended, \
+           np.last_seen_at, np.lease_expires_at, np.in_flight \
+    FROM node_presence np \
+    UNION ALL \
+    SELECT re.role_id, np.node_id, re.tenant_id, np.online, np.suspended, \
+           np.last_seen_at, np.lease_expires_at, np.in_flight \
+    FROM role_execution re JOIN node_presence np ON np.node_id = re.node_id \
+    WHERE re.node_id <> re.role_id\
+) d";
+
+/// The columns every directory read selects from [`DIRECTORY_ROWS`], in the
+/// order both handlers' row types expect.
+const DIRECTORY_COLUMNS: &str = "d.role_id, d.node_id, d.tenant_id, d.online, d.suspended, \
+    d.last_seen_at, d.lease_expires_at, \
+    (SELECT (v.profile->'availability'->>'concurrency')::bigint \
+     FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
+     WHERE v.role_id = d.role_id AND v.version = p.current_version) AS concurrency, \
+    (SELECT v.profile \
+     FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
+     WHERE v.role_id = d.role_id AND v.version = p.current_version) AS profile, \
+    d.in_flight";
+
+/// One directory row, as [`DIRECTORY_COLUMNS`] selects it.
+type DirectoryRow = (
+    String,
+    String,
+    String,
+    bool,
+    bool,
+    Option<chrono::DateTime<chrono::Utc>>,
+    Option<chrono::DateTime<chrono::Utc>>,
+    Option<i64>,
+    Option<Value>,
+    i64,
+);
+
 fn scope_rank(class: crate::profiles::ReaderClass) -> u8 {
     match class {
         crate::profiles::ReaderClass::Full => 2,
@@ -6934,28 +6985,9 @@ async fn directory_match(
         ));
     }
 
-    type Row = (
-        String,
-        String,
-        bool,
-        bool,
-        Option<chrono::DateTime<chrono::Utc>>,
-        Option<chrono::DateTime<chrono::Utc>>,
-        Option<i64>,
-        Option<Value>,
-        i64,
-    );
-    let rows: Vec<Row> = sqlx::query_as(
-        "SELECT np.node_id, np.tenant_id, np.online, np.suspended, np.last_seen_at, np.lease_expires_at, \
-                (SELECT (v.profile->'availability'->>'concurrency')::bigint \
-                 FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
-                 WHERE v.role_id = np.node_id AND v.version = p.current_version) AS concurrency, \
-                (SELECT v.profile \
-                 FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
-                 WHERE v.role_id = np.node_id AND v.version = p.current_version) AS profile, \
-                np.in_flight \
-         FROM node_presence np ORDER BY np.node_id",
-    )
+    let rows: Vec<DirectoryRow> = sqlx::query_as(&format!(
+        "SELECT {DIRECTORY_COLUMNS} FROM {DIRECTORY_ROWS} ORDER BY d.role_id"
+    ))
     .fetch_all(&state.pool)
     .await?;
 
@@ -6977,7 +7009,8 @@ async fn directory_match(
         crate::matching::EligibilityVerdict,
     )> = Vec::new();
     for (
-        node_id,
+        role_id,
+        _node_id,
         tenant,
         online,
         suspended,
@@ -7034,7 +7067,7 @@ async fn directory_match(
             hold.as_ref(),
         );
         let candidate = crate::matching::EligibilityCandidate {
-            role_id: node_id.clone(),
+            role_id: role_id.clone(),
             profile: Some(parsed),
             presence_state: state_now,
             concurrency,
@@ -7043,7 +7076,7 @@ async fn directory_match(
             available_budget: None,
         };
         let verdict = crate::matching::eligible(&scoped, &candidate, at);
-        scope_by_role.insert(node_id, effective);
+        scope_by_role.insert(role_id, effective);
         candidates.push((candidate, verdict));
     }
 
@@ -7133,36 +7166,19 @@ async fn directory_presence(
         crate::profiles::ReaderClass::Tenant
     };
 
-    type Row = (
-        String,
-        String,
-        bool,
-        bool,
-        Option<chrono::DateTime<chrono::Utc>>,
-        Option<chrono::DateTime<chrono::Utc>>,
-        Option<i64>,
-        Option<Value>,
-        i64,
-    );
-    // Every enrolled node with its derived presence + its CURRENT profile
-    // (when the node id is the role wire id it serves — the dev wiring).
-    let rows: Vec<Row> = sqlx::query_as(
-        "SELECT np.node_id, np.tenant_id, np.online, np.suspended, np.last_seen_at, np.lease_expires_at, \
-                (SELECT (v.profile->'availability'->>'concurrency')::bigint \
-                 FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
-                 WHERE v.role_id = np.node_id AND v.version = p.current_version) AS concurrency, \
-                (SELECT v.profile \
-                 FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
-                 WHERE v.role_id = np.node_id AND v.version = p.current_version) AS profile, \
-                np.in_flight \
-         FROM node_presence np ORDER BY np.tenant_id, np.node_id",
-    )
+    // Every listed identity with its node's derived presence + its CURRENT
+    // profile ([`DIRECTORY_ROWS`]: each enrolled node as the role of its own
+    // id, and each origin-bound identity on the node it resolves to).
+    let rows: Vec<DirectoryRow> = sqlx::query_as(&format!(
+        "SELECT {DIRECTORY_COLUMNS} FROM {DIRECTORY_ROWS} ORDER BY d.tenant_id, d.role_id"
+    ))
     .fetch_all(&state.pool)
     .await?;
 
     let mut own_nodes = Vec::new();
     let mut network_nodes = Vec::new();
     for (
+        role_id,
         node_id,
         tenant,
         online,
@@ -7202,9 +7218,9 @@ async fn directory_presence(
                 };
                 let filtered = crate::profiles::filter_profile(&parsed, own_class);
                 Some(json!({
+                    "role_id": role_id,
                     "node_id": node_id,
                     "state": state,
-                "hold": hold,
                     "hold": hold,
                     "last_seen_at": last_seen_at.map(|t| t.to_rfc3339()),
                     "lease_expires_at": lease_expires_at.map(|t| t.to_rfc3339()),
@@ -7212,6 +7228,7 @@ async fn directory_presence(
                 }))
             }
             (true, None) => Some(json!({
+                "role_id": role_id,
                 "node_id": node_id,
                 "state": state,
                 "hold": hold,
@@ -7230,13 +7247,20 @@ async fn directory_presence(
                 if filtered.as_object().map(|o| o.is_empty()).unwrap_or(true) {
                     continue;
                 }
-                Some(json!({
-                    "node_id": node_id,
+                // ⛔ An origin-bound identity's NODE is the origin tenant's:
+                // naming it to a third tenant would disclose that the two
+                // tenants federate. Only the identity's own tenant reads which
+                // node it runs on (`SIGNOFF-REPAIR.5.3.5.3.1.2`).
+                let mut entry = json!({
+                    "role_id": role_id,
                     "state": state,
-                "hold": hold,
                     "hold": hold,
                     "profile": filtered,
-                }))
+                });
+                if node_id == role_id {
+                    entry["node_id"] = json!(node_id);
+                }
+                Some(entry)
             }
             (false, None) => continue,
         };

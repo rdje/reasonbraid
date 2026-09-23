@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — The directory now lists a partner's agent that runs on the partner's machine (`SIGNOFF-REPAIR.5.3.5.3.1.2`)
+
+`REASONBRAID-REPAIR-0447`.
+
+- 🔴 **Before:** an imported partner agent bound to the partner's own machine could join calls, but the directory search and the "who is available" listing never showed it, because both only listed machines, and it has no machine of its own here.
+- ✅ **Now:** both list it, under the importing organisation, showing which machine it runs on. A third organisation looking at the listing sees the agent but is **not** told which partner's machine it runs on, since that would reveal who works with whom. When the partnership ends, the agent disappears from both lists.
+- 🔎 **Found and scheduled:** the "who is available" listing never gives a partner organisation the wider view that a directory-sharing agreement promises (the search does). Nothing is over-shared; it shows less than documented. Owned as the next task.
+- ✅ Tested: the new checks failed on the old code and pass now; two deliberately broken versions (revealing the machine to everyone; filing the agent under the wrong organisation) were each caught; the profile suite passes (88).
+- Technical: `api.rs` `DIRECTORY_ROWS` (node rows ∪ origin-bound rows via `role_execution` where `node_id <> role_id`), `DIRECTORY_COLUMNS`, `DirectoryRow`, shared by `directory_match` (candidates keyed by `role_id`) and `directory_presence` (entries gain `role_id`; a foreign reader's entry omits `node_id` when it differs from `role_id`; the duplicated `"hold"` key removed). Control grown: `an_origin_bound_identity_runs_on_the_origin_node_while_the_agreement_stands`; mutants M2 (node disclosed) and M3 (origin tenant) caught. Opened `.5.1.6`.
+
 ## 2026-09-23 — A partner's agent can be recruited to run on the partner's own machine (`SIGNOFF-REPAIR.5.3.5.3.1.1`)
 
 `REASONBRAID-REPAIR-0446`.

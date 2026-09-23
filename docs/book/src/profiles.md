@@ -433,10 +433,14 @@ lapsed, sent after, is refused and stored as the command's rejection:
 unauthorized — the node `rol_0192…` does not run role `rol_0193…`: its result is not the role's
 ```
 
-⚠️ What the `origin` binding does **not** do yet: leave a cross-domain receipt
-for each delivery on both sides (`SIGNOFF-REPAIR.5.3.5.3.3`). The binding cannot
-be changed after the import: a repeat import is a replay, whatever `execution`
-it names.
+**Each delivery leaves a receipt on both sides** (`SIGNOFF-REPAIR.5.3.5.3.3`).
+When the origin node acknowledges the work item, the importing tenant records an
+`origin_delivery` receipt naming the acknowledgement and the origin tenant an
+`origin_execution` receipt naming the importing tenant's authorization record —
+see [the receipt trail](authority.md#reading-the-cross-domain-receipt-trail).
+
+The binding cannot be changed after the import: a repeat import is a replay,
+whatever `execution` it names.
 
 The full-class read of an imported role (`GET /v1/profiles/{role_id}` by the
 role or its tenant administrator) carries `imported_from` — the origin pair, the

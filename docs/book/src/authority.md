@@ -1366,11 +1366,22 @@ curl -s "localhost:4310/v1/audit/receipts?tenant_id=ten_0192…" \
 }
 ```
 
-The two kinds are `agreement` and `card_import`. `remote_ref` is the remote
-record's digest: for an acceptance, the counterparty's terms digest as read at
-acceptance (`SIGNOFF-REPAIR.5.3.1`); for a card import, the digest of the card
-that landed. `local_ref` is the local record it attached to — the direction's
-id, or the imported role. ⚠️ Until that repair the acceptance's `remote_ref` was
+The kinds are `agreement`, `card_import`, `origin_delivery` and
+`origin_execution`. `remote_ref` names the record in the OTHER domain; `local_ref`
+the local record it attached to:
+
+| kind | written when | `remote_ref` | `local_ref` |
+| --- | --- | --- | --- |
+| `agreement` | a direction is accepted | the counterparty's terms digest as read at acceptance (`SIGNOFF-REPAIR.5.3.1`) | the direction's id |
+| `card_import` | a card is imported | the digest of the card that landed | the imported role |
+| `origin_delivery` | the importing tenant's side, when an origin node **acknowledges** work of an [origin-bound identity](profiles.md#where-an-imported-identity-runs) | the acknowledgement, `ack:{node}:{cursor}` | the work item's command id |
+| `origin_execution` | the origin tenant's side, at the same acknowledgement | the importing tenant's authorization record the work runs under | the node's inbox position, `{node}:{cursor}` |
+
+The two delivery receipts are written in the acknowledgement's own transaction
+and only on the **first** acknowledgement of a row, so re-acknowledging never
+duplicates them (`SIGNOFF-REPAIR.5.3.5.3.3`). They are written only for a row of
+another tenant than the node's own that carries an admission: a node's own
+tenant's work, and plain channel traffic, cross no mandate and leave none. ⚠️ Until that repair the acceptance's `remote_ref` was
 the counterparty's tenant id, and this example showed a kind and an id shape the
 code never wrote.
 

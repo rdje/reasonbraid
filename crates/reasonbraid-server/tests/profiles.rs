@@ -4719,17 +4719,120 @@ async fn an_origin_bound_identity_runs_on_the_origin_node_while_the_agreement_st
         json!(local),
         "the contribution is the imported identity's, not the origin role's: {events}"
     );
+    // `SIGNOFF-REPAIR.5.3.5.3.3`: the origin node's ACKNOWLEDGEMENT of the
+    // delivered work item leaves a cross-domain receipt on BOTH sides — the
+    // importing tenant's names the acknowledgement, the origin tenant's names
+    // the admission the work runs under — once, however often it is acked.
+    let (cursor, work_id, authz_ref): (i64, String, String) = sqlx::query_as(
+        "SELECT cursor, command_id, authz_ref FROM node_inbox \
+         WHERE thread_id = $1 AND command_id LIKE 'work_%'",
+    )
+    .bind(&thread)
+    .fetch_one(&pool)
+    .await
+    .expect("the delivered work item");
+    // Beside it, the origin node's OWN tenant's admitted and offered work: an
+    // acknowledgement of that crosses no domain and must leave no receipt.
+    let own_cursor: i64 = sqlx::query_scalar(
+        "INSERT INTO node_inbox (node_id, cursor, command_id, tenant_id, thread_id, payload, \
+                                 authz_ref, offered_at) \
+         VALUES ($1, (SELECT COALESCE(MAX(cursor), 0) + 1 FROM node_inbox WHERE node_id = $1), \
+                 'cmd_origin_own', $2, $3, '{}'::jsonb, 'authz_origin_own', now()) \
+         RETURNING cursor",
+    )
+    .bind(&role_b)
+    .bind(&tenant_b)
+    .bind(&thread)
+    .fetch_one(&pool)
+    .await
+    .expect("the origin tenant's own row");
+    assert!(own_cursor > cursor);
+    // And plain channel traffic of the importing tenant — no admission, so no
+    // mandate crossed — leaves none either.
+    let plain_cursor: i64 = sqlx::query_scalar(
+        "INSERT INTO node_inbox (node_id, cursor, command_id, tenant_id, thread_id, payload, \
+                                 offered_at) \
+         VALUES ($1, (SELECT COALESCE(MAX(cursor), 0) + 1 FROM node_inbox WHERE node_id = $1), \
+                 'cmd_origin_plain', $2, $3, '{}'::jsonb, now()) \
+         RETURNING cursor",
+    )
+    .bind(&role_b)
+    .bind(&world.tenant)
+    .bind(&thread)
+    .fetch_one(&pool)
+    .await
+    .expect("a plain row of the importing tenant");
+    for _ in 0..2 {
+        channel
+            .acknowledge(plain_cursor)
+            .await
+            .expect("the origin node acknowledges");
+    }
+    let receipts_of = |tenant: String, reader: String| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            let (status, listed) = get(
+                &client,
+                &base,
+                &format!("/v1/audit/receipts?tenant_id={tenant}"),
+                &reader,
+            )
+            .await;
+            assert_eq!(status, 200, "{listed}");
+            listed["receipts"].as_array().unwrap().clone()
+        }
+    };
+    let importing = receipts_of(world.tenant.clone(), world.human_id.clone()).await;
+    let delivered: Vec<&Value> = importing
+        .iter()
+        .filter(|r| r["kind"] == json!("origin_delivery"))
+        .collect();
+    assert_eq!(
+        delivered.len(),
+        1,
+        "one receipt, however often acked: {importing:?}"
+    );
+    assert_eq!(delivered[0]["remote_tenant_id"], json!(tenant_b));
+    assert_eq!(delivered[0]["local_ref"], json!(work_id));
+    assert_eq!(
+        delivered[0]["remote_ref"],
+        json!(format!("ack:{role_b}:{cursor}")),
+        "the importing side names the origin node's acknowledgement"
+    );
+    let origin_side = receipts_of(tenant_b.clone(), owner_b_id.clone()).await;
+    let executed: Vec<&Value> = origin_side
+        .iter()
+        .filter(|r| r["kind"] == json!("origin_execution"))
+        .collect();
+    assert_eq!(executed.len(), 1, "{origin_side:?}");
+    assert_eq!(executed[0]["remote_tenant_id"], json!(world.tenant));
+    assert_eq!(
+        executed[0]["remote_ref"],
+        json!(authz_ref),
+        "the origin side names the admission the work runs under"
+    );
+    assert_eq!(
+        executed[0]["local_ref"],
+        json!(format!("{role_b}:{cursor}"))
+    );
+
     // A second work item, delivered while the agreement stands, is folded
     // only after it lapses (below).
     let (late_thread, (status, accepted)) = invite_and_accept("bind-origin-late").await;
     assert_eq!(status, 200, "{accepted}");
     // §10.7's offline backlog is counted on the node that would HOLD the work:
     // the origin node at its cap refuses the bound identity's next accept.
-    let held: i64 = sqlx::query_scalar("SELECT count(*) FROM node_inbox WHERE node_id = $1")
-        .bind(&role_b)
-        .fetch_one(&pool)
-        .await
-        .expect("count");
+    // Counted as the server counts it — `undelivered_in_tx`'s view and rungs —
+    // because the item above was acknowledged and no longer counts.
+    let held: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM node_inbox_state \
+         WHERE node_id = $1 AND delivery_state IN ('queued', 'offered')",
+    )
+    .bind(&role_b)
+    .fetch_one(&pool)
+    .await
+    .expect("count");
     for n in held..reasonbraid_server::MAX_OFFLINE_BACKLOG {
         sqlx::query(
             "INSERT INTO node_inbox (node_id, cursor, command_id, tenant_id, thread_id, payload) \

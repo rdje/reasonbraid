@@ -153,7 +153,8 @@ pub const LEASE_TTL: ChronoDuration = ChronoDuration::seconds(60);
 /// agreement cannot drift silently.
 const ACKNOWLEDGE_SQL: &str = "UPDATE node_inbox SET acknowledged_at = $3 \
      WHERE node_id = $1 AND cursor <= $2 AND acknowledged_at IS NULL \
-       AND offered_at IS NOT NULL";
+       AND offered_at IS NOT NULL \
+     RETURNING cursor, tenant_id, command_id, authz_ref";
 
 /// `LEASE_TTL` as the `double precision` seconds `make_interval(secs => …)`
 /// takes, so the two lease writers bind the constant instead of spelling `60`
@@ -997,9 +998,18 @@ impl NodeChannelState {
             .await
     }
 
-    /// `acknowledge`, inside the caller's transaction (`SIGNOFF-REPAIR.4.2.4`):
-    /// the same statement, committing with the fencing re-verification that
-    /// admitted it rather than on its own connection.
+    /// Mark every inbox row up to `ack_cursor` acknowledged, inside the caller's
+    /// transaction (`SIGNOFF-REPAIR.4.2.4`), so it commits with the fencing
+    /// re-verification that admitted it. Returns the number of rows this call
+    /// marked; a row already acknowledged is not marked again.
+    ///
+    /// A row of ANOTHER tenant than the node's own is a delivery across an
+    /// origin execution binding (`SIGNOFF-REPAIR.5.3.5.3.3`, ADR-026): its
+    /// first acknowledgement writes a cross-domain receipt on BOTH sides in the
+    /// same transaction — the importing tenant's naming the acknowledgement,
+    /// the origin tenant's naming the admission the work runs under. Only a row
+    /// that carries an admission is such a delivery; plain channel traffic
+    /// crosses no mandate.
     pub async fn acknowledge_in_tx(
         &self,
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
@@ -1007,30 +1017,61 @@ impl NodeChannelState {
         ack_cursor: i64,
         now: DateTime<Utc>,
     ) -> Result<i64, sqlx::Error> {
-        Ok(sqlx::query(ACKNOWLEDGE_SQL)
+        let marked: Vec<(i64, String, String, Option<String>)> = sqlx::query_as(ACKNOWLEDGE_SQL)
             .bind(node_id)
             .bind(ack_cursor)
             .bind(now)
-            .execute(&mut **tx)
-            .await?
-            .rows_affected() as i64)
+            .fetch_all(&mut **tx)
+            .await?;
+        let node_tenant: Option<String> =
+            sqlx::query_scalar("SELECT tenant_id FROM nodes WHERE node_id = $1")
+                .bind(node_id)
+                .fetch_optional(&mut **tx)
+                .await?;
+        for (cursor, tenant_id, command_id, authz_ref) in &marked {
+            let (Some(node_tenant), Some(authz_ref)) = (node_tenant.as_deref(), authz_ref) else {
+                continue;
+            };
+            if tenant_id == node_tenant {
+                continue;
+            }
+            crate::receipts::record_in_tx(
+                &mut **tx,
+                tenant_id,
+                node_tenant,
+                crate::receipts::KIND_ORIGIN_DELIVERY,
+                &format!("ack:{node_id}:{cursor}"),
+                command_id,
+            )
+            .await?;
+            crate::receipts::record_in_tx(
+                &mut **tx,
+                node_tenant,
+                tenant_id,
+                crate::receipts::KIND_ORIGIN_EXECUTION,
+                authz_ref,
+                &format!("{node_id}:{cursor}"),
+            )
+            .await?;
+        }
+        Ok(marked.len() as i64)
     }
 
-    /// Mark every inbox row up to `ack_cursor` acknowledged (idempotent). Returns the
-    /// number of rows this call marked.
+    /// [`Self::acknowledge_in_tx`] on a transaction of its own — the same
+    /// marking and the same receipts. Returns the number of rows this call
+    /// marked.
     pub async fn acknowledge(
         &self,
         node_id: &str,
         ack_cursor: i64,
         now: DateTime<Utc>,
     ) -> Result<i64, sqlx::Error> {
-        Ok(sqlx::query(ACKNOWLEDGE_SQL)
-            .bind(node_id)
-            .bind(ack_cursor)
-            .bind(now)
-            .execute(&self.pool)
-            .await?
-            .rows_affected() as i64)
+        let mut tx = self.pool.begin().await?;
+        let marked = self
+            .acknowledge_in_tx(&mut tx, node_id, ack_cursor, now)
+            .await?;
+        tx.commit().await?;
+        Ok(marked)
     }
 
     /// Record a node event receipt. The event_id primary key is the dedupe key, so a

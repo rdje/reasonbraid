@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — Each delivery to a partner's machine now leaves an audit receipt on both sides (`SIGNOFF-REPAIR.5.3.5.3.3`)
+
+`REASONBRAID-REPAIR-0453`. Completes cross-organisation recruitment (`SIGNOFF-REPAIR.5.3.5`).
+
+- 🔴 **Before:** when a partner's machine picked up a job for an imported agent, neither organisation's audit trail recorded that work had crossed between them.
+- ✅ **Now:** the moment the partner's machine confirms it has the job, both sides record a receipt in the same step. The importing side's receipt names the confirmation; the partner's side names the permission record the job runs under. Confirming twice never creates duplicates, and ordinary same-organisation work leaves no such receipt.
+- ✅ With this, the whole "recruit a partner's agent" feature is complete: advertise the call, request to join, import, run on either machine, deliver, answer, audit.
+- ✅ Tested: the new checks failed on the old code and pass now; two deliberately wrong versions (receipts for same-organisation work; receipts for plain traffic) were each caught; eight suites pass.
+- Technical: `migrations/0101` (kind check + `origin_delivery`, `origin_execution`); `ACKNOWLEDGE_SQL … RETURNING cursor, tenant_id, command_id, authz_ref`; `acknowledge_in_tx` writes both receipts per marked cross-tenant admitted row; `acknowledge` runs it on its own transaction. Control grown (ack twice; own-tenant and plain rows beside); mutants M1 (own tenant) and M2 (plain traffic) caught; the first RED was confounded by the wake-gate defect and a clean RED was re-run.
+
 ## 2026-09-23 — Agents that set no availability were getting no work; fixed (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2.3`)
 
 `REASONBRAID-REPAIR-0452`.

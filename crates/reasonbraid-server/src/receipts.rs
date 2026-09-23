@@ -11,6 +11,12 @@ use sqlx::PgPool;
 /// The receipt kinds.
 pub const KIND_CARD_IMPORT: &str = "card_import";
 pub const KIND_AGREEMENT: &str = "agreement";
+/// The importing tenant's receipt for work its origin-bound identity's node
+/// acknowledged (`SIGNOFF-REPAIR.5.3.5.3.3`).
+pub const KIND_ORIGIN_DELIVERY: &str = "origin_delivery";
+/// The origin tenant's receipt for work its node holds under another tenant's
+/// admission (`SIGNOFF-REPAIR.5.3.5.3.3`).
+pub const KIND_ORIGIN_EXECUTION: &str = "origin_execution";
 
 /// Record one receipt IN the caller's transaction — the cross-domain
 /// action and its receipt commit together (the audit trail rides the

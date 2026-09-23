@@ -56,3 +56,21 @@ decides the four. Every claim cites the command that decides it, run at `fa9ce9f
 
 ⛔ Not decided here: the signature scheme, and the condition vocabulary. Both are named with
 the fact that decides when they are decided.
+
+## Correction (2026-09-23, `SIGNOFF-REPAIR.11.4.7.2.1.5.4.4`, `REASONBRAID-DOC-0141`)
+
+Item 4 above calls the authorization-RECORD half *owed now*. It is not buildable through the
+machinery it named, and the reason was one read away: `administrative_effects` is keyed on an
+ADMISSION — `FOREIGN KEY (record_id, tenant_id) REFERENCES authorization_records (record_id,
+tenant_id)` (`migrations/0058`), and `record_administrative_effect_in_tx` says so: *the
+admission named by `record.record_id` must already be committed*. The enrolment has no
+admission by design: `async fn enroll(State, Json)` takes no principal, because it IS the
+dev profile's un-admitted bootstrap (*grant issuance is dev-trusted — documented*). An
+issuance record presupposes an authorized issuer, and the dev bootstrap deliberately has
+none. Making enrolment an admitted operation would replace the dev bootstrap trust — which
+is the same change the SIGNATURE waits for. So the two halves are one trigger, not two: the
+dev bootstrap's replacement at the first non-loopback deployment (ADR-022), with mTLS
+(`.11.4.7.2.1.5.2`). `.5.4.4` closes as deferred on that trigger, read as
+`grep -n "^async fn enroll(" -A 3 crates/reasonbraid-server/src/api.rs` showing no principal.
+The census figure that misled — *0 effect records at enrolment* — was true and beside the
+point: the absence is by construction, not by omission.

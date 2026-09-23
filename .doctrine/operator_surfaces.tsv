@@ -10,7 +10,7 @@
 1	SIGNOFF-REPAIR.4.6.1.4	/v1/health	-	service and dependency health with freshness
 2	SIGNOFF-REPAIR.4.6	/v1/admin/nodes/presence /v1/admin/incarnations /v1/nodes/quarantine /v1/directory/presence	-	node leases, versions, capabilities, last reconciliation, and quarantine state
 3	SIGNOFF-REPAIR.4.6	/v1/threads/{thread_id} /v1/threads/{thread_id}/budget /v1/threads/{thread_id}/events /v1/threads/{thread_id}/commands	-	thread lifecycle, stop reason, budget, unresolved blockers, and pending humans
-4	SIGNOFF-REPAIR.4.6.1.1	/v1/admin/nodes/ambiguous-attempts	-	ambiguous attempts and safe resolution actions
+4	SIGNOFF-REPAIR.4.6.1.1	/v1/admin/nodes/ambiguous-attempts /v1/admin/nodes/ambiguous-attempts/adjudicate	-	ambiguous attempts and safe resolution actions
 5	SIGNOFF-REPAIR.4.6	/v1/nodes/inbox /v1/nodes/replay /v1/nodes/inbox/prune	-	outbox/inbox/dead-letter queues with authorized replay
 6	SIGNOFF-REPAIR.4.6.1.2	/v1/snapshots /v1/resources/{resource_id}/resolve /v1/resolvers /v1/admin/resolution-refusals	-	evidence acquisitions and resolver denials
 7	SIGNOFF-REPAIR.4.6	/v1/policy-publications /v1/deployments /v1/policy-drift	-	policy publication/deployment/drift state

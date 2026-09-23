@@ -9,7 +9,7 @@
 //!
 //! # The closed sets are census-derived, not invented
 //!
-//! [`AdministrativeOperation`] contains exactly the fourteen administrative
+//! [`AdministrativeOperation`] contains exactly the fifteen administrative
 //! mutations the `SIGNOFF-REPAIR.3.3.4` parent owns through its `.8`–`.12`
 //! integration children. The population was measured before the set was written
 //! (the census command and its classification are in that leaf); the four
@@ -284,6 +284,13 @@ pub enum AdministrativeOperation {
     NodeInboxPrune {
         node_id: AdministrativeTargetId,
     },
+    /// `SIGNOFF-REPAIR.11.4.7.2.1.5.5` — an operator ends an `outcome_unknown`
+    /// attempt (§11.3's fourth option); the node applies the verdict at its
+    /// next handshake.
+    NodeAttemptAdjudicate {
+        node_id: AdministrativeTargetId,
+        attempt_id: AdministrativeTargetId,
+    },
     // `.11` — profile and card administration. The import's target is the card
     // the caller supplied, named by its digest: the local role the import may
     // create does not exist yet when the import is refused.
@@ -320,6 +327,7 @@ impl AdministrativeOperation {
             Self::NodeCommandReplay { .. } => "node_command_replay",
             Self::NodeCommandQuarantine { .. } => "node_command_quarantine",
             Self::NodeInboxPrune { .. } => "node_inbox_prune",
+            Self::NodeAttemptAdjudicate { .. } => "node_attempt_adjudicate",
             Self::ProfileCardImport { .. } => "profile_card_import",
             Self::CapabilityClaimAttest { .. } => "capability_claim_attest",
             Self::FederationDirectionPropose { .. } => "federation_direction_propose",
@@ -331,7 +339,7 @@ impl AdministrativeOperation {
     /// Every discriminant, in declaration order. The migration's CHECK and this
     /// list are the same vocabulary; a control asserts they agree, so a variant
     /// added without its constraint cannot pass silently.
-    pub const KINDS: [&'static str; 14] = [
+    pub const KINDS: [&'static str; 15] = [
         "grant_revoke",
         "boundary_revoke",
         "breaker_arm",
@@ -341,6 +349,7 @@ impl AdministrativeOperation {
         "node_command_replay",
         "node_command_quarantine",
         "node_inbox_prune",
+        "node_attempt_adjudicate",
         "profile_card_import",
         "capability_claim_attest",
         "federation_direction_propose",
@@ -462,6 +471,10 @@ enum OperationWire {
     NodeInboxPrune {
         node_id: AdministrativeTargetId,
     },
+    NodeAttemptAdjudicate {
+        node_id: AdministrativeTargetId,
+        attempt_id: AdministrativeTargetId,
+    },
     ProfileCardImport {
         card_digest: AdministrativeTargetId,
     },
@@ -506,6 +519,13 @@ impl<'de> Deserialize<'de> for AdministrativeOperation {
                 command_id,
             },
             OperationWire::NodeInboxPrune { node_id } => Self::NodeInboxPrune { node_id },
+            OperationWire::NodeAttemptAdjudicate {
+                node_id,
+                attempt_id,
+            } => Self::NodeAttemptAdjudicate {
+                node_id,
+                attempt_id,
+            },
             OperationWire::ProfileCardImport { card_digest } => {
                 Self::ProfileCardImport { card_digest }
             }

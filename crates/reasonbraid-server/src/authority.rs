@@ -59,10 +59,10 @@ pub(crate) use federation_admin::{
     revoke_direction_in_one_transaction, AcceptResult, ProposeResult, RevokeDirectionResult,
 };
 pub(crate) use node_admin::{
-    issue_enrollment_token_in_one_transaction, prune_node_inbox_in_one_transaction,
-    quarantine_command_in_one_transaction, replay_command_in_one_transaction,
-    revoke_node_in_one_transaction, NodeRevokeResult, PruneResult, QuarantineResult, ReplayResult,
-    TokenIssueResult,
+    adjudicate_ambiguous_attempt_in_one_transaction, issue_enrollment_token_in_one_transaction,
+    prune_node_inbox_in_one_transaction, quarantine_command_in_one_transaction,
+    replay_command_in_one_transaction, revoke_node_in_one_transaction, AdjudicationResult,
+    NodeRevokeResult, PruneResult, QuarantineResult, ReplayResult, TokenIssueResult,
 };
 pub(crate) use profile_admin::{
     attest_capability_in_one_transaction, import_card_in_one_transaction, AttestResult,

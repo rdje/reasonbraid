@@ -701,6 +701,10 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
         )
         .route("/v1/admin/boundaries", get(list_boundaries))
         .route("/v1/admin/storm-refusals", get(list_storm_refusals))
+        .route(
+            "/v1/admin/nodes/ambiguous-attempts/adjudicate",
+            post(adjudicate_ambiguous_attempt),
+        )
         .route("/v1/admin/incarnations", get(list_incarnations))
         .route("/v1/admin/runs", get(list_runs))
         .route(
@@ -2219,11 +2223,96 @@ async fn list_node_presence(
     .await
 }
 
+/// `POST /v1/admin/nodes/ambiguous-attempts/adjudicate` — the body.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AdjudicateAttemptRequest {
+    pub tenant_id: TenantId,
+    pub node_id: String,
+    pub attempt_id: String,
+    /// `completed` or `failed_known` (§11.3).
+    pub verdict: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AdjudicateAttemptResponse {
+    pub node_id: String,
+    pub attempt_id: String,
+    pub verdict: String,
+    pub adjudicated_at: String,
+    /// The row closes when the node applies the verdict at its next handshake.
+    pub applied_by_node: bool,
+}
+
+/// `POST /v1/admin/nodes/ambiguous-attempts/adjudicate` — §11.3's fourth
+/// option (`SIGNOFF-REPAIR.11.4.7.2.1.5.5`): a `tenant_admin` asserts what an
+/// `outcome_unknown` attempt did, with a reason. One shared-guard transaction:
+/// the admission, the tenant-bound row, the verdict, and the administrative
+/// effect commit together; the node applies the verdict at its next handshake.
+async fn adjudicate_ambiguous_attempt(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(req): Json<AdjudicateAttemptRequest>,
+) -> Result<Response, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let outcome = authority::adjudicate_ambiguous_attempt_in_one_transaction(
+        &state.pool,
+        &principal,
+        req.tenant_id,
+        &req.node_id,
+        &req.attempt_id,
+        &req.verdict,
+        &req.reason,
+    )
+    .await?;
+    let receipt = outcome.record_id;
+    let response = match outcome.result {
+        authority::AdjudicationResult::Denied { reason } => {
+            crate::telemetry::metrics().incr("authorization_denials");
+            ControlApiError::unauthorized(format!("authorization denied ({receipt}): {reason}"))
+                .into_response()
+        }
+        authority::AdjudicationResult::InvalidVerdict(detail) => {
+            ControlApiError::invalid_command(detail).into_response()
+        }
+        authority::AdjudicationResult::InvalidReason(detail) => {
+            ControlApiError::invalid_command(format!(
+                "the adjudication reason is required (a verdict without a reason cannot be \
+                 reviewed): {detail}"
+            ))
+            .into_response()
+        }
+        authority::AdjudicationResult::NotOpen => ControlApiError::invalid_command(format!(
+            "no open ambiguous attempt `{}` on node `{}` in this tenant",
+            req.attempt_id, req.node_id
+        ))
+        .into_response(),
+        authority::AdjudicationResult::AlreadyAdjudicated { verdict, at } => {
+            ControlApiError::invalid_transition(format!(
+                "the attempt already carries the verdict `{verdict}` ({at}), which the node has \
+                 not applied yet"
+            ))
+            .into_response()
+        }
+        authority::AdjudicationResult::Adjudicated { at } => Json(AdjudicateAttemptResponse {
+            node_id: req.node_id.clone(),
+            attempt_id: req.attempt_id.clone(),
+            verdict: req.verdict.clone(),
+            adjudicated_at: at.to_rfc3339(),
+            applied_by_node: false,
+        })
+        .into_response(),
+    };
+    Ok(([("x-reasonbraid-authorization", receipt)], response).into_response())
+}
+
 /// The safe resolution actions for an ambiguous attempt, in the order an
 /// operator should consider them — `docs/runbooks/provider-outage-ambiguous-charge.md`'s
-/// *Recovery*, as a fixed vocabulary. None of them is a server verb: each is
-/// taken where the authority for it lives, which is why the list names who.
-const AMBIGUOUS_ATTEMPT_ACTIONS: [(&str, &str, &str); 3] = [
+/// *Recovery*, as a fixed vocabulary. The first three are taken where the
+/// authority for them lives, which is why the list names who; the fourth is
+/// this surface's own verb (`SIGNOFF-REPAIR.11.4.7.2.1.5.5`).
+const AMBIGUOUS_ATTEMPT_ACTIONS: [(&str, &str, &str); 4] = [
     (
         "provider_status_lookup",
         "the node's operator",
@@ -2240,6 +2329,13 @@ const AMBIGUOUS_ATTEMPT_ACTIONS: [(&str, &str, &str); 3] = [
         "close_with_unresolved_register",
         "the thread's human",
         "closes the thread honestly with the attempt in its unresolved register",
+    ),
+    (
+        "adjudicate",
+        "the tenant's administrator",
+        "POST /v1/admin/nodes/ambiguous-attempts/adjudicate with `completed` or `failed_known` \
+         and a reason, when the provider's own records settle the question; the node applies it \
+         at its next handshake and the row closes adjudicated",
     ),
 ];
 
@@ -2278,10 +2374,14 @@ async fn list_ambiguous_attempts(
                 DateTime<Utc>,
                 DateTime<Utc>,
                 i64,
+                Option<String>,
+                Option<String>,
+                Option<DateTime<Utc>>,
             );
             let rows: Vec<Row> = sqlx::query_as(
                 "SELECT a.node_id, a.attempt_id, a.operation_id, a.reason, \
-                        a.first_reported_at, a.last_reported_at, a.report_count \
+                        a.first_reported_at, a.last_reported_at, a.report_count, \
+                        a.operator_verdict, a.operator_reason, a.adjudicated_at \
                  FROM node_ambiguous_attempts a JOIN nodes n ON n.node_id = a.node_id \
                  WHERE n.tenant_id = $1 AND a.closed_at IS NULL \
                  ORDER BY a.first_reported_at, a.node_id, a.attempt_id",
@@ -2292,8 +2392,19 @@ async fn list_ambiguous_attempts(
             let attempts: Vec<Value> = rows
                 .into_iter()
                 .map(
-                    |(node_id, attempt_id, operation_id, reason, first, last, count)| {
-                        json!({
+                    |(
+                        node_id,
+                        attempt_id,
+                        operation_id,
+                        reason,
+                        first,
+                        last,
+                        count,
+                        verdict,
+                        operator_reason,
+                        adjudicated_at,
+                    )| {
+                        let mut row = json!({
                             "node_id": node_id,
                             "attempt_id": attempt_id,
                             "operation_id": operation_id,
@@ -2301,7 +2412,17 @@ async fn list_ambiguous_attempts(
                             "first_reported_at": first.to_rfc3339(),
                             "last_reported_at": last.to_rfc3339(),
                             "report_count": count,
-                        })
+                        });
+                        // A verdict the node has not applied yet
+                        // (`SIGNOFF-REPAIR.11.4.7.2.1.5.5`); absent facts are omitted.
+                        if let (Some(verdict), Some(reason), Some(at)) =
+                            (verdict, operator_reason, adjudicated_at)
+                        {
+                            row["operator_verdict"] = json!(verdict);
+                            row["operator_reason"] = json!(reason);
+                            row["adjudicated_at"] = json!(at.to_rfc3339());
+                        }
+                        row
                     },
                 )
                 .collect();

@@ -560,6 +560,196 @@ async fn ambiguous_attempt_without_server_receipt_stays_outcome_unknown() {
     server.crash();
 }
 
+/// `SIGNOFF-REPAIR.11.4.7.2.1.5.5` — §11.3's fourth option: an OPERATOR ends an
+/// `outcome_unknown` attempt. The verb is admitted (`tenant_admin`), audited
+/// (an administrative effect), tenant-bound, and RECORDS the verdict; the node
+/// applies it at its next handshake, and only then does the row close
+/// `adjudicated` with the admission as its evidence. Until this repair the
+/// node reconciled only on a server receipt and the surface offered no such
+/// action.
+#[tokio::test]
+async fn an_operator_adjudicates_an_ambiguous_attempt_and_the_node_applies_it() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base_url();
+    let client = reqwest::Client::new();
+    let (tenant, admin) = bootstrap_admin(&client, &base).await;
+    let node_id = "nod_00000000-0000-7000-8000-0000000000a5".to_string();
+    let (cert_der, key_der) = seed_node_in_tenant(&pool, &tenant, &node_id).await;
+
+    let fixture = journal_fixture("ambiguous-adjudicated-by-operator");
+    let journal_path = fixture.join("node.db");
+    {
+        let journal = Journal::open(&journal_path).await.unwrap();
+        let payload = json!({ "operation": "contribute" });
+        journal
+            .record_command(
+                &reasonbraid_node::CommandInput {
+                    command_id: "cmd_adj_1",
+                    tenant_id: &tenant,
+                    thread_id: "thr_00000000-0000-7000-8000-000000000000",
+                    payload: &payload,
+                    authz_ref: None,
+                    policy_digest: None,
+                    decided_at: None,
+                    revocation_epoch: None,
+                    server_cursor: "1",
+                },
+                Utc::now(),
+            )
+            .await
+            .unwrap();
+        let op = journal
+            .ensure_operation("cmd_adj_1", Utc::now())
+            .await
+            .unwrap()
+            .operation_id;
+        journal
+            .prepare_attempt("patt_adj_1", &op, Utc::now())
+            .await
+            .unwrap();
+        journal
+            .record_dispatch("patt_adj_1", None, Utc::now())
+            .await
+            .unwrap();
+    }
+    let node = Node::open(
+        &journal_path,
+        server.base_url(),
+        node_id.clone(),
+        cert_der.clone(),
+        key_from_der(&key_der),
+    )
+    .await
+    .unwrap();
+    node.reconcile().await.expect("first reconcile");
+    assert_eq!(
+        node.journal().ambiguous_attempts().await.unwrap().len(),
+        1,
+        "the attempt is open and ambiguous"
+    );
+
+    let adjudicate = |who: String, tenant_named: String, verdict: &'static str| {
+        let client = client.clone();
+        let base = base.clone();
+        let node_id = node_id.clone();
+        async move {
+            let response = client
+                .post(format!(
+                    "{base}/v1/admin/nodes/ambiguous-attempts/adjudicate"
+                ))
+                .header(PRINCIPAL_HEADER, &who)
+                .json(&json!({
+                    "tenant_id": tenant_named,
+                    "node_id": node_id,
+                    "attempt_id": "patt_adj_1",
+                    "verdict": verdict,
+                    "reason": "the provider console shows no request for this operation",
+                }))
+                .send()
+                .await
+                .expect("adjudicate request");
+            let status = response.status().as_u16();
+            let receipt = response
+                .headers()
+                .get("x-reasonbraid-authorization")
+                .map(|v| v.to_str().unwrap().to_string());
+            let body: Value = response.json().await.expect("adjudicate json");
+            (status, receipt, body)
+        }
+    };
+
+    // An unknown verdict is refused; a foreign administrator is denied.
+    let (status, _, refused) = adjudicate(admin.clone(), tenant.clone(), "maybe").await;
+    assert_eq!(status, 400, "{refused}");
+    let (_, foreign_admin) = bootstrap_admin(&client, &base).await;
+    let (status, _, denied) = adjudicate(foreign_admin, tenant.clone(), "failed_known").await;
+    assert_eq!(
+        status, 403,
+        "another tenant's administrator is denied: {denied}"
+    );
+
+    // The verdict is recorded, audited, and listed as awaiting the node.
+    let (status, receipt, recorded) =
+        adjudicate(admin.clone(), tenant.clone(), "failed_known").await;
+    assert_eq!(status, 200, "{recorded}");
+    assert_eq!(recorded["verdict"], json!("failed_known"));
+    assert_eq!(recorded["applied_by_node"], json!(false));
+    let receipt = receipt.expect("the receipt header");
+    let effect_kind: String = sqlx::query_scalar(
+        "SELECT operation->>'kind' FROM administrative_effects WHERE record_id = $1",
+    )
+    .bind(&receipt)
+    .fetch_one(&pool)
+    .await
+    .expect("the administrative effect");
+    assert_eq!(effect_kind, "node_attempt_adjudicate");
+    let listed = client
+        .get(format!(
+            "{base}/v1/admin/nodes/ambiguous-attempts?tenant_id={tenant}"
+        ))
+        .header(PRINCIPAL_HEADER, &admin)
+        .send()
+        .await
+        .expect("list request");
+    assert_eq!(listed.status().as_u16(), 200);
+    let listed: Value = listed.json().await.expect("list json");
+    let open = listed["attempts"].as_array().unwrap();
+    assert_eq!(
+        open.len(),
+        1,
+        "still open until the node applies it: {listed}"
+    );
+    assert_eq!(
+        open[0]["operator_verdict"],
+        json!("failed_known"),
+        "{listed}"
+    );
+    assert!(open[0]["adjudicated_at"].is_string(), "{listed}");
+    assert!(
+        listed["safe_actions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|a| a["action"] == json!("adjudicate")),
+        "the surface offers the action: {listed}"
+    );
+    // A second verdict on the same open row is refused.
+    let (status, _, again) = adjudicate(admin.clone(), tenant.clone(), "completed").await;
+    assert_eq!(status, 409, "{again}");
+
+    // The node applies it at its next handshake: the attempt is reconciled
+    // locally, and the row closes `adjudicated` naming the admission.
+    node.reconcile().await.expect("second reconcile");
+    assert!(
+        node.journal()
+            .ambiguous_attempts()
+            .await
+            .unwrap()
+            .is_empty(),
+        "the attempt left outcome_unknown"
+    );
+    let closed: (Option<String>, Option<String>) = sqlx::query_as(
+        "SELECT closure, closure_evidence FROM node_ambiguous_attempts \
+         WHERE node_id = $1 AND attempt_id = 'patt_adj_1'",
+    )
+    .bind(&node_id)
+    .fetch_one(&pool)
+    .await
+    .expect("the row");
+    assert_eq!(closed.0.as_deref(), Some("adjudicated"));
+    assert!(
+        closed
+            .1
+            .as_deref()
+            .unwrap_or("")
+            .starts_with(&format!("operator adjudication {receipt}")),
+        "the evidence names the admission: {closed:?}"
+    );
+    server.crash();
+}
+
 /// Ambiguity reconciliation, positive case: the server DOES hold a receipt for the
 /// operation (its event arrived before the crash), so the directive is `adjudicated` —
 /// the node marks the attempt `reconciled`. The pending-operation exchange is
@@ -816,7 +1006,8 @@ async fn the_operator_lists_open_ambiguous_attempts_and_each_closure_ends_one() 
         [
             "provider_status_lookup",
             "reask_with_allow_possible_duplicate",
-            "close_with_unresolved_register"
+            "close_with_unresolved_register",
+            "adjudicate"
         ]
     );
     assert!(listed["never"].as_str().unwrap().contains("charge twice"));

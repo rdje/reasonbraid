@@ -226,14 +226,50 @@ both answers carry `x-reasonbraid-authorization`.
 }
 ```
 
-⚠️ **None of the three actions is a server verb.** Each is taken where its
+⚠️ **The first three actions are not server verbs.** Each is taken where its
 authority lives. A status lookup runs on the node, and the node's next handshake
 then closes the row. A re-ask, or an honest close, is a decision for the
 thread's human. The response lists who takes each action for that reason. It
 also states the one thing never to do, because that is the tempting one.
 
+### An operator adjudicates (`SIGNOFF-REPAIR.11.4.7.2.1.5.5`)
+
+§11.3 names a fourth way an `outcome_unknown` attempt ends: a human
+adjudicates it. Until this repair that had no path — the node reconciled only
+on a server receipt, and the surface above offered no such action. Now the
+tenant's administrator asserts what the attempt did, with a reason:
+
+```text
+POST /v1/admin/nodes/ambiguous-attempts/adjudicate
+```
+
+```json
+{ "tenant_id": "ten_…", "node_id": "nod_…", "attempt_id": "patt_…",
+  "verdict": "failed_known",
+  "reason": "provider console shows no request for this operation" }
+```
+
+| `verdict` | means |
+| --- | --- |
+| `completed` | the provider call happened: the charge stands, the result is lost, and the thread's human decides what next (a re-ask with `allow_possible_duplicate`, or the honest close) |
+| `failed_known` | it did not happen: nothing was charged, and the work is safe to redeliver |
+
+The verb is admitted under `tenant_admin`, runs in one shared-guard
+transaction, and writes an administrative effect (`node_attempt_adjudicate`)
+like every other node administration; the response carries the
+`x-reasonbraid-authorization` receipt. It **records** the verdict — it does not
+apply it. The node owns its journal: at its next handshake it receives the
+verdict as an `adjudicated` directive whose evidence names the admission, marks
+the attempt `reconciled`, and only then does the row close `adjudicated`. Until
+then the row stays **open** and the listing shows `operator_verdict`,
+`operator_reason` and `adjudicated_at` beside it, so an operator can see a
+decision the node has not yet taken. A second verdict on the same open row is
+refused `409 invalid_transition`; an attempt that is not open, or whose node is
+another tenant's, is `400`; an unknown verdict is `400`.
+
 From the CLI: `rb inspect ambiguous --as alice` (add `--json` for the raw
-response).
+response). There is no CLI verb for the adjudication yet; the route is the
+surface.
 
 ## Delivery state
 

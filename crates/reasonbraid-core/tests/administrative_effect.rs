@@ -54,6 +54,10 @@ fn every_operation() -> Vec<AdministrativeOperation> {
         AdministrativeOperation::NodeInboxPrune {
             node_id: target("nod_00000000-0000-7000-8000-000000000029"),
         },
+        AdministrativeOperation::NodeAttemptAdjudicate {
+            node_id: target("nod_00000000-0000-7000-8000-00000000002a"),
+            attempt_id: target("patt_00000000-0000-7000-8000-00000000002b"),
+        },
         AdministrativeOperation::ProfileCardImport {
             card_digest: target(
                 "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -87,6 +91,7 @@ fn every_operation() -> Vec<AdministrativeOperation> {
             | AdministrativeOperation::NodeCommandReplay { .. }
             | AdministrativeOperation::NodeCommandQuarantine { .. }
             | AdministrativeOperation::NodeInboxPrune { .. }
+            | AdministrativeOperation::NodeAttemptAdjudicate { .. }
             | AdministrativeOperation::ProfileCardImport { .. }
             | AdministrativeOperation::CapabilityClaimAttest { .. }
             | AdministrativeOperation::FederationDirectionPropose { .. }

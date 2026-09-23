@@ -678,6 +678,173 @@ pub(crate) async fn quarantine_command_in_one_transaction(
     .await
 }
 
+/// What an operator's adjudication of an ambiguous attempt did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AdjudicationResult {
+    /// The verdict is on the row; the node applies it at its next handshake.
+    Adjudicated {
+        at: DateTime<Utc>,
+    },
+    /// A verdict was already on the row (the node has not applied it yet).
+    AlreadyAdjudicated {
+        verdict: String,
+        at: DateTime<Utc>,
+    },
+    /// No OPEN ambiguous attempt with that id on a node of this tenant.
+    NotOpen,
+    Denied {
+        reason: String,
+    },
+    InvalidReason(String),
+    InvalidVerdict(String),
+}
+
+/// The two verdicts an operator may give (§11.3): the provider call happened
+/// (`completed` — the charge stands, the result is lost, the thread's human
+/// decides what next) or it did not (`failed_known` — safe to redeliver).
+pub const ADJUDICATION_VERDICTS: [&str; 2] = ["completed", "failed_known"];
+
+/// Adjudicate one OPEN ambiguous attempt in ONE shared-guard transaction
+/// (`SIGNOFF-REPAIR.11.4.7.2.1.5.5`): the §11.3 fourth option, which had no
+/// path — `journal.reconcile` ran only on a server receipt.
+///
+/// The verdict is RECORDED on the row and not applied here: the node owns its
+/// journal, and applies the verdict at its next handshake as a `Directive::
+/// Adjudicated` naming this admission as the evidence, which is when the row
+/// closes `adjudicated`. Until then the row stays open and lists its verdict,
+/// so an operator can see a decision the node has not yet taken. The shared
+/// guard is enough: nothing here changes authority or the revocation epoch.
+pub(crate) async fn adjudicate_ambiguous_attempt_in_one_transaction(
+    pool: &sqlx::PgPool,
+    principal: &GrantSubject,
+    tenant_id: TenantId,
+    node_id: &str,
+    attempt_id: &str,
+    verdict: &str,
+    submitted_reason: &str,
+) -> Result<InboxAdministration<AdjudicationResult>, AuthorityTransactionError> {
+    let principal = principal.clone();
+    let node_id = node_id.to_owned();
+    let attempt_id = attempt_id.to_owned();
+    let verdict = verdict.to_owned();
+    let submitted_reason = submitted_reason.to_owned();
+    transact(pool, &[(tenant_id, GuardMode::Shared)], move |tx| {
+        Box::pin(async move {
+            let at = tx.database_now().await?;
+            let conn = tx.connection(tenant_id, GuardMode::Shared)?;
+            let record_id = admit_or_return!(conn, &principal, tenant_id, at, |reason| {
+                AdjudicationResult::Denied { reason }
+            });
+            if !ADJUDICATION_VERDICTS.contains(&verdict.as_str()) {
+                return Ok(InboxAdministration {
+                    record_id,
+                    effected_at: at,
+                    result: AdjudicationResult::InvalidVerdict(format!(
+                        "`{verdict}` is not a verdict: one of {}",
+                        ADJUDICATION_VERDICTS.join(", ")
+                    )),
+                });
+            }
+            let reason = match AdministrativeReason::new(submitted_reason.clone()) {
+                Ok(reason) => reason,
+                Err(error) => {
+                    return Ok(InboxAdministration {
+                        record_id,
+                        effected_at: at,
+                        result: AdjudicationResult::InvalidReason(error.to_string()),
+                    })
+                }
+            };
+            let unusable = |error: reasonbraid_core::AdministrativeTextError| {
+                GuardError::Storage(sqlx::Error::Protocol(format!(
+                    "the adjudication target id is unusable: {error}"
+                )))
+            };
+            let operation = AdministrativeOperation::NodeAttemptAdjudicate {
+                node_id: AdministrativeTargetId::new(node_id.as_str()).map_err(unusable)?,
+                attempt_id: AdministrativeTargetId::new(attempt_id.as_str()).map_err(unusable)?,
+            };
+
+            // Tenant-bound selection inside the guard: the attempt's node must
+            // belong to the admitted tenant, and the row must be OPEN.
+            let row: Option<(Option<String>, Option<DateTime<Utc>>)> = sqlx::query_as(
+                "SELECT a.operator_verdict, a.adjudicated_at \
+                 FROM node_ambiguous_attempts a JOIN nodes n ON n.node_id = a.node_id \
+                 WHERE a.node_id = $1 AND a.attempt_id = $2 AND n.tenant_id = $3 \
+                   AND a.closed_at IS NULL \
+                 FOR UPDATE OF a",
+            )
+            .bind(&node_id)
+            .bind(&attempt_id)
+            .bind(tenant_id.to_string())
+            .fetch_optional(&mut *conn)
+            .await?;
+
+            let (result, effect) = match row {
+                None => (
+                    AdjudicationResult::NotOpen,
+                    AdministrativeOutcome::Refused {
+                        code: AdministrativeRefusal::InvalidCommand,
+                        detail: bounded_detail(
+                            "no open ambiguous attempt with that id on a node of this tenant"
+                                .to_owned(),
+                        ),
+                    },
+                ),
+                Some((Some(existing), Some(when))) => (
+                    AdjudicationResult::AlreadyAdjudicated {
+                        verdict: existing,
+                        at: when,
+                    },
+                    AdministrativeOutcome::NoOp {
+                        detail: bounded_detail(
+                            "the attempt already carries a verdict the node has not applied yet"
+                                .to_owned(),
+                        ),
+                    },
+                ),
+                Some(_) => {
+                    sqlx::query(
+                        "UPDATE node_ambiguous_attempts \
+                         SET operator_verdict = $3, operator_reason = $4, operator_record = $5, \
+                             adjudicated_at = $6 \
+                         WHERE node_id = $1 AND attempt_id = $2",
+                    )
+                    .bind(&node_id)
+                    .bind(&attempt_id)
+                    .bind(&verdict)
+                    .bind(reason.as_str())
+                    .bind(&record_id)
+                    .bind(at)
+                    .execute(&mut *conn)
+                    .await?;
+                    (
+                        AdjudicationResult::Adjudicated { at },
+                        AdministrativeOutcome::Applied {},
+                    )
+                }
+            };
+
+            record_inbox_effect(
+                &mut *conn,
+                &record_id,
+                tenant_id,
+                operation,
+                Some(reason),
+                effect,
+                at,
+            )
+            .await?;
+            Ok(InboxAdministration {
+                record_id,
+                effected_at: at,
+                result,
+            })
+        })
+    })
+    .await
+}
+
 /// Replay one dead-lettered inbox command in ONE shared-guard transaction.
 ///
 /// ⛔ Which decision facts a replay refreshes is NOT this leaf's to change —

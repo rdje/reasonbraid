@@ -1013,6 +1013,26 @@ impl NodeChannelState {
         .await
     }
 
+    /// The operator's verdict on an OPEN ambiguous attempt, if one is on file
+    /// (`SIGNOFF-REPAIR.11.4.7.2.1.5.5`): the verdict, the admission that
+    /// recorded it, and the operator's reason.
+    pub async fn operator_verdict(
+        &self,
+        node_id: &str,
+        attempt_id: &str,
+    ) -> Result<Option<(String, String, String)>, sqlx::Error> {
+        sqlx::query_as(
+            "SELECT operator_verdict, operator_record, operator_reason \
+             FROM node_ambiguous_attempts \
+             WHERE node_id = $1 AND attempt_id = $2 AND closed_at IS NULL \
+               AND operator_verdict IS NOT NULL",
+        )
+        .bind(node_id)
+        .bind(attempt_id)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
     /// Record what one handshake was told about the node's ambiguous attempts
     /// and what it answered (`SIGNOFF-REPAIR.4.6.1.1`, migration 0087), so the
     /// operator surface can list the ones still open.
@@ -1831,6 +1851,21 @@ async fn handshake(
 
     let mut directives = Vec::with_capacity(req.ambiguous_attempts.len());
     for attempt in &req.ambiguous_attempts {
+        // An operator's verdict on file decides first
+        // (`SIGNOFF-REPAIR.11.4.7.2.1.5.5`, §11.3's fourth option): the node
+        // applies it as an adjudication whose evidence is the admission that
+        // recorded it, and `record_ambiguous_reports` then closes the row.
+        if let Some((verdict, record, reason)) = state
+            .operator_verdict(&req.node_id, &attempt.attempt_id)
+            .await?
+        {
+            directives.push(Directive::Adjudicated {
+                attempt_id: attempt.attempt_id.clone(),
+                terminal: verdict,
+                evidence: format!("operator adjudication {record}: {reason}"),
+            });
+            continue;
+        }
         match state.event_id_for_operation(&attempt.operation_id).await? {
             Some(event_id) => directives.push(Directive::Adjudicated {
                 attempt_id: attempt.attempt_id.clone(),

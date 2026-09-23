@@ -52,6 +52,13 @@
   thread with the unresolved register (the honest close, `.1.5.3`).
 - **A provider-reported charge for an unknown attempt:** settle against the
   reported usage; the overrun reports, never clamps.
+- **An operator adjudicates** (`SIGNOFF-REPAIR.11.4.7.2.1.5.5`): when the
+  provider's own records settle the question and the node cannot prove it,
+  the tenant's administrator records the verdict —
+  `POST /v1/admin/nodes/ambiguous-attempts/adjudicate` with `completed` or
+  `failed_known` and a reason. The node applies it at its next handshake and
+  the row closes `adjudicated` with the admission as evidence
+  (`docs/book/src/node-channel.md`, *An operator adjudicates*).
 
 ## Evidence preservation
 

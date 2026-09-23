@@ -254,6 +254,7 @@
 - [`2026-09-23_a-federated-join-is-a-request-carrying-the-roles-own-card.md`](docs/decisions/2026-09-23_a-federated-join-is-a-request-carrying-the-roles-own-card.md)
 - [`2026-09-23_a-grants-conditions-are-a-closed-typed-evaluable-vocabulary.md`](docs/decisions/2026-09-23_a-grants-conditions-are-a-closed-typed-evaluable-vocabulary.md)
 - [`2026-09-23_a-policy-held-role-reads-held-and-presence-has-seven-states.md`](docs/decisions/2026-09-23_a-policy-held-role-reads-held-and-presence-has-seven-states.md)
+- [`2026-09-23_an-imported-identity-runs-on-a-bound-machine-local-now-origin-designed.md`](docs/decisions/2026-09-23_an-imported-identity-runs-on-a-bound-machine-local-now-origin-designed.md)
 - [`2026-09-23_each-call-transition-is-one-transaction-and-a-late-join-is-refused.md`](docs/decisions/2026-09-23_each-call-transition-is-one-transaction-and-a-late-join-is-refused.md)
 - [`2026-09-23_no-call-transition-is-one-transaction-and-the-minimum-is-checked-before-the-filter.md`](docs/decisions/2026-09-23_no-call-transition-is-one-transaction-and-the-minimum-is-checked-before-the-filter.md)
 - [`2026-09-23_of-the-four-missing-grant-fields-one-is-owed-now-one-waits-on-a-domain-one-on-the-director-and-one-is-two-halves.md`](docs/decisions/2026-09-23_of-the-four-missing-grant-fields-one-is-owed-now-one-waits-on-a-domain-one-on-the-director-and-one-is-two-halves.md)

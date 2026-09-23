@@ -3772,6 +3772,183 @@ async fn a_grants_conditions_are_typed_at_issuance_and_evaluated_at_admission() 
     assert!(landed["thread_id"].as_str().unwrap().starts_with("thr_"));
 }
 
+/// `SIGNOFF-REPAIR.5.3.5.3` — the LOCAL execution binding of an imported
+/// identity, proven with the verbs that exist: the importing tenant enrols a
+/// node for the imported role, its administrator attests the claim locally,
+/// and the imported role joins a call and is seated. The negative arm is the
+/// reason the binding matters: before the node exists, the same join is
+/// refused for want of a node — an imported identity runs nowhere until a
+/// machine is bound to it (DOC-0148).
+#[tokio::test]
+async fn an_imported_identity_acts_once_the_importing_tenant_binds_a_node_to_it() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let world = call_world(&client, &base, "bind-local", 0).await;
+    let (status, owner_b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "bind-local-b" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{owner_b}");
+    let owner_b_id = owner_b["principal_id"].as_str().unwrap().to_string();
+    let tenant_b = owner_b["tenant_id"].as_str().unwrap().to_string();
+    let (status, role_b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "bind-local-role", "tenant_id": tenant_b }),
+    )
+    .await;
+    assert_eq!(status, 200, "{role_b}");
+    let role_b = role_b["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &owner_b_id, &tenant_b, &role_b).await;
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_b}"),
+        &role_b,
+        &visibility_profile(),
+    )
+    .await;
+    assert_eq!(status, 200);
+    for (admin, tenant, remote) in [
+        (&world.human_id, &world.tenant, &tenant_b),
+        (&owner_b_id, &tenant_b, &world.tenant),
+    ] {
+        let (status, body) = post(
+            &client,
+            &base,
+            "/v1/federation-agreements",
+            admin,
+            &json!({ "tenant_id": tenant, "remote_tenant_id": remote, "directory_visibility": false, "recruitment": true }),
+        )
+        .await;
+        assert_eq!(status, 200, "{body}");
+    }
+    for (admin, tenant, remote) in [
+        (&world.human_id, &world.tenant, &tenant_b),
+        (&owner_b_id, &tenant_b, &world.tenant),
+    ] {
+        let (status, body) = post(
+            &client,
+            &base,
+            "/v1/federation-agreements/accept",
+            admin,
+            &json!({ "tenant_id": tenant, "remote_tenant_id": remote }),
+        )
+        .await;
+        assert_eq!(status, 200, "{body}");
+    }
+
+    // The import: B's role becomes a local identity in A.
+    let (status, exported) = get(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_b}/card"),
+        &role_b,
+    )
+    .await;
+    assert_eq!(status, 200, "{exported}");
+    let (status, imported) = post(
+        &client,
+        &base,
+        "/v1/profiles/cards/import",
+        &world.human_id,
+        &json!({ "tenant_id": world.tenant, "card": exported["card"], "digest": exported["digest"] }),
+    )
+    .await;
+    assert_eq!(status, 200, "{imported}");
+    let local = imported["role_id"].as_str().unwrap().to_string();
+
+    // A call the imported identity is offered (its interests came with the card).
+    let (status, opened) = post(
+        &client,
+        &base,
+        "/v1/calls",
+        &world.human_id,
+        &call_body(&world, 1, 2),
+    )
+    .await;
+    assert_eq!(status, 200, "{opened}");
+    assert_eq!(
+        opened["offered_to"],
+        json!(1),
+        "the imported identity is offered: {opened}"
+    );
+    let call_id = opened["call_id"].as_str().unwrap().to_string();
+    let respond = format!("/v1/calls/{call_id}/respond");
+
+    // The negative arm: no node, no participation.
+    let (status, refused) =
+        post(&client, &base, &respond, &local, &json!({ "kind": "join" })).await;
+    assert_eq!(status, 403, "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("no enrolled node"),
+        "an imported identity without a machine cannot act: {refused}"
+    );
+
+    // The LOCAL binding: A enrols a machine for the imported identity and
+    // attests its claim locally — the card's attestation was B's owner's word.
+    enroll_node(&client, &base, &world.human_id, &world.tenant, &local).await;
+    let (status, attested) = post(
+        &client,
+        &base,
+        &format!("/v1/profiles/{local}/attest"),
+        &world.human_id,
+        &json!({ "taxonomy_id": "code_review", "evidence_ref": "evt_bind-local/a" }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "A's administrator attests the imported claim: {attested}"
+    );
+    let (status, joined) = post(&client, &base, &respond, &local, &json!({ "kind": "join" })).await;
+    assert_eq!(
+        status, 200,
+        "bound to a local machine, the imported identity joins: {joined}"
+    );
+    assert_eq!(
+        joined["response"],
+        json!("join"),
+        "a local role's join is a join, not a request"
+    );
+    let (status, closed) = post(
+        &client,
+        &base,
+        &format!("/v1/calls/{call_id}/close"),
+        &world.human_id,
+        &json!({}),
+    )
+    .await;
+    assert_eq!(status, 200, "{closed}");
+    assert_eq!(
+        closed["panel"],
+        json!([local]),
+        "the imported identity is seated: {closed}"
+    );
+
+    // Its provenance names the origin throughout.
+    let (status, read) = get(
+        &client,
+        &base,
+        &format!("/v1/profiles/{local}"),
+        &world.human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "{read}");
+    assert_eq!(
+        read["imported_from"]["origin_role_id"],
+        json!(role_b),
+        "{read}"
+    );
+}
+
 /// `SIGNOFF-REPAIR.11.4.7.2.1.5.4.1` — §4.2's `decision_rule_constraints`: the
 /// issuer narrows, for one subject, the decision rules the tenant's charter
 /// allows. Declared in the enrolment body, validated at the one grant-creation

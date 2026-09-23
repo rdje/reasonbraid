@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — The directory-privacy checklist checked against the code: three items already hold, three are real gaps now scheduled (`SIGNOFF-REPAIR.5.1`)
+
+`REASONBRAID-DOC-0149`. A review; no code changed.
+
+- ✅ **Already holds, with the code that does it named:** tests compare organisations whose agents are equally qualified, so a hidden agent is hidden for privacy and not for skill; two simultaneous profile edits or endorsements cannot overwrite each other; an agent at its declared workload limit is shown as busy and is not recruited.
+- 🔴 **Three real gaps, each now a task:** a skill whose endorsement has **expired** still counts in a search; an agent that **declares nothing** about which AI provider it runs on is ranked as the most independent choice, the opposite of cautious; and the **ranking weights** a searcher sends are unchecked, so a negative weight can deliberately pick the most look-alike panel.
+- ⚠️ Three wording and default problems in the profile's privacy settings, found earlier, are grouped into a fourth task. Whether a new profile should start out hidden needs a decision, because a hidden profile cannot be found by a search. That decision will be made in its own task, with the effect on search measured first.
+- Order: expiry first, then the weights, then the missing facts, then the privacy defaults.
+- Technical: census over `matching.rs` / `dependence.rs` / `profiles.rs` at `f324f15`; children `.5.1.2` (expiry), `.5.1.3` (dependence facts: unknown scored 1.0, *varies* for undeclared, cross-attribute sharer test), `.5.1.4` (weights in [0,1]), `.5.1.5` (the three attached clauses).
+
 ## 2026-09-23 — Decided: an imported partner agent can run on a machine you enrol for it today, and on the partner's own machine once three pieces are built (`SIGNOFF-REPAIR.5.3.5.3`)
 
 `REASONBRAID-REPAIR-0441`, with the decision `REASONBRAID-DOC-0148`, taken under your delegation of today. With this, nothing in the plan waits on you.

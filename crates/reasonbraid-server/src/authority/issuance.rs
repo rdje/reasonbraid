@@ -66,6 +66,7 @@ pub(crate) async fn create_grant_in_guard(
     // issuer could have declared, and the refusal is the same typed refusal a
     // boundary overrun gives.
     violations.extend(auto_bounds_violations(grant));
+    violations.extend(decision_rule_violations(grant));
     if !violations.is_empty() {
         return Err(GrantCreateError::Refused(GrantRefused { violations }));
     }
@@ -123,6 +124,45 @@ fn auto_bounds_violations(grant: &AuthorityGrant) -> Vec<reasonbraid_core::Bound
             violations.push(BoundaryViolation {
                 field: "grant.auto_bounds.max_depth",
                 detail: format!("a depth bound of {depth} exceeds the site ceiling of {ceiling}"),
+            });
+        }
+    }
+    violations
+}
+
+/// What a grant's `decision_rule_constraints` may say
+/// (`SIGNOFF-REPAIR.11.4.7.2.1.5.4.1`): a constraint on a grant that creates no
+/// thread binds nothing; an empty list admits no rule (issue the grant without
+/// the action instead); every name is a charter wire name the server knows.
+fn decision_rule_violations(grant: &AuthorityGrant) -> Vec<reasonbraid_core::BoundaryViolation> {
+    use reasonbraid_core::{BoundaryViolation, GrantAction};
+    let Some(rules) = &grant.decision_rule_constraints else {
+        return Vec::new();
+    };
+    let mut violations = Vec::new();
+    let creates = grant
+        .actions
+        .iter()
+        .any(|a| matches!(a, GrantAction::ThreadCreate | GrantAction::ThreadCreateAuto));
+    if !creates {
+        violations.push(BoundaryViolation {
+            field: "grant.decision_rule_constraints",
+            detail: "a decision-rule constraint on a grant that creates no thread binds nothing"
+                .into(),
+        });
+    }
+    if rules.is_empty() {
+        violations.push(BoundaryViolation {
+            field: "grant.decision_rule_constraints",
+            detail: "an empty decision-rule constraint admits no rule — omit the constraint, or the action"
+                .into(),
+        });
+    }
+    for name in rules {
+        if crate::charters::DecisionRule::parse(name).is_none() {
+            violations.push(BoundaryViolation {
+                field: "grant.decision_rule_constraints",
+                detail: format!("`{name}` is not a decision rule the charter vocabulary knows"),
             });
         }
     }

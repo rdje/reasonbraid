@@ -364,8 +364,9 @@ where
     sqlx::query(
         "INSERT INTO authority_grants \
          (grant_id, boundary_id, tenant_id, issuer, subject_kind, subject_id, actions, selector, \
-          risk_ceiling, spend_limits, delegable, valid_from, expires_at, status, auto_bounds) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
+          risk_ceiling, spend_limits, delegable, valid_from, expires_at, status, auto_bounds, \
+          decision_rule_constraints) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)",
     )
     .bind(&grant.grant_id)
     .bind(&grant.boundary_id)
@@ -389,6 +390,12 @@ where
             .auto_bounds
             .as_ref()
             .map(|bounds| serde_json::to_value(bounds).expect("auto bounds serialize")),
+    )
+    .bind(
+        grant
+            .decision_rule_constraints
+            .as_ref()
+            .map(|rules| serde_json::to_value(rules).expect("rule names serialize")),
     )
     .execute(&mut *tx)
     .await?;
@@ -578,6 +585,7 @@ type GrantRow = (
     String,
     Option<Value>,
     Option<Value>,
+    Option<Value>,
     bool,
     DateTime<Utc>,
     DateTime<Utc>,
@@ -597,6 +605,7 @@ fn grant_from_row(row: GrantRow) -> Option<AuthorityGrant> {
         risk_ceiling,
         spend_limits,
         auto_bounds,
+        decision_rule_constraints,
         delegable,
         valid_from,
         expires_at,
@@ -616,6 +625,10 @@ fn grant_from_row(row: GrantRow) -> Option<AuthorityGrant> {
         // an unbounded one: `None` here fails the whole row, as every other
         // field does.
         auto_bounds: auto_bounds.map(serde_json::from_value).transpose().ok()?,
+        decision_rule_constraints: decision_rule_constraints
+            .map(serde_json::from_value)
+            .transpose()
+            .ok()?,
         delegable,
         valid_from,
         expires_at,

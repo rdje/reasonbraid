@@ -32,11 +32,16 @@ The create is refused, with `400 invalid_command`, when:
 | `role_weighted` or `human_committee` | nothing can evaluate these yet. `role_weighted`'s weights have no schema, and §13.3 gives `human_committee` no bar. Accepting either would declare a rule that nothing checks |
 | a counted rule (below) on a profile with no `vote` step | there would be nowhere to cast a ballot, so every close would count an empty box |
 | the tenant's charter does not allow the rule | the refusal names the rule, never the charter's full set |
+| the creator's grant constrains its rules and this is not among them | the issuer narrowed the charter for this subject — `decision_rule_constraints` on the admitting grant ([authority](authority.md#enrollment-boundaries-and-grants)); the refusal names the rule and says the grant refused, never the charter |
 | the tenant's boundary names no registered charter | fail closed: the question cannot be answered, and no rule is ever allowed by default |
 
 The charter check runs **after** authorization, inside the command's transaction.
 A caller who may not create threads in the tenant gets an authority refusal and
-learns nothing about the tenant's charter.
+learns nothing about the tenant's charter. The grant's constraint is read at the
+same point, from the grant the authorization record names — the one that
+actually admitted this create — so two layers apply: the charter (the tenant's
+law) and the grant (the issuer's narrowing of it for one subject). A grant with
+no constraint leaves the charter alone to decide.
 
 The thread records the rule, the charter's threshold for it, and the charter's
 digest. Charters are content-addressed, so a thread keeps pointing at the exact

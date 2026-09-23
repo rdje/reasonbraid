@@ -98,6 +98,7 @@ async fn candidate(pool: &PgPool, tenant: TenantId, boundary: &str) -> Authority
         risk_ceiling: RiskClass::Low,
         spend_limits: None,
         auto_bounds: None,
+        decision_rule_constraints: None,
         delegable: false,
         valid_from,
         expires_at,

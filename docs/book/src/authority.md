@@ -18,7 +18,10 @@ boundary's ceiling) and — for `thread_create_auto` — optional typed **auto
 bounds**: `topics` (the only topics an initiation may declare), `max_depth`
 (the deepest chain position it may take, never above the site ceiling of 3) and
 `audience` (`tenant` or `network`, the widest scope a call opened on an initiated
-thread may target). The
+thread may target) — and, for a grant that creates threads, optional
+**`decision_rule_constraints`**: the [decision rules](decision-rules.md) a thread
+this subject creates may declare, by charter wire name, narrower than the
+tenant's charter (`SIGNOFF-REPAIR.11.4.7.2.1.5.4.1`). The
 core evaluator checks the supplied grant against the supplied boundary and returns
 an allowed or denied decision.
 
@@ -1804,6 +1807,14 @@ body:
 {"tenant_id":"ten_…","kind":"role","name":"scout","actions":["thread_create_auto"],
  "spend_limits":{"amount":50.0},
  "auto_bounds":{"topics":["retention","evidence"],"max_depth":2}}
+```
+
+A role that creates threads may be held to fewer decision rules than the
+charter allows:
+
+```json
+{"tenant_id":"ten_…","kind":"role","name":"drafter","actions":["thread_create"],
+ "decision_rule_constraints":["owner_decides","advisory_synthesis"]}
 ```
 
 Repeating the same tenant, kind and name returns the original principal, with

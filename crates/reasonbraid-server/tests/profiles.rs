@@ -2251,6 +2251,163 @@ async fn the_auto_initiation_lands_under_the_grant_and_the_checklist() {
     );
 }
 
+/// `SIGNOFF-REPAIR.11.4.7.2.1.5.4.1` — §4.2's `decision_rule_constraints`: the
+/// issuer narrows, for one subject, the decision rules the tenant's charter
+/// allows. Declared in the enrolment body, validated at the one grant-creation
+/// path, listed by the admin view, and read from the ADMITTING grant beside
+/// the charter check. A grant with no constraint leaves the charter to decide.
+#[tokio::test]
+async fn a_grant_constrains_the_decision_rules_its_subject_declares() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "drc-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let tenant = human["tenant_id"].as_str().unwrap().to_string();
+    // The charter allows BOTH rules; the grant below allows one.
+    let _digest = govern(&pool, &tenant, &["owner_decides", "unanimity"]).await;
+
+    // ── The producer, and what it refuses.
+    for (name, body, names) in [
+        (
+            "drc-no-create",
+            json!({ "decision_rule_constraints": ["owner_decides"] }),
+            "creates no thread",
+        ),
+        (
+            "drc-empty",
+            json!({ "actions": ["thread_create"], "decision_rule_constraints": [] }),
+            "empty decision-rule constraint",
+        ),
+        (
+            "drc-unknown",
+            json!({ "actions": ["thread_create"], "decision_rule_constraints": ["coin_toss"] }),
+            "not a decision rule",
+        ),
+    ] {
+        let mut request = json!({ "kind": "role", "name": name, "tenant_id": tenant });
+        for (key, value) in body.as_object().unwrap() {
+            request[key] = value.clone();
+        }
+        let (status, refused) = enroll(&client, &base, request).await;
+        assert_eq!(status, 400, "`{name}` is refused: {refused}");
+        assert!(
+            refused["message"].as_str().unwrap_or("").contains(names),
+            "`{name}`'s refusal says why: {refused}"
+        );
+    }
+    let (status, refused) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "drc-human-2", "decision_rule_constraints": ["unanimity"] }),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "a human's dev grant carries no constraint: {refused}"
+    );
+
+    let (status, narrow) = enroll(
+        &client,
+        &base,
+        json!({
+            "kind": "role", "name": "drc-narrow", "tenant_id": tenant,
+            "actions": ["thread_create"],
+            "decision_rule_constraints": ["owner_decides"],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "{narrow}");
+    let narrow_id = narrow["principal_id"].as_str().unwrap().to_string();
+    let narrow_grant = narrow["grant_id"].as_str().unwrap().to_string();
+    let (status, free) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "drc-free", "tenant_id": tenant, "actions": ["thread_create"] }),
+    )
+    .await;
+    assert_eq!(status, 200, "{free}");
+    let free_id = free["principal_id"].as_str().unwrap().to_string();
+
+    // ── The operator's list shows the constraint and omits it where absent.
+    let (status, listed) = get(
+        &client,
+        &base,
+        &format!("/v1/admin/grants?tenant_id={tenant}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "{listed}");
+    let grants = listed["grants"].as_array().unwrap();
+    let mine = grants
+        .iter()
+        .find(|g| g["grant_id"] == json!(narrow_grant))
+        .unwrap();
+    assert_eq!(
+        mine["decision_rule_constraints"],
+        json!(["owner_decides"]),
+        "{mine}"
+    );
+    let theirs = grants
+        .iter()
+        .find(|g| g["subject_id"] == json!(free_id))
+        .unwrap();
+    assert!(
+        theirs.get("decision_rule_constraints").is_none(),
+        "{theirs}"
+    );
+
+    // ── The reader: the charter allows `unanimity`, the narrow grant does not.
+    let create = |who: String, key: &'static str, rule: &'static str| {
+        let client = client.clone();
+        let base = base.clone();
+        let tenant = tenant.clone();
+        async move {
+            create_with(
+                &client,
+                &base,
+                &who,
+                key,
+                json!({
+                    "tenant_id": tenant,
+                    "subject": "constrained",
+                    "objective": "probe",
+                    "workflow_profile": "policy_proposal",
+                    "decision_rule": rule,
+                }),
+            )
+            .await
+        }
+    };
+    let (status, refused) = create(narrow_id.clone(), "drc-narrow-unanimity", "unanimity").await;
+    assert_eq!(status, 400, "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("admitting grant constrains"),
+        "the refusal names the grant's constraint, not the charter: {refused}"
+    );
+    let (status, landed) = create(narrow_id.clone(), "drc-narrow-owner", "owner_decides").await;
+    assert_eq!(
+        status, 200,
+        "within the constraint the create lands: {landed}"
+    );
+    let (status, landed) = create(free_id.clone(), "drc-free-unanimity", "unanimity").await;
+    assert_eq!(
+        status, 200,
+        "no constraint: the charter alone decides: {landed}"
+    );
+}
+
 /// `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.3`: an autonomous thread remembers the
 /// grant that admitted it, and a call opened on it may not target a wider
 /// audience than that grant allows. And `SIGNOFF-REPAIR.5.2`'s attached clause:

@@ -486,6 +486,14 @@ pub struct AuthorityGrant {
     /// field existed reads as unbounded by its issuer, exactly as it was.
     #[serde(default)]
     pub auto_bounds: Option<AutoBounds>,
+    /// §4.2's `decision_rule_constraints` (`SIGNOFF-REPAIR.11.4.7.2.1.5.4.1`):
+    /// the decision rules a thread this subject creates may declare, by their
+    /// charter wire names, narrower than the tenant's charter. Absent means the
+    /// charter alone decides. A present list is non-empty and every name is one
+    /// the server's charter vocabulary knows — the server validates at issuance,
+    /// since the vocabulary lives there.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision_rule_constraints: Option<Vec<String>>,
     pub delegable: bool,
     pub valid_from: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
@@ -885,6 +893,7 @@ mod tests {
             risk_ceiling,
             spend_limits: None,
             auto_bounds: None,
+            decision_rule_constraints: None,
             delegable,
             valid_from: Utc.with_ymd_and_hms(2026, 9, 1, 0, 0, 0).unwrap(),
             expires_at: Utc.with_ymd_and_hms(2027, 9, 1, 0, 0, 0).unwrap(),

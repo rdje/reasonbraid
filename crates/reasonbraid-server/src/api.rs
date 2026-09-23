@@ -945,6 +945,12 @@ pub struct EnrollRequest {
     /// on a role without the action — bounds that bind nothing are not stored.
     #[serde(default)]
     pub auto_bounds: Option<reasonbraid_core::AutoBounds>,
+    /// For a role that creates threads: the decision rules a thread it creates
+    /// may declare, by charter wire name, narrower than the tenant's charter
+    /// (`SIGNOFF-REPAIR.11.4.7.2.1.5.4.1`). Refused for a human, and refused on
+    /// a role without a create action.
+    #[serde(default)]
+    pub decision_rule_constraints: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1024,6 +1030,7 @@ pub(crate) fn dev_grant(
     actions: Vec<GrantAction>,
     spend_limits: Option<Value>,
     auto_bounds: Option<reasonbraid_core::AutoBounds>,
+    decision_rule_constraints: Option<Vec<String>>,
 ) -> reasonbraid_core::AuthorityGrant {
     reasonbraid_core::AuthorityGrant {
         grant_id: format!("grt_{}", subject.id_string()),
@@ -1036,6 +1043,7 @@ pub(crate) fn dev_grant(
         risk_ceiling: RiskClass::Low,
         spend_limits,
         auto_bounds,
+        decision_rule_constraints,
         delegable: false,
         // Coextensive with the boundary: a grant must never outlive its boundary
         // (the subset checker enforces it; wall-clock skew between enroll calls
@@ -1201,10 +1209,14 @@ async fn enroll_in_guard(
     // issuer that already declares a role's actions. A human's dev grant is the
     // admin set and carries no bound. What the bounds may say is checked once,
     // in `create_grant_in_guard`, with the boundary's own checks.
-    if kind == "human" && (req.spend_limits.is_some() || req.auto_bounds.is_some()) {
+    if kind == "human"
+        && (req.spend_limits.is_some()
+            || req.auto_bounds.is_some()
+            || req.decision_rule_constraints.is_some())
+    {
         return Err(ControlApiError::invalid_command(
-            "spend_limits and auto_bounds belong to a role's grant — a human's dev grant \
-             carries the admin set and no bound",
+            "spend_limits, auto_bounds and decision_rule_constraints belong to a role's grant — \
+             a human's dev grant carries the admin set and no bound",
         ));
     }
     let grant = dev_grant(
@@ -1214,6 +1226,7 @@ async fn enroll_in_guard(
         actions,
         req.spend_limits.clone(),
         req.auto_bounds.clone(),
+        req.decision_rule_constraints.clone(),
     );
     authority::create_grant_in_guard(tx, &grant)
         .await
@@ -7454,10 +7467,11 @@ async fn list_grants(
                 DateTime<Utc>,
                 Option<Value>,
                 Option<Value>,
+                Option<Value>,
             );
             let rows: Vec<Row> = sqlx::query_as(
         "SELECT grant_id, subject_kind, subject_id, actions, status, valid_from, expires_at, \
-                spend_limits, auto_bounds \
+                spend_limits, auto_bounds, decision_rule_constraints \
          FROM authority_grants WHERE tenant_id = $1 ORDER BY valid_from DESC",
     )
     .bind(q.tenant_id.to_string())
@@ -7476,6 +7490,7 @@ async fn list_grants(
                         expires_at,
                         spend_limits,
                         auto_bounds,
+                        decision_rule_constraints,
                     )| {
                         let mut grant = json!({
                             "grant_id": grant_id,
@@ -7494,6 +7509,9 @@ async fn list_grants(
                         }
                         if let Some(auto_bounds) = auto_bounds {
                             grant["auto_bounds"] = auto_bounds;
+                        }
+                        if let Some(rules) = decision_rule_constraints {
+                            grant["decision_rule_constraints"] = rules;
                         }
                         grant
                     },
@@ -8006,6 +8024,35 @@ pub(crate) async fn run_thread_command(
             // this transaction, so the thread records the charter it was
             // actually created under. A boundary naming no registered charter
             // FAILS CLOSED (`charters::for_tenant`).
+            // And may THIS SUBJECT declare it? §4.2's `decision_rule_constraints`
+            // (`SIGNOFF-REPAIR.11.4.7.2.1.5.4.1`): the ADMITTING grant — the one
+            // the authorization record names — may narrow the charter for its
+            // subject. Read on this transaction from the record the same
+            // transaction wrote; a grant with no constraint leaves the charter
+            // to decide, exactly as before.
+            if let (Some(rule), Some(admitted)) = (body.decision_rule, admission.as_ref()) {
+                let constraint: Option<Option<Value>> = sqlx::query_scalar(
+                    "SELECT g.decision_rule_constraints FROM authorization_records r \
+                     JOIN authority_grants g ON g.grant_id = r.grant_id WHERE r.record_id = $1",
+                )
+                .bind(&admitted.authz_ref)
+                .fetch_optional(&mut *tx)
+                .await?;
+                if let Some(Some(constraint)) = constraint {
+                    let allowed: Vec<String> = serde_json::from_value(constraint).map_err(|e| {
+                        ControlApiError::internal_with_log(format!(
+                            "stored decision-rule constraint unreadable: {e}"
+                        ))
+                    })?;
+                    if !allowed.iter().any(|name| name == rule.as_str()) {
+                        return Err(ControlApiError::invalid_command(format!(
+                            "the admitting grant constrains the decision rules its subject may \
+                             declare: `{}` is not among them",
+                            rule.as_str()
+                        )));
+                    }
+                }
+            }
             let declared = match body.decision_rule {
                 None => None,
                 Some(rule) => {

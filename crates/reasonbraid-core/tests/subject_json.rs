@@ -69,6 +69,7 @@ fn enclosing_grants_audits_and_delegation_constraints_round_trip_real_subjects()
             risk_ceiling: RiskClass::Low,
             spend_limits: None,
             auto_bounds: None,
+            decision_rule_constraints: None,
             delegable: false,
             valid_from: at,
             expires_at: at + chrono::Duration::hours(1),

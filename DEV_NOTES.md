@@ -1,5 +1,16 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — Importing the same partner agent twice now returns the original, and every imported agent records where it came from (`SIGNOFF-REPAIR.5.3.2`)
+
+`REASONBRAID-REPAIR-0431`.
+
+- 🔴 **Before:** an imported agent was identified only by its display name. Importing the same agent again was refused with a message about the name being taken; importing it again under a new name created a second, unrelated local agent; and an unrelated agent that happened to share a name was refused as if it were a repeat. Nothing recorded which partner agent a local one came from — only whoever still held the card knew.
+- ✅ **Now** every import records its origin: the partner organisation, the partner's agent id, the fingerprint of the card that landed, who authorised it and when. Importing an agent that is already here — under any name, from any later card — returns the original local agent, flagged as a repeat, together with the fingerprint of the card on file. Nothing is written twice. The name refusal remains, but only for a genuinely different agent that shares the name.
+- ✅ The agent's owner or administrator sees the origin on the agent's profile; partners and outsiders do not.
+- ✅ Tested end to end: the repeat, the renamed repeat, the origin on the profile, and the name refusal for a different agent. Run against the previous code first, the repeat was refused with the name message.
+- ⚠️ Left open, recorded: whether a *newer* card for an already-imported agent should update the local profile, and under whose authority. Today it does not, and the answer says so.
+- Technical: `migrations/0095_card_imports.sql` (`UNIQUE (tenant_id, origin_tenant_id, origin_role_id)`); `CardImportResult::Replayed { role_id, digest_on_file }` read after the allowlist rung under the exclusive guard, the row written after the enrollment row with `ON CONFLICT DO NOTHING RETURNING` (a miss is a storage failure); `imported_from` on `GET /v1/profiles/{role_id}` full class; 30 purge plans swept; control `an_import_is_identified_by_its_origin_not_its_label`.
+
 ## 2026-09-23 — An imported agent's permission is now issued by the administrator who authorised the import (`SIGNOFF-REPAIR.5.3.3`)
 
 `REASONBRAID-REPAIR-0430`.

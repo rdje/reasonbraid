@@ -7121,6 +7121,7 @@ async fn get_profile(
             "no profile for `{role_id}`"
         )));
     };
+    let full = class == crate::profiles::ReaderClass::Full;
     let (profile, visibility) = match class {
         crate::profiles::ReaderClass::Full => {
             let profile: crate::profiles::AgentProfile =
@@ -7146,7 +7147,7 @@ async fn get_profile(
             (crate::profiles::filter_profile(&profile, other), name)
         }
     };
-    Ok(Json(json!({
+    let mut body = json!({
         "role_id": role_id,
         "version": current.version,
         "content_hash": current.content_hash,
@@ -7154,7 +7155,28 @@ async fn get_profile(
         "written_by": current.written_by,
         "written_at": current.written_at.to_rfc3339(),
         "profile": profile,
-    })))
+    });
+    // The provenance of an imported role (`SIGNOFF-REPAIR.5.3.2`), on the full
+    // class only: the origin is the importing tenant's own record of where its
+    // role came from, not a directory fact for siblings or the network.
+    if full {
+        let provenance: Option<(String, String, String, DateTime<Utc>)> = sqlx::query_as(
+            "SELECT origin_tenant_id, origin_role_id, card_digest, imported_at \
+             FROM card_imports WHERE role_id = $1",
+        )
+        .bind(&role_id)
+        .fetch_optional(&state.pool)
+        .await?;
+        if let Some((origin_tenant_id, origin_role_id, card_digest, imported_at)) = provenance {
+            body["imported_from"] = json!({
+                "origin_tenant_id": origin_tenant_id,
+                "origin_role_id": origin_role_id,
+                "card_digest": card_digest,
+                "imported_at": imported_at.to_rfc3339(),
+            });
+        }
+    }
+    Ok(Json(body))
 }
 
 // ── The portable agent cards (PHASE-8.1.3; ADR-026/027) ────────────────────────
@@ -7265,8 +7287,9 @@ async fn import_profile_card(
             ControlApiError::invalid_command(detail).into_response()
         }
         // The label collision used to be a raised unique violation and a `500`
-        // (`SIGNOFF-REPAIR.3.3.4.11.5`). It is a typed refusal now, and it does
-        // NOT decide what a repeated import ought to do — card replay is `.5.3`'s.
+        // (`SIGNOFF-REPAIR.3.3.4.11.5`). It is a typed refusal, and since
+        // `SIGNOFF-REPAIR.5.3.2` it is only ever a DIFFERENT origin's card: a
+        // repeat of the same origin is the replay below.
         authority::CardImportResult::LabelTaken { label } => {
             ControlApiError::invalid_command(format!(
                 "the importing tenant already holds an identity labelled `{label}` — the import \
@@ -7278,6 +7301,20 @@ async fn import_profile_card(
             "role_id": role_id,
             "origin_tenant_id": req.card.origin_tenant_id,
             "origin_role_id": req.card.origin_role_id,
+        }))
+        .into_response(),
+        // The enrolment route's answer to a repeat (`SIGNOFF-REPAIR.5.3.2`): the
+        // original local role, flagged, with the digest of the card on file so a
+        // caller holding a newer card can see it did not land.
+        authority::CardImportResult::Replayed {
+            role_id,
+            digest_on_file,
+        } => Json(json!({
+            "role_id": role_id,
+            "origin_tenant_id": req.card.origin_tenant_id,
+            "origin_role_id": req.card.origin_role_id,
+            "replayed": true,
+            "digest_on_file": digest_on_file,
         }))
         .into_response(),
     };

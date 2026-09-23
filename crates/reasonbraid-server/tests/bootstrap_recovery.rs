@@ -92,6 +92,7 @@ async fn snapshot(pool: &PgPool) -> Vec<Value> {
         "enrollment_boundaries",
         "authority_grants",
         "human_principals",
+        "card_imports",
         "agent_roles",
         "usage_quotas",
         "enrollments",

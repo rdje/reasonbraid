@@ -73,6 +73,7 @@ async fn pool() -> Option<PgPool> {
             "runs",
             "incarnations",
             "recruitment_offers",
+            "card_imports",
             "agent_roles",
             "human_principals",
             "idempotency",
@@ -351,6 +352,7 @@ async fn the_card_import_runs_the_ladder_and_lands_the_local_role() {
     let mut before = Vec::new();
     let tables = [
         "authority_grants",
+        "card_imports",
         "agent_roles",
         "usage_quotas",
         "enrollments",
@@ -931,14 +933,11 @@ async fn each_import_rung_records_what_it_refused() {
 
 /// 🔴 A card whose display label is already taken in the importing tenant is a
 /// typed refusal that RECORDS itself, not a raised constraint and a `500`
-/// (`SIGNOFF-REPAIR.3.3.4.11.5`). A repeated import of the same card is the
-/// commonest way to reach it; a card from a different origin sharing a label is
-/// another.
-///
-/// ⛔ This asserts the label is taken and that the refusal is recorded. It does
-/// NOT assert what a repeated import ought to do — the ordinary enrollment route
-/// answers a name collision with a replay, and whether a card import should too
-/// is card replay semantics, owned by `SIGNOFF-REPAIR.5.3`.
+/// (`SIGNOFF-REPAIR.3.3.4.11.5`). Since `SIGNOFF-REPAIR.5.3.2` the only way to
+/// reach it is a card from a DIFFERENT origin sharing the label — a repeat of
+/// the same origin is a replay, decided before the label is touched — so the
+/// collision here comes from a second origin role carrying the first one's
+/// label.
 #[tokio::test]
 async fn a_taken_display_label_refuses_in_the_record_rather_than_raising() {
     let _guard = guard().await;
@@ -1028,6 +1027,41 @@ async fn a_taken_display_label_refuses_in_the_record_rather_than_raising() {
     let (status, first) = post(&client, &base, "/v1/profiles/cards/import", &b_admin, &body).await;
     assert_eq!(status, 200, "the first import lands: {first}");
 
+    // A DIFFERENT origin role in A whose profile carries the same label.
+    let (status, twin) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "label-twin", "tenant_id": tenant_a }),
+    )
+    .await;
+    assert_eq!(status, 200, "the twin enrolls: {twin}");
+    let twin_id = twin["principal_id"].as_str().unwrap().to_string();
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{twin_id}"),
+        &twin_id,
+        &sample_profile(),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the twin's profile writes, under the same label"
+    );
+    let (status, twin_card) = get(
+        &client,
+        &base,
+        &format!("/v1/profiles/{twin_id}/card"),
+        &twin_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the twin's card exports");
+    let twin_body = json!({
+        "tenant_id": tenant_b,
+        "card": twin_card["card"].clone(),
+        "digest": twin_card["digest"].as_str().unwrap(),
+    });
+
     let roles_before: i64 =
         sqlx::query_scalar("SELECT count(*) FROM agent_roles WHERE tenant_id = $1")
             .bind(&tenant_b)
@@ -1038,7 +1072,7 @@ async fn a_taken_display_label_refuses_in_the_record_rather_than_raising() {
     let response = client
         .post(format!("{base}/v1/profiles/cards/import"))
         .header(PRINCIPAL_HEADER, &b_admin)
-        .json(&body)
+        .json(&twin_body)
         .send()
         .await
         .expect("second import");
@@ -1096,6 +1130,228 @@ async fn a_taken_display_label_refuses_in_the_record_rather_than_raising() {
     assert_eq!(
         roles_after, roles_before,
         "the refused import created no second role"
+    );
+}
+
+/// `SIGNOFF-REPAIR.5.3.2` — an import is identified by its ORIGIN, not by the
+/// card's label, and the imported role's provenance is on the ledger. Before
+/// this repair the same card twice was refused as a taken label, the same
+/// origin role under a NEW label imported again as a second local identity,
+/// and nothing recorded which origin a local role came from.
+#[tokio::test]
+async fn an_import_is_identified_by_its_origin_not_its_label() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (status, human_a) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "origin-a" }),
+    )
+    .await;
+    assert_eq!(status, 200, "A enrolls: {human_a}");
+    let a_admin = human_a["principal_id"].as_str().unwrap().to_string();
+    let tenant_a = human_a["tenant_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "origin-role", "tenant_id": tenant_a }),
+    )
+    .await;
+    assert_eq!(status, 200, "the role enrolls: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &role_id,
+        &sample_profile(),
+    )
+    .await;
+    assert_eq!(status, 200, "the profile writes");
+    let (status, human_b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "origin-b" }),
+    )
+    .await;
+    assert_eq!(status, 200, "B enrolls: {human_b}");
+    let b_admin = human_b["principal_id"].as_str().unwrap().to_string();
+    let tenant_b = human_b["tenant_id"].as_str().unwrap().to_string();
+    for (admin, tenant, remote) in [
+        (&a_admin, &tenant_a, &tenant_b),
+        (&b_admin, &tenant_b, &tenant_a),
+    ] {
+        let (status, _) = post(
+            &client,
+            &base,
+            "/v1/federation-agreements",
+            admin,
+            &json!({
+                "tenant_id": tenant,
+                "remote_tenant_id": remote,
+                "directory_visibility": false,
+                "recruitment": true,
+            }),
+        )
+        .await;
+        assert_eq!(status, 200, "the propose");
+        let (status, _) = post(
+            &client,
+            &base,
+            "/v1/federation-agreements/accept",
+            admin,
+            &json!({ "tenant_id": tenant, "remote_tenant_id": remote }),
+        )
+        .await;
+        assert_eq!(status, 200, "the accept");
+    }
+    let export = |who: String| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            let (status, exported) =
+                get(&client, &base, &format!("/v1/profiles/{who}/card"), &who).await;
+            assert_eq!(status, 200, "the card exports: {exported}");
+            (
+                exported["card"].clone(),
+                exported["digest"].as_str().unwrap().to_string(),
+            )
+        }
+    };
+    let import = |card: Value, digest: String| {
+        let client = client.clone();
+        let base = base.clone();
+        let b_admin = b_admin.clone();
+        let tenant_b = tenant_b.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/profiles/cards/import"))
+                .header(PRINCIPAL_HEADER, &b_admin)
+                .json(&json!({ "tenant_id": tenant_b, "card": card, "digest": digest }))
+                .send()
+                .await
+                .expect("import");
+            let status = response.status().as_u16();
+            let receipt = response
+                .headers()
+                .get("x-reasonbraid-authorization")
+                .map(|v| v.to_str().unwrap().to_string());
+            (
+                status,
+                receipt,
+                response.json::<Value>().await.expect("import json"),
+            )
+        }
+    };
+    let (card1, digest1) = export(role_id.clone()).await;
+    let (status, _, first) = import(card1.clone(), digest1.clone()).await;
+    assert_eq!(status, 200, "the first import lands: {first}");
+    let local = first["role_id"].as_str().unwrap().to_string();
+
+    // 1. The same card again is a REPLAY naming the same local role, recorded
+    //    as a no-op, writing nothing.
+    let (status, receipt, again) = import(card1.clone(), digest1.clone()).await;
+    assert_eq!(status, 200, "the repeat is answered, not refused: {again}");
+    assert_eq!(again["replayed"], json!(true), "{again}");
+    assert_eq!(again["role_id"], json!(local), "{again}");
+    assert_eq!(again["digest_on_file"], json!(digest1), "{again}");
+    let outcome: Value =
+        sqlx::query_scalar("SELECT outcome FROM administrative_effects WHERE record_id = $1")
+            .bind(receipt.expect("the replay carries its receipt"))
+            .fetch_one(&pool)
+            .await
+            .expect("the replay's effect record exists");
+    assert_eq!(outcome["kind"], json!("no_op"), "{outcome}");
+
+    // 2. The same origin role under a NEW label is the same replay, and the
+    //    digest on file is the FIRST card's — the newer card did not land.
+    let mut relabelled = sample_profile();
+    relabelled["display_label"] = json!("origin-role-renamed");
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &role_id,
+        &relabelled,
+    )
+    .await;
+    assert_eq!(status, 200, "the origin relabels itself");
+    let (card2, digest2) = export(role_id.clone()).await;
+    assert_ne!(digest2, digest1, "a different card");
+    let (status, _, relabelled_import) = import(card2, digest2).await;
+    assert_eq!(status, 200, "{relabelled_import}");
+    assert_eq!(
+        relabelled_import["replayed"],
+        json!(true),
+        "{relabelled_import}"
+    );
+    assert_eq!(
+        relabelled_import["role_id"],
+        json!(local),
+        "the same origin is the same local role, whatever its label: {relabelled_import}"
+    );
+    assert_eq!(relabelled_import["digest_on_file"], json!(digest1));
+    let roles: i64 = sqlx::query_scalar("SELECT count(*) FROM agent_roles WHERE tenant_id = $1")
+        .bind(&tenant_b)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(roles, 1, "one local identity for one origin role");
+
+    // 3. The provenance is on the ledger, read on the full class only.
+    let (status, own) = get(&client, &base, &format!("/v1/profiles/{local}"), &b_admin).await;
+    assert_eq!(status, 200, "{own}");
+    assert_eq!(
+        own["imported_from"]["origin_tenant_id"],
+        json!(tenant_a),
+        "{own}"
+    );
+    assert_eq!(
+        own["imported_from"]["origin_role_id"],
+        json!(role_id),
+        "{own}"
+    );
+    assert_eq!(own["imported_from"]["card_digest"], json!(digest1), "{own}");
+    let (status, foreign) = get(&client, &base, &format!("/v1/profiles/{local}"), &a_admin).await;
+    assert_eq!(status, 200, "{foreign}");
+    assert!(
+        foreign.get("imported_from").is_none(),
+        "the origin is the importing tenant's record, absent for a network reader: {foreign}"
+    );
+
+    // 4. A DIFFERENT origin carrying the taken label is still the label refusal.
+    let (status, twin) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "origin-twin", "tenant_id": tenant_a }),
+    )
+    .await;
+    assert_eq!(status, 200, "{twin}");
+    let twin_id = twin["principal_id"].as_str().unwrap().to_string();
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{twin_id}"),
+        &twin_id,
+        &sample_profile(),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let (twin_card, twin_digest) = export(twin_id).await;
+    let (status, _, refused) = import(twin_card, twin_digest).await;
+    assert_eq!(
+        status, 400,
+        "a different origin under the taken label: {refused}"
+    );
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("already holds an identity labelled"),
+        "{refused}"
     );
 }
 

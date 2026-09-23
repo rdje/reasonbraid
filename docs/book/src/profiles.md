@@ -258,11 +258,36 @@ curl -X POST localhost:4310/v1/profiles/cards/import \
 | allowlist | an **effective recruitment agreement** with the origin tenant | `403 unauthorized` |
 | capability | the local default grant fits the importing tenant's active boundary | `400 invalid_command` |
 
+**A repeat is a replay** (`SIGNOFF-REPAIR.5.3.2`). An import is identified by its
+origin — the card's `origin_tenant_id` and `origin_role_id` — and the importing
+tenant keeps a provenance record of every role it imported. Importing an origin
+role that is already here, under any label and from any later card, answers the
+original local role rather than a second identity:
+
+```json
+{
+  "role_id": "rol_0192…",
+  "origin_tenant_id": "ten_0192…",
+  "origin_role_id": "rol_0192…",
+  "replayed": true,
+  "digest_on_file": "sha256:4b7e…"
+}
+```
+
+`digest_on_file` is the card that landed; a newer card does not refresh the
+local profile, and the digest is how a caller sees that. The replay is recorded
+as a `no_op` effect and writes nothing.
+
 One further refusal comes after the rungs: the card's `display_label` becomes the
 local role's name, and a tenant's identity names are unique. A label already
-taken in the importing tenant answers `400 invalid_command` naming it, and
-changes nothing. Re-importing the same card is the commonest way to reach it,
-because the same card carries the same label.
+taken in the importing tenant — by a role from a **different** origin — answers
+`400 invalid_command` naming it, and changes nothing.
+
+The full-class read of an imported role (`GET /v1/profiles/{role_id}` by the
+role or its tenant administrator) carries `imported_from` — the origin pair, the
+card digest and the time — so where a local role came from is on the ledger and
+not only in whoever still holds the card. A sibling or a network reader does not
+see it.
 
 ⛔ **What the digest rung proves, and what it does not.** It proves the card's
 bytes are the ones the digest names — integrity. It does **not** prove the card
@@ -341,14 +366,12 @@ belonging to a different response, and it no longer guesses.
 
 ## What is not here yet
 
-- **Replay.** Importing the same card twice does not produce a second role, but
-  not because the import recognises it: the second attempt is refused by the
-  label collision above, with a message about the name rather than about the
-  card. There is no idempotency key on the import and no de-duplication by
-  digest, so a re-import and an unrelated label clash are the same answer. What a
-  repeat *ought* to do is an open question — the ordinary enrollment route
-  answers a name collision with a **replay**, returning the original principal id
-  — and `SIGNOFF-REPAIR.5.3` owns it.
+- **Refreshing an imported profile.** A repeat import is a replay
+  (`SIGNOFF-REPAIR.5.3.2`), and a newer card for an already-imported origin does
+  not land: the local profile stays the version that was imported, and the
+  answer names the digest on file. Whether a differing card should refresh the
+  local profile — and under whose authority — is recorded as open in
+  `docs/decisions/2026-09-23_the-federation-goal-line-two-items-met-two-live-defects-and-the-calls-remote-form-unbuilt.md`.
 - **Provenance beyond the agreement.** The origin identity in a card is asserted
   by whoever assembled it, as above. Signed origin attestation is not implemented.
 - **Expiry is not enforced.** `capabilities[].expires_at` is stored and returned

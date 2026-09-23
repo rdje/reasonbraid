@@ -613,6 +613,7 @@ mod tests {
                 "recruitment_responses",
                 "recruitment_offers",
                 "recruitment_calls",
+                "card_imports",
                 "agent_roles",
                 "human_principals",
                 "evidence_citations",

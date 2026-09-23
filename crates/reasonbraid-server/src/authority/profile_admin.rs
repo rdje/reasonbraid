@@ -270,16 +270,21 @@ pub enum CardImportResult {
     /// The importing tenant has no active enrollment boundary to issue under.
     NoActiveBoundary,
     /// The importing tenant already holds an identity under the card's display
-    /// label. A repeated import of the same card lands here, and so does a card
-    /// from a different origin that happens to share a label
-    /// (`SIGNOFF-REPAIR.3.3.4.11.5`).
-    ///
-    /// ⛔ This says the label is taken. It does NOT decide what a repeated import
-    /// ought to do — the ordinary enrollment route answers a name collision with
-    /// a replay, and whether a card import should too is card replay semantics,
-    /// owned by `SIGNOFF-REPAIR.5.3`.
+    /// label — a card from a DIFFERENT origin that happens to share a label
+    /// (`SIGNOFF-REPAIR.3.3.4.11.5`). A repeat of the same origin never reaches
+    /// this: it is [`Self::Replayed`], decided before the label is touched
+    /// (`SIGNOFF-REPAIR.5.3.2`).
     LabelTaken {
         label: String,
+    },
+    /// The origin role is already imported into this tenant: the import is a
+    /// REPLAY naming the local role it landed as and the digest of the card on
+    /// file (`SIGNOFF-REPAIR.5.3.2`) — the enrolment route's answer to a repeat.
+    /// Nothing is written. A card that differs from the one on file does not
+    /// refresh the local profile; the digest on file says so.
+    Replayed {
+        role_id: String,
+        digest_on_file: String,
     },
     /// The imported role's grant exceeds the importing boundary, or that boundary
     /// is absent or outside its live window at the guarded evaluation.
@@ -363,11 +368,23 @@ pub(crate) async fn import_card_in_one_transaction(
                 }
             };
 
-            let outcome =
-                import_after_admission(tx, tenant_id, &card, &presented_digest, at, &principal)
-                    .await?;
+            let outcome = import_after_admission(
+                tx,
+                tenant_id,
+                &card,
+                &presented_digest,
+                at,
+                &principal,
+                &record_id,
+            )
+            .await?;
             let effect = match &outcome {
                 CardImportResult::Imported { .. } => AdministrativeOutcome::Applied {},
+                CardImportResult::Replayed { role_id, .. } => AdministrativeOutcome::NoOp {
+                    detail: bounded_detail(format!(
+                        "the origin role is already imported as `{role_id}`"
+                    )),
+                },
                 CardImportResult::NoAgreement { origin_tenant } => AdministrativeOutcome::Refused {
                     code: AdministrativeRefusal::Unauthorized,
                     detail: bounded_detail(format!(
@@ -443,6 +460,7 @@ async fn import_after_admission(
     presented_digest: &str,
     at: chrono::DateTime<chrono::Utc>,
     principal: &GrantSubject,
+    record_id: &str,
 ) -> Result<CardImportResult, GuardError> {
     // The pure rungs stay where the superseded route had them — AFTER the
     // admission. Moving them earlier would have been a wire change in the one
@@ -476,6 +494,28 @@ async fn import_after_admission(
     {
         return Ok(CardImportResult::NoAgreement {
             origin_tenant: card.origin_tenant_id.clone(),
+        });
+    }
+    // The replay key (`SIGNOFF-REPAIR.5.3.2`): an import is identified by its
+    // ORIGIN, never by the card's label. Read under the importing tenant's
+    // exclusive guard, which serializes this tenant's imports, so this read and
+    // the provenance write below cannot interleave with another import of the
+    // same origin; `card_imports`' UNIQUE key is the backstop, not the detector.
+    // After the allowlist rung, so a revoked agreement refuses the replay too:
+    // no agreement, no cross-domain answer (ADR-026).
+    let on_file: Option<(String, String)> = sqlx::query_as(
+        "SELECT role_id, card_digest FROM card_imports \
+         WHERE tenant_id = $1 AND origin_tenant_id = $2 AND origin_role_id = $3",
+    )
+    .bind(&importing)
+    .bind(&card.origin_tenant_id)
+    .bind(&card.origin_role_id)
+    .fetch_optional(&mut *conn)
+    .await?;
+    if let Some((role_id, digest_on_file)) = on_file {
+        return Ok(CardImportResult::Replayed {
+            role_id,
+            digest_on_file,
         });
     }
 
@@ -576,6 +616,32 @@ async fn import_after_admission(
         return Ok(CardImportResult::LabelTaken {
             label: card.profile.display_label.clone(),
         });
+    }
+    // The provenance record (`SIGNOFF-REPAIR.5.3.2`): the origin pair, the
+    // digest that landed, the admission, the time. A conflict here would be a
+    // provenance row that appeared under this tenant's exclusive guard, which
+    // the guard makes impossible; it is a storage failure that rolls the whole
+    // import back, not a second refusal vocabulary.
+    let recorded: Option<String> = sqlx::query_scalar(
+        "INSERT INTO card_imports \
+         (role_id, tenant_id, origin_tenant_id, origin_role_id, card_digest, record_id, imported_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7) \
+         ON CONFLICT DO NOTHING RETURNING role_id",
+    )
+    .bind(&role_id)
+    .bind(&importing)
+    .bind(&card.origin_tenant_id)
+    .bind(&card.origin_role_id)
+    .bind(presented_digest)
+    .bind(record_id)
+    .bind(at)
+    .fetch_optional(&mut *conn)
+    .await?;
+    if recorded.is_none() {
+        return Err(GuardError::Storage(sqlx::Error::Protocol(
+            "a provenance row for this origin appeared under the importing tenant's exclusive guard"
+                .into(),
+        )));
     }
     // The cross-domain receipt (`.1.4`, ADR-026): the remote reference is the
     // card's digest as the CALLER presented it — it is what that domain's own

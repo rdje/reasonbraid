@@ -1456,7 +1456,8 @@ Everything is now inside that transaction, in this order:
 | Digest and compatibility rungs | Pure. The digest must re-derive from the card's own canonical bytes, and the schema version must be the supported one. |
 | Allowlist rung | The EFFECTIVE recruitment agreement with the origin — both sides accepted, both carrying `recruitment`. |
 | Boundary | The importing tenant's active enrollment boundary, read in the same transaction that then issues against it. |
-| Grant, identity, quota, enrollment, receipt | The default local grant — issued by the administrator whose admission the import runs under (`SIGNOFF-REPAIR.5.3.3`) — the `agent_roles` row, the per-principal quota row, the enrollment row and the cross-domain receipt. |
+| Replay key | The importing tenant's provenance record for this origin role (`SIGNOFF-REPAIR.5.3.2`): one on file answers the original local role and writes nothing. |
+| Grant, identity, quota, enrollment, provenance, receipt | The default local grant — issued by the administrator whose admission the import runs under (`SIGNOFF-REPAIR.5.3.3`) — the `agent_roles` row, the per-principal quota row, the enrollment row, the provenance record and the cross-domain receipt. |
 | **Profile** | The card's profile, written as the local role's first version. |
 | Effect record | `profile_card_import`, with the outcome. |
 
@@ -1525,11 +1526,17 @@ another. Both inserts now use `ON CONFLICT … DO NOTHING RETURNING`, so the
 collision is a value rather than a raise, and it answers `400 invalid_command`
 with an effect record that says the same thing (`SIGNOFF-REPAIR.3.3.4.11.5`).
 
-⛔ That refusal says the **label is taken**. It deliberately does not decide what
-a repeated import *ought* to do — the ordinary enrollment route answers a
-`(tenant, kind, name)` collision with a replay, returning the original principal
-id, and whether a card import should do the same is card replay semantics owned
-by `SIGNOFF-REPAIR.5.3`. Making the import atomic is also what turned this from a
+⛔ That refusal says the **label is taken**, and since `SIGNOFF-REPAIR.5.3.2` it
+is only ever a *different* origin's card: a repeat of the same origin role is
+decided first, by the importing tenant's provenance record (`card_imports`,
+unique per origin role per tenant), and answers a **replay** naming the original
+local role with the digest of the card on file — the enrollment route's answer
+to a repeat, recorded as a `no_op`. The record is read under the importing
+tenant's exclusive guard, which serializes that tenant's imports, so the unique
+key is a backstop and never the detector — a raised key would abort the
+transaction carrying the admission and the effect record, which is the shape
+`docs/knowledge/a-raised-constraint-cannot-be-a-recorded-refusal.md` forbids.
+Making the import atomic is also what turned the label collision from a
 survivable mess into an unrecordable one: once the admission and the effect record
 share the transaction, a raised constraint takes them down with it.
 

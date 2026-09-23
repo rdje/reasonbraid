@@ -61,7 +61,7 @@ pub use authority::{
     grant_active_at, grant_exceeds_boundary, object_only, policy_digest, ActionClass,
     AdministrativeEffectRecord, AdministrativeOperation, AdministrativeOutcome,
     AdministrativeReason, AdministrativeRefusal, AdministrativeTargetId, AdministrativeTextError,
-    AuthorityGrant, AuthorizationDecisionRecord, AuthorizationEvaluation, AutoBounds,
+    Audience, AuthorityGrant, AuthorizationDecisionRecord, AuthorizationEvaluation, AutoBounds,
     BoundaryStatus, BoundaryViolation, CacheVerdict, CachedDecision, CachedDecisionKind, Decision,
     DelegationConstraints, EnrollmentAuthorityBoundary, FailMode, GrantAction, GrantStatus,
     GrantSubject, ResourceTarget, RiskClass, TargetSelector, TenantAdminInspection,

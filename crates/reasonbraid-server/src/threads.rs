@@ -273,6 +273,11 @@ pub struct AutoLineage {
     pub caused_by: Option<ThreadId>,
     pub depth: u32,
     pub initiators: Vec<String>,
+    /// The grant that admitted the initiation
+    /// (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.3`), set by the handler once it is
+    /// known; the thread carries it so a call opened on it later can read the
+    /// grant's audience bound.
+    pub initiating_grant: Option<String>,
 }
 
 /// Why an autonomous initiation was refused its place in a chain.
@@ -334,6 +339,7 @@ pub fn auto_lineage(
             caused_by: None,
             depth: 1,
             initiators: vec![role.to_owned()],
+            initiating_grant: None,
         });
     };
     if parent.participants.get(role) != Some(&ParticipationState::Accepted) {
@@ -354,6 +360,7 @@ pub fn auto_lineage(
         caused_by: Some(*parent_id),
         depth,
         initiators,
+        initiating_grant: None,
     })
 }
 
@@ -1025,6 +1032,11 @@ pub struct ThreadProjection {
     pub caused_by: Option<ThreadId>,
     #[serde(default)]
     pub autonomous_initiators: Vec<String>,
+    /// The grant that admitted an autonomous initiation
+    /// (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.3`); `None` for a thread a human
+    /// created, and for every thread created before the field existed.
+    #[serde(default)]
+    pub initiating_grant: Option<String>,
     pub ceiling_id: String,
     pub budget: BudgetDimensions,
 }
@@ -1229,6 +1241,10 @@ pub fn prepare_create(
             .as_ref()
             .map(|l| l.initiators.clone())
             .unwrap_or_default(),
+        initiating_grant: body
+            .lineage
+            .as_ref()
+            .and_then(|l| l.initiating_grant.clone()),
         ceiling_id: ceiling_id.clone(),
         budget,
     };
@@ -1247,6 +1263,7 @@ pub fn prepare_create(
         "autonomous_depth": projection.autonomous_depth,
         "caused_by": projection.caused_by.map(|t| t.to_string()),
         "autonomous_initiators": projection.autonomous_initiators,
+        "initiating_grant": projection.initiating_grant,
         "budget": budget,
         "classification": projection.classification,
         "workflow_profile": projection.workflow_profile,

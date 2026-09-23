@@ -301,6 +301,39 @@ async fn enroll_node(
 
 /// A minimal §10.1 profile (the typed boundary accepts the full shape; the
 /// test drives the minimal one plus the fields the assertions need).
+/// A person creates a thread through the command envelope and returns its id.
+/// The call fixtures need a REAL thread since `SIGNOFF-REPAIR.5.2`'s attached
+/// clause: a call is bound to a thread that exists in the tenant.
+async fn create_thread(
+    client: &reqwest::Client,
+    base: &str,
+    human_id: &str,
+    tenant: &str,
+    key: &str,
+) -> String {
+    let response = client
+        .post(format!("{base}/v1/threads"))
+        .header(PRINCIPAL_HEADER, human_id)
+        .json(&json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": key,
+            "body": { "tenant_id": tenant, "subject": "a real thread", "objective": "probe" },
+            "client_context": {},
+        }))
+        .send()
+        .await
+        .expect("create request");
+    assert_eq!(
+        response.status().as_u16(),
+        200,
+        "the person's thread is created"
+    );
+    let body: Value = response.json().await.expect("create json");
+    body["thread_id"].as_str().unwrap().to_string()
+}
+
 fn profile(claims: Value) -> Value {
     json!({
         "display_label": "directory probe",
@@ -1603,12 +1636,15 @@ async fn the_open_call_storm_controls_hold_at_the_dev_scale() {
     .await;
     assert_eq!(status, 200, "the role writes its profile");
 
+    // `SIGNOFF-REPAIR.5.2`'s attached clause: the call is bound to a real
+    // thread, so this fixture seeds one rather than a literal id.
+    let storm_thread = create_thread(&client, &base, &human_id, &tenant, "storm-thread").await;
     let open = |key: &str, deadline: &str, expiry: &str| {
         let client = client.clone();
         let base = base.clone();
         let human_id = human_id.clone();
         let tenant = tenant.clone();
-        let thread_id = "thr_00000000-0000-7000-8000-000000000001".to_string();
+        let thread_id = storm_thread.clone();
         let key = key.to_string();
         let deadline = deadline.to_string();
         let expiry = expiry.to_string();
@@ -1761,12 +1797,14 @@ async fn the_open_call_advertises_to_the_subscribers() {
 
     let deadline = (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
     let expiry = (chrono::Utc::now() + chrono::Duration::hours(2)).to_rfc3339();
+    // `SIGNOFF-REPAIR.5.2`'s attached clause: a real thread for the call below.
+    let subs_thread = create_thread(&client, &base, &human_id, &tenant, "subs-thread").await;
     let response = client
         .post(format!("{base}/v1/calls"))
         .header(PRINCIPAL_HEADER, &human_id)
         .json(&json!({
             "tenant_id": tenant,
-            "thread_id": "thr_00000000-0000-7000-8000-000000000002",
+            "thread_id": subs_thread,
             "expression": {
                 "scope": "tenant",
                 "interests": ["parser trivia"],
@@ -2157,6 +2195,149 @@ async fn the_auto_initiation_lands_under_the_grant_and_the_checklist() {
         403,
         "the plain create stays denied — no inherited permission"
     );
+}
+
+/// `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.3`: an autonomous thread remembers the
+/// grant that admitted it, and a call opened on it may not target a wider
+/// audience than that grant allows. And `SIGNOFF-REPAIR.5.2`'s attached clause:
+/// a call is bound to a REAL thread in the tenant — one that does not exist
+/// answers `404 scope_hidden`, where it used to be opened on nothing.
+#[tokio::test]
+async fn an_autonomous_threads_calls_are_bounded_by_its_grants_audience() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "audience-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{human}");
+    let tenant = human["tenant_id"].as_str().unwrap().to_string();
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let boundary_id = human["boundary_id"].as_str().unwrap().to_string();
+    sqlx::query(
+        "UPDATE enrollment_boundaries \
+         SET permitted_actions = permitted_actions || '[\"thread_create_auto\"]'::jsonb \
+         WHERE boundary_id = $1",
+    )
+    .bind(&boundary_id)
+    .execute(&pool)
+    .await
+    .expect("the boundary permits the auto action");
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({
+            "kind": "role", "name": "audience-agent", "tenant_id": tenant,
+            "actions": ["thread_create_auto"],
+            "auto_bounds": { "audience": "tenant" },
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "{role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    let grant_id = role["grant_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &human_id, &tenant, &role_id).await;
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &role_id,
+        &visibility_profile(),
+    )
+    .await;
+    assert_eq!(status, 200);
+
+    // The role initiates; the thread remembers the admitting grant.
+    let response = client
+        .post(format!("{base}/v1/threads/auto"))
+        .header(PRINCIPAL_HEADER, &role_id)
+        .json(&json!({
+            "tenant_id": tenant,
+            "subject": "an autonomous thread",
+            "objective": "probe",
+            "topics": ["parser trivia"],
+            "idempotency_key": "aud-1",
+        }))
+        .send()
+        .await
+        .expect("auto request");
+    assert_eq!(response.status().as_u16(), 200);
+    let created: Value = response.json().await.expect("auto json");
+    let auto_thread = created["thread_id"].as_str().unwrap().to_string();
+    let (status, state) = get(
+        &client,
+        &base,
+        &format!("/v1/threads/{auto_thread}?tenant_id={tenant}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "{state}");
+    assert_eq!(
+        state["state"]["initiating_grant"],
+        json!(grant_id),
+        "the thread names the grant that admitted it: {state}"
+    );
+
+    let deadline = (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
+    let expiry = (chrono::Utc::now() + chrono::Duration::hours(2)).to_rfc3339();
+    let open = |thread: String, scope: &'static str| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let tenant = tenant.clone();
+        let deadline = deadline.clone();
+        let expiry = expiry.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/calls"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .json(&json!({
+                    "tenant_id": tenant,
+                    "thread_id": thread,
+                    "expression": { "scope": scope, "presence_states": ["available", "offline"] },
+                    "min_participants": 1,
+                    "join_deadline": deadline,
+                    "expires_at": expiry,
+                }))
+                .send()
+                .await
+                .expect("open request");
+            let status = response.status().as_u16();
+            (status, response.json::<Value>().await.expect("open json"))
+        }
+    };
+
+    // A network-scoped call on the tenant-bounded thread is refused, naming the
+    // bound; a tenant-scoped one lands.
+    let (status, refused) = open(auto_thread.clone(), "network").await;
+    assert_eq!(status, 403, "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("audience bound"),
+        "the refusal names the bound: {refused}"
+    );
+    let (status, landed) = open(auto_thread.clone(), "tenant").await;
+    assert_eq!(status, 200, "{landed}");
+
+    // A person's thread carries no initiating grant: the network scope is free.
+    let own = create_thread(&client, &base, &human_id, &tenant, "aud-own").await;
+    let (status, landed) = open(own, "network").await;
+    assert_eq!(status, 200, "no initiating grant, no bound: {landed}");
+
+    // And a call on a thread that does not exist is refused like every other
+    // thread view, rather than opened on nothing.
+    let absent = reasonbraid_core::ThreadId::new().to_string();
+    let (status, hidden) = open(absent, "tenant").await;
+    assert_eq!(status, 404, "{hidden}");
+    assert_eq!(hidden["code"], json!("scope_hidden"), "{hidden}");
 }
 
 /// `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.1` + `.2.3.2`, shipped together so the
@@ -3223,12 +3404,14 @@ async fn the_panel_snapshot_carries_the_dependence_indicators() {
 
     let deadline = (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
     let expiry = (chrono::Utc::now() + chrono::Duration::hours(2)).to_rfc3339();
+    // `SIGNOFF-REPAIR.5.2`'s attached clause: a real thread for the call below.
+    let dep_thread = create_thread(&client, &base, &human_id, &tenant, "dep-thread").await;
     let response = client
         .post(format!("{base}/v1/calls"))
         .header(PRINCIPAL_HEADER, &human_id)
         .json(&json!({
             "tenant_id": tenant,
-            "thread_id": "thr_00000000-0000-7000-8000-000000000003",
+            "thread_id": dep_thread,
             "expression": {
                 "scope": "tenant",
                 "capabilities": [{ "taxonomy_id": "code_review", "min_confidence": "owner_attested" }],

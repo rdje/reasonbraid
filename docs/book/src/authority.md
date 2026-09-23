@@ -15,8 +15,10 @@ An enrollment boundary defines permitted actions, domains, risk, spend, delegati
 and a validity window. A grant names a subject, action set, selector, validity
 window and parent boundary, an optional spend limit (`{"amount": N}`, within the
 boundary's ceiling) and — for `thread_create_auto` — optional typed **auto
-bounds**: `topics` (the only topics an initiation may declare) and `max_depth`
-(the deepest chain position it may take, never above the site ceiling of 3). The
+bounds**: `topics` (the only topics an initiation may declare), `max_depth`
+(the deepest chain position it may take, never above the site ceiling of 3) and
+`audience` (`tenant` or `network`, the widest scope a call opened on an initiated
+thread may target). The
 core evaluator checks the supplied grant against the supplied boundary and returns
 an allowed or denied decision.
 

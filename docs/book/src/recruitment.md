@@ -47,6 +47,18 @@ curl -s -X POST localhost:4310/v1/calls \
   `min_participants`; anything else is refused.
 - `recommendations_allowed` decides whether a respondent may answer `recommend`
   and point at somebody else.
+- `thread_id` names a thread **in `tenant_id`**. A thread that does not exist
+  there, or belongs to another tenant, answers `404 scope_hidden` — the same
+  answer every thread view gives — so a call is never opened on nothing
+  (`SIGNOFF-REPAIR.5.2`).
+
+⛔ **A call on a thread a role started on its own is bounded by that role's
+grant** (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.3`). The thread records the grant
+that admitted its initiation as `initiating_grant`, and when that grant declares
+`auto_bounds.audience: "tenant"`, a call whose eligibility `scope` is `network`
+is refused with a `403` naming the bound. `"network"` admits any scope, and a
+grant with no audience bound leaves the call as free as one on a person's
+thread.
 
 ⛔ **Open calls are capped per tenant and per initiator.** Exceeding either
 returns a typed `429` that names the limit it hit — the dev-scale storm control,
@@ -124,7 +136,8 @@ a grant may carry, declared at enrolment ([authority](authority.md#enrollment-bo
 | topic | `auto_bounds.topics` | every declared topic must be in the list, **and** in the role's own `interests` — two declarations by two parties, both apply |
 | depth | `auto_bounds.max_depth` | the deepest chain position admitted; absent means the site ceiling of 3 |
 | rate | — | the role's `initiator` quota row (see below), not the grant |
-| audience, side-effect | — | not yet carried: `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.3` and `.4` |
+| audience | `auto_bounds.audience` | `tenant` or `network`: the widest eligibility `scope` a call opened on the thread may target |
+| side-effect | — | not yet carried: no verb attributes a side effect to a thread (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.4`) |
 
 `idempotency_key` names **this** initiation. Sending the same key again — a
 retried delivery — returns the thread the first delivery created, marked
@@ -173,6 +186,7 @@ so `GET /v1/threads/{id}` shows it:
 | `autonomous_depth` | 0 for a thread a person created; 1 for an initiation with no `caused_by`; otherwise one more than the cause's |
 | `caused_by` | the thread named as the cause, or `null` |
 | `autonomous_initiators` | every role that auto-initiated along the chain, this one included |
+| `initiating_grant` | the grant that admitted this initiation, whose bounds calls on the thread honour; absent on a person's thread |
 
 Three things are refused before anything is written:
 

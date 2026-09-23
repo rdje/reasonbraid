@@ -5561,14 +5561,14 @@ async fn create_thread_auto(
     // `max()` over the subject's grants (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.2`,
     // discharging `.5.2` clause 2): an expired or not-yet-valid grant cannot
     // admit, so it cannot raise the ceiling either.
-    let admitting: Option<(Option<Value>, Option<Value>)> = sqlx::query_as(
-        "SELECT g.spend_limits, g.auto_bounds FROM authorization_records r \
+    let admitting: Option<(String, Option<Value>, Option<Value>)> = sqlx::query_as(
+        "SELECT g.grant_id, g.spend_limits, g.auto_bounds FROM authorization_records r \
          JOIN authority_grants g ON g.grant_id = r.grant_id WHERE r.record_id = $1",
     )
     .bind(&admitting_record)
     .fetch_optional(&state.pool)
     .await?;
-    let Some((spend_limits, auto_bounds)) = admitting else {
+    let Some((admitting_grant, spend_limits, auto_bounds)) = admitting else {
         return Err(ControlApiError::internal_with_log(format!(
             "authorization record `{admitting_record}` admitted and names no grant"
         )));
@@ -5694,7 +5694,7 @@ async fn create_thread_auto(
         .map_or(threads::MAX_AUTONOMOUS_DEPTH, |declared| {
             declared.min(threads::MAX_AUTONOMOUS_DEPTH)
         });
-    let lineage = threads::auto_lineage(
+    let mut lineage = threads::auto_lineage(
         &role.to_string(),
         parent.as_ref().map(|(id, projection)| (id, projection)),
         ceiling,
@@ -5717,6 +5717,10 @@ async fn create_thread_auto(
         "subject": req.subject,
         "objective": req.objective,
     });
+    // The thread remembers the grant that admitted it
+    // (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.3`), so a call opened on it later can
+    // read that grant's audience bound.
+    lineage.initiating_grant = Some(admitting_grant);
     let mut body: threads::CreateBody = serde_json::from_value(body_value.clone())
         .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
     body.lineage = Some(lineage);
@@ -5783,6 +5787,18 @@ async fn create_thread_auto(
     Ok(json_response(response.0, response.1))
 }
 
+/// Whether an audience bound admits a call's eligibility scope: `network`
+/// admits any scope; `tenant` admits every scope narrower than the network.
+fn audience_admits(
+    audience: reasonbraid_core::Audience,
+    scope: crate::profiles::ReaderClass,
+) -> bool {
+    match audience {
+        reasonbraid_core::Audience::Network => true,
+        reasonbraid_core::Audience::Tenant => scope != crate::profiles::ReaderClass::Network,
+    }
+}
+
 /// The call-open body (the §10.5 spec; the expression rides typed).
 #[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -5820,6 +5836,10 @@ async fn open_recruitment_call(
         .tenant_id
         .parse()
         .map_err(|_| ControlApiError::invalid_command("tenant_id is malformed"))?;
+    let thread_id: ThreadId = req
+        .thread_id
+        .parse()
+        .map_err(|_| ControlApiError::invalid_command("thread_id is malformed"))?;
     let authz = CommandAuthz {
         actor: actor_handle_for_subject(&principal),
         principal: principal.clone(),
@@ -5827,10 +5847,7 @@ async fn open_recruitment_call(
         action: GrantAction::ThreadInvite,
         target: ResourceTarget::Thread {
             tenant_id,
-            thread_id: req
-                .thread_id
-                .parse()
-                .map_err(|_| ControlApiError::invalid_command("thread_id is malformed"))?,
+            thread_id,
         },
     };
     match authority::authorize_guarded(&state.pool, &authz).await? {
@@ -5841,6 +5858,45 @@ async fn open_recruitment_call(
             )));
         }
         AuthorizationOutcome::Allowed { .. } => {}
+    }
+    // The call is bound to a REAL thread in the named tenant
+    // (`SIGNOFF-REPAIR.5.2`'s attached clause): the same tenant-bound read every
+    // thread view makes, and the same answer for a thread the caller cannot see.
+    // ⛔ Until this check a call could be opened on any id at all — the two
+    // storm-control fixtures went green on literal ids no thread ever had.
+    let Some(projection) = load_thread_projection(&state.pool, tenant_id, thread_id).await? else {
+        return Err(ControlApiError::scope_hidden());
+    };
+    // The audience bound (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.3`): a call on a
+    // thread a role initiated on its own may not target a wider audience than
+    // the initiating grant allows. Read from the grant the thread names.
+    if let Some(grant_id) = &projection.initiating_grant {
+        let audience: Option<Value> = sqlx::query_scalar(
+            "SELECT auto_bounds->'audience' FROM authority_grants WHERE grant_id = $1",
+        )
+        .bind(grant_id)
+        .fetch_optional(&state.pool)
+        .await?
+        .flatten();
+        if let Some(audience) = audience {
+            let audience: reasonbraid_core::Audience =
+                serde_json::from_value(audience).map_err(|e| {
+                    ControlApiError::internal_with_log(format!("stored audience unreadable: {e}"))
+                })?;
+            if !audience_admits(audience, req.expression.scope) {
+                return Err(ControlApiError::unauthorized(format!(
+                    "the initiating grant's audience bound refuses: the call's scope `{}` is wider than `{}`",
+                    serde_json::to_value(req.expression.scope)
+                        .ok()
+                        .and_then(|v| v.as_str().map(str::to_owned))
+                        .unwrap_or_default(),
+                    serde_json::to_value(audience)
+                        .ok()
+                        .and_then(|v| v.as_str().map(str::to_owned))
+                        .unwrap_or_default(),
+                )));
+            }
+        }
     }
     if req.min_participants < 1 || req.max_participants < req.min_participants {
         return Err(ControlApiError::invalid_command(

@@ -431,6 +431,19 @@ impl GrantSubject {
     }
 }
 
+/// The widest audience a call opened on an autonomously initiated thread may
+/// target (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.3`): the reader scope a
+/// recruitment call's eligibility expression evaluates candidates at, which is
+/// what §10.5 calls a call's audience.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Audience {
+    /// Calls may target the thread's own tenant only.
+    Tenant,
+    /// Calls may target any enrolled principal.
+    Network,
+}
+
 /// The typed bounds a `thread_create_auto` grant carries beside its spend limit
 /// (ROADMAP §11.5: *topic, audience, rate, depth, spend, and side-effect
 /// bounds*; `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.1`). Every field is optional:
@@ -443,13 +456,17 @@ pub struct AutoBounds {
     /// The only topics an initiation under this grant may declare. A present
     /// list is non-empty: an empty bound would admit nothing, and a grant that
     /// admits nothing is issued without the action instead.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub topics: Option<Vec<String>>,
     /// The deepest causation-chain position an initiation under this grant
     /// may take, 1 or more and never above the site ceiling
     /// (`MAX_AUTONOMOUS_DEPTH` on the server).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_depth: Option<u32>,
+    /// The widest audience a call opened on a thread initiated under this
+    /// grant may target. Absent is no bound from the issuer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audience: Option<Audience>,
 }
 
 /// A scoped mandate under one boundary (§4.2/§4.4).

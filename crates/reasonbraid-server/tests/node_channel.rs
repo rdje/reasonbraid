@@ -2624,9 +2624,12 @@ async fn a_declared_capacity_bounds_what_the_replay_hands_the_node() {
     );
 
     // ── One finishes: in flight 1, so exactly one more row is handed over.
+    // A node's operation id is its own (`op_…`), never the command id; the
+    // result names its command in the payload (`SIGNOFF-REPAIR.4.4.9`).
     sqlx::query(
         "INSERT INTO node_events (event_id, node_id, operation_id, payload) \
-         VALUES ('evt_cap_1', $1, 'cmd_cap_1', '{\"kind\":\"work_result\"}'::jsonb)",
+         VALUES ('evt_cap_1', $1, 'op_cap_1', \
+                 '{\"kind\":\"work_result\",\"command_id\":\"cmd_cap_1\"}'::jsonb)",
     )
     .bind(&role_id)
     .execute(&pool)
@@ -2965,9 +2968,11 @@ async fn the_delivery_ladder_reads_through_the_inbox_state_view() {
     .execute(&pool)
     .await
     .expect("ack");
+    // A node's operation id is its own (`op_…`), never the command id; the
+    // result names its command in the payload (`SIGNOFF-REPAIR.4.4.9`).
     sqlx::query(
         "INSERT INTO node_events (event_id, node_id, operation_id, payload) \
-         VALUES ('evt_walk_1', $1, 'cmd_consumed', '{\"kind\":\"work_result\",\"command_id\":\"cmd_consumed\"}')",
+         VALUES ('evt_walk_1', $1, 'op_walk_1', '{\"kind\":\"work_result\",\"command_id\":\"cmd_consumed\"}')",
     )
     .bind(&node_id)
     .execute(&pool)
@@ -5676,9 +5681,12 @@ async fn a_node_holding_its_declared_capacity_reads_busy_and_leaves_it() {
     );
 
     // ── ARM 3: the work finishes. `busy` is a state the node LEAVES.
+    // A node's operation id is its own (`op_…`), never the command id; the
+    // result names its command in the payload (`SIGNOFF-REPAIR.4.4.9`).
     sqlx::query(
         "INSERT INTO node_events (event_id, node_id, operation_id, payload) \
-         VALUES ('evt_busy_1', $1, $2, '{\"kind\":\"work_result\"}'::jsonb)",
+         VALUES ('evt_busy_1', $1, 'op_busy_1', \
+                 jsonb_build_object('kind', 'work_result', 'command_id', $2::text))",
     )
     .bind(&role_id)
     .bind(&command_id)
@@ -5933,7 +5941,7 @@ async fn a_foreign_nodes_result_does_not_read_this_nodes_row_consumed() {
     // Only node B's result came back.
     sqlx::query(
         "INSERT INTO node_events (event_id, node_id, operation_id, payload) \
-         VALUES ('evt_twin_b', $1, 'cmd_twin', \
+         VALUES ('evt_twin_b', $1, 'op_twin_b', \
                  '{\"kind\":\"work_result\",\"command_id\":\"cmd_twin\"}')",
     )
     .bind(&node_b)

@@ -389,12 +389,19 @@ repair every successful item was reported *the attempt is terminal* one poll
 after it succeeded. Because the quarantine outranks every other state, it
 then read `dead_lettered`.
 
-⚠️ **Known defect, owned by `SIGNOFF-REPAIR.4.4.9`:** for a real node, the
-`consumed` row above never appears. The rung looks for a result whose
-*operation id* is the command id, but a node's operation ids are its own
-(`op_…`). A delivered item therefore reads `transport_received`. The
-correction keys the rung on the command the result names, which is what the
-server's guard above already uses.
+**`consumed` is found by the command the result names** (`SIGNOFF-REPAIR.4.4.9`,
+`migrations/0105`). The rung looks for a `work_result` from this node whose
+payload names the row's command, which is what the fold and the dead-letter
+guard read too. From `0021` until this repair it looked for a result whose
+*operation id* was the command id. A node's operation ids are its own (`op_…`),
+so no real node's result ever matched: a delivered row read
+`transport_received` for good. Because capacity counts the same rung (next
+section), every finished item also stayed **in flight**. A node that had
+completed as many items as its declared concurrency was handed nothing more
+until the retention prune removed the rows. The controls that asserted
+`consumed` had built their result events by hand with the command id as the
+operation id, a shape no node sends. They now use a node's shape, and a real
+node's delivery is asserted end to end.
 
 ⚠️ **`transport_received` is not an acknowledgement, and the two words are kept
 apart on purpose.** `ROADMAP.md` §10.6 states it directly — *transport receipt

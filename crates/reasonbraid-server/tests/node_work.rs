@@ -2248,7 +2248,7 @@ async fn a_refused_result_is_settled_and_the_node_journals_the_refusal() {
 /// NODE: the ticks after its result was delivered send nothing (the retry gate
 /// now calls a completed attempt SETTLED, not refused). SERVER: a dead-letter
 /// report for a row whose result this node already delivered is a receipt with
-/// no domain effect: the row stays unquarantined. Before the repair
+/// no domain effect: the row stays `consumed` and unquarantined. Before the repair
 /// the node reported *the attempt is terminal* one tick after success, the
 /// server quarantined the row on it, and `node_inbox_state` (which ranks the
 /// quarantine first) read every successful item `dead_lettered`.
@@ -2319,10 +2319,9 @@ async fn a_completed_item_is_never_dead_lettered() {
         None,
         "the node did not dead-letter its own finished work"
     );
-    // ⚠️ Not yet `consumed`: that rung never fires for a real node's result,
-    // which is `SIGNOFF-REPAIR.4.4.9`'s defect (found here). Until then, the
-    // assertion is that the row is not `dead_lettered`.
-    assert_ne!(delivery_state(&pool, &role).await, "dead_lettered");
+    // `consumed`, found by the command the result names: a real node's
+    // operation id is its own (`SIGNOFF-REPAIR.4.4.9`, which this control found).
+    assert_eq!(delivery_state(&pool, &role).await, "consumed");
 
     // The server side, on its own: a dead-letter report for the consumed row.
     let item = node
@@ -2351,5 +2350,5 @@ async fn a_completed_item_is_never_dead_lettered() {
         None,
         "a row whose result was delivered is not quarantined by a later report"
     );
-    assert_ne!(delivery_state(&pool, &role).await, "dead_lettered");
+    assert_eq!(delivery_state(&pool, &role).await, "consumed");
 }

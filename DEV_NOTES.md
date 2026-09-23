@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-24 — A delivered job now shows as done, and stops counting against the machine's capacity (`SIGNOFF-REPAIR.4.4.9`)
+
+`REASONBRAID-REPAIR-0468`. A defect found while testing the previous fix.
+
+- 🔴 **Before:** a job a real machine had finished and delivered never showed as "done" in the operator's inbox view, only "received". Worse, the same check decides how busy a machine is, so every finished job kept counting as "in progress". A machine allowed N jobs at a time stopped getting new work after its first N, until old records were cleaned out. The tests had not noticed because they built their fake results in a shape no real machine produces.
+- ✅ **Now:** the server recognises a finished job by the job the answer names, so it shows as done and frees its capacity slot at once. The tests now use results shaped the way a real machine sends them, plus one end-to-end check with a real machine.
+- ✅ Tested: five checks failed on the old code (two of them the capacity checks) and pass now; six live suites and the two-machine demonstration pass; a deliberately broken version was caught; strict lint clean.
+- Technical: `migrations/0105_node_inbox_consumed_by_command.sql` redefines `node_inbox_state`'s `consumed` rung as `e.payload->>'kind' = 'work_result' AND e.payload->>'command_id' = i.command_id` (was `e.operation_id = i.command_id` since `0021`); four `node_channel.rs` fixtures re-shaped to `op_…` ids; `node_work::a_completed_item_is_never_dead_lettered` asserts `consumed`.
+
 ## 2026-09-24 — Finished jobs are no longer reported as undeliverable (`SIGNOFF-REPAIR.4.4.8`)
 
 `REASONBRAID-REPAIR-0467`. A defect found while testing the previous fix.

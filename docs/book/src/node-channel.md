@@ -844,8 +844,23 @@ decision** that rides each delivered work item (ROADMAP §16.4: nodes may cache
 only explicitly cacheable decisions; §11.1: the minimum authorized state). A
 delivered command carries `authz_ref` (the admitting authorization record),
 `policy_digest`, `decided_at`, and `revocation_epoch` — the tenant's epoch **at
-decision time**. The handshake and poll responses carry the tenant's **current**
-`revocation_epoch` and the server's own clock as `server_time`.
+decision time**. The handshake and poll responses carry `revocation_epochs`, the
+**current** epoch of every tenant whose work the node holds — its own, and each
+tenant with a command in its inbox — and the server's own clock as
+`server_time`:
+
+```json
+"revocation_epochs": { "ten_0192…(own)": 3, "ten_0193…(another)": 5 }
+```
+
+⚠️ **One epoch per tenant, not one per node** (`SIGNOFF-REPAIR.5.3.5.3.2`).
+Until this repair the responses carried a single `revocation_epoch`, the node's
+own tenant's, and the node kept one value and compared every command against
+it. A node that held two tenants' work — which an imported identity bound to
+its origin node will produce — would have judged one tenant's admission by the
+other's revocations: a revocation in B would refuse A's still-valid work, and
+B's stale work could pass under A's unchanged epoch. The node now stores the
+epochs per tenant and judges each command by **its own tenant's**.
 
 At the **dispatch boundary** (before any provider contact) the node evaluates
 the cached decision against the declared rules:
@@ -875,7 +890,7 @@ the cached decision against the declared rules:
 
   ⚠️ The offset is taken from the server's own statement, so it is **not a
   secure time source**. It adds no new trust: the node already accepts
-  `revocation_epoch` from the same response, which is a stronger claim than the
+  `revocation_epochs` from the same response, which is a stronger claim than the
   time. Treat it as a correction, not as clock security.
 
   ⛔ An earlier repair bounded this hazard without a wire change, by running the
@@ -888,10 +903,16 @@ the cached decision against the declared rules:
 
 - **Revocation epoch** — every revocation write (node, grant, or boundary)
   bumps the tenant's epoch in the same transaction as the status change; a
-  cached decision whose recorded epoch no longer matches the current one is
-  invalidated, however fresh it looks. The node learns the current epoch from
-  the next handshake/poll — so a revocation refuses the next dispatch within
-  one poll interval (the honest dev bound).
+  cached decision whose recorded epoch no longer matches **its tenant's**
+  current one is invalidated, however fresh it looks. The node learns the
+  current epochs from the next handshake/poll — so a revocation refuses the next
+  dispatch within one poll interval (the honest dev bound). A command whose
+  tenant no response has named yet has **no** reference and is refused, never
+  judged by another tenant's epoch:
+
+  ```text
+  no revocation epoch reference for tenant `ten_0193…` (no handshake/poll has carried it yet)
+  ```
 - **Fail closed** — an expired or epoch-stale cached allow, a cached deny, or
   a command with **no** cached decision (a pre-migration row or plain channel
   traffic) is refused at the boundary and journaled as

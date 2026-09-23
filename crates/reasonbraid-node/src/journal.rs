@@ -994,38 +994,56 @@ impl Journal {
         Ok(())
     }
 
-    /// The tenant's revocation epoch as of the LATEST handshake/poll the node has
-    /// seen (`.1.5.2`, ADR-008): the freshness reference every cached admission
-    /// decision is evaluated against at the dispatch boundary. `None` until the
-    /// first handshake/poll — a dispatch gate with no epoch reference fails
-    /// closed (the cache cannot be validated without one).
-    pub async fn revocation_epoch(&self) -> Result<Option<i64>, JournalError> {
-        let value: Option<String> =
-            sqlx::query_scalar("SELECT value FROM channel_state WHERE key = 'revocation_epoch'")
+    /// ONE tenant's revocation epoch as of the LATEST handshake/poll that
+    /// carried it (`.1.5.2`, ADR-008; per tenant since
+    /// `SIGNOFF-REPAIR.5.3.5.3.2`): the freshness reference a cached admission
+    /// decision for THAT tenant's command is evaluated against at the dispatch
+    /// boundary. `None` until a response names the tenant — and a gate with no
+    /// reference for a command's tenant fails closed, because the cache cannot
+    /// be validated against another tenant's epoch.
+    pub async fn revocation_epoch_for(&self, tenant_id: &str) -> Result<Option<i64>, JournalError> {
+        Ok(
+            sqlx::query_scalar("SELECT epoch FROM tenant_epochs WHERE tenant_id = ?")
+                .bind(tenant_id)
                 .fetch_optional(&self.pool)
-                .await?;
-        match value {
-            None => Ok(None),
-            Some(v) => v
-                .parse::<i64>()
-                .map(Some)
-                .map_err(|_| JournalError::CorruptState {
-                    key: "revocation_epoch",
-                    value: v,
-                }),
-        }
+                .await?,
+        )
     }
 
-    /// Record the latest seen tenant revocation epoch (idempotent overwrite).
-    pub async fn set_revocation_epoch(&self, epoch: i64) -> Result<(), JournalError> {
-        sqlx::query(
-            "INSERT INTO channel_state (key, value) VALUES ('revocation_epoch', ?) \
-             ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-        )
-        .bind(epoch.to_string())
-        .execute(&self.pool)
-        .await?;
+    /// Record the epochs a handshake/poll carried, one row per tenant, in one
+    /// transaction (idempotent overwrite). A tenant the response does not name
+    /// keeps the epoch last recorded for it.
+    pub async fn set_revocation_epochs(
+        &self,
+        epochs: &std::collections::BTreeMap<String, i64>,
+    ) -> Result<(), JournalError> {
+        let mut tx = self.pool.begin().await?;
+        for (tenant_id, epoch) in epochs {
+            sqlx::query(
+                "INSERT INTO tenant_epochs (tenant_id, epoch) VALUES (?, ?) \
+                 ON CONFLICT (tenant_id) DO UPDATE SET epoch = excluded.epoch",
+            )
+            .bind(tenant_id)
+            .bind(epoch)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
         Ok(())
+    }
+
+    /// Record one tenant's epoch — [`Self::set_revocation_epochs`] for a single
+    /// tenant.
+    pub async fn set_revocation_epoch_for(
+        &self,
+        tenant_id: &str,
+        epoch: i64,
+    ) -> Result<(), JournalError> {
+        self.set_revocation_epochs(&std::collections::BTreeMap::from([(
+            tenant_id.to_string(),
+            epoch,
+        )]))
+        .await
     }
 
     /// How far the SERVER's clock is ahead of this node's, in milliseconds
@@ -1461,7 +1479,7 @@ mod tests {
         assert_eq!(health.journal_mode, "wal");
         assert_eq!(health.synchronous, "FULL");
         assert_eq!(health.foreign_keys, 1);
-        assert_eq!(health.user_version, 3, "migrations set the schema version");
+        assert_eq!(health.user_version, 4, "migrations set the schema version");
         assert_eq!(health.quick_check, "ok");
         assert!(health.busy_timeout_ms > 0);
     }

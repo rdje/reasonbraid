@@ -230,11 +230,12 @@ impl Node {
             .await?;
         let received = Utc::now();
 
-        // 3.5 The tenant's current revocation epoch (`.1.5.2`, ADR-008) — stored
-        //     before the replay journals, so every command journaled here is
-        //     evaluated against an epoch at least as fresh as its delivery.
+        // 3.5 Every held tenant's current revocation epoch (`.1.5.2`, ADR-008;
+        //     per tenant since `SIGNOFF-REPAIR.5.3.5.3.2`) — stored before the
+        //     replay journals, so every command journaled here is evaluated
+        //     against its tenant's epoch at least as fresh as its delivery.
         self.journal
-            .set_revocation_epoch(response.revocation_epoch)
+            .set_revocation_epochs(&response.revocation_epochs)
             .await?;
         // 3.6 The server's clock (`SIGNOFF-REPAIR.3.4.3.1.2`), measured against
         //     the instant this response was taken in. Stored beside the epoch so

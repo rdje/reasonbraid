@@ -19,6 +19,7 @@
 //! own `deny_unknown_fields` contract so a forged or stale field is rejected at the
 //! boundary, on both sides.
 
+use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
@@ -232,8 +233,9 @@ pub struct HandshakeResponse {
     pub lease_expires_at: chrono::DateTime<chrono::Utc>,
     /// The lease EPOCH this handshake's token was issued under (`.2.2`).
     pub lease_epoch: i64,
-    /// The tenant's CURRENT revocation epoch (`.1.5.2`, ADR-008).
-    pub revocation_epoch: i64,
+    /// The CURRENT revocation epoch of every tenant whose work the node holds
+    /// (`.1.5.2`, ADR-008; per tenant since `SIGNOFF-REPAIR.5.3.5.3.2`).
+    pub revocation_epochs: BTreeMap<String, i64>,
     /// The server's own clock when it answered (`SIGNOFF-REPAIR.3.4.3.1.2`).
     pub server_time: chrono::DateTime<chrono::Utc>,
     /// Open recruitment offers awaiting this node's role, unanswered
@@ -269,10 +271,11 @@ pub struct PollResponse {
     pub channel_version: u32,
     pub current_cursor: i64,
     pub commands: Vec<ReplayCommand>,
-    /// The tenant's CURRENT revocation epoch (`.1.5.2`, ADR-008) — the node
-    /// stores it and evaluates every cached admission decision against it at
-    /// the dispatch boundary.
-    pub revocation_epoch: i64,
+    /// Every held tenant's CURRENT revocation epoch (`.1.5.2`, ADR-008;
+    /// `SIGNOFF-REPAIR.5.3.5.3.2`) — the node stores them per tenant and
+    /// evaluates each cached admission decision against its command's tenant's
+    /// at the dispatch boundary.
+    pub revocation_epochs: BTreeMap<String, i64>,
     /// The server's own clock when it answered (`SIGNOFF-REPAIR.3.4.3.1.2`).
     pub server_time: chrono::DateTime<chrono::Utc>,
 }

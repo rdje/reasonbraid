@@ -132,7 +132,7 @@ async fn latest_status(journal: &Journal, command_id: &str) -> Option<String> {
 async fn an_expired_cached_allow_refuses_the_dispatch() {
     let (_fixture, node) = dummy_node("expired").await;
     node.journal()
-        .set_revocation_epoch(7)
+        .set_revocation_epoch_for("ten_00000000-0000-7000-8000-000000000000", 7)
         .await
         .expect("set epoch");
     let decided_at = Utc::now() - ChronoDuration::seconds(CACHED_ALLOW_TTL_SECONDS + 10);
@@ -170,7 +170,7 @@ async fn an_epoch_bump_invalidates_a_fresh_cached_allow() {
     // The cached decision was made under epoch 7; the node has since SEEN epoch 8
     // (a revocation happened after admission).
     node.journal()
-        .set_revocation_epoch(8)
+        .set_revocation_epoch_for("ten_00000000-0000-7000-8000-000000000000", 8)
         .await
         .expect("set epoch");
     let command_id = seed_command(node.journal(), "bumped", Some(Utc::now()), Some(7)).await;
@@ -203,7 +203,7 @@ async fn an_epoch_bump_invalidates_a_fresh_cached_allow() {
 async fn a_command_without_a_cached_decision_refuses_the_dispatch() {
     let (_fixture, node) = dummy_node("no-decision").await;
     node.journal()
-        .set_revocation_epoch(7)
+        .set_revocation_epoch_for("ten_00000000-0000-7000-8000-000000000000", 7)
         .await
         .expect("set epoch");
     // No decision metadata at all — a pre-0013 row or plain channel traffic.
@@ -237,7 +237,7 @@ async fn a_command_without_a_cached_decision_refuses_the_dispatch() {
 async fn a_fresh_epoch_current_cached_allow_dispatches() {
     let (_fixture, node) = dummy_node("fresh").await;
     node.journal()
-        .set_revocation_epoch(7)
+        .set_revocation_epoch_for("ten_00000000-0000-7000-8000-000000000000", 7)
         .await
         .expect("set epoch");
     let command_id = seed_command(node.journal(), "fresh", Some(Utc::now()), Some(7)).await;
@@ -278,7 +278,7 @@ async fn a_fresh_epoch_current_cached_allow_dispatches() {
 async fn the_budget_gate_still_runs_after_the_cached_decision_allows() {
     let (_fixture, node) = dummy_node("budget").await;
     node.journal()
-        .set_revocation_epoch(7)
+        .set_revocation_epoch_for("ten_00000000-0000-7000-8000-000000000000", 7)
         .await
         .expect("set epoch");
     let command_id = "cmd_budget".to_string();
@@ -373,7 +373,7 @@ fn worker_with_ample_budget(node: &Node) -> Worker<FakeAdapter> {
 async fn a_replayed_decision_dispatches_however_old_the_first_delivery_was() {
     let (_fixture, node) = dummy_node("replay-anchor").await;
     node.journal()
-        .set_revocation_epoch(7)
+        .set_revocation_epoch_for("ten_00000000-0000-7000-8000-000000000000", 7)
         .await
         .expect("set epoch");
     // The original delivery: two days old, long expired on both clocks.
@@ -425,7 +425,7 @@ async fn a_replayed_decision_dispatches_however_old_the_first_delivery_was() {
 async fn a_node_clock_ahead_of_the_server_still_dispatches() {
     let (_fixture, node) = dummy_node("clock-ahead").await;
     node.journal()
-        .set_revocation_epoch(7)
+        .set_revocation_epoch_for("ten_00000000-0000-7000-8000-000000000000", 7)
         .await
         .expect("set epoch");
 
@@ -470,7 +470,7 @@ async fn a_node_clock_ahead_of_the_server_still_dispatches() {
 async fn a_node_clock_behind_the_server_gets_exactly_one_window() {
     let (_fixture, node) = dummy_node("clock-behind").await;
     node.journal()
-        .set_revocation_epoch(7)
+        .set_revocation_epoch_for("ten_00000000-0000-7000-8000-000000000000", 7)
         .await
         .expect("set epoch");
 
@@ -512,7 +512,7 @@ async fn a_node_clock_behind_the_server_gets_exactly_one_window() {
 async fn a_node_clock_behind_the_server_still_dispatches_a_fresh_decision() {
     let (_fixture, node) = dummy_node("clock-behind-fresh").await;
     node.journal()
-        .set_revocation_epoch(7)
+        .set_revocation_epoch_for("ten_00000000-0000-7000-8000-000000000000", 7)
         .await
         .expect("set epoch");
 
@@ -541,5 +541,125 @@ async fn a_node_clock_behind_the_server_still_dispatches_a_fresh_decision() {
     assert_eq!(
         latest_status(node.journal(), &command_id).await.as_deref(),
         Some("completed"),
+    );
+}
+
+/// Journal one command of `tenant_id`, decided under `revocation_epoch`, now.
+async fn seed_tenant_command(
+    journal: &Journal,
+    tag: &str,
+    tenant_id: &str,
+    revocation_epoch: i64,
+) -> String {
+    let command_id = format!("cmd_{tag}");
+    let payload = json!({
+        "kind": "contribute",
+        "reservation": {
+            "reservation_id": "res_00000000-0000-7000-8000-000000000001",
+            "dimensions": { "calls": 1, "wall_clock_seconds": 60 },
+            "issued_at": Utc::now().to_rfc3339(),
+            "expires_at": (Utc::now() + chrono::Duration::minutes(10)).to_rfc3339(),
+        },
+    });
+    let decided_at = Utc::now().to_rfc3339();
+    journal
+        .record_command(
+            &reasonbraid_node::CommandInput {
+                command_id: &command_id,
+                tenant_id,
+                thread_id: "thr_00000000-0000-7000-8000-000000000000",
+                payload: &payload,
+                authz_ref: Some("authz_00000000-0000-7000-8000-000000000001"),
+                policy_digest: Some("digest-a"),
+                decided_at: Some(&decided_at),
+                revocation_epoch: Some(revocation_epoch),
+                server_cursor: "1",
+            },
+            Utc::now(),
+        )
+        .await
+        .expect("record command");
+    command_id
+}
+
+/// `SIGNOFF-REPAIR.5.3.5.3.2` — a node holding several tenants' work judges
+/// each command's cached admission by ITS OWN tenant's epoch. A's command,
+/// decided under A's current epoch, dispatches while B's is stale under B's
+/// bump; C's, whose epoch no response has carried, is refused rather than
+/// judged by someone else's. As found the journal kept ONE epoch and the gate
+/// compared every command against it, so A's allow would have been refused by
+/// B's revocation — or B's stale allow admitted under A's epoch.
+#[tokio::test]
+async fn each_command_is_judged_by_its_own_tenants_epoch() {
+    let (_fixture, node) = dummy_node("per-tenant-epoch").await;
+    let (a, b, c) = (
+        "ten_00000000-0000-7000-8000-00000000000a",
+        "ten_00000000-0000-7000-8000-00000000000b",
+        "ten_00000000-0000-7000-8000-00000000000c",
+    );
+    node.journal()
+        .set_revocation_epochs(&std::collections::BTreeMap::from([
+            (a.to_string(), 7),
+            (b.to_string(), 9),
+        ]))
+        .await
+        .expect("set epochs");
+    let cmd_b = seed_tenant_command(node.journal(), "tenant-b", b, 8).await;
+    let cmd_c = seed_tenant_command(node.journal(), "tenant-c", c, 7).await;
+    let cmd_a = seed_tenant_command(node.journal(), "tenant-a", a, 7).await;
+    let worker = Worker::new(
+        node.clone(),
+        completing_adapter(),
+        LocalBudget::new(BudgetDimensions {
+            calls: Some(100),
+            input_tokens: Some(100_000),
+            output_tokens: Some(100_000),
+            wall_clock_seconds: Some(10_000),
+        }),
+        Duration::from_secs(1),
+    );
+    let item = |command_id: String| {
+        let journal = node.journal().clone();
+        async move {
+            journal
+                .work_items()
+                .await
+                .expect("work items")
+                .into_iter()
+                .find(|w| w.command_id == command_id)
+                .expect("seeded work item")
+        }
+    };
+
+    // B: decided under 8, B is at 9 — stale by B's own revocation.
+    worker
+        .process(&item(cmd_b.clone()).await)
+        .await
+        .expect("a refusal is not an error");
+    assert_eq!(
+        latest_status(node.journal(), &cmd_b).await.as_deref(),
+        Some("failed_before_dispatch"),
+        "B's command is stale under B's epoch"
+    );
+    // C: no response has carried C's epoch — refused, never judged by A's or B's.
+    worker
+        .process(&item(cmd_c.clone()).await)
+        .await
+        .expect("a refusal is not an error");
+    assert_eq!(
+        latest_status(node.journal(), &cmd_c).await.as_deref(),
+        Some("failed_before_dispatch"),
+        "a tenant with no epoch reference is refused"
+    );
+    // A: decided under 7, A is at 7 — dispatches despite B's bump. The emit
+    // fails on the dummy URL, which proves the gate let it through.
+    match worker.process(&item(cmd_a.clone()).await).await {
+        Err(WorkerError::Channel(_)) | Err(WorkerError::Node(_)) => {}
+        other => panic!("A's current allow dispatches; the emit fails — got {other:?}"),
+    }
+    assert_eq!(
+        latest_status(node.journal(), &cmd_a).await.as_deref(),
+        Some("completed"),
+        "A's command is judged by A's epoch, not B's"
     );
 }

@@ -1447,6 +1447,81 @@ async fn poll_returns_the_tail_after_a_cursor() {
     server.crash();
 }
 
+/// `SIGNOFF-REPAIR.5.3.5.3.2` — the handshake and the poll carry the CURRENT
+/// revocation epoch of every tenant whose work the node holds: its own, and
+/// each tenant with a command in its inbox — and a bump of one tenant's epoch
+/// moves that tenant's entry alone. As found both responses carried ONE epoch,
+/// the node's own tenant's, so a node holding another tenant's command had no
+/// reference to judge it by.
+#[tokio::test]
+async fn the_handshake_and_poll_carry_every_held_tenants_epoch() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
+    let server = TestServer::start(&pool).await;
+    let node_id = "nod_00000000-0000-7000-8000-000000000011".to_string();
+    let (cert_der, key_der) = seed_node(&pool, &node_id).await;
+    let own = "ten_00000000-0000-7000-8000-000000000000";
+    let other = "ten_00000000-0000-7000-8000-0000000000e2";
+    sqlx::query(
+        "INSERT INTO tenants (tenant_id, revocation_epoch) VALUES ($1, 4) \
+         ON CONFLICT (tenant_id) DO UPDATE SET revocation_epoch = 4",
+    )
+    .bind(other)
+    .execute(&pool)
+    .await
+    .expect("the other tenant");
+    state
+        .enqueue(
+            &node_id,
+            "cmd_epochs_other",
+            other,
+            "thr_00000000-0000-7000-8000-000000000000",
+            &json!({ "operation": "contribute", "command_id": "cmd_epochs_other" }),
+        )
+        .await
+        .expect("enqueue the other tenant's command");
+    let channel = reasonbraid_node::NodeChannel::new(
+        server.base_url(),
+        node_id.clone(),
+        cert_der.clone(),
+        key_from_der(&key_der),
+    );
+    let handshake = channel
+        .handshake(&reasonbraid_node::HandshakeRequest {
+            channel_version: reasonbraid_node::CHANNEL_VERSION,
+            node_id: node_id.clone(),
+            last_acked_cursor: 0,
+            pending_operations: vec![],
+            ambiguous_attempts: vec![],
+            cert_der: String::new(),
+            proof_signature: String::new(),
+            nonce: String::new(),
+        })
+        .await
+        .expect("handshake");
+    let own_epoch = tenant_epoch(&pool, own).await;
+    assert_eq!(
+        handshake.revocation_epochs,
+        std::collections::BTreeMap::from([(own.to_string(), own_epoch), (other.to_string(), 4)]),
+        "the handshake carries both held tenants' epochs"
+    );
+
+    sqlx::query("UPDATE tenants SET revocation_epoch = revocation_epoch + 1 WHERE tenant_id = $1")
+        .bind(other)
+        .execute(&pool)
+        .await
+        .expect("bump the other tenant");
+    let tail = channel.poll(1).await.expect("poll");
+    assert_eq!(
+        tail.revocation_epochs,
+        std::collections::BTreeMap::from([(own.to_string(), own_epoch), (other.to_string(), 5)]),
+        "the poll moves the bumped tenant's epoch alone"
+    );
+    server.crash();
+}
+
 /// The handshake wire contract is versioned and `deny_unknown_fields`-strict: a future
 /// version and a forged field are rejected, never silently accepted.
 #[tokio::test]

@@ -1241,7 +1241,13 @@ async fn a_revocation_invalidates_the_cached_decision_at_the_next_dispatch() {
     // record + digest + decision time + the epoch at decision time (0 — no
     // revocation yet), and the response carries the current epoch.
     let (view, _token, _ep9) = handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
-    assert_eq!(view["revocation_epoch"], json!(0), "fresh tenant epoch");
+    // Per tenant since `SIGNOFF-REPAIR.5.3.5.3.2`: the node's own tenant is
+    // the only one it holds work for here.
+    assert_eq!(
+        view["revocation_epochs"],
+        json!({ tenant.clone(): 0 }),
+        "fresh tenant epoch"
+    );
     let work = &view["replay"][0];
     assert!(
         work["authz_ref"]

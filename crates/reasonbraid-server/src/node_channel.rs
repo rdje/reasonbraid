@@ -52,6 +52,7 @@
 //! visible), and a `KnownEvent` per pending operation the server already holds (so a
 //! lost event acknowledgement can be recovered).
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use axum::{
@@ -327,10 +328,14 @@ pub struct HandshakeResponse {
     /// fenced write carries it, so a stale session's writes and renewals are
     /// refused even when they race a newer handshake.
     pub lease_epoch: i64,
-    /// The tenant's CURRENT revocation epoch (`.1.5.2`, ADR-008): the node
-    /// stores it and evaluates every cached admission decision against it at
-    /// the dispatch boundary.
-    pub revocation_epoch: i64,
+    /// The CURRENT revocation epoch of every tenant whose work this node holds —
+    /// its own, and each tenant with a command in its inbox
+    /// (`SIGNOFF-REPAIR.5.3.5.3.2`, ADR-008). The node stores them per tenant
+    /// and evaluates each cached admission decision against ITS tenant's
+    /// epoch at the dispatch boundary. Until this map the response carried one
+    /// epoch, the node's own tenant's, and a node holding two tenants' work
+    /// would have judged one tenant's admission by the other's revocations.
+    pub revocation_epochs: BTreeMap<String, i64>,
     /// The server's own clock at the moment it answered
     /// (`SIGNOFF-REPAIR.3.4.3.1.2`). The node measures its offset against this
     /// and evaluates the server instants it was sent in the server's terms.
@@ -410,9 +415,10 @@ pub struct PollResponse {
     pub channel_version: u32,
     pub current_cursor: i64,
     pub commands: Vec<ReplayCommand>,
-    /// The tenant's CURRENT revocation epoch (`.1.5.2`, ADR-008) — the node's
-    /// freshness reference for every cached admission decision.
-    pub revocation_epoch: i64,
+    /// Every held tenant's CURRENT revocation epoch, as the handshake carries
+    /// it (`SIGNOFF-REPAIR.5.3.5.3.2`) — the node's freshness reference for
+    /// each cached admission decision, per tenant.
+    pub revocation_epochs: BTreeMap<String, i64>,
     /// The server's own clock at the moment it answered
     /// (`SIGNOFF-REPAIR.3.4.3.1.2`). The node measures its offset against this
     /// and evaluates the server instants it was sent in the server's terms,
@@ -710,12 +716,13 @@ impl NodeChannelState {
             .await
     }
 
-    /// The tenant's CURRENT revocation epoch for this node (`.1.5.2`, ADR-008):
-    /// the freshness reference the node evaluates every cached admission
-    /// decision against. Rides the node's enrollment tenant (the `nodes` row —
-    /// a fenced node is always enrolled, so the row exists).
-    /// The tenant's current revocation epoch AND the server's own clock, read in
-    /// the SAME query (`SIGNOFF-REPAIR.3.4.3.1.2`).
+    /// The CURRENT revocation epoch of every tenant whose work this node holds
+    /// (`.1.5.2`, ADR-008; per tenant since `SIGNOFF-REPAIR.5.3.5.3.2`): the
+    /// freshness references the node evaluates each cached admission decision
+    /// against, by the command's own tenant. A fenced node is always enrolled,
+    /// so its own tenant's row exists.
+    /// The epochs AND the server's own clock, read in the SAME query
+    /// (`SIGNOFF-REPAIR.3.4.3.1.2`).
     ///
     /// The clock rides this query rather than its own so a poll — which happens
     /// every few seconds — gains no extra round trip. It is the DATABASE clock
@@ -723,18 +730,37 @@ impl NodeChannelState {
     /// reads, is `clock_timestamp()` sampled inside the authorizing
     /// transaction, so a node correcting against this value corrects against
     /// the clock that produced the instant it is comparing.
-    pub async fn epoch_and_server_time(
+    pub async fn epochs_and_server_time(
         &self,
         node_id: &str,
-    ) -> Result<(i64, DateTime<Utc>), sqlx::Error> {
-        sqlx::query_as(
-            "SELECT t.revocation_epoch, clock_timestamp() \
-             FROM tenants t JOIN nodes n ON n.tenant_id = t.tenant_id \
-             WHERE n.node_id = $1",
+    ) -> Result<(BTreeMap<String, i64>, DateTime<Utc>), sqlx::Error> {
+        // ONE statement, so every epoch and the clock are read from one
+        // snapshot. The tenants are the node's own and every tenant with a row
+        // in its inbox (`SIGNOFF-REPAIR.5.3.5.3.2`): a superset of what the
+        // node holds, which costs a few map entries and never omits a tenant
+        // whose command the node could be judging.
+        let rows: Vec<(String, i64, DateTime<Utc>)> = sqlx::query_as(
+            "SELECT t.tenant_id, t.revocation_epoch, clock_timestamp() \
+             FROM tenants t \
+             WHERE t.tenant_id IN (SELECT n.tenant_id FROM nodes n WHERE n.node_id = $1) \
+                OR t.tenant_id IN (SELECT i.tenant_id FROM node_inbox i WHERE i.node_id = $1) \
+             ORDER BY t.tenant_id",
         )
         .bind(node_id)
-        .fetch_one(&self.pool)
-        .await
+        .fetch_all(&self.pool)
+        .await?;
+        // A node always has its own tenant, so an empty answer is an unknown
+        // node — the same `RowNotFound` the single-row read returned.
+        let server_time = rows
+            .first()
+            .map(|(_, _, at)| *at)
+            .ok_or(sqlx::Error::RowNotFound)?;
+        Ok((
+            rows.into_iter()
+                .map(|(tenant, epoch, _)| (tenant, epoch))
+                .collect(),
+            server_time,
+        ))
     }
 
     /// The open, in-window, unanswered offers for the role this node runs
@@ -1949,7 +1975,7 @@ async fn handshake(
     // here on — its token, its epoch-bound renewals, and its writes all fail.
     let (fencing_token, lease_epoch, lease_expires_at) =
         state.issue_lease(&req.node_id, Utc::now()).await?;
-    let (revocation_epoch, server_time) = state.epoch_and_server_time(&req.node_id).await?;
+    let (revocation_epochs, server_time) = state.epochs_and_server_time(&req.node_id).await?;
     // The prompt half of the advertisement (`SIGNOFF-REPAIR.5.3.5.1.1`): the
     // node is told how many offers await its role, and reads them as its role.
     let offers_pending = state.offers_pending(&req.node_id).await?;
@@ -1962,7 +1988,7 @@ async fn handshake(
         known_events,
         fencing_token,
         lease_expires_at,
-        revocation_epoch,
+        revocation_epochs,
         lease_epoch,
         server_time,
         offers_pending,
@@ -2203,12 +2229,12 @@ async fn poll(
         return Err(ApiError::cursor_ahead(req.after_cursor, current));
     }
     let commands = state.replay(&req.node_id, req.after_cursor).await?;
-    let (revocation_epoch, server_time) = state.epoch_and_server_time(&req.node_id).await?;
+    let (revocation_epochs, server_time) = state.epochs_and_server_time(&req.node_id).await?;
     Ok(Json(PollResponse {
         channel_version: CHANNEL_VERSION,
         current_cursor: current,
         commands,
-        revocation_epoch,
+        revocation_epochs,
         server_time,
     }))
 }

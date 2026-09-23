@@ -110,7 +110,10 @@ async fn seed_command(journal: &Journal, tag: &str, payload: &Value) -> (String,
         )
         .await
         .expect("record command");
-    journal.set_revocation_epoch(7).await.expect("set epoch");
+    journal
+        .set_revocation_epoch_for("ten_00000000-0000-7000-8000-000000000000", 7)
+        .await
+        .expect("set epoch");
     let operation_id = journal
         .ensure_operation(&command_id, Utc::now())
         .await

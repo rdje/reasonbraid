@@ -144,14 +144,15 @@ impl<A: Adapter> Worker<A> {
         let sent = Utc::now();
         let poll = self.node.channel().poll(cursor).await?;
         let received = Utc::now();
-        // The tenant's current epoch (`.1.5.2`, ADR-008) — the freshness
-        // reference every cached admission decision is evaluated against at the
-        // dispatch boundary. Stored BEFORE the commands journal, so a command
-        // journaled in this tick is always evaluated against an epoch at least
-        // as fresh as its delivery.
+        // Every held tenant's current epoch (`.1.5.2`, ADR-008; per tenant since
+        // `SIGNOFF-REPAIR.5.3.5.3.2`) — the freshness references each cached
+        // admission decision is evaluated against, by its command's tenant.
+        // Stored BEFORE the commands journal, so a command journaled in this
+        // tick is always evaluated against its tenant's epoch at least as fresh
+        // as its delivery.
         self.node
             .journal()
-            .set_revocation_epoch(poll.revocation_epoch)
+            .set_revocation_epochs(&poll.revocation_epochs)
             .await?;
         // The server's clock rides the same response (`SIGNOFF-REPAIR.3.4.3.1.2`).
         self.node
@@ -307,12 +308,22 @@ impl<A: Adapter> Worker<A> {
                 return Ok(());
             }
             Some(decision) => {
-                let current_epoch = self.node.journal().revocation_epoch().await?;
+                // THE COMMAND'S OWN tenant's epoch (`SIGNOFF-REPAIR.5.3.5.3.2`):
+                // a node may hold several tenants' work, and each admission was
+                // decided under its own tenant's revocations.
+                let current_epoch = self
+                    .node
+                    .journal()
+                    .revocation_epoch_for(&item.tenant_id)
+                    .await?;
                 let Some(current_epoch) = current_epoch else {
                     self.refuse_dispatch(
                         item,
-                        "no revocation epoch reference (the node has not seen a \
-                         handshake/poll yet)",
+                        &format!(
+                            "no revocation epoch reference for tenant `{}` (no \
+                             handshake/poll has carried it yet)",
+                            item.tenant_id
+                        ),
                         now,
                     )
                     .await?;

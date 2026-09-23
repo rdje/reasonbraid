@@ -438,6 +438,15 @@ store (a row written before the formats existed, or edited by hand) **holds the
 role, fail-closed**, until the profile is written again. Until this repair
 `operating_hours: "never"` was stored verbatim and gated nothing.
 
+⚠️ **What the node does not evaluate yet, and why** (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.4`).
+ROADMAP §11.5 also lists required tools, adapter health, billing route and
+notification controls. Fan-out caps, two quotas, quiet hours and command
+quarantine exist; the rest wait on a fact that does not exist in this build: a
+job carries no tool requirement, the adapter contract has no health check and
+`rb-node` runs only the test adapter, nothing names a billing route, and a call
+has no urgency class to coalesce by. Each is recorded with the condition that
+reopens it rather than evaluated over an invented value.
+
 ⭐ **A positive number is a delivery limit** (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2.2`).
 Declaring `concurrency: 2` means the node is handed at most **two minus what it
 already holds**: the tail is cut at that budget, only the rows actually handed

@@ -374,6 +374,21 @@ pub struct EventReceipt {
     pub channel_version: u32,
     /// `false` when the server already holds this event id (a redelivery).
     pub accepted: bool,
+    /// Present when the event was a work result the server REFUSED to fold
+    /// (`SIGNOFF-REPAIR.4.4.2`): the receipt still commits — the node did emit
+    /// it — but the node is told the work did not land, and why. Absent on a
+    /// plain receipt, an applied result and a redelivery.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refused: Option<ResultRefusal>,
+}
+
+/// Why the server refused to fold a node's work result: the stable §9.8 code
+/// and the safe message the rejection was stored with.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ResultRefusal {
+    pub code: String,
+    pub message: String,
 }
 
 /// The node acknowledges that it durably holds commands up to `ack_cursor`.
@@ -2276,6 +2291,7 @@ async fn events(
         Utc::now(),
     )
     .await?;
+    let mut refused = None;
     if accepted {
         if let Some(tenant) = guarded_tenant {
             if let Err(e) =
@@ -2284,6 +2300,10 @@ async fn events(
             {
                 crate::telemetry::metrics().incr("results_rejected");
                 crate::log_event!("thread_result_rejected", "node_id" => &req.node_id, "reason" => e.to_string());
+                refused = Some(ResultRefusal {
+                    code: e.code.to_string(),
+                    message: e.message.clone(),
+                });
             }
         }
     }
@@ -2299,6 +2319,7 @@ async fn events(
     Ok(Json(EventReceipt {
         channel_version: CHANNEL_VERSION,
         accepted,
+        refused,
     }))
 }
 

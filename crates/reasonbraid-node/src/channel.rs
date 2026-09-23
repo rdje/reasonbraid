@@ -254,6 +254,18 @@ pub struct EventReceipt {
     pub channel_version: u32,
     /// `false` when the server already holds this event id (a redelivery).
     pub accepted: bool,
+    /// The server refused to fold this work result (`SIGNOFF-REPAIR.4.4.2`):
+    /// the event was received, the work did not land. The node journals it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refused: Option<ResultRefusal>,
+}
+
+/// Why the server refused a work result: its stable code and safe message.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ResultRefusal {
+    pub code: String,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

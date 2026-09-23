@@ -934,6 +934,31 @@ async fn a_revoked_grant_refuses_a_later_node_result() {
         1,
         "the node DID emit the event, so its receipt is durable"
     );
+
+    // `SIGNOFF-REPAIR.4.4.2` — a refused result still SETTLES its reservation:
+    // the provider ran, whatever the domain then decided, so the usage the node
+    // reports is spend. Before the repair the reservation stayed `active` until
+    // it expired and the ceiling read its NULL usage as nothing — the spend was
+    // charged nowhere.
+    let (status, usage): (String, Option<Value>) =
+        sqlx::query_as("SELECT status, usage FROM budget_reservations WHERE reservation_id = $1")
+            .bind(&reservation)
+            .fetch_one(&pool)
+            .await
+            .expect("the work item's reservation");
+    assert_eq!(
+        status, "settled",
+        "a refused result settles its reservation"
+    );
+    let usage = usage.expect("the settled usage");
+    assert_eq!(usage["input_tokens"], json!(41), "{usage}");
+    assert_eq!(usage["output_tokens"], json!(17), "{usage}");
+    // …and the receipt TELLS the node its result was refused, with the code.
+    assert_eq!(
+        receipt["refused"]["code"],
+        json!("unauthorized"),
+        "the receipt carries the refusal: {receipt}"
+    );
 }
 
 /// A storage failure inside the fold must not be reported as an accepted receipt.

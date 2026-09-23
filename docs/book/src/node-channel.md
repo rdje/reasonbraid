@@ -894,6 +894,28 @@ guard's own runner does, so a discarded error cannot be reported as success: the
 request fails with `dependency_unavailable`, nothing is written, and the node's
 redelivery is free to try again.
 
+⭐ **A refused result is settled, and the node is told** (`SIGNOFF-REPAIR.4.4.2`).
+The provider ran whatever the domain then decided, so the usage the node reports
+is spend: every refusal that follows the idempotency claim settles the work
+item's reservation exactly as an applied result does. Until that repair only the
+applied path settled, so a refused result's reservation stayed `active` until it
+expired and the ceiling then read its missing usage as nothing — the spend was
+charged nowhere. The reservation settled is the one the **server** put on the
+work item, never an id the node's payload names. And the receipt now says so:
+
+```json
+{ "channel_version": 1, "accepted": true,
+  "refused": { "code": "unauthorized", "message": "authorization denied (…): …" } }
+```
+
+`refused` is present only when the event was a work result the server declined
+to fold; it is absent on a plain receipt, an applied result and a redelivery.
+The node journals it on the event (`rb-journal` shows the schema at version 5)
+and says so on its log. ⚠️ A redelivered event (`accepted: false`) carries no
+`refused`, so a node that died between sending a result and recording the
+refusal does not learn it on the re-emission; the refusal stays durable on the
+server as the work item's stored result.
+
 Node credential and lease proof, partial-result handling and the budget
 settlement guarantees keep their own repair owners; an authority guard does not
 fix those mechanisms.

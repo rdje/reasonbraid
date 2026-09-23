@@ -9281,6 +9281,7 @@ pub(crate) async fn apply_node_result_in_tx(
             "the node `{node_id}` does not run role `{role_raw}`: its result is not the role's"
         ));
         store_rejection(&mut *tx, &tenant_id, &fold_key, &err.failure_result()).await?;
+        settle_work_item_reservation(&mut *tx, &work, payload).await?;
         return Err(err);
     }
 
@@ -9296,6 +9297,7 @@ pub(crate) async fn apply_node_result_in_tx(
                 "authorization denied ({record_id}): {reason}"
             ));
             store_rejection(&mut *tx, &tenant_id, &fold_key, &err.failure_result()).await?;
+            settle_work_item_reservation(&mut *tx, &work, payload).await?;
             return Err(err);
         }
         AuthorizationOutcome::Allowed { .. } => {}
@@ -9343,6 +9345,7 @@ pub(crate) async fn apply_node_result_in_tx(
         Err(e) => {
             let err: ControlApiError = e.into();
             store_rejection(&mut *tx, &tenant_id, &fold_key, &err.failure_result()).await?;
+            settle_work_item_reservation(&mut *tx, &work, payload).await?;
             return Err(err);
         }
     };
@@ -9361,25 +9364,51 @@ pub(crate) async fn apply_node_result_in_tx(
     };
     tx::apply_fresh_in_tx(&mut *tx, &cmd).await?;
 
-    // Settle the reservation with the reported usage (idempotent — a replay or a
-    // duplicate event settles nothing twice).
-    if let Some(reservation_id) = payload.get("reservation_id").and_then(|v| v.as_str()) {
-        if !reservation_id.is_empty() {
-            let usage = BudgetDimensions::attempt_usage(
-                payload
-                    .get("usage")
-                    .and_then(|u| u.get("input_tokens"))
-                    .and_then(|v| v.as_u64()),
-                payload
-                    .get("usage")
-                    .and_then(|u| u.get("output_tokens"))
-                    .and_then(|v| v.as_u64()),
-            );
-            budget::settle_reservation_in_tx(&mut *tx, reservation_id, &usage, Utc::now()).await?;
-        }
-    }
+    settle_work_item_reservation(&mut *tx, &work, payload).await?;
 
     crate::telemetry::metrics().incr("results_folded");
+    Ok(())
+}
+
+/// Settle a work item's reservation with the usage its node reports
+/// (`SIGNOFF-REPAIR.4.4.2`) — on the fold's success AND on every refusal that
+/// follows the idempotency claim, because the provider ran whatever the domain
+/// then decided, and the usage is spend. Until this repair only the success path
+/// settled: a refused result left its reservation `active` until it expired,
+/// after which the ceiling read its NULL usage as nothing — the spend was
+/// charged nowhere.
+///
+/// The reservation is the one the SERVER put on the work item (`work`, the
+/// stored inbox payload), never an id the node names: the settlement used to
+/// read `reservation_id` from the node's own payload, which let a node settle
+/// any reservation it could name. Idempotent — a settled/released/denied row is
+/// terminal, so a replay settles nothing twice.
+async fn settle_work_item_reservation<'e, E>(
+    mut tx: E,
+    work: &Value,
+    payload: &Value,
+) -> Result<(), ControlApiError>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
+    let Some(reservation_id) = work
+        .get("reservation")
+        .and_then(|r| r.get("reservation_id"))
+        .and_then(|v| v.as_str())
+        .filter(|id| !id.is_empty())
+    else {
+        return Ok(()); // a budget-denied dispatch carries no reservation
+    };
+    let reported = |field: &str| {
+        payload
+            .get("usage")
+            .and_then(|u| u.get(field))
+            .and_then(|v| v.as_u64())
+    };
+    let usage =
+        BudgetDimensions::attempt_usage(reported("input_tokens"), reported("output_tokens"));
+    budget::settle_reservation_in_tx(&mut *tx, reservation_id, &usage, Utc::now()).await?;
     Ok(())
 }
 

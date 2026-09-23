@@ -2084,3 +2084,133 @@ async fn a_revoked_command_prunes_on_the_revocation_instant_and_is_retained_with
         "⛔ and the operator is not told a never-delivered command was delivered: {pruned}"
     );
 }
+
+/// `SIGNOFF-REPAIR.4.4.2` — end to end with the REAL node worker: a result the
+/// server refuses is SETTLED against its reservation and the node LEARNS of the
+/// refusal. The work is delivered and journaled, then the thread closes, then
+/// the worker runs it: the provider completes, the node emits the result, the
+/// fold refuses it (`invalid_transition`). The receipt used to say only
+/// `accepted: true`, so the node kept a completed attempt and never knew.
+#[tokio::test]
+async fn a_refused_result_is_settled_and_the_node_journals_the_refusal() {
+    let _g = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (tenant, human, role, thread, cert_hex, key_hex) = bootstrap(&client, &server.base()).await;
+    let (status, _) = command(
+        &client,
+        &server.base(),
+        &format!("/v1/threads/{thread}/commands"),
+        &human,
+        &envelope(
+            "thread.invite",
+            "key-invite-refused",
+            json!({ "tenant_id": tenant, "agent_role": role }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "invite succeeds");
+    accept_invitation(
+        &client,
+        &server.base(),
+        &role,
+        &thread,
+        &tenant,
+        "key-accept-refused",
+    )
+    .await;
+
+    let key_der = from_hex(&key_hex).expect("key hex");
+    let der = rustls_pki_types::PrivateKeyDer::try_from(key_der).expect("key DER");
+    let key = rcgen::KeyPair::from_der_and_sign_algo(&der, &rcgen::PKCS_ECDSA_P256_SHA256)
+        .expect("key parses");
+    let fixture = journal_fixture("refused-result");
+    let node = reasonbraid_node::Node::open(
+        fixture.join("node.db"),
+        server.base(),
+        role.clone(),
+        from_hex(&cert_hex).expect("cert hex"),
+        key,
+    )
+    .await
+    .expect("open node");
+    node.reconcile()
+        .await
+        .expect("reconcile journals the delivery");
+    let reservation: String = sqlx::query_scalar(
+        "SELECT payload->'reservation'->>'reservation_id' FROM node_inbox WHERE node_id = $1",
+    )
+    .bind(&role)
+    .fetch_one(&pool)
+    .await
+    .expect("the work item carries a reservation");
+
+    // The thread closes while the work is held.
+    let (status, _) = command(
+        &client,
+        &server.base(),
+        &format!("/v1/threads/{thread}/commands"),
+        &human,
+        &envelope(
+            "thread.close",
+            "key-close-refused",
+            json!({ "tenant_id": tenant, "reason": "time" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "thread closes");
+
+    let worker = reasonbraid_node::Worker::new(
+        node.clone(),
+        reasonbraid_adapter::FakeAdapter::new(
+            vec![reasonbraid_adapter::ScriptStep::Complete { usage: None }],
+            reasonbraid_adapter::StatusLookupSpec::Unsupported,
+            reasonbraid_adapter::AdapterCapabilities {
+                streaming: false,
+                cancellation: reasonbraid_adapter::CancellationStrength::BestEffort,
+                provider_idempotency: false,
+                status_lookup: false,
+                tool_support: false,
+                policy_injection: reasonbraid_adapter::PolicyInjectionMode::None,
+            },
+        ),
+        reasonbraid_node::LocalBudget::new(reasonbraid_core::BudgetDimensions {
+            calls: Some(100),
+            input_tokens: Some(100_000),
+            output_tokens: Some(100_000),
+            wall_clock_seconds: Some(10_000),
+        }),
+        std::time::Duration::from_millis(50),
+    );
+    worker.tick().await.expect("the worker runs the held work");
+
+    // The node LEARNED of the refusal, with its code.
+    let refusals = node.journal().event_refusals().await.expect("refusals");
+    assert_eq!(
+        refusals.len(),
+        1,
+        "exactly one refused result: {refusals:?}"
+    );
+    let refusal: Value = serde_json::from_str(&refusals[0].2).expect("refusal JSON");
+    assert_eq!(refusal["code"], json!("invalid_transition"), "{refusal}");
+
+    // The reservation is SETTLED, not left to expire.
+    let status: String =
+        sqlx::query_scalar("SELECT status FROM budget_reservations WHERE reservation_id = $1")
+            .bind(&reservation)
+            .fetch_one(&pool)
+            .await
+            .expect("the reservation");
+    assert_eq!(
+        status, "settled",
+        "the refused result settles its reservation"
+    );
+    let events = thread_events(&client, &server.base(), &thread, &tenant, &human).await;
+    assert!(
+        !events
+            .iter()
+            .any(|e| e["event_type"] == "thread.contribution_submitted"),
+        "no contribution entered the closed thread"
+    );
+}

@@ -835,6 +835,50 @@ impl Journal {
         })
     }
 
+    /// Record the server's refusal of an emitted work result (`SIGNOFF-REPAIR.4.4.2`),
+    /// as its receipt reported it. Written once: a second report of the same
+    /// event's refusal leaves the first.
+    pub async fn record_event_refusal(
+        &self,
+        event_id: &str,
+        code: &str,
+        message: &str,
+    ) -> Result<(), JournalError> {
+        let refusal = serde_json::json!({ "code": code, "message": message });
+        let res = sqlx::query(
+            "UPDATE outgoing_events SET refusal = ? WHERE event_id = ? AND refusal IS NULL",
+        )
+        .bind(refusal.to_string())
+        .bind(event_id)
+        .execute(&self.pool)
+        .await?;
+        if res.rows_affected() == 0 {
+            let exists: Option<String> =
+                sqlx::query_scalar("SELECT event_id FROM outgoing_events WHERE event_id = ?")
+                    .bind(event_id)
+                    .fetch_optional(&self.pool)
+                    .await?;
+            if exists.is_none() {
+                return Err(JournalError::NotFound {
+                    what: "event",
+                    id: event_id.to_string(),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// Every emitted event the server refused, oldest first: `(event_id,
+    /// operation_id, refusal JSON)` (`SIGNOFF-REPAIR.4.4.2`).
+    pub async fn event_refusals(&self) -> Result<Vec<(String, String, String)>, JournalError> {
+        Ok(sqlx::query_as(
+            "SELECT event_id, operation_id, refusal FROM outgoing_events \
+             WHERE refusal IS NOT NULL ORDER BY emitted_at, event_id",
+        )
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
     /// Mark an emitted event acknowledged with the server cursor at acknowledgement.
     /// Returns `true` when THIS call set the acknowledgement (idempotent on redelivery).
     pub async fn acknowledge_event(
@@ -1497,7 +1541,7 @@ mod tests {
         assert_eq!(health.journal_mode, "wal");
         assert_eq!(health.synchronous, "FULL");
         assert_eq!(health.foreign_keys, 1);
-        assert_eq!(health.user_version, 4, "migrations set the schema version");
+        assert_eq!(health.user_version, 5, "migrations set the schema version");
         assert_eq!(health.quick_check, "ok");
         assert!(health.busy_timeout_ms > 0);
     }

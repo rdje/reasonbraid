@@ -28,7 +28,8 @@ use serde_json::Value;
 use tokio::sync::RwLock;
 
 use crate::channel::{
-    AmbiguousAttempt, ChannelError, Directive, HandshakeRequest, NodeChannel, CHANNEL_VERSION,
+    AmbiguousAttempt, ChannelError, Directive, EventReceipt, HandshakeRequest, NodeChannel,
+    CHANNEL_VERSION,
 };
 use crate::journal::{CommandInput, Journal, JournalError, ProvenStatus};
 
@@ -362,9 +363,11 @@ impl Node {
             }
             let payload: Value = serde_json::from_str(&event.payload)
                 .map_err(|e| NodeError::MalformedJournal(e.to_string()))?;
-            self.channel
+            let receipt = self
+                .channel
                 .send_event(&event.event_id, &event.operation_id, &payload)
                 .await?;
+            self.record_refusal(&event.event_id, &receipt).await?;
             self.journal
                 .acknowledge_event(&event.event_id, &max_cursor.to_string(), now)
                 .await?;
@@ -394,18 +397,40 @@ impl Node {
         self.journal
             .record_outgoing_event(event_id, operation_id, payload, now)
             .await?;
-        if let Err(e) = self
+        let receipt = match self
             .channel
             .send_event(event_id, operation_id, payload)
             .await
         {
+            Ok(receipt) => receipt,
             // Stays pending in the journal; the next reconcile re-emits it (original id).
-            return Err(NodeError::Channel(e));
-        }
+            Err(e) => return Err(NodeError::Channel(e)),
+        };
+        self.record_refusal(event_id, &receipt).await?;
         let cursor = self.journal.last_acked_cursor().await?;
         self.journal
             .acknowledge_event(event_id, &cursor.to_string(), now)
             .await?;
+        Ok(())
+    }
+
+    /// Journal the server's refusal of a work result, when its receipt reports
+    /// one (`SIGNOFF-REPAIR.4.4.2`), and say so on the log: the event was
+    /// received, the work did not land.
+    async fn record_refusal(
+        &self,
+        event_id: &str,
+        receipt: &EventReceipt,
+    ) -> Result<(), NodeError> {
+        if let Some(refused) = &receipt.refused {
+            eprintln!(
+                "node: {} — the server REFUSED the result in event {event_id}: {} ({})",
+                self.node_id, refused.code, refused.message
+            );
+            self.journal
+                .record_event_refusal(event_id, &refused.code, &refused.message)
+                .await?;
+        }
         Ok(())
     }
 }

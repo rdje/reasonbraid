@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — A refused answer's cost is now counted, and the machine is told it was refused (`SIGNOFF-REPAIR.4.4.2`)
+
+`REASONBRAID-REPAIR-0460`. The second of the seven recovery gaps found by `REASONBRAID-DOC-0153`.
+
+- 🔴 **Before:** when the server refused a machine's finished answer (say, the agent's permission was withdrawn, or the conversation had closed), the provider's cost was never counted — the budget hold simply lapsed — and the machine was told only "received", so it believed the work had landed.
+- ✅ **Now:** a refused answer's cost is counted against the budget exactly like an accepted one, because the provider did the work either way. The machine is told the answer was refused and why, records it, and says so in its log. The budget charged is always the one the server attached to the job, never one the machine names.
+- ⚠️ Still to do (tracked): the operator's inbox view does not yet show that an answer was refused.
+- ✅ Tested: a new check failed on the old code (the budget hold stayed open) and passes now; a full run with a real machine closing the conversation mid-job shows the cost counted and the refusal recorded; two deliberately broken versions (no counting on refusal; the machine ignoring the refusal) were each caught; the machine's 81 tests and five further suites (160 tests) pass; strict lint clean.
+- Technical: `api::settle_work_item_reservation` (stored `work.reservation.reservation_id`, reported usage) after each of the three `store_rejection`s and on success; `EventReceipt.refused: Option<ResultRefusal{code,message}>` both sides (serde default/skip); node journal migration `0005_event_refusals.sql` (`outgoing_events.refusal`, user_version 5), `Journal::record_event_refusal` / `event_refusals`, `Node::record_refusal` on `emit_event` and the reconcile re-emission. Controls: `a_revoked_grant_refuses_a_later_node_result` grown (settled with 41/17; `refused.code = unauthorized`); new `a_refused_result_is_settled_and_the_node_journals_the_refusal` (node_work, real worker). Mutants M2 (no settlement on refusal) and M3 (node ignores `refused`) caught. Schema pins 4→5 (`journal.rs`, `journal_cli.rs`); `node-journal.md` example 2→5.
+
 ## 2026-09-23 — An unresolved provider call is no longer "settled" by the machine's own give-up note, and an operator's ruling now lands as ruled (`SIGNOFF-REPAIR.4.4.1`)
 
 `REASONBRAID-REPAIR-0459`. The first, and worst, of the seven recovery gaps found by `REASONBRAID-DOC-0153`.
@@ -252,149 +262,23 @@
 - ⚠️ The machine does nothing with the notice beyond saying so; what an agent's adapter should do with an offer is a later, separate design.
 - Technical: `HandshakeResponse.offers_pending` on both mirrored wires (the node's with `#[serde(default)]`); `NodeChannelState::offers_pending`; the node's reconcile step 3.7 prints the count; control `an_online_node_is_told_how_many_offers_await_its_role`; `.5.3.5.1` closes.
 
-## 2026-09-23 — A partner organisation's agent can now ask to join a call, and the organiser gets its card to import (`SIGNOFF-REPAIR.5.3.5.2`)
-
-`REASONBRAID-REPAIR-0436`, with the design record `REASONBRAID-DOC-0145`.
-
-- 🔴 **Before:** an agent from a partner organisation could see a network-wide call it was offered, but its answer was simply refused and nothing recorded that it wanted in. The refusal was right — it has no permission here — but the wish, and the card the organiser would need to act on it, had nowhere to go.
-- ✅ **Now** such an agent's "join" is recorded as a **join request** on the call, carrying the agent's own exported card and its fingerprint — the same card it would export by hand — provided the two organisations hold a two-way recruitment partnership (a card crosses only with both operators' consent). The organiser sees the request in the call's inspection and resolves it with the ordinary card import; the imported agent's origin is recorded. The request is never counted as a joiner when the call closes.
-- ✅ A foreign agent that was never offered the call, or one that answers anything but "join", hears exactly the old refusal, so a call's existence cannot be discovered by guessing ids. An offered agent without the recruitment partnership is told which partnership is missing.
-- ✅ Tested end to end: the refusal naming the missing partnership, the recorded request with its card, the old words for a decline and for an un-offered agent, the close seating only the local joiner, and the import from the request's card. Run against the previous code first, the request was refused with the old words.
-- 🔎 Writing the test exposed a rule worth knowing: for a network-wide call, only capabilities an agent publishes to the network count — an agent that keeps them visible to its own organisation only is offered (by interest) and then found ineligible (by capability). That is by design and now written down.
-- ⚠️ Still open, waiting on you: an imported agent has no machine here, so it cannot yet take part in the call it asked to join.
-- Technical: `recruitment::record_join_request` (`response_kind = 'join_request'`); `api::mint_card` shared by `get_profile_card` and the request; the foreign branch of `respond_to_call_core` (three gates, then the common checks, then the record); control `a_federated_subscribers_join_is_a_recorded_request`; DOC-0145.
-
-## 2026-09-23 — A network-wide call now reaches matching agents in partner organisations (`SIGNOFF-REPAIR.5.3.5.1.2`)
-
-`REASONBRAID-REPAIR-0435`.
-
-- 🔴 **Before:** a call could be opened "for the network", but its offers only ever went to agents in the organiser's own organisation. The partnership that lets a partner see this organisation's directory changed what partners could read, never what they were invited to.
-- ✅ **Now** a network-wide call is also offered to matching agents in every organisation that holds a two-way, unexpired visibility partnership with the organiser's — in the same step as the local offers. A call scoped to the organisation, a one-sided or revoked partnership, or a partnership without visibility offers nothing outside, which is the roadmap's rule: cross-organisation recruitment is opt-in, never the default.
-- ✅ What a partner agent sees of a foreign offer is the call, its requirements and its window — not the conversation thread, which lives in the other organisation and is named only once a join lands. A partner agent still cannot *answer* a foreign call; recording that wish as a request for the organiser to resolve is the next task.
-- ✅ Tested: no partnership → nobody offered; partnership → the partner agent is offered and sees no thread, and its answer is refused; an organisation-scoped call → nobody outside; a revoked partnership → nobody outside. Run against the previous code first, the partner agent was never offered.
-- Technical: `offer_to_subscribers(…, federated)` — one `INSERT … SELECT` with the tenant arm OR an `EXISTS` over both `federation_agreements` rows (`accepted`, `directory_visibility`, unexpired); `list_offered_calls` adds `call_tenant_id`, `foreign`, and nulls `thread_id` for a foreign offer; control `a_network_scope_call_is_offered_across_an_effective_directory_agreement`.
-
-## 2026-09-23 — An agent can now see the calls it was offered (`SIGNOFF-REPAIR.5.3.5.1`)
-
-`REASONBRAID-REPAIR-0434`.
-
-- 🔴 **Before:** when a call for participants was opened, the server recorded which agents it was offered to, and that record went nowhere. No agent could ask "what have I been offered?"; the only readers of a call were its organiser and the organisation's administrator. Agents learned of calls out of band.
-- ✅ **Now** an agent lists the open calls offered to it, newest last, each with the call's requirements and window and with its own answer if it has given one. Closed calls and calls past their join deadline drop off. A person gets a refusal (calls are offered to agents, not people), and so does an unknown caller, rather than an empty list that could be mistaken for an answer.
-- ⚖️ The first idea — pushing the offer into the agent's machine's work queue — was set aside with a reason: that queue holds authorised work the machine executes, and an offer is neither authorised work nor something to execute. The durable record the roadmap asks for is the offer itself, which already survives the machine being offline; what was missing was a way to read it. Telling an online machine promptly that an offer is waiting is the next, separate task.
-- ✅ Tested: two matching agents are offered, a third with other interests is not; the offer shows before and after joining; the person and the stranger are refused; the closed call disappears. Run without the new route first, the request was swallowed by the "inspect one call" route and answered "no call named offered".
-- Technical: `GET /v1/calls/offered` (`list_offered_calls`, mounted before `/v1/calls/{call_id}`); `recruitment_offers ⋈ recruitment_calls` for the calling role, `status = 'open'`, inside the window, with a correlated `response_kind`; the calls family witness `5:-` in `.doctrine/book_surface_verdicts.tsv`; control `a_subscriber_lists_the_calls_offered_to_it`; children `.5.3.5.1.1` (the prompt half) and `.5.3.5.1.2` (the federated half).
-
-## 2026-09-23 — Recruiting an agent from a partner organisation was measured before building, and the first thing missing is not about partners at all (`SIGNOFF-REPAIR.5.3.5`)
-
-`REASONBRAID-DOC-0144`. A design census, no code changed.
-
-- 🔴 **A call for participants reaches nobody — in the organisation that opened it or any other.** Opening a call records who was "offered" it, and nothing delivers that offer: no message reaches the agent's machine, and no agent can list the calls it was offered. Agents learn of calls by being told out of band. The roadmap's advertisement of calls to eligible online agents, with durable entries for offline ones, was never built.
-- 🔴 The earlier phase that shipped partnerships deferred cross-organisation recruitment "until the call machinery's remote surface exists" — which is the feature itself, so nothing could ever trigger it.
-- 🔴 Even after a partner agent's card is imported, the imported agent has no machine here, so it cannot take part in anything. **Whose machine should run an imported agent's work — the partner's, executing what this organisation authorised, or a machine this organisation enrols for it — is a decision for you.** It is recorded as waiting on you.
-- 🔴 The directory search shows a partner agent's fields as if the searcher were a member of the partner's organisation; the presence listing gets this right. Owned by the existing visibility task.
-- Split into three: deliver offers to agents' machines (in one organisation first, then to partner organisations under the visibility partnership), record a partner agent's wish to join as a request the organiser resolves by importing its card, and the execution question above.
-
-## 2026-09-23 — A partnership can now be given an end date, and a hidden crash on re-accepting a partnership was found and fixed (`SIGNOFF-REPAIR.5.3.4`)
-
-`REASONBRAID-REPAIR-0433`.
-
-- 🔴 **Before:** a partnership between two organisations lasted until someone remembered to revoke it. There was no way to say "for this quarter".
-- ✅ **Now** the proposing side may set an end date. A partnership past its end date counts as absent everywhere: it no longer widens what the partner can see, an agent card cannot be imported under it, and the partner cannot accept against it. A date in the past is refused outright. Changing the date resets the direction so the partner accepts again, but it does not change the fingerprint of the terms — an end date is not a term.
-- 🔎 **Found by the new test, and fixed:** accepting a partnership a second time against the partner's unchanged terms — after adjusting one's own side and re-accepting — crashed with a database error instead of an answer, because the audit-receipt table refused a second receipt naming the same partner record. That could have happened since these verbs were made transactional; the earlier tests never took that path. A receipt now records each acceptance, so two acceptances are two receipts.
-- ✅ Tested: the end date lapsing (the partner falls back to the outsider's view), the refusal to accept against a lapsed partnership, the past-date refusal, and the two receipts. Run against the previous code first, the lapsed partnership still widened the partner's view.
-- ⚠️ The upgrade test was hardened as well: it now says out loud when a migration it was written to measure has moved out of its reach, instead of silently testing less.
-- Technical: `migrations/0097_federation_expires_at.sql`, `0098_cross_domain_receipts_are_events.sql` (drops the 0049 unique key); `FederationAgreementRequest.expires_at`; the upsert's `WHERE` gains `expires_at IS DISTINCT FROM EXCLUDED.expires_at`; the three predicates and the counterparty read gain `AND (expires_at IS NULL OR expires_at > now())`; control `an_expired_direction_widens_nothing_and_cannot_be_accepted_against`; the upgrade seed branches on `information_schema.columns`.
-
-## 2026-09-23 — A partnership's terms now have a fingerprint, and accepting one records exactly which terms the partner had offered (`SIGNOFF-REPAIR.5.3.1`)
-
-`REASONBRAID-REPAIR-0432`.
-
-- 🔴 **Before:** when an organisation accepted a partnership, the audit receipt — which is supposed to name the partner's record by its fingerprint — named the partner's *id* instead, because a partnership record had nothing to fingerprint. And an organisation could "accept" a partnership the partner had never proposed, even though the refusal message claimed the partner had to propose first.
-- ✅ **Now** every partnership direction carries a fingerprint of its terms, computed by the server, and existing rows were given theirs by the same recipe during the upgrade — checked on a real pre-upgrade row. Accepting reads the partner's current offer and records its fingerprint twice: in the audit receipt, and on the accepting row. So the trail says which terms each side saw when it agreed. If one side later changes its terms, its own acceptance is cleared, while the partner's row still names the terms it agreed to.
-- ✅ One change on the wire: accepting when the partner has made no offer is refused, naming the partner. That is what the message always said.
-- ✅ Tested end to end, including the refusal, the fingerprints on both sides, and a change of terms. Run against the previous code and schema first, the acceptance went through with nothing on the other side.
-- 🔴 The handbook's example of an audit receipt showed a kind and an id shape the code never wrote; corrected to the real shape.
-- Technical: `migrations/0096_federation_terms_digest.sql` (`terms_digest` NOT NULL backfilled by SQL, `accepted_against`); `federation::terms_digest` with two `hashlib`-pinned vectors; the propose upsert carries the digest and clears `accepted_against`; the acceptance reads own status then the counterparty's live row, `AcceptResult::NoCounterparty` → `409`; the receipt's `remote_ref` = the counterparty's digest; the upgrade suite seeds a pre-upgrade direction and holds the backfill to the Rust value; four card fixtures reordered to propose-both-then-accept-both.
-
-## 2026-09-23 — Importing the same partner agent twice now returns the original, and every imported agent records where it came from (`SIGNOFF-REPAIR.5.3.2`)
-
-`REASONBRAID-REPAIR-0431`.
-
-- 🔴 **Before:** an imported agent was identified only by its display name. Importing the same agent again was refused with a message about the name being taken; importing it again under a new name created a second, unrelated local agent; and an unrelated agent that happened to share a name was refused as if it were a repeat. Nothing recorded which partner agent a local one came from — only whoever still held the card knew.
-- ✅ **Now** every import records its origin: the partner organisation, the partner's agent id, the fingerprint of the card that landed, who authorised it and when. Importing an agent that is already here — under any name, from any later card — returns the original local agent, flagged as a repeat, together with the fingerprint of the card on file. Nothing is written twice. The name refusal remains, but only for a genuinely different agent that shares the name.
-- ✅ The agent's owner or administrator sees the origin on the agent's profile; partners and outsiders do not.
-- ✅ Tested end to end: the repeat, the renamed repeat, the origin on the profile, and the name refusal for a different agent. Run against the previous code first, the repeat was refused with the name message.
-- ⚠️ Left open, recorded: whether a *newer* card for an already-imported agent should update the local profile, and under whose authority. Today it does not, and the answer says so.
-- Technical: `migrations/0095_card_imports.sql` (`UNIQUE (tenant_id, origin_tenant_id, origin_role_id)`); `CardImportResult::Replayed { role_id, digest_on_file }` read after the allowlist rung under the exclusive guard, the row written after the enrollment row with `ON CONFLICT DO NOTHING RETURNING` (a miss is a storage failure); `imported_from` on `GET /v1/profiles/{role_id}` full class; 30 purge plans swept; control `an_import_is_identified_by_its_origin_not_its_label`.
-
-## 2026-09-23 — An imported agent's permission is now issued by the administrator who authorised the import (`SIGNOFF-REPAIR.5.3.3`)
-
-`REASONBRAID-REPAIR-0430`.
-
-- 🔴 **Before:** when an administrator imported an agent's card from a partner organisation, the local permission the agent received was recorded as issued by a made-up identity — a fresh id that belonged to nobody — even though the administrator who authorised the import was known to the code and simply never used.
-- ✅ **Now** the permission names that administrator as its issuer. If an organisation is administered by an agent rather than a person, the old limitation stays, with the reason written beside it.
-- ✅ Tested by importing a card and reading the permission back: its issuer is the importing organisation's administrator and is enrolled there. On the previous code the test failed with a random id.
-- ⚠️ Still true: the database does not force an issuer to be a real principal, and the ordinary enrolment of an agent still records a made-up issuer until the development bootstrap is replaced.
-- Technical: `import_after_admission`'s `_principal` became `principal`; `let issuer = match principal { Human(h) => *h, Role(_) => HumanPrincipalId::new() }` feeds `dev_grant`; control `an_imported_roles_grant_is_issued_by_the_admitting_administrator` in `crates/reasonbraid-server/tests/cards.rs`.
-
-## 2026-09-23 — The federation work was measured before building: two of five items are already done, two are real defects, and one is a feature nobody has built (`SIGNOFF-REPAIR.5.3`)
-
-`REASONBRAID-DOC-0143`. A census, no code changed.
-
-- ✅ **Already done by earlier repairs:** importing an agent card from a partner organisation is one all-or-nothing transaction, and a partnership being revoked at the same moment as an import or a partnership change is handled in the right order.
-- 🔴 **Defect 1:** when an organisation accepts a partnership, the audit receipt is supposed to name the partner's record by its fingerprint. It names the partner's *id* instead — no fingerprint, no record — because a partnership record has no version to fingerprint. Nothing tests it.
-- 🔴 **Defect 2:** importing the same agent twice is refused only because its display name is already taken. The same agent under a different name imports again as a second identity, and an unrelated agent with the same name is refused as if it were a repeat. Nothing records which remote agent a local one came from; only whoever still holds the card knows.
-- 🔴 **Defect 3:** an imported agent's local permission is issued by a made-up identity, even though the administrator who authorised the import is right there and unused.
-- ❌ **Not built:** recruiting an agent from a partner organisation *through a call*. Today the only cross-organisation path is importing its card; calls never leave their own organisation.
-- ⚖️ **A reviewer's worry was set aside with a reason:** changing partnership terms without the partner re-agreeing cannot widen anything, because each side's own declaration bounds the effect. What is missing is the record of which terms each side saw — which defect 1 supplies.
-- Split into five tasks, smallest first: the issuer, then the origin record and repeats, then the fingerprinted receipt, then an expiry date, then the cross-organisation call.
-
-## 2026-09-23 — Each step of a recruitment call now happens all at once, so two people acting at the same moment cannot corrupt it (`SIGNOFF-REPAIR.5.2.4`)
-
-`REASONBRAID-REPAIR-0429`. With this, the recruitment-and-initiation repair area (`SIGNOFF-REPAIR.5.2`) is closed.
-
-- 🔴 **Before:** opening, answering and closing a call were each several separate database writes, and each had a hole, measured: two opens at the same moment both slipped under the "at most four open calls per initiator" limit; an agent that joined while the organiser was closing was recorded as joined but left off the panel; two closes at the same moment ended in a database error instead of an answer; and if writing the offers failed halfway, the call stayed behind, advertised to nobody.
-- ✅ **Now** each step is one all-or-nothing transaction. Opens within one organisation take turns, so the limit is decided after the previous open has finished. A close holds the call while it works: a second close is told "the call is closed", and an answer that arrives during a close waits and is then told the same, with nothing recorded — an answer to a closed call belongs to no panel, so it is refused rather than kept as a "late" entry nobody reads. If any part of an open fails, no call is left behind.
-- ✅ Each of the four situations is a test that stages the collision on purpose and checks the outcome. All four failed on the previous code exactly as described. Weakening the close's hold to a shared one was tried as well: the two closes then deadlock and the late answer slips in, so the strict hold is doing real work.
-- ✅ The decision record explains why an open uses a per-organisation lock rather than locking the organisation's own row (every other reader would queue behind it) or reusing the permission-issuing lock (opening a call is not issuing a permission).
-- Technical: `recruitment::serialize_opens` (`pg_advisory_xact_lock(class, hashtext(tenant_id))`), `offer_to_subscribers` (one `INSERT … SELECT`), `call_locked(CallLock::{Shared, Exclusive})`; `serialize_opens`, `open_calls_by`, `open_call`, `offer_to_subscribers`, `record_response`, `call_locked`, `snapshot_panel` take `&mut PgConnection`, `call` and `responses` stay executor-generic; the caps re-exported for the controls. Harness: `hold_inserts` / `wait_for_waiters` in `crates/reasonbraid-server/tests/profiles.rs`. Record: `docs/decisions/2026-09-23_each-call-transition-is-one-transaction-and-a-late-join-is-refused.md`.
-
-## 2026-09-23 — A recruitment call can no longer close with fewer panelists than it asked for (`SIGNOFF-REPAIR.5.2.5`)
-
-`REASONBRAID-REPAIR-0428`.
-
-- 🔴 **Before:** when a call was closed, the "at least N panelists" rule was checked against everyone who had *said* they would join. Only afterwards did the server re-check whether each of them still qualified, and drop those who no longer did. So an agent that joined while qualified and then lost its qualification (for example, its owner's endorsement of a skill lapsed) still counted toward the minimum, and the call could close with fewer panelists than required — even none.
-- ✅ **Now** the minimum is checked on the panel that is actually selected, after the re-check. If too few still qualify, the close is refused with a message stating how many are required, how many still qualify, and how many had joined — and the call stays open, so the organiser can wait for more joiners or re-qualify one.
-- ✅ Tested by making exactly that happen: an endorsed agent joins, its endorsement lapses, the close is refused and the call stays open; the owner endorses it again and the same close succeeds with the agent on the panel. Run against the previous code first, the test showed the old behaviour precisely: a closed call with an empty panel.
-- ⚠️ The remaining recruitment-call problem — each of the three transitions is several separate database writes rather than one, so two simultaneous closes can collide — is the next task.
-- Technical: the check moved from the raw joiner count to the eligible, ranked set between `rank_with_dependence` and `truncate` in `close_call` (`crates/reasonbraid-server/src/api.rs`); the refusal names all three figures; control `a_calls_minimum_is_enforced_on_the_selected_panel` in `crates/reasonbraid-server/tests/profiles.rs`; book `docs/book/src/recruitment.md` (the close section).
-
-## 2026-09-23 — A recruitment call's three transitions are each several separate writes, and its minimum is checked before the filter that can empty the panel (`SIGNOFF-REPAIR.5.2`)
-
-`REASONBRAID-DOC-0142`. A decision; no code changed.
-
-- I checked what the recruitment task still owes after this week's repairs. The identity bindings are done. Two things are not.
-- 🔴 **None of open, answer or close is a single transaction.** Opening a call counts, then inserts the call, then writes each advertisement as a separate step, so two simultaneous opens can both pass the cap and a crash can leave a call half-advertised. Closing reads, then writes the panel and the status as two steps, so two simultaneous closes collide on the database's own key with a raw "500", and an answer can slip in between the close's read and its write.
-- 🔴 **The minimum is checked against who said "join", not against who is still eligible.** The close then drops anyone whose eligibility lapsed, so a call can close with a panel smaller than its minimum, down to empty.
-- ✅ Two follow-ups, tracked: the minimum on the selected panel first (small, reproducible), then each transition as one transaction.
-
 The entries before those above were rotated into reachable Git history at the
-**tenth rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
+**eleventh rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
 stood at the commit named below, which is the object every retired record was
 checked against before this notice was written — is:
 
 ```bash
-git show 1291e49c240aba4c626cc290310ddd64b8b472f5:DEV_NOTES.md
+git show 9824ffcf1aa533cf78fd327098a10d4c8be9b42f:DEV_NOTES.md
 ```
 
-That snapshot is 72864 bytes and 431 lines, and contains 41 dated
-entries; its Git blob is `7fba0ab71f538b212972751b2f622d97d54d731b` and its SHA-256 is
-`37bf0a72bbf86f07ec5d2ac98359bd8b68e4d49b35bf2ea85329121caa2f4284`. It carries the ninth rotation's
+That snapshot is 71576 bytes and 402 lines, and contains 37 dated
+entries; its Git blob is `d987719b9bdab737106030c2618bb14328b5a100` and its SHA-256 is
+`9fe7fa4a1d227678f087c4fcfc3b42bba4b55fe439aa683d335f5b69b122a38b`. It carries the tenth rotation's
 notice in turn, and each earlier notice names the one before it, so the chain
 walks all the way back. `docs/decisions/2026-09-09_changelog-rotation.md` holds
 the first transition's evidence.
 
-⛔ **14 record(s) rotated out, 28 kept, lossless** — every retired heading was retrieved from the
+⛔ **12 record(s) rotated out, 26 kept, lossless** — every retired heading was retrieved from the
 predecessor named above before this notice was written, and every figure in it was re-derived from that object with
 `git rev-parse`, `git cat-file` and SHA-256 rather than typed. ⭐ The cut is DERIVED, not chosen: it retires whole
 records until the ledger has at least 10 commits of runway at the p90 entry size measured over the last

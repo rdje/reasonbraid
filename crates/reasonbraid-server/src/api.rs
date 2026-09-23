@@ -6288,6 +6288,7 @@ async fn open_recruitment_call(
         &call_id,
         &req.tenant_id,
         &req.expression.interests,
+        req.expression.scope == crate::profiles::ReaderClass::Network,
     )
     .await?;
     tx.commit().await?;
@@ -6601,13 +6602,14 @@ async fn list_offered_calls(
             "calls are offered to roles; a person reads a call by its id",
         ));
     };
-    if reader_tenant(&state.pool, &principal).await?.is_none() {
+    let Some(own_tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal has no offers",
         ));
-    }
+    };
     let role_id = role.to_string();
     type Row = (
+        String,
         String,
         String,
         Value,
@@ -6620,8 +6622,9 @@ async fn list_offered_calls(
         Option<String>,
     );
     let rows: Vec<Row> = sqlx::query_as(
-        "SELECT c.call_id, c.thread_id, c.expression, c.min_participants, c.max_participants, \
-                c.recommendations_allowed, c.join_deadline, c.expires_at, o.offered_at, \
+        "SELECT c.call_id, c.tenant_id, c.thread_id, c.expression, c.min_participants, \
+                c.max_participants, c.recommendations_allowed, c.join_deadline, c.expires_at, \
+                o.offered_at, \
                 (SELECT r.response_kind FROM recruitment_responses r \
                   WHERE r.call_id = c.call_id AND r.respondent = $1) AS responded \
          FROM recruitment_offers o JOIN recruitment_calls c ON c.call_id = o.call_id \
@@ -6639,6 +6642,7 @@ async fn list_offered_calls(
             .map(
                 |(
                     call_id,
+                    call_tenant_id,
                     thread_id,
                     expression,
                     min_participants,
@@ -6648,9 +6652,18 @@ async fn list_offered_calls(
                     expires_at,
                     offered_at,
                     responded,
-                )| json!({
+                )| {
+                    // A federated offer (`SIGNOFF-REPAIR.5.3.5.1.2`) carries the
+                    // call and its window and NOT the thread: the thread lives in
+                    // another tenant, whose existence the read must not leak
+                    // (ROADMAP §9.4: cross-tenant existence is not leaked) and
+                    // which the role could not read anyway. It is named on a join.
+                    let foreign = call_tenant_id != own_tenant;
+                    json!({
                     "call_id": call_id,
-                    "thread_id": thread_id,
+                    "call_tenant_id": call_tenant_id,
+                    "foreign": foreign,
+                    "thread_id": if foreign { Value::Null } else { json!(thread_id) },
                     "expression": expression,
                     "min_participants": min_participants,
                     "max_participants": max_participants,
@@ -6659,7 +6672,8 @@ async fn list_offered_calls(
                     "expires_at": expires_at.to_rfc3339(),
                     "offered_at": offered_at.to_rfc3339(),
                     "responded": responded,
-                }),
+                    })
+                },
             )
             .collect::<Vec<_>>(),
     })))

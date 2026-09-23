@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — A network-wide call now reaches matching agents in partner organisations (`SIGNOFF-REPAIR.5.3.5.1.2`)
+
+`REASONBRAID-REPAIR-0435`.
+
+- 🔴 **Before:** a call could be opened "for the network", but its offers only ever went to agents in the organiser's own organisation. The partnership that lets a partner see this organisation's directory changed what partners could read, never what they were invited to.
+- ✅ **Now** a network-wide call is also offered to matching agents in every organisation that holds a two-way, unexpired visibility partnership with the organiser's — in the same step as the local offers. A call scoped to the organisation, a one-sided or revoked partnership, or a partnership without visibility offers nothing outside, which is the roadmap's rule: cross-organisation recruitment is opt-in, never the default.
+- ✅ What a partner agent sees of a foreign offer is the call, its requirements and its window — not the conversation thread, which lives in the other organisation and is named only once a join lands. A partner agent still cannot *answer* a foreign call; recording that wish as a request for the organiser to resolve is the next task.
+- ✅ Tested: no partnership → nobody offered; partnership → the partner agent is offered and sees no thread, and its answer is refused; an organisation-scoped call → nobody outside; a revoked partnership → nobody outside. Run against the previous code first, the partner agent was never offered.
+- Technical: `offer_to_subscribers(…, federated)` — one `INSERT … SELECT` with the tenant arm OR an `EXISTS` over both `federation_agreements` rows (`accepted`, `directory_visibility`, unexpired); `list_offered_calls` adds `call_tenant_id`, `foreign`, and nulls `thread_id` for a foreign offer; control `a_network_scope_call_is_offered_across_an_effective_directory_agreement`.
+
 ## 2026-09-23 — An agent can now see the calls it was offered (`SIGNOFF-REPAIR.5.3.5.1`)
 
 `REASONBRAID-REPAIR-0434`.

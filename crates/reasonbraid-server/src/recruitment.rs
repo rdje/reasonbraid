@@ -246,24 +246,45 @@ pub async fn open_call(
 /// one `INSERT … SELECT` on the open's transaction — so the call and its
 /// offers are one commit, and a failed offer write leaves no call behind
 /// (`SIGNOFF-REPAIR.5.2.4`). Returns how many were offered.
+///
+/// `federated` is the call's `network` scope (`SIGNOFF-REPAIR.5.3.5.1.2`): the
+/// same matching, ALSO over subscribers in every tenant holding the EFFECTIVE
+/// directory-visibility agreement with the call's tenant — both rows
+/// `accepted`, both carrying `directory_visibility`, neither expired, which is
+/// `federation::has_effective_directory_agreement`'s predicate written as a
+/// join so the whole fan-out stays one statement on the open's transaction.
+/// ADR-026: the remote recruitment is the agreement-scoped opt-in; a
+/// tenant-scope call, or no agreement, offers nothing outside the tenant.
 pub async fn offer_to_subscribers(
     conn: &mut sqlx::PgConnection,
     call_id: &str,
     tenant_id: &str,
     interests: &[String],
+    federated: bool,
 ) -> Result<usize, sqlx::Error> {
     let offered: Vec<String> = sqlx::query_scalar(
         "INSERT INTO recruitment_offers (offer_id, call_id, role_id) \
          SELECT 'ofr_' || gen_random_uuid()::text, $1, p.role_id \
          FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
          JOIN agent_roles r ON r.role_id = p.role_id \
-         WHERE v.version = p.current_version AND r.tenant_id = $2 \
-           AND v.profile->'interests' ?| $3 \
+         WHERE v.version = p.current_version AND v.profile->'interests' ?| $3 \
+           AND (r.tenant_id = $2 \
+                OR ($4 AND EXISTS ( \
+                      SELECT 1 FROM federation_agreements ours \
+                      JOIN federation_agreements theirs \
+                        ON theirs.tenant_id = ours.remote_tenant_id \
+                       AND theirs.remote_tenant_id = ours.tenant_id \
+                      WHERE ours.tenant_id = $2 AND ours.remote_tenant_id = r.tenant_id \
+                        AND ours.status = 'accepted' AND theirs.status = 'accepted' \
+                        AND ours.directory_visibility AND theirs.directory_visibility \
+                        AND (ours.expires_at IS NULL OR ours.expires_at > now()) \
+                        AND (theirs.expires_at IS NULL OR theirs.expires_at > now())))) \
          RETURNING role_id",
     )
     .bind(call_id)
     .bind(tenant_id)
     .bind(interests)
+    .bind(federated)
     .fetch_all(conn)
     .await?;
     Ok(offered.len())

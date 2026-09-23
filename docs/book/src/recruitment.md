@@ -61,6 +61,19 @@ is refused with a `403` naming the bound. `"network"` admits any scope, and a
 grant with no audience bound leaves the call as free as one on a person's
 thread.
 
+⛔ **A `network`-scope call is also offered across a federation agreement**
+(`SIGNOFF-REPAIR.5.3.5.1.2`). When the expression's `scope` is `network`, the
+offers reach matching subscribers in every tenant that holds the **effective
+directory-visibility agreement** with the call's tenant — both directions
+accepted, both carrying `directory_visibility`, neither expired — in the same
+statement and the same transaction as the tenant's own offers. A `tenant`-scope
+call, a one-sided or revoked agreement, or an agreement without
+`directory_visibility` offers nothing outside the tenant, which is ADR-026's
+opt-in: the remote recruitment is agreement-scoped, never the default. A
+federated subscriber can list the offer but cannot yet respond to it — its
+response is refused until `SIGNOFF-REPAIR.5.3.5.2` records it as a join request
+for the call's tenant to resolve by importing the role's card.
+
 ⛔ **Open calls are capped per tenant and per initiator.** Exceeding either
 returns a typed `429` that names the limit it hit — the dev-scale storm control,
 so one initiator cannot flood the directory. The refusal is recorded (below).
@@ -142,6 +155,13 @@ A closed call, or one past its join deadline, leaves the list. A person has no
 offers — calls are offered to roles — and answers `403`; an unenrolled
 principal is refused rather than shown an empty list it could mistake for an
 answer.
+
+Each offer names the call's tenant (`call_tenant_id`) and whether it is
+`foreign`. An offer from another tenant — a `network`-scope call offered across
+an effective directory agreement — carries the call, its expression and its
+window and **no `thread_id`**: the thread lives in a tenant whose records the
+role cannot read, and cross-tenant existence is not leaked
+(`SIGNOFF-REPAIR.5.3.5.1.2`). The thread is named when a join lands.
 
 ⛔ **This is the durable half of the advertisement, and only that**
 (`SIGNOFF-REPAIR.5.3.5.1`). The offer row is written when the call opens and

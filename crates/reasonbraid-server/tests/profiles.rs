@@ -3000,6 +3000,173 @@ async fn a_subscriber_lists_the_calls_offered_to_it() {
     );
 }
 
+/// `SIGNOFF-REPAIR.5.3.5.1.2` — a `network`-scope call is offered to
+/// subscribers in tenants holding the EFFECTIVE directory agreement, and to
+/// nobody outside its tenant otherwise. The foreign offer carries the call and
+/// its window and not the thread; the foreign response stays refused. Before
+/// this repair the offers were bound to the call's tenant whatever the scope.
+#[tokio::test]
+async fn a_network_scope_call_is_offered_across_an_effective_directory_agreement() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let world = call_world(&client, &base, "fed-offer", 0).await;
+    // Tenant B: a person and a subscriber whose interests match the call's.
+    let (status, human_b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "fed-offer-b" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{human_b}");
+    let b_admin = human_b["principal_id"].as_str().unwrap().to_string();
+    let tenant_b = human_b["tenant_id"].as_str().unwrap().to_string();
+    let (status, role_b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "fed-offer-role", "tenant_id": tenant_b }),
+    )
+    .await;
+    assert_eq!(status, 200, "{role_b}");
+    let role_b = role_b["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &b_admin, &tenant_b, &role_b).await;
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_b}"),
+        &role_b,
+        &visibility_profile(),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let open = |scope: &'static str| {
+        let client = client.clone();
+        let base = base.clone();
+        let human = world.human_id.clone();
+        let mut body = call_body(&world, 1, 4);
+        async move {
+            body["expression"]["scope"] = json!(scope);
+            post(&client, &base, "/v1/calls", &human, &body).await
+        }
+    };
+    let offered = || {
+        let client = client.clone();
+        let base = base.clone();
+        let role_b = role_b.clone();
+        async move {
+            let (status, listed) = get(&client, &base, "/v1/calls/offered", &role_b).await;
+            assert_eq!(status, 200, "{listed}");
+            listed["offered"].as_array().unwrap().clone()
+        }
+    };
+
+    // 1. No agreement: a network-scope call in A reaches nobody in B.
+    let (status, opened) = open("network").await;
+    assert_eq!(status, 200, "{opened}");
+    assert_eq!(opened["offered_to"], json!(0), "{opened}");
+    assert!(offered().await.is_empty(), "no agreement, no offer");
+
+    // 2. The effective directory agreement, both ways: the next network-scope
+    //    call is offered to B's subscriber — the call and its window, not the
+    //    thread — and B's response is still refused.
+    for (admin, tenant, remote) in [
+        (&world.human_id, &world.tenant, &tenant_b),
+        (&b_admin, &tenant_b, &world.tenant),
+    ] {
+        let (status, body) = post(
+            &client,
+            &base,
+            "/v1/federation-agreements",
+            admin,
+            &json!({
+                "tenant_id": tenant,
+                "remote_tenant_id": remote,
+                "directory_visibility": true,
+                "recruitment": false,
+            }),
+        )
+        .await;
+        assert_eq!(status, 200, "{body}");
+    }
+    for (admin, tenant, remote) in [
+        (&world.human_id, &world.tenant, &tenant_b),
+        (&b_admin, &tenant_b, &world.tenant),
+    ] {
+        let (status, body) = post(
+            &client,
+            &base,
+            "/v1/federation-agreements/accept",
+            admin,
+            &json!({ "tenant_id": tenant, "remote_tenant_id": remote }),
+        )
+        .await;
+        assert_eq!(status, 200, "{body}");
+    }
+    let (status, opened) = open("network").await;
+    assert_eq!(status, 200, "{opened}");
+    assert_eq!(
+        opened["offered_to"],
+        json!(1),
+        "the federated subscriber is offered: {opened}"
+    );
+    let federated_call = opened["call_id"].as_str().unwrap().to_string();
+    let listed = offered().await;
+    assert_eq!(listed.len(), 1, "{listed:?}");
+    assert_eq!(listed[0]["call_id"], json!(federated_call));
+    assert_eq!(listed[0]["foreign"], json!(true));
+    assert_eq!(listed[0]["call_tenant_id"], json!(world.tenant));
+    assert_eq!(
+        listed[0]["thread_id"],
+        Value::Null,
+        "a foreign offer names no thread: {listed:?}"
+    );
+    assert_eq!(listed[0]["expression"]["scope"], json!("network"));
+    let (status, refused) = post(
+        &client,
+        &base,
+        &format!("/v1/calls/{federated_call}/respond"),
+        &role_b,
+        &json!({ "kind": "join" }),
+    )
+    .await;
+    assert_eq!(
+        status, 403,
+        "a foreign response is still refused (the join request is .5.3.5.2): {refused}"
+    );
+
+    // 3. A tenant-scope call, with the agreement in place, is offered to nobody
+    //    outside its tenant.
+    let (status, opened) = open("tenant").await;
+    assert_eq!(status, 200, "{opened}");
+    assert_eq!(opened["offered_to"], json!(0), "{opened}");
+    assert_eq!(
+        offered().await.len(),
+        1,
+        "the tenant-scope call did not reach B"
+    );
+
+    // 4. A revoked direction: the next network-scope call reaches nobody in B.
+    let (status, revoked) = post(
+        &client,
+        &base,
+        "/v1/federation-agreements/revoke",
+        &b_admin,
+        &json!({ "tenant_id": tenant_b, "remote_tenant_id": world.tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "{revoked}");
+    let (status, opened) = open("network").await;
+    assert_eq!(status, 200, "{opened}");
+    assert_eq!(opened["offered_to"], json!(0), "{opened}");
+    assert_eq!(
+        offered().await.len(),
+        1,
+        "the revoked direction offers nothing new"
+    );
+}
+
 /// `SIGNOFF-REPAIR.11.4.7.2.1.5.4.1` — §4.2's `decision_rule_constraints`: the
 /// issuer narrows, for one subject, the decision rules the tenant's charter
 /// allows. Declared in the enrolment body, validated at the one grant-creation

@@ -144,6 +144,16 @@ with the panel, so why this panel was chosen survives the call.
 ⛔ The snapshot is taken at close. Roles that join, change or become ineligible
 afterwards do not alter it — that is what makes it a record rather than a view.
 
+**The minimum is a minimum on the selected panel** (`SIGNOFF-REPAIR.5.2.5`).
+Eligibility is re-resolved at close against each joiner's current facts, and a
+joiner who no longer satisfies the expression is dropped before ranking. The
+close is then refused `409 invalid_transition` when fewer eligible joiners
+remain than `min_participants`, naming both counts — *the panel needs at least
+1 eligible joiners: 0 remain eligible of 1 who joined* — and the call stays
+open. Until this repair the minimum counted who had said `join`, so a call
+whose only joiner had since lost the required attestation closed with an empty
+panel.
+
 ## A node initiating a thread itself
 
 `POST /v1/threads/auto` is how a role starts work nobody asked it to start.

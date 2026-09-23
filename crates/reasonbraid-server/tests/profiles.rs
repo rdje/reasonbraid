@@ -2251,6 +2251,154 @@ async fn the_auto_initiation_lands_under_the_grant_and_the_checklist() {
     );
 }
 
+/// `SIGNOFF-REPAIR.5.2.5` — §10.5's minimum is on the SELECTED panel. The close
+/// re-resolves every joiner's eligibility against current facts and drops the
+/// ineligible; the minimum must be asked of what remains, not of who once said
+/// `join`. Until this repair a joiner whose eligibility lapsed after joining
+/// still counted toward the minimum, and the call closed with a panel below it
+/// — down to empty.
+#[tokio::test]
+async fn a_calls_minimum_is_enforced_on_the_selected_panel() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "min-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{human}");
+    let tenant = human["tenant_id"].as_str().unwrap().to_string();
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let thread_id = create_thread(&client, &base, &human_id, &tenant, "min-thread").await;
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "min-agent", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "{role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &human_id, &tenant, &role_id).await;
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &role_id,
+        &visibility_profile(),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let attest = || {
+        let client = client.clone();
+        let base = base.clone();
+        let role_id = role_id.clone();
+        let human_id = human_id.clone();
+        async move {
+            let (status, _) = post(
+                &client,
+                &base,
+                &format!("/v1/profiles/{role_id}/attest"),
+                &human_id,
+                &json!({ "taxonomy_id": "code_review", "evidence_ref": "evt_min/20260923" }),
+            )
+            .await;
+            assert_eq!(status, 200, "the owner attests");
+        }
+    };
+    attest().await;
+
+    // The call requires an OWNER-ATTESTED `code_review`, minimum one panelist.
+    let deadline = (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
+    let expiry = (chrono::Utc::now() + chrono::Duration::hours(2)).to_rfc3339();
+    let response = client
+        .post(format!("{base}/v1/calls"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({
+            "tenant_id": tenant,
+            "thread_id": thread_id,
+            "expression": {
+                "scope": "tenant",
+                "capabilities": [{ "taxonomy_id": "code_review", "min_confidence": "owner_attested" }],
+                "presence_states": ["available", "offline"],
+            },
+            "min_participants": 1,
+            "max_participants": 2,
+            "join_deadline": deadline,
+            "expires_at": expiry,
+        }))
+        .send()
+        .await
+        .expect("open request");
+    assert_eq!(response.status().as_u16(), 200, "the call opens");
+    let opened: Value = response.json().await.unwrap();
+    let call_id = opened["call_id"].as_str().unwrap().to_string();
+    let response = client
+        .post(format!("{base}/v1/calls/{call_id}/respond"))
+        .header(PRINCIPAL_HEADER, &role_id)
+        .json(&json!({ "kind": "join" }))
+        .send()
+        .await
+        .expect("join request");
+    assert_eq!(response.status().as_u16(), 200, "the attested role joins");
+
+    // The joiner's eligibility LAPSES: its own re-write of the profile can
+    // declare only self-asserted claims, so the attested confidence is gone.
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &role_id,
+        &visibility_profile(),
+    )
+    .await;
+    assert_eq!(status, 200, "the role rewrites its profile");
+
+    // The close: one joined, none remain eligible, the minimum is one.
+    let close = || {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let call_id = call_id.clone();
+        async move {
+            let response = client
+                .post(format!("{base}/v1/calls/{call_id}/close"))
+                .header(PRINCIPAL_HEADER, &human_id)
+                .send()
+                .await
+                .expect("close request");
+            let status = response.status().as_u16();
+            (status, response.json::<Value>().await.expect("close json"))
+        }
+    };
+    let (status, refused) = close().await;
+    assert_eq!(status, 409, "{refused}");
+    assert_eq!(refused["code"], json!("invalid_transition"), "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("0 remain eligible of 1 who joined"),
+        "the refusal names both counts: {refused}"
+    );
+    let still_open: String =
+        sqlx::query_scalar("SELECT status FROM recruitment_calls WHERE call_id = $1")
+            .bind(&call_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(still_open, "open", "a refused close leaves the call open");
+
+    // Eligibility restored: the same close snapshots the panel.
+    attest().await;
+    let (status, closed) = close().await;
+    assert_eq!(status, 200, "{closed}");
+    assert_eq!(closed["panel"], json!([role_id]), "{closed}");
+}
+
 /// `SIGNOFF-REPAIR.11.4.7.2.1.5.4.1` — §4.2's `decision_rule_constraints`: the
 /// issuer narrows, for one subject, the decision rules the tenant's charter
 /// allows. Declared in the enrolment body, validated at the one grant-creation

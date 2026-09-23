@@ -6467,13 +6467,8 @@ async fn close_call(
         .filter(|(_, kind, _, _)| kind == "join")
         .map(|(respondent, _, _, _)| respondent.clone())
         .collect();
-    if (joiners.len() as i32) < call.min_participants {
-        return Err(ControlApiError::invalid_transition(format!(
-            "the panel needs at least {} joiners, {} responded",
-            call.min_participants,
-            joiners.len()
-        )));
-    }
+    // The minimum is asked below, of the SELECTED panel — not here, of who
+    // once said `join` (`SIGNOFF-REPAIR.5.2.5`).
     // Rank the joiners (the default preferences) and cap at the max.
     let mut candidates: Vec<(
         crate::matching::EligibilityCandidate,
@@ -6516,6 +6511,19 @@ async fn close_call(
         &Default::default(),
         Some(&facts),
     );
+    // §10.5's minimum is on the SELECTED panel (`SIGNOFF-REPAIR.5.2.5`): it is
+    // asked of the ELIGIBLE, ranked set — after the re-resolution above has
+    // dropped a joiner whose profile or node no longer satisfies the
+    // expression — and never of who once said `join`. Until this check moved
+    // here, a call closed with a panel below its minimum, down to empty.
+    if (ranked.len() as i32) < call.min_participants {
+        return Err(ControlApiError::invalid_transition(format!(
+            "the panel needs at least {} eligible joiners: {} remain eligible of {} who joined",
+            call.min_participants,
+            ranked.len(),
+            joiners.len()
+        )));
+    }
     ranked.truncate(call.max_participants as usize);
     let indicators: Vec<crate::dependence::DependenceIndicator> =
         crate::dependence::dependence_indicators(

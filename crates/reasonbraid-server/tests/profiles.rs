@@ -4394,6 +4394,38 @@ async fn the_wake_policy_and_operating_hours_are_formats_and_gates() {
         clock(now + chrono::Duration::hours(1))
     );
 
+    // The presence a held role reports (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2.1`):
+    // §10.2's seventh state, `held`, with the reason beside it — read from the
+    // directory as the tenant's own person. Before that state a held role read
+    // `available` while the replay handed it nothing. The role needs a LIVE
+    // lease for the question to arise at all (offline outranks every policy),
+    // seeded the way the node-channel suite seeds one.
+    sqlx::query(
+        "INSERT INTO node_leases (node_id, fencing_token, lease_expires_at, last_seen_at) \
+         VALUES ($1, 'ftk_hours', now() + interval '1 hour', now())",
+    )
+    .bind(&role_id)
+    .execute(&pool)
+    .await
+    .expect("a live lease for the role's node");
+    let presence = || {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let role_id = role_id.clone();
+        async move {
+            let (status, read) = get(&client, &base, "/v1/directory/presence", &human_id).await;
+            assert_eq!(status, 200, "{read}");
+            read["own_tenant"]["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|n| n["node_id"] == json!(role_id))
+                .cloned()
+                .expect("the role is listed in its own tenant")
+        }
+    };
+
     let (status, _) = write(json!({ "wake_policy": "manual_only" })).await;
     assert_eq!(status, 200);
     let (status, refused) = auto("wake-manual").await;
@@ -4402,6 +4434,13 @@ async fn the_wake_policy_and_operating_hours_are_formats_and_gates() {
         refused["message"].as_str().unwrap().contains("manual_only"),
         "the refusal names the policy: {refused}"
     );
+    let node = presence().await;
+    assert_eq!(
+        node["state"],
+        json!("held"),
+        "a manual-only role is held: {node}"
+    );
+    assert_eq!(node["hold"], json!("manual_only"), "{node}");
 
     let (status, _) = write(json!({ "wake_policy": "auto", "operating_hours": off_hours })).await;
     assert_eq!(status, 200);
@@ -4414,6 +4453,13 @@ async fn the_wake_policy_and_operating_hours_are_formats_and_gates() {
             .contains("operating hours"),
         "the refusal names the hours: {refused}"
     );
+    let node = presence().await;
+    assert_eq!(
+        node["state"],
+        json!("held"),
+        "an off-hours role is held: {node}"
+    );
+    assert_eq!(node["hold"], json!("off_hours"), "{node}");
 
     let (status, _) = write(json!({ "wake_policy": "auto", "operating_hours": on_hours })).await;
     assert_eq!(status, 200);
@@ -4423,6 +4469,13 @@ async fn the_wake_policy_and_operating_hours_are_formats_and_gates() {
         "inside the hours, under `auto`, the initiation lands: {landed}"
     );
     assert!(landed["thread_id"].as_str().unwrap().starts_with("thr_"));
+    let node = presence().await;
+    assert_ne!(
+        node["state"],
+        json!("held"),
+        "inside its hours the role is not held: {node}"
+    );
+    assert_eq!(node["hold"], Value::Null, "{node}");
 
     // The drain switch answers through the same evaluator, in the same words.
     let (status, _) = write(json!({ "concurrency": 0 })).await;
@@ -4436,6 +4489,13 @@ async fn the_wake_policy_and_operating_hours_are_formats_and_gates() {
             .contains("concurrency is zero"),
         "{refused}"
     );
+    let node = presence().await;
+    assert_eq!(
+        node["state"],
+        json!("draining"),
+        "zero capacity stays draining: {node}"
+    );
+    assert_eq!(node["hold"], json!("draining"), "{node}");
 }
 
 /// `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.1` with `SIGNOFF-REPAIR.5.2` clause 1, which

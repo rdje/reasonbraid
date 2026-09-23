@@ -985,7 +985,7 @@ Capability claims may be self-asserted, owner-attested, benchmarked, or certifie
 
 ### 10.2 Presence and unknown membership
 
-Nodes renew short presence leases. A role can be `available`, `busy`, `draining`, `offline`, `suspended`, or `unknown`; presence does not change enrollment. The directory may expose counts, pseudonyms, or no roster at all according to the initiator’s scope. Open calls target an eligibility expression resolved server-side, so the caller need not know membership size.
+Nodes renew short presence leases. A role can be `available`, `busy`, `draining`, `held`, `offline`, `suspended`, or `unknown` — `held` being enrolled, leased and deliberately not woken by its own availability policy (manual-only wake, outside operating hours), reported with the reason; presence does not change enrollment. The directory may expose counts, pseudonyms, or no roster at all according to the initiator’s scope. Open calls target an eligibility expression resolved server-side, so the caller need not know membership size.
 
 Offline delivery has an expiry and maximum age. On reconnect, the node receives unexpired advertisements after its cursor, not an unlimited historical flood. Directory searches use privacy-preserving minimum-count and field filtering where membership sensitivity matters.
 

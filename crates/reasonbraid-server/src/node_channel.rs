@@ -458,10 +458,14 @@ pub struct PresenceResponse {
     /// reads `suspended` whatever the lease says — a revoked node cannot
     /// re-handshake.
     pub suspended: bool,
-    /// The derived six-state presence (`.3.2.1`): `available` | `offline` |
-    /// `suspended` | `draining` | `unknown` (`busy` waits for the `.4`
-    /// capacity accounting).
+    /// The derived seven-state presence (`.3.2.1`, `.11.24.1.2`,
+    /// `.11.4.7.2.1.5.3.2.2.1`): `available` | `busy` | `draining` | `held` |
+    /// `offline` | `suspended` | `unknown`.
     pub state: String,
+    /// Why a `held` (or `draining`) role is not woken — the wake evaluator's
+    /// verdict by name: `manual_only`, `off_hours`, `unreadable`, `draining`.
+    /// Absent when nothing holds it.
+    pub hold: Option<String>,
     pub last_seen_at: Option<DateTime<Utc>>,
     pub lease_expires_at: Option<DateTime<Utc>>,
 }
@@ -1587,9 +1591,15 @@ impl NodeChannelState {
             lease_expires_at: Option<DateTime<Utc>>,
             concurrency: Option<i64>,
             in_flight: i64,
+            availability: Option<Value>,
+            now: DateTime<Utc>,
         }
         let row: Option<PresenceRow> = sqlx::query_as(
             "SELECT online, suspended, last_seen_at, lease_expires_at, \
+                    (SELECT v.profile->'availability' \
+                     FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
+                     WHERE v.role_id = node_presence.node_id AND v.version = p.current_version) AS availability, \
+                    now() AS now, \
                     (SELECT (v.profile->'availability'->>'concurrency')::bigint \
                      FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
                      WHERE v.role_id = $1 AND v.version = p.current_version) AS concurrency, \
@@ -1600,21 +1610,26 @@ impl NodeChannelState {
         .bind(tenant_id)
         .fetch_optional(&self.pool)
         .await?;
-        Ok(row.map(|r| PresenceResponse {
-            node_id: node_id.to_string(),
-            online: r.online,
-            suspended: r.suspended,
-            last_seen_at: r.last_seen_at,
-            lease_expires_at: r.lease_expires_at,
-            state: crate::presence::presence_state(
-                true,
-                r.suspended,
-                r.online,
-                r.concurrency,
-                r.in_flight,
-            )
-            .as_str()
-            .to_string(),
+        Ok(row.map(|r| {
+            let hold = crate::presence::hold_from_stored(r.availability.as_ref(), r.now);
+            PresenceResponse {
+                node_id: node_id.to_string(),
+                online: r.online,
+                suspended: r.suspended,
+                last_seen_at: r.last_seen_at,
+                lease_expires_at: r.lease_expires_at,
+                state: crate::presence::presence_state(
+                    true,
+                    r.suspended,
+                    r.online,
+                    r.concurrency,
+                    r.in_flight,
+                    hold.as_ref(),
+                )
+                .as_str()
+                .to_string(),
+                hold: hold.as_ref().map(|h| h.wire_name().to_string()),
+            }
         }))
     }
 }

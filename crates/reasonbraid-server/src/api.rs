@@ -2187,6 +2187,8 @@ async fn list_node_presence(
                 Option<i64>,
                 i64,
                 i64,
+                Option<Value>,
+                DateTime<Utc>,
             );
             let rows: Vec<Row> = sqlx::query_as(
         "SELECT np.node_id, np.online, np.suspended, np.last_seen_at, np.lease_expires_at, \
@@ -2196,7 +2198,11 @@ async fn list_node_presence(
                 np.in_flight, \
                 (SELECT count(*) FROM node_inbox_state i \
                   WHERE i.node_id = np.node_id \
-                    AND i.delivery_state IN ('queued', 'offered')) \
+                    AND i.delivery_state IN ('queued', 'offered')), \
+                (SELECT v.profile->'availability' \
+                 FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
+                 WHERE v.role_id = np.node_id AND v.version = p.current_version), \
+                now() \
          FROM node_presence np WHERE np.tenant_id = $1 ORDER BY np.node_id",
     )
     .bind(q.tenant_id.to_string())
@@ -2214,13 +2220,17 @@ async fn list_node_presence(
                         concurrency,
                         in_flight,
                         undelivered,
+                        availability,
+                        now,
                     )| {
+                        let hold = crate::presence::hold_from_stored(availability.as_ref(), now);
                         json!({
                             "node_id": node_id,
                             "state": crate::presence::presence_state(
-                                true, suspended, online, concurrency, in_flight,
+                                true, suspended, online, concurrency, in_flight, hold.as_ref(),
                             )
                             .as_str(),
+                            "hold": hold.as_ref().map(|h| h.wire_name()),
                             "online": online,
                             "suspended": suspended,
                             "last_seen_at": last_seen_at.map(|t| t.to_rfc3339()),
@@ -6328,7 +6338,18 @@ async fn respondent_candidate<'e>(
     .await
     .ok()?;
     let (online, suspended, concurrency, profile, in_flight) = row?;
-    let state = crate::presence::presence_state(true, suspended, online, concurrency, in_flight);
+    let hold = crate::presence::hold_from_stored(
+        profile.as_ref().and_then(|p| p.get("availability")),
+        Utc::now(),
+    );
+    let state = crate::presence::presence_state(
+        true,
+        suspended,
+        online,
+        concurrency,
+        in_flight,
+        hold.as_ref(),
+    );
     let parsed =
         profile.and_then(|p| serde_json::from_value::<crate::profiles::AgentProfile>(p).ok());
     Some((
@@ -6965,8 +6986,15 @@ async fn directory_match(
             scope: effective,
             ..req.expression.clone()
         };
-        let state_now =
-            crate::presence::presence_state(true, suspended, online, concurrency, in_flight);
+        let hold = crate::wake::hold(parsed.availability.as_ref(), Utc::now());
+        let state_now = crate::presence::presence_state(
+            true,
+            suspended,
+            online,
+            concurrency,
+            in_flight,
+            hold.as_ref(),
+        );
         let candidate = crate::matching::EligibilityCandidate {
             role_id: node_id.clone(),
             profile: Some(parsed),
@@ -7113,10 +7141,21 @@ async fn directory_presence(
         in_flight,
     ) in rows
     {
-        let state =
-            crate::presence::presence_state(true, suspended, online, concurrency, in_flight)
-                .as_str()
-                .to_string();
+        let hold = crate::presence::hold_from_stored(
+            profile.as_ref().and_then(|p| p.get("availability")),
+            Utc::now(),
+        );
+        let state = crate::presence::presence_state(
+            true,
+            suspended,
+            online,
+            concurrency,
+            in_flight,
+            hold.as_ref(),
+        )
+        .as_str()
+        .to_string();
+        let hold = hold.as_ref().map(|h| h.wire_name());
         let (target, fields) = if tenant == reader_tenant {
             (true, profile)
         } else {
@@ -7132,6 +7171,8 @@ async fn directory_presence(
                 Some(json!({
                     "node_id": node_id,
                     "state": state,
+                "hold": hold,
+                    "hold": hold,
                     "last_seen_at": last_seen_at.map(|t| t.to_rfc3339()),
                     "lease_expires_at": lease_expires_at.map(|t| t.to_rfc3339()),
                     "profile": filtered,
@@ -7140,6 +7181,7 @@ async fn directory_presence(
             (true, None) => Some(json!({
                 "node_id": node_id,
                 "state": state,
+                "hold": hold,
                 "last_seen_at": last_seen_at.map(|t| t.to_rfc3339()),
                 "lease_expires_at": lease_expires_at.map(|t| t.to_rfc3339()),
             })),
@@ -7158,6 +7200,8 @@ async fn directory_presence(
                 Some(json!({
                     "node_id": node_id,
                     "state": state,
+                "hold": hold,
+                    "hold": hold,
                     "profile": filtered,
                 }))
             }

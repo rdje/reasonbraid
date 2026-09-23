@@ -5387,6 +5387,7 @@ async fn a_node_holding_its_declared_capacity_reads_busy_and_leaves_it() {
                 online,
                 concurrency,
                 in_flight,
+                None,
             )
             .as_str()
             .to_string()

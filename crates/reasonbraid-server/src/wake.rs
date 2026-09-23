@@ -173,6 +173,20 @@ pub enum Hold {
     Unreadable(FormatError),
 }
 
+impl Hold {
+    /// The hold's wire name (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2.1`): what a
+    /// presence read shows beside `held`, so a client that reads only `state`
+    /// sees the honest state and one that reads `hold` sees why.
+    pub fn wire_name(&self) -> &'static str {
+        match self {
+            Hold::Draining => "draining",
+            Hold::ManualOnly => "manual_only",
+            Hold::OffHours { .. } => "off_hours",
+            Hold::Unreadable(_) => "unreadable",
+        }
+    }
+}
+
 impl std::fmt::Display for Hold {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

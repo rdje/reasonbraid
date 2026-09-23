@@ -526,13 +526,31 @@ only, and a node that declared two was handed a third row.
 | `2` | 2 | nothing — presence reads `busy` |
 | `0` | anything | nothing — presence reads `draining` |
 
-## Presence has six states, and `busy` is one of them
+## Presence has seven states, and `busy` and `held` are two of them
 
-`ROADMAP.md` §10.2 says a role can be `available`, `busy`, `draining`,
+`ROADMAP.md` §10.2 says a role can be `available`, `busy`, `draining`, `held`,
 `offline`, `suspended` or `unknown`. Until `SIGNOFF-REPAIR.11.24.1.2` the
 deployment could report five: `busy` was published in the vocabulary and no
 input could ever produce it, so a client branching on §10.2's states had one
-branch that was unreachable.
+branch that was unreachable. `held` is the seventh, added by
+`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2.1` with the roadmap amended in the same
+commit, for the opposite defect: a role that is enrolled, leased and
+deliberately not woken — `wake_policy: "manual_only"`, or outside its
+`operating_hours`, or a stored availability block the evaluator cannot read —
+was handed nothing by the replay and still read `available`. It now reads
+`held`, and every presence read carries `hold` beside the state naming why:
+`manual_only`, `off_hours` or `unreadable` (and `draining` for the drain
+switch, whose state stays `draining`). A client that reads only `state` sees
+the honest state; one that reads `hold` sees the reason; a matching
+expression that wants held roles lists `held` in its `presence_states`, and
+the default (`available` only) does not. The alternatives were weighed: reading
+`draining` would have lied (the book defines it as winding down), and keeping
+`available` with a reason field would have kept the lie in the one field every
+client reads.
+
+`held` sits **below `draining` and above `busy`**, by the durability argument
+below: a policy hold is a declaration about the role, like zero capacity and
+unlike the count of what it holds this instant.
 
 `busy` means **at the capacity the profile declared**: the node holds as many
 commands as it said it can take. *Holds* is the inbox ladder's own rung —

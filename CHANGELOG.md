@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-23 — The machine-recovery checklist checked against the code: five gaps found, one piece missing, all scheduled (`SIGNOFF-REPAIR.4.4`)
+
+`REASONBRAID-DOC-0153`. A review; no code changed.
+
+- 🔴 **Worst:** when a machine cannot tell whether a paid provider call happened, the server may declare it "settled" on the strength of the machine's own "I gave up on this" report — with no evidence at all. And when an operator rules on such a case, the machine ignores which way the ruling went.
+- 🔴 A finished answer the server refuses (say, after the agent's permission was withdrawn) is silently dropped: its spend is never counted and the machine is never told.
+- 🔴 Three tests meant to guard the hand-off to the provider cannot tell the safety check from a provider outage; they are fixed before the hand-off is touched.
+- 🔴 If the machine dies in the instant between recording "done" and recording the answer, the paid-for answer is lost for good.
+- 🔴 A network blip while sending an answer, or an unresolvable provider outcome, stops the whole machine process; and the machine waits for ever on a server that never replies.
+- ❌ A time limit is computed for every provider call and nothing enforces it; nor is the reply's size bounded.
+- ⚖️ Retrying an unresolvable call is correctly refused by the machine, but nobody can yet authorize one.
+- ✅ All seven are scheduled in order of risk, each to be proven with a failing test first.
+
 ## 2026-09-23 — Two jobs sent to one machine at the same instant no longer collide: proven, and the inbox checklist is complete (`SIGNOFF-REPAIR.4.3.4`, closing `SIGNOFF-REPAIR.4.3`)
 
 `REASONBRAID-REPAIR-0458`. The last of the four inbox-identity gaps found by `REASONBRAID-DOC-0152`; with it the whole checklist (`SIGNOFF-REPAIR.4.3`) is met.

@@ -638,7 +638,10 @@ is the attempt complete while its result exists only in memory:
 A result produced while the node is **not schedulable** is handled the same
 way. The worker delivers the already-journaled event only when the node is
 `Schedulable`; otherwise the event stays pending, the worker logs *the next
-reconcile delivers it*, and the reconcile does. Before this repair the two
+reconcile delivers it*, and the reconcile does. The node's own tests check
+both paths against a stub control plane the node really reconciles with: an
+immediate delivery, and a deferred result delivered exactly once, under its
+original id (`worker_delivery`). Before this repair the two
 writes were separate transactions, and an unschedulable node refused the
 event write outright. The attempt then read `completed` with no event: the
 handshake reported nothing, the retry gate refused the item as terminal, and

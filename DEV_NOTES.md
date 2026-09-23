@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — The machine's own tests can now see an answer being sent (`SIGNOFF-REPAIR.4.4.4.2.1`)
+
+`REASONBRAID-REPAIR-0463`. Test equipment for the fourth recovery gap; no product behaviour changed.
+
+- 🔴 **Before:** the machine's own tests could never get a machine properly connected, so nothing below the slow full-system tests could see an answer actually being sent. A deliberately broken machine that claimed "sent" while sending nothing passed all 83 of them.
+- ✅ **Now:** a small stand-in server lets a test machine connect for real. New checks show an answer sent at once when connected, and an answer kept while disconnected then sent exactly once on reconnect under its original id.
+- ✅ Tested: the broken "claims sent, sends nothing" machine is now caught by the machine's own tests; 87 machine tests pass; strict lint clean.
+- Technical: `crates/reasonbraid-node/tests/support/control_plane.rs` `StubControlPlane` (`axum` 0.8 dev-dep; one `Cargo.lock` edge) serving `handshake`/`events`/`ack` with `HandshakeResponse`/`EventReceipt`/`AckResponse`; `tests/worker_delivery.rs` 4 controls. `cargo mutants --in-place` on `send_journaled|deliver_journaled_event`: 2 caught, 1 unviable, 0 missed; stub token mutant RED.
+
 ## 2026-09-23 — A finished, paid-for answer can no longer be lost between "done" and "sent" (`SIGNOFF-REPAIR.4.4.4.1`)
 
 `REASONBRAID-REPAIR-0462`. The first half of the fourth recovery gap found by `REASONBRAID-DOC-0153`.

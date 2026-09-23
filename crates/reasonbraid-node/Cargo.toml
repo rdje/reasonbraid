@@ -68,3 +68,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
 # it. Test-only, and the SAME 0.3 the workspace already resolves (the server
 # depends on it), so no second version enters under `bans.multiple-versions`.
 time = "0.3"
+# The stub control plane (`SIGNOFF-REPAIR.4.4.4.2.1`): an in-process server a
+# test node can reconcile against, so delivery is testable below the live
+# suites. Test-only, and the SAME 0.8 the server already resolves.
+axum = "0.8"

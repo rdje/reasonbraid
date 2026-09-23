@@ -1,0 +1,640 @@
+diff --git a/crates/reasonbraid-server/src/api.rs b/crates/reasonbraid-server/src/api.rs
+index e14c9b5..ff32918 100644
+--- a/crates/reasonbraid-server/src/api.rs
++++ b/crates/reasonbraid-server/src/api.rs
+@@ -6332,6 +6332,7 @@ async fn open_recruitment_call(
+ async fn respondent_candidate<'e>(
+     executor: impl sqlx::PgExecutor<'e>,
+     role_id: &str,
++    at: chrono::DateTime<Utc>,
+ ) -> Option<(
+     crate::matching::EligibilityCandidate,
+     crate::presence::PresenceState,
+@@ -6354,10 +6355,8 @@ async fn respondent_candidate<'e>(
+     .await
+     .ok()?;
+     let (online, suspended, concurrency, profile, in_flight) = row?;
+-    let hold = crate::presence::hold_from_stored(
+-        profile.as_ref().and_then(|p| p.get("availability")),
+-        Utc::now(),
+-    );
++    let hold =
++        crate::presence::hold_from_stored(profile.as_ref().and_then(|p| p.get("availability")), at);
+     let state = crate::presence::presence_state(
+         true,
+         suspended,
+@@ -6507,12 +6506,15 @@ pub(crate) async fn respond_to_call_core(
+     // ineligible (or unwilling) declaring why, and must not be refused.
+     let participation = matches!(response.kind(), "join" | "conditional_join");
+     if participation {
+-        let Some((candidate, _state)) = respondent_candidate(&mut *tx, &respondent).await else {
++        // ONE instant judges the respondent: its hold and its claims' expiry.
++        let at = Utc::now();
++        let Some((candidate, _state)) = respondent_candidate(&mut *tx, &respondent, at).await
++        else {
+             return Err(ControlApiError::unauthorized(
+                 "the respondent has no enrolled node/profile",
+             ));
+         };
+-        let verdict = crate::matching::eligible(&expression, &candidate);
++        let verdict = crate::matching::eligible(&expression, &candidate, at);
+         if !verdict.eligible {
+             return Err(ControlApiError::unauthorized(format!(
+                 "the respondent is ineligible: {}",
+@@ -6620,9 +6622,12 @@ async fn close_call(
+         crate::matching::EligibilityCandidate,
+         crate::matching::EligibilityVerdict,
+     )> = Vec::new();
++    // ONE instant judges the whole panel — every joiner's hold and every
++    // claim's expiry — so two joiners are never judged at different times.
++    let at = Utc::now();
+     for joiner in &joiners {
+-        if let Some((candidate, _)) = respondent_candidate(&mut *tx, joiner).await {
+-            let verdict = crate::matching::eligible(&expression, &candidate);
++        if let Some((candidate, _)) = respondent_candidate(&mut *tx, joiner, at).await {
++            let verdict = crate::matching::eligible(&expression, &candidate, at);
+             candidates.push((candidate, verdict));
+         }
+     }
+@@ -6948,6 +6953,8 @@ async fn directory_match(
+     // neither satisfies a requirement nor appears in the answer.
+     let mut class_by_tenant: std::collections::HashMap<String, crate::profiles::ReaderClass> =
+         std::collections::HashMap::new();
++    // ONE instant judges every candidate — its hold and its claims' expiry.
++    let at = Utc::now();
+     let mut scope_by_role: std::collections::HashMap<String, crate::profiles::ReaderClass> =
+         std::collections::HashMap::new();
+     let mut candidates: Vec<(
+@@ -7002,7 +7009,7 @@ async fn directory_match(
+             scope: effective,
+             ..req.expression.clone()
+         };
+-        let hold = crate::wake::hold(parsed.availability.as_ref(), Utc::now());
++        let hold = crate::wake::hold(parsed.availability.as_ref(), at);
+         let state_now = crate::presence::presence_state(
+             true,
+             suspended,
+@@ -7020,7 +7027,7 @@ async fn directory_match(
+             // zero (§14.5) — a budget requirement therefore cannot be proven.
+             available_budget: None,
+         };
+-        let verdict = crate::matching::eligible(&scoped, &candidate);
++        let verdict = crate::matching::eligible(&scoped, &candidate, at);
+         scope_by_role.insert(node_id, effective);
+         candidates.push((candidate, verdict));
+     }
+diff --git a/crates/reasonbraid-server/src/matching.rs b/crates/reasonbraid-server/src/matching.rs
+index 796d2b1..38f768b 100644
+--- a/crates/reasonbraid-server/src/matching.rs
++++ b/crates/reasonbraid-server/src/matching.rs
+@@ -5,10 +5,13 @@
+ //! checks run against the profile AS VISIBLE AT THE EXPRESSION'S SCOPE (a
+ //! tenant-hidden capability cannot satisfy a network-scope requirement).
+ 
++use chrono::{DateTime, Utc};
+ use serde::{Deserialize, Serialize};
+ 
+ use crate::presence::PresenceState;
+-use crate::profiles::{filter_profile, AgentProfile, ClaimConfidence, ReaderClass};
++use crate::profiles::{
++    filter_profile, AgentProfile, CapabilityClaim, ClaimConfidence, ReaderClass,
++};
+ 
+ /// The initiator's eligibility expression (§10.3 stage 1). Unknown fields are
+ /// typed rejections; every field defaults to the least restrictive shape.
+@@ -94,11 +97,22 @@ fn confidence_rank(c: ClaimConfidence) -> u8 {
+     }
+ }
+ 
+-/// The deterministic stage-1 evaluation. Each refusal names its field; an
+-/// eligible verdict carries the positive reasons too.
++/// A claim is LIVE at `at` while it carries no expiry or its expiry is still
++/// ahead — the half-open rule the grants use (`expires_at > now()` is live), so
++/// the repository has one meaning of *expired* (`SIGNOFF-REPAIR.5.1.2`).
++fn claim_live(claim: &CapabilityClaim, at: DateTime<Utc>) -> bool {
++    claim.expires_at.is_none_or(|expires_at| expires_at > at)
++}
++
++/// The deterministic stage-1 evaluation at the instant `at`. Each refusal names
++/// its field; an eligible verdict carries the positive reasons too.
++///
++/// `at` is the caller's evaluation instant, not a clock read here: the function
++/// stays pure, and one request judges every candidate at the same instant.
+ pub fn eligible(
+     expression: &EligibilityExpression,
+     candidate: &EligibilityCandidate,
++    at: DateTime<Utc>,
+ ) -> EligibilityVerdict {
+     let mut reasons: Vec<String> = Vec::new();
+ 
+@@ -142,62 +156,77 @@ pub fn eligible(
+         };
+     }
+ 
+-    // 4. The capability requirements: each claim must be VISIBLE and carry at
+-    // least the required provenance.
++    // 4. The capability requirements: each claim must be DECLARED, VISIBLE at
++    // the expression's scope, LIVE at `at`, and carry at least the required
++    // provenance — checked in that order, so a refusal never names the expiry
++    // of a claim the reader could not see. An expired claim is a declaration
++    // the profile still shows, never a qualification (§10.1: capabilities carry
++    // their expiry); until `SIGNOFF-REPAIR.5.1.2` nothing read `expires_at`,
++    // and a lapsed attestation satisfied a requirement for ever.
+     for requirement in &expression.capabilities {
+-        let claim = profile
++        let id = requirement.taxonomy_id.as_str();
++        let declared: Vec<&CapabilityClaim> = profile
+             .capabilities
+             .iter()
+-            .find(|c| c.taxonomy_id == requirement.taxonomy_id);
+-        let visible_claims = visible_obj.get("capabilities").and_then(|v| v.as_array());
+-        let claim_visible = visible_claims.is_some_and(|arr| {
+-            arr.iter().any(|c| {
+-                c.get("taxonomy_id").and_then(|t| t.as_str())
+-                    == Some(requirement.taxonomy_id.as_str())
+-            })
+-        });
+-        match (claim, claim_visible) {
+-            (Some(claim), true)
+-                if confidence_rank(claim.confidence)
+-                    >= confidence_rank(requirement.min_confidence) =>
+-            {
+-                reasons.push(format!(
+-                    "capability `{}` holds ({} ≥ {})",
+-                    requirement.taxonomy_id,
++            .filter(|c| c.taxonomy_id == id)
++            .collect();
++        if declared.is_empty() {
++            return EligibilityVerdict {
++                eligible: false,
++                reasons: vec![format!("capability `{id}` is not declared")],
++            };
++        }
++        let claim_visible = visible_obj
++            .get("capabilities")
++            .and_then(|v| v.as_array())
++            .is_some_and(|arr| {
++                arr.iter()
++                    .any(|c| c.get("taxonomy_id").and_then(|t| t.as_str()) == Some(id))
++            });
++        if !claim_visible {
++            return EligibilityVerdict {
++                eligible: false,
++                reasons: vec![format!(
++                    "capability `{id}` is not visible at the requested scope"
++                )],
++            };
++        }
++        // The strongest LIVE claim decides; a profile that declares one id twice
++        // is judged on its best current evidence, never on list order.
++        let Some(claim) = declared
++            .iter()
++            .filter(|c| claim_live(c, at))
++            .max_by_key(|c| confidence_rank(c.confidence))
++        else {
++            let expired_at = declared
++                .iter()
++                .filter_map(|c| c.expires_at)
++                .max()
++                .expect("a declared claim that is not live carries an expiry");
++            return EligibilityVerdict {
++                eligible: false,
++                reasons: vec![format!(
++                    "capability `{id}` expired at {} (evaluated at {})",
++                    expired_at.to_rfc3339(),
++                    at.to_rfc3339()
++                )],
++            };
++        };
++        if confidence_rank(claim.confidence) < confidence_rank(requirement.min_confidence) {
++            return EligibilityVerdict {
++                eligible: false,
++                reasons: vec![format!(
++                    "capability `{id}` is {} but the requirement needs {}",
+                     claim.confidence.rank_name(),
+                     requirement.min_confidence.rank_name()
+-                ));
+-            }
+-            (Some(claim), true) => {
+-                return EligibilityVerdict {
+-                    eligible: false,
+-                    reasons: vec![format!(
+-                        "capability `{}` is {} but the requirement needs {}",
+-                        requirement.taxonomy_id,
+-                        claim.confidence.rank_name(),
+-                        requirement.min_confidence.rank_name()
+-                    )],
+-                };
+-            }
+-            (Some(_), false) => {
+-                return EligibilityVerdict {
+-                    eligible: false,
+-                    reasons: vec![format!(
+-                        "capability `{}` is not visible at the requested scope",
+-                        requirement.taxonomy_id
+-                    )],
+-                };
+-            }
+-            (None, _) => {
+-                return EligibilityVerdict {
+-                    eligible: false,
+-                    reasons: vec![format!(
+-                        "capability `{}` is not declared",
+-                        requirement.taxonomy_id
+-                    )],
+-                };
+-            }
++                )],
++            };
+         }
++        reasons.push(format!(
++            "capability `{id}` holds ({} ≥ {})",
++            claim.confidence.rank_name(),
++            requirement.min_confidence.rank_name()
++        ));
+     }
+ 
+     // 5. The interest/topic restrictions.
+@@ -622,6 +651,14 @@ mod tests {
+         }
+     }
+ 
++    /// The fixed evaluation instant every unit control judges at: the verdicts
++    /// stay a pure function of their inputs, with no clock in the test.
++    fn at() -> DateTime<Utc> {
++        DateTime::parse_from_rfc3339("2026-09-23T12:00:00Z")
++            .expect("a valid instant")
++            .with_timezone(&Utc)
++    }
++
+     fn requirement(id: &str, min: ClaimConfidence) -> CapabilityRequirement {
+         CapabilityRequirement {
+             taxonomy_id: id.to_string(),
+@@ -647,7 +684,7 @@ mod tests {
+             capabilities: vec![requirement("code_review", ClaimConfidence::Benchmarked)],
+             ..Default::default()
+         };
+-        let verdict = eligible(&expression, &candidate("rol_a", Some(profile)));
++        let verdict = eligible(&expression, &candidate("rol_a", Some(profile)), at());
+         assert!(!verdict.eligible, "the provenance gate refuses");
+         assert!(
+             verdict.reasons[0].contains("benchmarked"),
+@@ -675,7 +712,7 @@ mod tests {
+             capabilities: vec![requirement("code_review", ClaimConfidence::OwnerAttested)],
+             ..Default::default()
+         };
+-        let verdict = eligible(&expression, &candidate("rol_a", Some(profile)));
++        let verdict = eligible(&expression, &candidate("rol_a", Some(profile)), at());
+         assert!(!verdict.eligible);
+         assert!(
+             verdict.reasons[0].contains("not visible"),
+@@ -684,12 +721,118 @@ mod tests {
+         );
+     }
+ 
++    fn claim(confidence: ClaimConfidence, expires_at: Option<DateTime<Utc>>) -> CapabilityClaim {
++        CapabilityClaim {
++            taxonomy_id: "code_review".to_string(),
++            confidence,
++            evidence_ref: None,
++            expires_at,
++        }
++    }
++
++    /// The expiry gate (`SIGNOFF-REPAIR.5.1.2`, §10.1): a claim is live while
++    /// its expiry is still AHEAD of the evaluation instant — the grants'
++    /// half-open rule, so a claim expiring exactly at `at` is already expired.
++    #[test]
++    fn an_expired_claim_does_not_satisfy_a_requirement() {
++        let expression = EligibilityExpression {
++            scope: ReaderClass::Tenant,
++            capabilities: vec![requirement("code_review", ClaimConfidence::OwnerAttested)],
++            ..Default::default()
++        };
++        let judged = |expires_at: Option<DateTime<Utc>>| {
++            let profile = profile_with(
++                vec![claim(ClaimConfidence::OwnerAttested, expires_at)],
++                vec![],
++            );
++            eligible(&expression, &candidate("rol_a", Some(profile)), at())
++        };
++
++        let lapsed = judged(Some(at() - chrono::Duration::days(1)));
++        assert!(!lapsed.eligible, "a lapsed claim refuses");
++        assert_eq!(
++            lapsed.reasons,
++            vec!["capability `code_review` expired at 2026-09-22T12:00:00+00:00 (evaluated at 2026-09-23T12:00:00+00:00)".to_string()],
++            "the refusal names the expiry and the instant it was judged at"
++        );
++        assert!(
++            !judged(Some(at())).eligible,
++            "expiring AT the instant is expired"
++        );
++        assert!(
++            judged(Some(at() + chrono::Duration::seconds(1))).eligible,
++            "a claim still ahead of its expiry holds"
++        );
++        assert!(judged(None).eligible, "a claim without an expiry holds");
++    }
++
++    /// The strongest LIVE claim decides: a lapsed attestation beside a live one
++    /// is not a refusal, and a live self-assertion beside a lapsed attestation
++    /// does not inherit the attestation's provenance.
++    #[test]
++    fn the_strongest_live_claim_decides() {
++        let expression = EligibilityExpression {
++            scope: ReaderClass::Tenant,
++            capabilities: vec![requirement("code_review", ClaimConfidence::OwnerAttested)],
++            ..Default::default()
++        };
++        let lapsed = Some(at() - chrono::Duration::hours(1));
++        let renewed = profile_with(
++            vec![
++                claim(ClaimConfidence::OwnerAttested, lapsed),
++                claim(ClaimConfidence::OwnerAttested, None),
++            ],
++            vec![],
++        );
++        assert!(eligible(&expression, &candidate("rol_a", Some(renewed)), at()).eligible);
++
++        let downgraded = profile_with(
++            vec![
++                claim(ClaimConfidence::OwnerAttested, lapsed),
++                claim(ClaimConfidence::SelfAsserted, None),
++            ],
++            vec![],
++        );
++        let verdict = eligible(&expression, &candidate("rol_a", Some(downgraded)), at());
++        assert!(!verdict.eligible);
++        assert!(
++            verdict.reasons[0]
++                .contains("is self_asserted but the requirement needs owner_attested"),
++            "{:?}",
++            verdict.reasons
++        );
++    }
++
++    /// Visibility is checked BEFORE expiry, so a refusal never discloses when a
++    /// claim the reader cannot see lapsed.
++    #[test]
++    fn a_hidden_lapsed_claim_is_refused_as_hidden_not_as_expired() {
++        let mut profile = profile_with(
++            vec![claim(
++                ClaimConfidence::OwnerAttested,
++                Some(at() - chrono::Duration::days(1)),
++            )],
++            vec![],
++        );
++        profile.visibility.capabilities = VisibilityClass::Tenant;
++        let expression = EligibilityExpression {
++            scope: ReaderClass::Network,
++            capabilities: vec![requirement("code_review", ClaimConfidence::OwnerAttested)],
++            ..Default::default()
++        };
++        let verdict = eligible(&expression, &candidate("rol_a", Some(profile)), at());
++        assert_eq!(
++            verdict.reasons,
++            vec!["capability `code_review` is not visible at the requested scope".to_string()]
++        );
++    }
++
+     /// The presence gate refuses an offline candidate.
+     #[test]
+     fn an_offline_candidate_refuses_the_default_expression() {
+         let mut cand = candidate("rol_a", Some(profile_with(vec![], vec![])));
+         cand.presence_state = PresenceState::Offline;
+-        let verdict = eligible(&EligibilityExpression::default(), &cand);
++        let verdict = eligible(&EligibilityExpression::default(), &cand, at());
+         assert!(!verdict.eligible);
+         assert!(
+             verdict.reasons[0].contains("offline"),
+@@ -708,6 +851,7 @@ mod tests {
+         let verdict = eligible(
+             &expression,
+             &candidate("rol_a", Some(profile_with(vec![], vec![]))),
++            at(),
+         );
+         assert!(!verdict.eligible);
+         assert!(
+@@ -727,6 +871,7 @@ mod tests {
+         let verdict = eligible(
+             &expression,
+             &candidate("rol_a", Some(profile_with(vec![], vec![]))),
++            at(),
+         );
+         assert!(!verdict.eligible);
+         assert!(
+@@ -740,6 +885,7 @@ mod tests {
+         let verdict = eligible(
+             &expression,
+             &candidate("rol_a", Some(profile_with(vec![], vec![]))),
++            at(),
+         );
+         assert!(!verdict.eligible);
+         assert!(
+@@ -769,7 +915,7 @@ mod tests {
+             confidentiality: vec!["internal".to_string()],
+             ..Default::default()
+         };
+-        let verdict = eligible(&expression, &candidate("rol_a", Some(profile)));
++        let verdict = eligible(&expression, &candidate("rol_a", Some(profile)), at());
+         assert!(verdict.eligible, "{:?}", verdict.reasons);
+         assert!(
+             verdict.reasons.iter().any(|r| r.contains("code_review")),
+@@ -813,8 +959,8 @@ mod tests {
+                 vec!["parser trivia"],
+             )),
+         );
+-        let good_verdict = eligible(expression, &good);
+-        let partial_verdict = eligible(expression, &partial);
++        let good_verdict = eligible(expression, &good, at());
++        let partial_verdict = eligible(expression, &partial, at());
+         rank(
+             expression,
+             &[(good, good_verdict), (partial, partial_verdict)],
+@@ -880,7 +1026,7 @@ mod tests {
+             ..EligibilityExpression::default()
+         };
+         let cand = candidate("rol_a", Some(profile_with(vec![], vec![])));
+-        let verdict = eligible(&expression, &cand);
++        let verdict = eligible(&expression, &cand, at());
+         assert!(!verdict.eligible);
+         let ranked = rank(
+             &expression,
+@@ -902,9 +1048,9 @@ mod tests {
+         let a = candidate("rol_a", Some(profile_with(vec![], vec![])));
+         let b = candidate("rol_b", Some(profile_with(vec![], vec![])));
+         let c = candidate("rol_c", Some(profile_with(vec![], vec![])));
+-        let va = eligible(&expression, &a);
+-        let vb = eligible(&expression, &b);
+-        let vc = eligible(&expression, &c);
++        let va = eligible(&expression, &a, at());
++        let vb = eligible(&expression, &b, at());
++        let vc = eligible(&expression, &c, at());
+         let facts: std::collections::HashMap<String, crate::dependence::MemberFacts> = [
+             (
+                 "rol_a".to_string(),
+@@ -983,7 +1129,7 @@ mod tests {
+     fn the_diversity_feature_scores_zero_without_the_facts() {
+         let expression = EligibilityExpression::default();
+         let a = candidate("rol_a", Some(profile_with(vec![], vec![])));
+-        let va = eligible(&expression, &a);
++        let va = eligible(&expression, &a, at());
+         let ranked = rank(&expression, &[(a, va)], &RankingPreferences::default());
+         let diversity = ranked[0]
+             .features
+@@ -999,8 +1145,8 @@ mod tests {
+         let expression = EligibilityExpression::default();
+         let a = candidate("rol_a", Some(profile_with(vec![], vec![])));
+         let b = candidate("rol_b", Some(profile_with(vec![], vec![])));
+-        let va = eligible(&expression, &a);
+-        let vb = eligible(&expression, &b);
++        let va = eligible(&expression, &a, at());
++        let vb = eligible(&expression, &b, at());
+         let ranked = rank(
+             &expression,
+             &[(a, va), (b, vb)],
+diff --git a/crates/reasonbraid-server/tests/profiles.rs b/crates/reasonbraid-server/tests/profiles.rs
+index c0a1c0c..0259806 100644
+--- a/crates/reasonbraid-server/tests/profiles.rs
++++ b/crates/reasonbraid-server/tests/profiles.rs
+@@ -16554,3 +16554,139 @@ async fn a_moderator_moderates_and_is_refused_everything_else() {
+     .await
+     .expect("drop the custom profile");
+ }
++
++/// `SIGNOFF-REPAIR.5.1.2` — an expired capability claim satisfies nothing, at
++/// any of the three surfaces that judge eligibility: the match, the response,
++/// and the close's re-resolution of the panel. Until this leaf nothing read
++/// `expires_at`, so a lapsed attestation qualified a role for ever.
++#[tokio::test]
++async fn an_expired_claim_satisfies_no_eligibility_surface() {
++    let _guard = guard().await;
++    let Some(pool) = pool().await else { return };
++    let server = TestServer::start(&pool).await;
++    let base = server.base();
++    let client = reqwest::Client::new();
++    let world = call_world(&client, &base, "claim-expiry", 3).await;
++    let (live, lapsed, lapsing) = (
++        world.roles[0].clone(),
++        world.roles[1].clone(),
++        world.roles[2].clone(),
++    );
++
++    // `lapsed` re-declares its claim with an expiry already behind it, and the
++    // owner attests it: the attestation keeps the expiry, as it keeps every
++    // other field of the claim it upgrades.
++    let mut expired = visibility_profile();
++    expired["capabilities"][0]["expires_at"] =
++        json!((chrono::Utc::now() - chrono::Duration::days(1)).to_rfc3339());
++    let (status, body) = put(
++        &client,
++        &base,
++        &format!("/v1/profiles/{lapsed}"),
++        &lapsed,
++        &expired,
++    )
++    .await;
++    assert_eq!(status, 200, "{body}");
++    let (status, body) = post(
++        &client,
++        &base,
++        &format!("/v1/profiles/{lapsed}/attest"),
++        &world.human_id,
++        &json!({ "taxonomy_id": "code_review", "evidence_ref": "evt_claim-expiry/lapsed" }),
++    )
++    .await;
++    assert_eq!(status, 200, "{body}");
++    assert_eq!(
++        body["profile"]["capabilities"][0]["confidence"],
++        json!("owner_attested")
++    );
++    assert!(
++        body["profile"]["capabilities"][0]["expires_at"].is_string(),
++        "the attested claim keeps its expiry: {body}"
++    );
++
++    // 1. The match: the lapsed role is not a candidate; its peers are.
++    let (status, matched) = post(
++        &client,
++        &base,
++        "/v1/directory/match",
++        &world.human_id,
++        &json!({ "expression": call_body(&world, 1, 3)["expression"] }),
++    )
++    .await;
++    assert_eq!(status, 200, "{matched}");
++    let mut candidates: Vec<String> = matched["candidates"]
++        .as_array()
++        .unwrap()
++        .iter()
++        .map(|c| c["role_id"].as_str().unwrap().to_string())
++        .collect();
++    candidates.sort();
++    let mut expected = vec![live.clone(), lapsing.clone()];
++    expected.sort();
++    assert_eq!(
++        candidates, expected,
++        "a lapsed claim qualifies no candidate"
++    );
++
++    // 2. The response: the lapsed role's join is refused, naming the expiry.
++    let (status, body) = post(
++        &client,
++        &base,
++        "/v1/calls",
++        &world.human_id,
++        &call_body(&world, 1, 3),
++    )
++    .await;
++    assert_eq!(status, 200, "the call opens: {body}");
++    let call_id = body["call_id"].as_str().unwrap().to_string();
++    let respond = format!("/v1/calls/{call_id}/respond");
++    let (status, refused) = post(
++        &client,
++        &base,
++        &respond,
++        &lapsed,
++        &json!({ "kind": "join" }),
++    )
++    .await;
++    assert_eq!(status, 403, "{refused}");
++    assert!(
++        refused["message"]
++            .as_str()
++            .unwrap()
++            .contains("capability `code_review` expired at"),
++        "the refusal names the expiry: {refused}"
++    );
++    for role in [&live, &lapsing] {
++        let (status, body) = post(&client, &base, &respond, role, &json!({ "kind": "join" })).await;
++        assert_eq!(status, 200, "a live claim joins: {body}");
++    }
++
++    // 3. The close re-resolves every joiner at ITS instant: `lapsing`'s claim
++    //    runs out after it joined, and it is not seated. The expiry is moved
++    //    in the store rather than waited for, so the control has no sleep.
++    sqlx::query(
++        "UPDATE profile_versions v SET profile = jsonb_set(v.profile, '{capabilities,0,expires_at}', to_jsonb($2::text)) \
++         FROM agent_profiles p WHERE p.role_id = v.role_id AND v.version = p.current_version AND v.role_id = $1",
++    )
++    .bind(&lapsing)
++    .bind((chrono::Utc::now() - chrono::Duration::seconds(1)).to_rfc3339())
++    .execute(&pool)
++    .await
++    .expect("age the claim");
++    let (status, closed) = post(
++        &client,
++        &base,
++        &format!("/v1/calls/{call_id}/close"),
++        &world.human_id,
++        &json!({}),
++    )
++    .await;
++    assert_eq!(status, 200, "{closed}");
++    assert_eq!(
++        closed["panel"],
++        json!([live]),
++        "a claim that lapsed between the join and the close seats nobody"
++    );
++}

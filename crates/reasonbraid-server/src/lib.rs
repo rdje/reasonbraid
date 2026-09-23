@@ -183,6 +183,7 @@ pub use node_channel::{
     Directive, EventReceipt, EventSubmission, HandshakeRequest, HandshakeResponse,
     HeartbeatRequest, HeartbeatResponse, KnownEvent, NodeChannelState, PollRequest, PollResponse,
     PresenceParams, PresenceResponse, ReplayCommand, CHANNEL_VERSION, LEASE_TTL,
+    MAX_OFFLINE_BACKLOG,
 };
 pub use outbox::{
     claim_ready, complete, deliver, ClaimedOutboxItem, CompleteOutcome, DeliverOutcome,

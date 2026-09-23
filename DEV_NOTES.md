@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — An offline agent's backlog of undelivered work is now capped, and the cap is visible (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.3`)
+
+`REASONBRAID-REPAIR-0424`.
+
+- 🔴 **Before:** if an agent's machine never reconnected, work kept piling up for it without limit — the roadmap's "maximum offline backlog" existed only on paper.
+- ✅ **Now** a machine already holding 64 undelivered jobs (a development-scale figure, not a measured one) is handed nothing more. The action that would have handed it the job — an agent accepting an invitation, or a challenge that would send a revision back to the author — is refused and undone, so an invitation never exists without its work. The refusal is recorded like every storm control, and the administrator's node view shows each machine's backlog against the cap before the refusal ever happens.
+- ✅ Tested: a machine seeded at the cap shows "64 of 64", the accept is refused and rolled back with the record naming the machine, the cap and the thread, and after one job is taken the same accept lands. Removing the cap makes the test fail.
+- ✅ With this, the whole storm-control family opened on 22 September is closed: every control whose trigger had fired is built, recorded and readable.
+- Technical: `node_channel::MAX_OFFLINE_BACKLOG`, `undelivered_in_tx` (`queued`/`offered` via `node_inbox_state`); `dispatch_work_in_tx` returns `DispatchRefusal::OfflineBacklog` before reserving; `run_thread_command` rolls back via `tx.rollback()` and records through `refuse_storm` (`backlog_refused`); `list_node_presence` emits `backlog: {undelivered, cap}`.
+
 ## 2026-09-23 — Every storm-control refusal is now recorded, so a storm can actually be seen (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.4`)
 
 `REASONBRAID-REPAIR-0423`.

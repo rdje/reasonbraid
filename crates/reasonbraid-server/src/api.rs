@@ -2147,13 +2147,17 @@ async fn list_node_presence(
                 Option<chrono::DateTime<chrono::Utc>>,
                 Option<i64>,
                 i64,
+                i64,
             );
             let rows: Vec<Row> = sqlx::query_as(
         "SELECT np.node_id, np.online, np.suspended, np.last_seen_at, np.lease_expires_at, \
                 (SELECT (v.profile->'availability'->>'concurrency')::bigint \
                  FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
                  WHERE v.role_id = np.node_id AND v.version = p.current_version), \
-                np.in_flight \
+                np.in_flight, \
+                (SELECT count(*) FROM node_inbox_state i \
+                  WHERE i.node_id = np.node_id \
+                    AND i.delivery_state IN ('queued', 'offered')) \
          FROM node_presence np WHERE np.tenant_id = $1 ORDER BY np.node_id",
     )
     .bind(q.tenant_id.to_string())
@@ -2170,6 +2174,7 @@ async fn list_node_presence(
                         lease_expires_at,
                         concurrency,
                         in_flight,
+                        undelivered,
                     )| {
                         json!({
                             "node_id": node_id,
@@ -2181,6 +2186,13 @@ async fn list_node_presence(
                             "suspended": suspended,
                             "last_seen_at": last_seen_at.map(|t| t.to_rfc3339()),
                             "lease_expires_at": lease_expires_at.map(|t| t.to_rfc3339()),
+                            // §10.7's offline backlog, beside the state
+                            // (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.3`): what the node
+                            // holds undelivered against the cap that refuses more.
+                            "backlog": {
+                                "undelivered": undelivered,
+                                "cap": node_channel::MAX_OFFLINE_BACKLOG,
+                            },
                         })
                     },
                 )
@@ -7818,6 +7830,40 @@ pub(crate) enum CommandTarget<'a> {
 /// claim → authorize → prepare → apply (+ ceiling for create). Every step commits
 /// or rolls back together; a rejection stores its failure result in the idempotency
 /// row so a replay reproduces the ORIGINAL status and body.
+/// Record a full-backlog dispatch refusal and return the `429` that answers it
+/// (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.3`). Called by `run_thread_command` AFTER it
+/// has rolled its transaction back — no event, no invitation, no work, so the
+/// `.6.2` invariant holds — on the pool's own connection, so the record
+/// survives the rollback and the operator can see which node is drowning. It
+/// goes through the one helper every storm control uses. A retry re-validates,
+/// as every domain refusal's does.
+async fn backlog_refused(
+    pool: &PgPool,
+    tenant_id: &TenantId,
+    principal: &GrantSubject,
+    thread_id: &ThreadId,
+    node: &str,
+    undelivered: i64,
+    cap: i64,
+) -> ControlApiError {
+    let message = format!(
+        "the offline backlog of node `{node}` is at its cap ({undelivered} of {cap} \
+         undelivered rows) — no more work is handed to it until it takes some"
+    );
+    refuse_storm(
+        pool,
+        StormRefusal {
+            tenant_id: &tenant_id.to_string(),
+            initiator: &principal.id_string(),
+            control: "offline_backlog",
+            limit_value: Some(cap),
+            target: Some(&thread_id.to_string()),
+        },
+        message,
+    )
+    .await
+}
+
 pub(crate) async fn run_thread_command(
     pool: &PgPool,
     tenant_id: &TenantId,
@@ -8067,7 +8113,7 @@ pub(crate) async fn run_thread_command(
             threads::OP_ACCEPT_INVITATION => {
                 match &principal {
                     GrantSubject::Role(role) => {
-                        dispatch_work_in_tx(
+                        let dispatched = dispatch_work_in_tx(
                             &mut *tx,
                             &DispatchSpec {
                                 tenant_id,
@@ -8082,7 +8128,28 @@ pub(crate) async fn run_thread_command(
                                     .expect("the dispatch path runs after the authorization step"),
                             },
                         )
-                        .await?;
+                        .await;
+                        match dispatched {
+                            Ok(()) => {}
+                            Err(DispatchRefusal::Api(error)) => return Err(error),
+                            Err(DispatchRefusal::OfflineBacklog {
+                                node,
+                                undelivered,
+                                cap,
+                            }) => {
+                                tx.rollback().await?;
+                                return Err(backlog_refused(
+                                    pool,
+                                    tenant_id,
+                                    principal,
+                                    &thread_id,
+                                    &node,
+                                    undelivered,
+                                    cap,
+                                )
+                                .await);
+                            }
+                        }
                     }
                     // A human cannot be invited (invites target agent roles), so
                     // this arm is unreachable by construction — but dispatch
@@ -8106,7 +8173,7 @@ pub(crate) async fn run_thread_command(
                 // `thread.revise` targets a challenge, not the contribution).
                 if let Some(author) = author {
                     if author.parse::<AgentRoleId>().is_ok() {
-                        dispatch_work_in_tx(
+                        let dispatched = dispatch_work_in_tx(
                             &mut *tx,
                             &DispatchSpec {
                                 tenant_id,
@@ -8121,7 +8188,28 @@ pub(crate) async fn run_thread_command(
                                     .expect("the dispatch path runs after the authorization step"),
                             },
                         )
-                        .await?;
+                        .await;
+                        match dispatched {
+                            Ok(()) => {}
+                            Err(DispatchRefusal::Api(error)) => return Err(error),
+                            Err(DispatchRefusal::OfflineBacklog {
+                                node,
+                                undelivered,
+                                cap,
+                            }) => {
+                                tx.rollback().await?;
+                                return Err(backlog_refused(
+                                    pool,
+                                    tenant_id,
+                                    principal,
+                                    &thread_id,
+                                    &node,
+                                    undelivered,
+                                    cap,
+                                )
+                                .await);
+                            }
+                        }
                     }
                 }
             }
@@ -8171,11 +8259,24 @@ struct DispatchSpec<'a> {
 async fn dispatch_work_in_tx<'e, E>(
     mut tx: E,
     spec: &DispatchSpec<'_>,
-) -> Result<(), ControlApiError>
+) -> Result<(), DispatchRefusal>
 where
     E: std::ops::DerefMut,
     for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
 {
+    // §10.7's maximum offline backlog (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.3`),
+    // asked FIRST so a refused dispatch reserves no budget: a node already
+    // holding the cap's worth of undelivered work is handed nothing more, and
+    // the command that would have handed it rolls back — an invitation exists
+    // iff its work does, so the work is refused rather than silently dropped.
+    let undelivered = node_channel::undelivered_in_tx(&mut *tx, spec.agent_role).await?;
+    if undelivered >= node_channel::MAX_OFFLINE_BACKLOG {
+        return Err(DispatchRefusal::OfflineBacklog {
+            node: spec.agent_role.to_string(),
+            undelivered,
+            cap: node_channel::MAX_OFFLINE_BACKLOG,
+        });
+    }
     // The evaluator-access control (`.1.4.3`, the `.1.4.1` contract): the
     // dispatch is the DECISION POINT — a confidential thread's work delivery
     // requires a confidential-qualified evaluator profile, and the dev
@@ -8188,7 +8289,8 @@ where
             "the thread's `{}` classification has no qualified evaluator \
              profile in this deployment — the dispatch refuses until one is registered",
             classification.as_str()
-        )));
+        ))
+        .into());
     }
     let (reservation, denial) = match budget::create_reservation_in_tx(
         &mut *tx,
@@ -8243,6 +8345,31 @@ where
     )
     .await?;
     Ok(())
+}
+
+/// Why a dispatch did not hand the node its work. `Api` is any refusal or
+/// failure the caller answers as it is; `OfflineBacklog` is the one the caller
+/// must roll back AND record as a storm control before answering
+/// (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.3`).
+enum DispatchRefusal {
+    Api(ControlApiError),
+    OfflineBacklog {
+        node: String,
+        undelivered: i64,
+        cap: i64,
+    },
+}
+
+impl From<ControlApiError> for DispatchRefusal {
+    fn from(error: ControlApiError) -> Self {
+        DispatchRefusal::Api(error)
+    }
+}
+
+impl From<sqlx::Error> for DispatchRefusal {
+    fn from(error: sqlx::Error) -> Self {
+        DispatchRefusal::Api(error.into())
+    }
 }
 
 /// The inbox command whose row binds a node event's effect to a tenant, when the

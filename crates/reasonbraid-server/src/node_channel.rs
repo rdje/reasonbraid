@@ -1598,6 +1598,35 @@ fn decode_hex(hex: &str) -> Option<Vec<u8>> {
 /// The decision metadata (`.1.5.2`, ADR-008) rides the row: the admitting
 /// authorization record, the policy digest, the decision time (the node-side
 /// freshness TTL runs from it), and the tenant's epoch AT DECISION TIME.
+/// §10.7's *maximum offline backlog* (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.3`): the
+/// most rows a node may hold UNDELIVERED — the ladder's `queued` and `offered`
+/// rungs, work the server has not confirmed the node holds — before a dispatch
+/// to it is refused. A dev-profile constant in the shape of the open-call
+/// fan-out caps (`recruitment::MAX_OPEN_CALLS_PER_*`): ⛔ not a measured figure
+/// (`SIGNOFF-REPAIR.11.6`), a bound where there was none. §10.2 wants a
+/// reconnecting node to receive *unexpired advertisements after its cursor,
+/// not an unlimited historical flood*; this is what keeps the flood bounded at
+/// the source, and the refusal is recorded like every storm control.
+pub const MAX_OFFLINE_BACKLOG: i64 = 64;
+
+/// The rows a node holds undelivered: `queued` (never handed to a transport)
+/// and `offered` (on the wire, not confirmed). Read from the ladder view so
+/// the exclusions come from its precedence — a consumed, dead-lettered, revoked
+/// or expired row is not backlog, and neither is one the node holds.
+pub(crate) async fn undelivered_in_tx<'e, E>(mut tx: E, node_id: &str) -> Result<i64, sqlx::Error>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = Postgres>,
+{
+    sqlx::query_scalar(
+        "SELECT count(*) FROM node_inbox_state \
+         WHERE node_id = $1 AND delivery_state IN ('queued', 'offered')",
+    )
+    .bind(node_id)
+    .fetch_one(&mut *tx)
+    .await
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn enqueue_in_tx<'e, E>(
     mut tx: E,

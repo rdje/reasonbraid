@@ -290,6 +290,164 @@ async fn thread_state(
     response.json().await.expect("state json")
 }
 
+/// `SIGNOFF-REPAIR.11.4.7.2.1.5.3.3` — §10.7's *maximum offline backlog*: a node
+/// already holding the cap's worth of undelivered work is handed nothing more.
+/// The role's ACCEPT — the command that would hand its node the work — is
+/// refused and rolled back (the invitation stays pending, no work row lands),
+/// the refusal is recorded as a storm control, the operator's presence view
+/// shows the backlog against the cap, and once the node has taken some of its
+/// work the same accept lands.
+#[tokio::test]
+async fn an_offline_nodes_backlog_is_capped_and_the_refusal_is_recorded() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (tenant, human, role, thread) = bootstrap(&client, &base, "backlogged").await;
+
+    // A `nodes` row, so the presence view has a row to show the backlog on
+    // (the dev rule: a node id IS the role id it serves).
+    sqlx::query(
+        "INSERT INTO hosts (host_id, tenant_id, name) VALUES ('hst_backlog', $1, 'backlog-host')",
+    )
+    .bind(&tenant)
+    .execute(&pool)
+    .await
+    .expect("seed the host");
+    sqlx::query("INSERT INTO nodes (node_id, host_id, tenant_id) VALUES ($1, 'hst_backlog', $2)")
+        .bind(&role)
+        .bind(&tenant)
+        .execute(&pool)
+        .await
+        .expect("seed the node");
+    // The node holds the cap's worth of undelivered rows: queued, never offered.
+    let cap = reasonbraid_server::MAX_OFFLINE_BACKLOG;
+    for cursor in 1..=cap {
+        sqlx::query(
+            "INSERT INTO node_inbox (node_id, cursor, command_id, tenant_id, thread_id, payload) \
+             VALUES ($1, $2, $3, $4, $5, '{}'::jsonb)",
+        )
+        .bind(&role)
+        .bind(cursor)
+        .bind(format!("cmd_backlog_{cursor}"))
+        .bind(&tenant)
+        .bind(&thread)
+        .execute(&pool)
+        .await
+        .expect("seed an undelivered row");
+    }
+
+    let (status, invited) = invite(
+        &client,
+        &base,
+        &InviteSpec {
+            thread: &thread,
+            human: &human,
+            tenant: &tenant,
+            role: &role,
+            key: "key-backlog-invite",
+            ttl: None,
+        },
+    )
+    .await;
+    assert_eq!(status, 200, "the invitation records: {invited}");
+
+    // The operator sees the pressure before the refusal.
+    let presence = client
+        .get(format!("{base}/v1/admin/nodes/presence?tenant_id={tenant}"))
+        .header(PRINCIPAL_HEADER, &human)
+        .send()
+        .await
+        .expect("presence request");
+    assert_eq!(presence.status().as_u16(), 200);
+    let presence: Value = presence.json().await.expect("presence json");
+    let node = presence["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["node_id"] == json!(role))
+        .expect("the node's presence row");
+    assert_eq!(
+        node["backlog"],
+        json!({ "undelivered": cap, "cap": cap }),
+        "{presence}"
+    );
+
+    // The accept is REFUSED as a storm control and rolled back.
+    let (status, refused) = accept(
+        &client,
+        &base,
+        &thread,
+        &role,
+        &tenant,
+        "key-backlog-accept",
+    )
+    .await;
+    assert_eq!(status, 429, "{refused}");
+    assert_eq!(refused["code"], json!("storm_control"), "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("offline backlog"),
+        "{refused}"
+    );
+    let state = thread_state(&client, &base, &thread, &tenant, &human).await;
+    assert_eq!(
+        state["state"]["participants"][&role],
+        json!("invited"),
+        "the accept rolled back — the invitation is still pending: {state}"
+    );
+    let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM node_inbox WHERE node_id = $1")
+        .bind(&role)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(rows, cap, "no work row landed beyond the cap");
+
+    // The refusal is on the record, naming the node's cap and the thread.
+    let listed = client
+        .get(format!("{base}/v1/admin/storm-refusals?tenant_id={tenant}"))
+        .header(PRINCIPAL_HEADER, &human)
+        .send()
+        .await
+        .expect("refusals request");
+    assert_eq!(listed.status().as_u16(), 200);
+    let listed: Value = listed.json().await.expect("refusals json");
+    let refusals = listed["refusals"].as_array().unwrap();
+    assert_eq!(refusals.len(), 1, "{listed}");
+    assert_eq!(refusals[0]["control"], json!("offline_backlog"));
+    assert_eq!(refusals[0]["limit_value"], json!(cap));
+    assert_eq!(refusals[0]["initiator"], json!(role));
+    assert_eq!(refusals[0]["target"], json!(thread));
+    assert_eq!(refusals[0]["message"], refused["message"]);
+
+    // The node takes some of its work: the same accept now lands, and its
+    // work row is the one row beyond what was seeded.
+    sqlx::query("DELETE FROM node_inbox WHERE node_id = $1 AND command_id = 'cmd_backlog_1'")
+        .bind(&role)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (status, accepted) = accept(
+        &client,
+        &base,
+        &thread,
+        &role,
+        &tenant,
+        "key-backlog-accept-2",
+    )
+    .await;
+    assert_eq!(status, 200, "under the cap the accept lands: {accepted}");
+    let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM node_inbox WHERE node_id = $1")
+        .bind(&role)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(rows, cap, "the accepted invitation's work row landed");
+}
+
 /// THE `.1.3.1` lifecycle: invite → PENDING (the role may NOT act); accept →
 /// `accepted` + the event; the admin removal revokes. Typed refusals along the
 /// way.

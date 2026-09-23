@@ -265,6 +265,25 @@ acknowledgement will skip a re-offer it should make. This field published
 reason is recorded in
 `docs/decisions/2026-09-19_a-transport-receipt-is-not-an-acknowledgement.md`.
 
+### The offline backlog is capped
+
+A node's **backlog** is what it holds undelivered — the `queued` and `offered`
+rungs above. §10.7 names a *maximum offline backlog*, and since
+`SIGNOFF-REPAIR.11.4.7.2.1.5.3.3` the server keeps it: a node already holding
+**64** undelivered rows (the development-profile shape, not a measured figure)
+is handed nothing more. The command that would have handed it — a role
+accepting an invitation, a challenge that would send a revision to the author's
+node — is **refused and rolled back** rather than landed without its work, so
+an invitation still exists iff its work does. The answer is a `429
+storm_control`, recorded like every storm control under the control
+`offline_backlog` with the node's cap and the thread named, and listed by
+`GET /v1/admin/storm-refusals`. A retry re-validates: once the node has taken
+some of its work, the same command lands.
+
+The operator sees the pressure before the refusal: every row of
+`GET /v1/admin/nodes/presence` carries `"backlog": {"undelivered": n, "cap": 64}`
+beside the presence state.
+
 ### A command cannot outlive the authority that admitted it
 
 `expired` and `revoked` are the two ways an undelivered command's **authority**

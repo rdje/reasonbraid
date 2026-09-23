@@ -97,7 +97,7 @@ curl -s 'localhost:4310/v1/admin/storm-refusals?tenant_id=ten_0192…' \
 
 | field | meaning |
 | --- | --- |
-| `control` | the limit's own name: `open_calls_per_tenant`, `open_calls_per_initiator`, `autonomous_cycle`, `autonomous_depth` |
+| `control` | the limit's own name: `open_calls_per_tenant`, `open_calls_per_initiator`, `autonomous_cycle`, `autonomous_depth`, `offline_backlog` ([the node's cap](node-channel.md#the-offline-backlog-is-capped)) |
 | `limit_value` | the numeric limit, when the control has one; a cycle has none |
 | `target` | the thread the refused request named, when it named one |
 | `message` | exactly the words the caller was given |

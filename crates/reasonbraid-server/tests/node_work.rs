@@ -2352,3 +2352,93 @@ async fn a_completed_item_is_never_dead_lettered() {
     );
     assert_eq!(delivery_state(&pool, &role).await, "consumed");
 }
+
+/// `SIGNOFF-REPAIR.4.4.10` — the largest result a node can produce is one the
+/// control plane accepts, MEASURED rather than derived.
+///
+/// A result the control plane refused outright would be re-emitted by every
+/// reconcile and refused again, so the node could never become schedulable. The
+/// one refusal a well-formed node could meet is a body over the framework's
+/// limit; `.4.4.6` bounded the output at `MAX_OUTPUT_BYTES` so that even the
+/// worst JSON escaping (six bytes per byte: `\u0001`) fits. This sends exactly
+/// that worst case and sees it accepted, then sends a body past the limit and
+/// sees the refusal, so the limit the bound was derived from is shown to exist.
+///
+/// ⚠️ The worst case is U+0001, not U+0000. This control's first cut used
+/// U+0000 and found a different refusal: PostgreSQL's `jsonb` cannot store the
+/// NUL character, and the control plane answered `500 dependency_unavailable`,
+/// a transient-looking answer to a permanent property of the input
+/// (`SIGNOFF-REPAIR.4.4.10.1`).
+#[tokio::test]
+async fn the_largest_result_a_node_can_produce_is_accepted() {
+    let _g = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (_tenant, _human, role, _thread, cert_hex, key_hex) =
+        dispatch_one_work_item(&client, &server.base(), "key-largest").await;
+    let key_der = from_hex(&key_hex).expect("key hex");
+    let der = rustls_pki_types::PrivateKeyDer::try_from(key_der).expect("key DER");
+    let key = rcgen::KeyPair::from_der_and_sign_algo(&der, &rcgen::PKCS_ECDSA_P256_SHA256)
+        .expect("key parses");
+    let fixture = journal_fixture("largest");
+    let node = reasonbraid_node::Node::open(
+        fixture.join("node.db"),
+        server.base(),
+        role.clone(),
+        from_hex(&cert_hex).expect("cert hex"),
+        key,
+    )
+    .await
+    .expect("open node");
+    node.reconcile().await.expect("reconcile");
+    let item = node
+        .journal()
+        .work_items()
+        .await
+        .expect("work items")
+        .into_iter()
+        .next()
+        .expect("the item");
+    let operation_id = item.operation_id.expect("an operation");
+    let result_of = |content: String| {
+        json!({
+            "kind": "work_result",
+            "work_kind": "contribute",
+            "command_id": item.command_id,
+            "attempt_id": "patt_largest",
+            "content": content,
+            "usage": null,
+        })
+    };
+
+    // The worst case the bound allows: every byte escapes to six.
+    let worst = "\u{1}".repeat(reasonbraid_node::MAX_OUTPUT_BYTES);
+    let receipt = node
+        .channel()
+        .send_event(
+            &reasonbraid_core::EventId::new().to_string(),
+            &operation_id,
+            &result_of(worst),
+        )
+        .await
+        .expect("the largest result a node can produce is received");
+    assert!(receipt.accepted, "and recorded: {receipt:?}");
+
+    // Past the limit, the control plane refuses the body itself.
+    let past = "\u{1}".repeat(2 * reasonbraid_node::MAX_OUTPUT_BYTES);
+    match node
+        .channel()
+        .send_event(
+            &reasonbraid_core::EventId::new().to_string(),
+            &operation_id,
+            &result_of(past),
+        )
+        .await
+    {
+        Err(reasonbraid_node::ChannelError::Server { status, .. }) => {
+            assert_eq!(status, 413, "the body limit the bound was derived from")
+        }
+        other => panic!("expected the body limit's refusal, got {other:?}"),
+    }
+}

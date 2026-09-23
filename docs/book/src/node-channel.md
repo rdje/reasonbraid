@@ -27,6 +27,29 @@ both sides. Version 5 added the lease epoch (below); version 4 added the
 cached-decision fields; version 3 was the certificate-proofed handshake
 (`.1.2.2`).
 
+### Every request is bounded
+
+The node's client gives up on the control plane after fixed bounds
+(`SIGNOFF-REPAIR.4.4.5.1`):
+
+| Bound | Default | What it covers |
+| --- | --- | --- |
+| connect | 10 s | establishing the TCP connection |
+| request | 30 s | the whole exchange, from sending the request to the last byte of the answer |
+
+A request that passes its bound fails as a transport error, the same kind as a
+refused connection, and the node answers it the same way: it reconciles. Every
+call on the list above is an ordinary request (the server holds no `poll`
+open), so one request bound covers them all. Before this repair the client had
+no bounds: a control plane that accepted the connection and then went silent
+held the node's request, and with it the node's whole work loop, for ever,
+with no error to prompt a reconcile. Measured against such a server, a
+handshake with the default client had not returned after 45 s; with the
+bounds it fails at 30 s.
+
+The bounds are `ChannelTimeouts`; production uses the defaults, and a test can
+shorten them with `NodeChannel::with_timeouts`.
+
 ## Authentication (`.1.2.2`, certificate-proofed)
 
 The channel is authenticated end to end with the workload certificate

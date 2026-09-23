@@ -22,6 +22,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -360,6 +361,44 @@ impl From<reqwest::Error> for ChannelError {
     }
 }
 
+/// How long the channel waits on the control plane (`SIGNOFF-REPAIR.4.4.5.1`).
+///
+/// Without bounds, a server that accepted the connection and then went silent
+/// held the node's request, and with it the whole work loop, for ever: no
+/// error, so no reconcile, and no progress. With them the request fails as a
+/// transport error ([`ChannelError::Http`], `is_timeout()`), which the node
+/// already answers by reconciling. Every channel call is a plain request (the
+/// server holds no `poll` open), so one request bound covers them all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChannelTimeouts {
+    /// Establishing the TCP connection.
+    pub connect: Duration,
+    /// The whole request, from sending it to reading the last byte of the answer.
+    pub request: Duration,
+}
+
+impl Default for ChannelTimeouts {
+    /// Generous for a healthy control plane, whose answers take milliseconds,
+    /// and short enough that a silent one is noticed within half a minute.
+    fn default() -> Self {
+        Self {
+            connect: Duration::from_secs(10),
+            request: Duration::from_secs(30),
+        }
+    }
+}
+
+/// The HTTP client every channel call uses, bounded by `timeouts`.
+fn bounded_client(timeouts: ChannelTimeouts) -> reqwest::Client {
+    reqwest::Client::builder()
+        .connect_timeout(timeouts.connect)
+        .timeout(timeouts.request)
+        .build()
+        // The same condition `reqwest::Client::new()` panics on: the TLS
+        // backend could not initialize, which no caller could recover from.
+        .expect("the HTTP client builds")
+}
+
 /// The node's outbound connection to one control-plane channel endpoint.
 ///
 /// The client keeps the fencing token from the latest successful handshake in
@@ -405,6 +444,8 @@ pub struct NodeChannel {
     /// knows where the node's state lives — `Node::open` writes beside the
     /// journal, which is exactly where the loader reads from.
     identity_sink: Option<IdentitySink>,
+    /// The bounds `client` was built with (`SIGNOFF-REPAIR.4.4.5.1`).
+    timeouts: ChannelTimeouts,
     client: reqwest::Client,
 }
 
@@ -418,6 +459,7 @@ impl fmt::Debug for NodeChannel {
             .field("base_url", &self.base_url)
             .field("node_id", &self.node_id)
             .field("persists_identity", &self.identity_sink.is_some())
+            .field("timeouts", &self.timeouts)
             .finish_non_exhaustive()
     }
 }
@@ -479,7 +521,8 @@ impl NodeChannel {
             lease: Arc::new(Mutex::new(None)),
             identity_sink: None,
             clock_offset_ms: Arc::new(Mutex::new(0)),
-            client: reqwest::Client::new(),
+            timeouts: ChannelTimeouts::default(),
+            client: bounded_client(ChannelTimeouts::default()),
         }
     }
 
@@ -494,7 +537,8 @@ impl NodeChannel {
             lease: Arc::new(Mutex::new(None)),
             identity_sink: None,
             clock_offset_ms: Arc::new(Mutex::new(0)),
-            client: reqwest::Client::new(),
+            timeouts: ChannelTimeouts::default(),
+            client: bounded_client(ChannelTimeouts::default()),
         }
     }
 
@@ -514,6 +558,20 @@ impl NodeChannel {
             .identity
             .lock()
             .expect("the identity lock is not poisoned") = Some((cert_der, key));
+    }
+
+    /// Replace the channel's bounds (`SIGNOFF-REPAIR.4.4.5.1`). Production keeps
+    /// [`ChannelTimeouts::default`]; a control shortens them to observe a
+    /// timeout without waiting half a minute for it.
+    pub fn with_timeouts(mut self, timeouts: ChannelTimeouts) -> Self {
+        self.timeouts = timeouts;
+        self.client = bounded_client(timeouts);
+        self
+    }
+
+    /// The bounds this channel's requests run under.
+    pub fn timeouts(&self) -> ChannelTimeouts {
+        self.timeouts
     }
 
     /// Install the sink that PERSISTS every freshly rotated identity

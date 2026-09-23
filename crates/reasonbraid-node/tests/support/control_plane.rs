@@ -173,3 +173,39 @@ async fn ack(Json(body): Json<Value>) -> Result<Json<AckResponse>, StatusCode> {
         acknowledged: body["ack_cursor"].as_i64().unwrap_or_default(),
     }))
 }
+
+/// A server that ACCEPTS every connection and never answers a byte
+/// (`SIGNOFF-REPAIR.4.4.5.1`): the failure a timeout exists for. A refused
+/// connection fails fast by itself; an accepted one that goes silent waits as
+/// long as the client lets it. The accepted sockets are held open until the
+/// server is dropped, so the silence is the server's and not a closed socket.
+pub struct StalledServer {
+    base_url: String,
+    server: tokio::task::JoinHandle<()>,
+}
+
+impl StalledServer {
+    pub async fn start() -> Self {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a loopback port");
+        let base_url = format!("http://{}", listener.local_addr().expect("bound address"));
+        let server = tokio::spawn(async move {
+            let mut held = Vec::new();
+            while let Ok((socket, _)) = listener.accept().await {
+                held.push(socket);
+            }
+        });
+        Self { base_url, server }
+    }
+
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+}
+
+impl Drop for StalledServer {
+    fn drop(&mut self) {
+        self.server.abort();
+    }
+}

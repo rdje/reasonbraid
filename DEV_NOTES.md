@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — A machine no longer waits for ever on a server that stops answering (`SIGNOFF-REPAIR.4.4.5.1`)
+
+`REASONBRAID-REPAIR-0465`. The first part of the fifth recovery gap found by `REASONBRAID-DOC-0153`.
+
+- 🔴 **Before:** if the server accepted a machine's connection and then went silent, the machine waited for ever. It stalled completely, and because nothing reported an error, it never tried to reconnect. Measured: still waiting after 45 seconds, with no end in sight.
+- ✅ **Now:** the machine gives up after 10 seconds trying to connect, or 30 seconds waiting for an answer. It then treats the silence like any other broken connection and reconnects. Measured: it gives up at 30 seconds exactly.
+- ✅ Tested: the new checks use a stand-in server that accepts and never replies; 91 machine tests and three live suites pass; two deliberately broken versions were caught (one more could not be built); strict lint clean. One gap is stated in the record: only a 30-second check, run once and not kept, would notice the unbounded client being put back by hand.
+- Technical: `ChannelTimeouts { connect: 10 s, request: 30 s }`, `bounded_client` (`connect_timeout` + `timeout`) in both `NodeChannel` constructors, `with_timeouts`/`timeouts()`; `tests/support/control_plane.rs` `StalledServer`; `tests/channel_timeouts.rs` 2 controls. RED probe 45 s timeout → GREEN 30.00 s. Mutants: `bounded_client → Default` and `timeouts → Default` caught, `with_timeouts → Default` unviable.
+
 ## 2026-09-23 — A machine that is not properly connected no longer starts paid work (`SIGNOFF-REPAIR.4.4.4.2.2`)
 
 `REASONBRAID-REPAIR-0464`. Closes the fourth recovery gap found by `REASONBRAID-DOC-0153`.

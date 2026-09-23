@@ -1084,9 +1084,12 @@ impl NodeChannelState {
         Ok(marked)
     }
 
-    /// Record a node event receipt. The event_id primary key is the dedupe key, so a
-    /// re-emitted event (original id, `§17.4` step 5) returns `accepted = false` and
-    /// writes nothing — one receipt per event, ever.
+    /// Record a node event receipt. The `(node_id, event_id)` key is the dedupe
+    /// key, so a re-emitted event (original id, `§17.4` step 5) returns
+    /// `accepted = false` and writes nothing — one receipt per event, per node,
+    /// ever. Per NODE (`SIGNOFF-REPAIR.4.3.1`): event ids are node-chosen and
+    /// never namespaced by the server, so another node's use of the same id is
+    /// that node's own first receipt, not this node's duplicate.
     pub async fn record_event(
         &self,
         node_id: &str,
@@ -1099,16 +1102,23 @@ impl NodeChannelState {
         record_event_in_tx(&mut *conn, node_id, event_id, operation_id, payload, now).await
     }
 
-    /// The event id the server holds for an operation, if any — the reconciliation
-    /// lookup the handshake performs.
+    /// The event id the server holds for THIS node's operation, if any — the
+    /// reconciliation lookup the handshake performs for its directives and its
+    /// `known_events`. Bound to the node (`SIGNOFF-REPAIR.4.3.1`): operation ids
+    /// are node-chosen, so a receipt another node holds under the same id says
+    /// nothing about this node's attempt — it must neither adjudicate it nor be
+    /// disclosed to it.
     pub async fn event_id_for_operation(
         &self,
+        node_id: &str,
         operation_id: &str,
     ) -> Result<Option<String>, sqlx::Error> {
         sqlx::query_scalar(
-            "SELECT event_id FROM node_events WHERE operation_id = $1 \
+            "SELECT event_id FROM node_events \
+             WHERE node_id = $1 AND operation_id = $2 \
              ORDER BY received_at LIMIT 1",
         )
+        .bind(node_id)
         .bind(operation_id)
         .fetch_optional(&self.pool)
         .await
@@ -1813,7 +1823,7 @@ where
     Ok(sqlx::query(
         "INSERT INTO node_events (event_id, node_id, operation_id, payload, received_at) \
          VALUES ($1, $2, $3, $4, $5) \
-         ON CONFLICT (event_id) DO NOTHING",
+         ON CONFLICT (node_id, event_id) DO NOTHING",
     )
     .bind(event_id)
     .bind(node_id)
@@ -1978,7 +1988,10 @@ async fn handshake(
             });
             continue;
         }
-        match state.event_id_for_operation(&attempt.operation_id).await? {
+        match state
+            .event_id_for_operation(&req.node_id, &attempt.operation_id)
+            .await?
+        {
             Some(event_id) => directives.push(Directive::Adjudicated {
                 attempt_id: attempt.attempt_id.clone(),
                 terminal: "reconciled".to_string(),
@@ -2008,7 +2021,10 @@ async fn handshake(
 
     let mut known_events = Vec::new();
     for operation_id in &req.pending_operations {
-        if let Some(event_id) = state.event_id_for_operation(operation_id).await? {
+        if let Some(event_id) = state
+            .event_id_for_operation(&req.node_id, operation_id)
+            .await?
+        {
             known_events.push(KnownEvent {
                 operation_id: operation_id.clone(),
                 event_id,

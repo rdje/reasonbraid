@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-23 — One machine can no longer silence another machine's answer by reusing its message id (`SIGNOFF-REPAIR.4.3.1`)
+
+`REASONBRAID-REPAIR-0455`. The first of the four inbox-identity gaps found by `REASONBRAID-DOC-0152`.
+
+- 🔴 **Before:** every machine chooses its own message ids, but the server treated them as if they were unique across all machines. If machine B had already used a message id, machine A's own message under that id was treated as a repeat: it was dropped, and A's finished answer was never counted. And when a machine reconnected and asked "do you already hold my result for this job?", the server answered from *any* machine's records — so B's receipt could close A's uncertain job as done, and B's message id was shown to A.
+- ✅ **Now:** receipts are kept per machine. A repeat is only a repeat of that same machine's own message; another machine's use of the same id is that machine's own first message. The reconnect questions are answered only from the asking machine's own receipts.
+- ✅ Existing receipts were not rewritten; the database key was widened (an additive change).
+- ✅ Tested: the two new checks failed on the old code exactly where predicted and pass now (the machine-channel suite: 49 tests); a deliberately broken version that answered the reconnect questions from any machine's records was caught; six further suites that touch receipts pass unchanged (121 tests); strict lint clean.
+- Technical: `migrations/0102_node_events_keyed_per_node.sql` re-keys `node_events` to `(node_id, event_id)` and adds `node_events_node_operation_idx (node_id, operation_id)` (the `0003` operation-only index stays for the `consumed` rung until `.4.3.3`); `record_event_in_tx` conflicts on `(node_id, event_id)`; `event_id_for_operation(node_id, operation_id)` binds the node and both handshake callers pass `req.node_id`. Controls: `a_colliding_event_id_from_another_node_does_not_suppress_this_nodes_receipt` (two nodes through the real `POST /v1/nodes/events`) and `a_foreign_receipt_neither_adjudicates_nor_is_disclosed` (handshake directives + `known_events`, then the node's own receipt does both); mutant M2 (node predicate dropped) caught.
+
 ## 2026-09-23 — Ending a partnership now also stops work that was already on its way (`SIGNOFF-REPAIR.5.3.6`)
 
 `REASONBRAID-REPAIR-0454`. Completes the federation work (`SIGNOFF-REPAIR.5.3`) and with it the directory, recruitment and federation lane (`SIGNOFF-REPAIR.5`).

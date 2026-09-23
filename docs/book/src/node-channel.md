@@ -13,7 +13,7 @@ HTTP/1 JSON over the loopback development profile, served by the control plane
 
 ```text
 POST /v1/nodes/handshake   the authenticated reconnect exchange
-POST /v1/nodes/events      node results, deduplicated by the node-assigned event id
+POST /v1/nodes/events      node results, deduplicated per node by its own event id
 POST /v1/nodes/ack         cursor acknowledgement (delivery state)
 POST /v1/nodes/poll        the live delivery tail after a cursor
 POST /v1/nodes/heartbeat   lease renewal
@@ -160,11 +160,17 @@ command after `last_acked_cursor` (the replay tail), plus reconciliation
 guidance and the fresh lease:
 
 - **directives** — one per ambiguous attempt: `adjudicated` when the server
-  holds a receipt for the operation's event (the node marks the attempt
-  `reconciled`), `needs_adjudication` otherwise (the attempt stays visibly
-  `outcome_unknown` — bounded, never silently retried).
-- **known_events** — server-held receipts for the node's pending operations,
-  so a result whose acknowledgement was lost is not re-sent.
+  holds **this node's** receipt for the operation's event (the node marks the
+  attempt `reconciled`), `needs_adjudication` otherwise (the attempt stays
+  visibly `outcome_unknown` — bounded, never silently retried).
+- **known_events** — **this node's** server-held receipts for its pending
+  operations, so a result whose acknowledgement was lost is not re-sent.
+
+Both answers are read from the node's own receipts and never from another
+node's. Operation ids are chosen by each node and the server never namespaces
+them, so a receipt node B holds for an operation id says nothing about node A's
+attempt under the same id — it must not close A's attempt, and it must not be
+disclosed to A (`SIGNOFF-REPAIR.4.3.1`).
 - **fencing_token + lease_expires_at** — the new lease (see above).
 - **offers_pending** — how many open recruitment calls, inside their join
   window, are offered to this node's role and unanswered by it
@@ -407,8 +413,17 @@ The server replays, the node's journal deduplicates:
 - a duplicated command never creates a second local operation (`operations` is
   keyed 1:1 on the command id), and
 - a re-emitted event carries its **original id**, so the server's
-  event-receipt primary key turns redelivery into a duplicate, never a second
-  event.
+  event-receipt key — **the node and the event id** — turns redelivery into a
+  duplicate, never a second event.
+
+⛔ **The receipt key names the node because event ids are node-chosen.** The
+server never namespaces them, so two nodes can legitimately emit the same id
+for two different events. Until `SIGNOFF-REPAIR.4.3.1` the event id alone was
+the key: a node recording an id first made another node's own event under that
+id `accepted: false`, and since a duplicate applies no domain effect, that
+node's result was never folded. Dedup is per node — a node's re-emission of its
+own id is the duplicate; another node's use of it is that node's first receipt.
+Stored receipts were not rewritten by the change; the key was widened.
 
 **Every channel WRITE re-checks the lease inside its own transaction** with the
 lease row locked, so a session fenced by a newer handshake cannot ride an
@@ -831,7 +846,8 @@ toll on every message the channel carries.
 
 A **rejected** application is a committed fact: the node did emit the event, so
 its receipt commits, and the refusal is stored as the work command's idempotent
-result. `accepted: true` means *this event id was new*, not *the work applied*.
+result. `accepted: true` means *this event id was new for this node*, not *the
+work applied*.
 
 A **storage failure** is not. It aborts the transaction, so the handler's COMMIT
 would be executed as a ROLLBACK — and the handler used to answer `accepted: true`

@@ -5678,3 +5678,201 @@ async fn a_node_holding_its_declared_capacity_reads_busy_and_leaves_it() {
         "`busy` is a state the node leaves, not a latch"
     );
 }
+
+/// A channel for one seeded node with a live lease: the authenticated
+/// handshake, reporting nothing pending, so the events route admits it.
+async fn leased_channel(
+    server: &TestServer,
+    node_id: &str,
+    cert_der: &[u8],
+    key_der: &[u8],
+) -> reasonbraid_node::NodeChannel {
+    let channel = reasonbraid_node::NodeChannel::new(
+        server.base_url(),
+        node_id.to_string(),
+        cert_der.to_vec(),
+        key_from_der(key_der),
+    );
+    channel
+        .handshake(&reasonbraid_node::HandshakeRequest {
+            channel_version: reasonbraid_node::CHANNEL_VERSION,
+            node_id: node_id.to_string(),
+            last_acked_cursor: 0,
+            pending_operations: vec![],
+            ambiguous_attempts: vec![],
+            cert_der: String::new(),
+            proof_signature: String::new(),
+            nonce: String::new(),
+        })
+        .await
+        .expect("handshake");
+    channel
+}
+
+/// `SIGNOFF-REPAIR.4.3.1` — an event id is deduplicated PER NODE. Event ids are
+/// node-chosen strings the server never namespaces, so with `event_id` as the
+/// receipt table's whole key a node recording an id first made another node's
+/// submission of it `accepted: false`, and the events handler then skipped that
+/// node's fold. Node B holds `evt_shared`; node A's own `evt_shared` is a NEW
+/// receipt, and only A's re-emission of it is the duplicate.
+#[tokio::test]
+async fn a_colliding_event_id_from_another_node_does_not_suppress_this_nodes_receipt() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let node_a = "nod_00000000-0000-7000-8000-000000004311".to_string();
+    let node_b = "nod_00000000-0000-7000-8000-000000004312".to_string();
+    let (cert_a, key_a) = seed_node(&pool, &node_a).await;
+    let (cert_b, key_b) = seed_node(&pool, &node_b).await;
+    let channel_a = leased_channel(&server, &node_a, &cert_a, &key_a).await;
+    let channel_b = leased_channel(&server, &node_b, &cert_b, &key_b).await;
+    let payload = json!({ "event_type": "ready" });
+
+    // B records the id first.
+    let b_first = channel_b
+        .send_event("evt_shared", "op_b", &payload)
+        .await
+        .expect("B's event");
+    assert!(b_first.accepted, "B's first emission is a new receipt");
+
+    // A's own event under the SAME id is A's first, not B's second.
+    let a_first = channel_a
+        .send_event("evt_shared", "op_a", &payload)
+        .await
+        .expect("A's event");
+    assert!(
+        a_first.accepted,
+        "another node's receipt for this id must not make A's own emission a duplicate"
+    );
+
+    // A's re-emission IS the duplicate: dedup still holds, per node.
+    let a_again = channel_a
+        .send_event("evt_shared", "op_a", &payload)
+        .await
+        .expect("A's re-emission");
+    assert!(
+        !a_again.accepted,
+        "A's re-emission of its own id is a duplicate"
+    );
+
+    // One receipt per node for the id, each naming its own operation.
+    let receipts: Vec<(String, String)> = sqlx::query_as(
+        "SELECT node_id, operation_id FROM node_events WHERE event_id = 'evt_shared' \
+         ORDER BY node_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        receipts,
+        vec![
+            (node_a.clone(), "op_a".to_string()),
+            (node_b.clone(), "op_b".to_string())
+        ]
+    );
+    server.crash();
+}
+
+/// `SIGNOFF-REPAIR.4.3.1` — the reconciliation lookup is bound to the node.
+/// Without a node predicate the server answered the handshake's directives and
+/// `known_events` from ANY node's receipts: a receipt node B held for an
+/// operation id adjudicated node A's ambiguous attempt on that id `reconciled`,
+/// and disclosed B's event id to A. Now a foreign receipt neither adjudicates
+/// nor is disclosed, and A's own receipt for the same operation id does both.
+#[tokio::test]
+async fn a_foreign_receipt_neither_adjudicates_nor_is_disclosed() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let state = NodeChannelState::new(pool.clone(), ca);
+    let server = TestServer::start(&pool).await;
+    let node_a = "nod_00000000-0000-7000-8000-000000004313".to_string();
+    let node_b = "nod_00000000-0000-7000-8000-000000004314".to_string();
+    let (cert_a, key_a) = seed_node(&pool, &node_a).await;
+    seed_node(&pool, &node_b).await;
+    let payload = json!({ "event_type": "ready" });
+
+    // B holds a receipt for an operation id A also uses (ids are per node).
+    state
+        .record_event(&node_b, "evt_foreign", "op_shared", &payload, Utc::now())
+        .await
+        .unwrap();
+
+    let channel = reasonbraid_node::NodeChannel::new(
+        server.base_url(),
+        node_a.clone(),
+        cert_a.clone(),
+        key_from_der(&key_a),
+    );
+    let req = reasonbraid_node::HandshakeRequest {
+        channel_version: reasonbraid_node::CHANNEL_VERSION,
+        node_id: node_a.clone(),
+        last_acked_cursor: 0,
+        pending_operations: vec!["op_shared".to_string()],
+        ambiguous_attempts: vec![reasonbraid_node::AmbiguousAttempt {
+            attempt_id: "patt_foreign".to_string(),
+            operation_id: "op_shared".to_string(),
+        }],
+        cert_der: String::new(),
+        proof_signature: String::new(),
+        nonce: String::new(),
+    };
+    let first = channel.handshake(&req).await.expect("handshake");
+    assert!(
+        first.known_events.is_empty(),
+        "another node's receipt is not disclosed: {:?}",
+        first.known_events
+    );
+    assert!(
+        matches!(
+            first.directives.as_slice(),
+            [reasonbraid_node::Directive::NeedsAdjudication { attempt_id, .. }]
+                if attempt_id == "patt_foreign"
+        ),
+        "another node's receipt does not adjudicate: {:?}",
+        first.directives
+    );
+
+    // A's OWN receipt for the same operation id does both.
+    state
+        .record_event(&node_a, "evt_own", "op_shared", &payload, Utc::now())
+        .await
+        .unwrap();
+    let second = channel.handshake(&req).await.expect("second handshake");
+    assert_eq!(
+        second.known_events,
+        vec![reasonbraid_node::KnownEvent {
+            operation_id: "op_shared".to_string(),
+            event_id: "evt_own".to_string(),
+        }]
+    );
+    assert!(
+        matches!(
+            second.directives.as_slice(),
+            [reasonbraid_node::Directive::Adjudicated { attempt_id, terminal, evidence }]
+                if attempt_id == "patt_foreign"
+                    && terminal == "reconciled"
+                    && evidence.contains("evt_own")
+                    && !evidence.contains("evt_foreign")
+        ),
+        "A's own receipt adjudicates, naming A's event: {:?}",
+        second.directives
+    );
+
+    // B's receipt is untouched and still B's.
+    let holders: Vec<(String, String)> = sqlx::query_as(
+        "SELECT node_id, event_id FROM node_events WHERE operation_id = 'op_shared' \
+         ORDER BY node_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        holders,
+        vec![
+            (node_a.clone(), "evt_own".to_string()),
+            (node_b.clone(), "evt_foreign".to_string())
+        ]
+    );
+    server.crash();
+}

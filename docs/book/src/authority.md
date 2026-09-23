@@ -1509,6 +1509,7 @@ Everything is now inside that transaction, in this order:
 | Allowlist rung | The EFFECTIVE recruitment agreement with the origin — both sides accepted, both carrying `recruitment`. |
 | Boundary | The importing tenant's active enrollment boundary, read in the same transaction that then issues against it. |
 | Replay key | The importing tenant's provenance record for this origin role (`SIGNOFF-REPAIR.5.3.2`): one on file answers the original local role and writes nothing. |
+| Origin node | Only for `"execution": "origin"` (`SIGNOFF-REPAIR.5.3.5.3.1.1`): the node of the origin role's latest incarnation, enrolled in the origin tenant, read under the origin's shared guard. None refuses `400`, recorded like every rung; the node found is written to the provenance record as `executes_on`. |
 | Grant, identity, quota, enrollment, provenance, receipt | The default local grant — issued by the administrator whose admission the import runs under (`SIGNOFF-REPAIR.5.3.3`) — the `agent_roles` row, the per-principal quota row, the enrollment row, the provenance record and the cross-domain receipt. |
 | **Profile** | The card's profile, written as the local role's first version. |
 | Effect record | `profile_card_import`, with the outcome. |

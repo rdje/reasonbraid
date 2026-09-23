@@ -6329,6 +6329,12 @@ async fn open_recruitment_call(
 
 /// The respondent's current facts for the eligibility gate (the same shape
 /// the match surface loads).
+///
+/// The PROFILE is the role's own; the PRESENCE is the node its work runs on,
+/// resolved through `role_execution` (`SIGNOFF-REPAIR.5.3.5.3.1`): the role's
+/// own id under the dev rule, the origin node for an origin-bound import while
+/// the recruitment agreement stands, and no node otherwise — `None` here, which
+/// every caller refuses as *no enrolled node*.
 async fn respondent_candidate<'e>(
     executor: impl sqlx::PgExecutor<'e>,
     role_id: &str,
@@ -6343,12 +6349,13 @@ async fn respondent_candidate<'e>(
         "SELECT np.online, np.suspended, \
                 (SELECT (v.profile->'availability'->>'concurrency')::bigint \
                  FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
-                 WHERE v.role_id = np.node_id AND v.version = p.current_version) AS concurrency, \
+                 WHERE v.role_id = re.role_id AND v.version = p.current_version) AS concurrency, \
                 (SELECT v.profile \
                  FROM profile_versions v JOIN agent_profiles p ON p.role_id = v.role_id \
-                 WHERE v.role_id = np.node_id AND v.version = p.current_version) AS profile, \
+                 WHERE v.role_id = re.role_id AND v.version = p.current_version) AS profile, \
                 np.in_flight \
-         FROM node_presence np WHERE np.node_id = $1",
+         FROM role_execution re JOIN node_presence np ON np.node_id = re.node_id \
+         WHERE re.role_id = $1",
     )
     .bind(role_id)
     .fetch_optional(executor)
@@ -6631,14 +6638,18 @@ async fn close_call(
             candidates.push((candidate, verdict));
         }
     }
-    // The dependence facts (`.6.2`): each joiner's LATEST incarnation lineage
-    // + the tenant as the owner — the panel's indicator inputs.
+    // The dependence facts (`.6.2`): the LATEST incarnation on the node each
+    // joiner's work runs on (`role_execution`, `SIGNOFF-REPAIR.5.3.5.3.1` — an
+    // origin-bound import's facts are the origin machine's) + the tenant as the
+    // owner — the panel's indicator inputs. `incarnations.node_id` is the §8.1
+    // binding fact (DOC-0139); under the dev rule it equals the role id.
     let mut facts: std::collections::HashMap<String, crate::dependence::MemberFacts> =
         std::collections::HashMap::new();
     for joiner in &joiners {
         let lineage: Option<(Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
             "SELECT provider, model, harness FROM incarnations \
-                 WHERE role_id = $1 ORDER BY valid_from DESC LIMIT 1",
+                 WHERE node_id = (SELECT node_id FROM role_execution WHERE role_id = $1) \
+                 ORDER BY valid_from DESC LIMIT 1",
         )
         .bind(joiner)
         .fetch_optional(&mut *tx)
@@ -7511,19 +7522,43 @@ async fn get_profile(
     // class only: the origin is the importing tenant's own record of where its
     // role came from, not a directory fact for siblings or the network.
     if full {
-        let provenance: Option<(String, String, String, DateTime<Utc>)> = sqlx::query_as(
-            "SELECT origin_tenant_id, origin_role_id, card_digest, imported_at \
-             FROM card_imports WHERE role_id = $1",
+        // `executes_on` is the binding as recorded; `runs_on` is where it
+        // resolves NOW (`role_execution`, `SIGNOFF-REPAIR.5.3.5.3.1`) — the two
+        // differ exactly when an origin binding's agreement no longer stands.
+        type Provenance = (
+            String,
+            String,
+            String,
+            DateTime<Utc>,
+            Option<String>,
+            Option<String>,
+        );
+        let provenance: Option<Provenance> = sqlx::query_as(
+            "SELECT ci.origin_tenant_id, ci.origin_role_id, ci.card_digest, ci.imported_at, \
+                    ci.executes_on, re.node_id \
+             FROM card_imports ci JOIN role_execution re ON re.role_id = ci.role_id \
+             WHERE ci.role_id = $1",
         )
         .bind(&role_id)
         .fetch_optional(&state.pool)
         .await?;
-        if let Some((origin_tenant_id, origin_role_id, card_digest, imported_at)) = provenance {
+        if let Some((
+            origin_tenant_id,
+            origin_role_id,
+            card_digest,
+            imported_at,
+            executes_on,
+            runs_on,
+        )) = provenance
+        {
             body["imported_from"] = json!({
                 "origin_tenant_id": origin_tenant_id,
                 "origin_role_id": origin_role_id,
                 "card_digest": card_digest,
                 "imported_at": imported_at.to_rfc3339(),
+                "execution": if executes_on.is_some() { "origin" } else { "local" },
+                "executes_on": executes_on,
+                "runs_on": runs_on,
             });
         }
     }
@@ -7595,6 +7630,10 @@ pub struct ImportCardRequest {
     pub tenant_id: TenantId,
     pub card: crate::cards::AgentCard,
     pub digest: String,
+    /// Where the imported identity's work runs; `local` when absent
+    /// (`SIGNOFF-REPAIR.5.3.5.3.1`).
+    #[serde(default)]
+    pub execution: crate::cards::CardExecution,
 }
 
 /// `POST /v1/profiles/cards/import` — the ADR-027 ladder over the card:
@@ -7624,6 +7663,7 @@ async fn import_profile_card(
         &req.card,
         &req.digest,
         &card_digest,
+        req.execution,
     )
     .await?;
     let receipt = import.record_id;
@@ -7662,10 +7702,22 @@ async fn import_profile_card(
             ))
             .into_response()
         }
-        authority::CardImportResult::Imported { role_id } => Json(json!({
+        authority::CardImportResult::NoOriginNode { origin_role } => {
+            ControlApiError::invalid_command(format!(
+                "the origin role `{origin_role}` has no enrolled node in this deployment — the \
+                 `origin` binding refuses"
+            ))
+            .into_response()
+        }
+        authority::CardImportResult::Imported {
+            role_id,
+            executes_on,
+        } => Json(json!({
             "role_id": role_id,
             "origin_tenant_id": req.card.origin_tenant_id,
             "origin_role_id": req.card.origin_role_id,
+            "execution": req.execution,
+            "executes_on": executes_on,
         }))
         .into_response(),
         // The enrolment route's answer to a repeat (`SIGNOFF-REPAIR.5.3.2`): the

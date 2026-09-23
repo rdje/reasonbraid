@@ -255,7 +255,13 @@ const GRANT_REFUSAL_CONTEXT: &str = "the imported role's grant exceeds the impor
 pub enum CardImportResult {
     Imported {
         role_id: String,
+        /// The node the identity's work runs on under the `origin` binding;
+        /// `None` for `local` (`SIGNOFF-REPAIR.5.3.5.3.1`).
+        executes_on: Option<String>,
     },
+    /// The `origin` binding was asked for and the origin role has no enrolled
+    /// node in this deployment to bind (`SIGNOFF-REPAIR.5.3.5.3.1`).
+    NoOriginNode { origin_role: String },
     /// A pure rung refused: the schema version, or a digest that does not
     /// re-derive from the card's own bytes.
     CardRefused(String),
@@ -264,9 +270,7 @@ pub enum CardImportResult {
     /// operations that answers `unauthorized` — it refuses an admitted tenant
     /// administrator over a fact about two tenants rather than about their grant
     /// (`SIGNOFF-REPAIR.3.3.4.7.4`).
-    NoAgreement {
-        origin_tenant: String,
-    },
+    NoAgreement { origin_tenant: String },
     /// The importing tenant has no active enrollment boundary to issue under.
     NoActiveBoundary,
     /// The importing tenant already holds an identity under the card's display
@@ -274,9 +278,7 @@ pub enum CardImportResult {
     /// (`SIGNOFF-REPAIR.3.3.4.11.5`). A repeat of the same origin never reaches
     /// this: it is [`Self::Replayed`], decided before the label is touched
     /// (`SIGNOFF-REPAIR.5.3.2`).
-    LabelTaken {
-        label: String,
-    },
+    LabelTaken { label: String },
     /// The origin role is already imported into this tenant: the import is a
     /// REPLAY naming the local role it landed as and the digest of the card on
     /// file (`SIGNOFF-REPAIR.5.3.2`) — the enrolment route's answer to a repeat.
@@ -290,9 +292,7 @@ pub enum CardImportResult {
     /// is absent or outside its live window at the guarded evaluation.
     GrantRefused(String),
     /// The caller was refused by the authority evaluated inside the guard.
-    Denied {
-        reason: String,
-    },
+    Denied { reason: String },
 }
 
 /// One admitted import attempt and what it did.
@@ -320,6 +320,7 @@ pub(crate) async fn import_card_in_one_transaction(
     card: &crate::cards::AgentCard,
     presented_digest: &str,
     card_digest: &str,
+    execution: crate::cards::CardExecution,
 ) -> Result<CardImport, AuthorityTransactionError> {
     let principal = principal.clone();
     let card = card.clone();
@@ -371,8 +372,11 @@ pub(crate) async fn import_card_in_one_transaction(
             let outcome = import_after_admission(
                 tx,
                 tenant_id,
-                &card,
-                &presented_digest,
+                Submitted {
+                    card: &card,
+                    presented_digest: &presented_digest,
+                    execution,
+                },
                 at,
                 &principal,
                 &record_id,
@@ -398,6 +402,12 @@ pub(crate) async fn import_card_in_one_transaction(
                         detail: bounded_detail(detail.clone()),
                     }
                 }
+                CardImportResult::NoOriginNode { origin_role } => AdministrativeOutcome::Refused {
+                    code: AdministrativeRefusal::InvalidCommand,
+                    detail: bounded_detail(format!(
+                        "the origin role `{origin_role}` has no enrolled node in this deployment"
+                    )),
+                },
                 CardImportResult::NoActiveBoundary => AdministrativeOutcome::Refused {
                     code: AdministrativeRefusal::InvalidCommand,
                     detail: bounded_detail(
@@ -449,6 +459,14 @@ pub(crate) async fn import_card_in_one_transaction(
     .await
 }
 
+/// What the caller submitted: the card, the digest it presented for it, and
+/// where the imported identity's work runs.
+struct Submitted<'a> {
+    card: &'a crate::cards::AgentCard,
+    presented_digest: &'a str,
+    execution: crate::cards::CardExecution,
+}
+
 /// The four rungs and the whole local identity, on the already-admitted
 /// transaction. Every refusal returns a VALUE so the effect record can describe
 /// it and commit beside it; only a storage failure returns an error, which rolls
@@ -456,12 +474,16 @@ pub(crate) async fn import_card_in_one_transaction(
 async fn import_after_admission(
     tx: &mut super::TenantTransaction<'_>,
     tenant_id: TenantId,
-    card: &crate::cards::AgentCard,
-    presented_digest: &str,
+    submitted: Submitted<'_>,
     at: chrono::DateTime<chrono::Utc>,
     principal: &GrantSubject,
     record_id: &str,
 ) -> Result<CardImportResult, GuardError> {
+    let Submitted {
+        card,
+        presented_digest,
+        execution,
+    } = submitted;
     // The pure rungs stay where the superseded route had them — AFTER the
     // admission. Moving them earlier would have been a wire change in the one
     // direction that matters: a caller who is not this tenant's administrator
@@ -518,6 +540,36 @@ async fn import_after_admission(
             digest_on_file,
         });
     }
+
+    // The `origin` binding (`SIGNOFF-REPAIR.5.3.5.3.1`): the node the origin
+    // role's LATEST incarnation runs on — the §8.1 binding fact (DOC-0139) —
+    // enrolled in the origin tenant. Read under the origin's shared guard, which
+    // this transaction already declares. A suspended node binds (suspension is a
+    // presence fact every eligibility read refuses); a missing one does not,
+    // because a binding to no machine would be an identity that runs nowhere.
+    let executes_on = match execution {
+        crate::cards::CardExecution::Local => None,
+        crate::cards::CardExecution::Origin => {
+            let node: Option<String> = sqlx::query_scalar(
+                "SELECT i.node_id FROM incarnations i \
+                 JOIN nodes n ON n.node_id = i.node_id AND n.tenant_id = i.tenant_id \
+                 WHERE i.role_id = $1 AND i.tenant_id = $2 \
+                 ORDER BY i.valid_from DESC NULLS LAST LIMIT 1",
+            )
+            .bind(&card.origin_role_id)
+            .bind(&card.origin_tenant_id)
+            .fetch_optional(&mut *conn)
+            .await?;
+            match node {
+                Some(node) => Some(node),
+                None => {
+                    return Ok(CardImportResult::NoOriginNode {
+                        origin_role: card.origin_role_id.clone(),
+                    })
+                }
+            }
+        }
+    };
 
     let Some(boundary) = super::load_active_boundary_in_guard(tx, tenant_id).await? else {
         return Ok(CardImportResult::NoActiveBoundary);
@@ -625,8 +677,9 @@ async fn import_after_admission(
     // import back, not a second refusal vocabulary.
     let recorded: Option<String> = sqlx::query_scalar(
         "INSERT INTO card_imports \
-         (role_id, tenant_id, origin_tenant_id, origin_role_id, card_digest, record_id, imported_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7) \
+         (role_id, tenant_id, origin_tenant_id, origin_role_id, card_digest, record_id, \
+          imported_at, executes_on) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
          ON CONFLICT DO NOTHING RETURNING role_id",
     )
     .bind(&role_id)
@@ -636,6 +689,7 @@ async fn import_after_admission(
     .bind(presented_digest)
     .bind(record_id)
     .bind(at)
+    .bind(&executes_on)
     .fetch_optional(&mut *conn)
     .await?;
     if recorded.is_none() {
@@ -663,5 +717,8 @@ async fn import_after_admission(
     // no profile at all.
     crate::profiles::write_profile_in_tx(&mut *conn, &role_id, &role_id, &card.profile, at).await?;
 
-    Ok(CardImportResult::Imported { role_id })
+    Ok(CardImportResult::Imported {
+        role_id,
+        executes_on,
+    })
 }

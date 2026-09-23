@@ -340,11 +340,73 @@ local role's name, and a tenant's identity names are unique. A label already
 taken in the importing tenant — by a role from a **different** origin — answers
 `400 invalid_command` naming it, and changes nothing.
 
+### Where an imported identity runs
+
+An imported identity needs a **machine** before it can take part in anything:
+the eligibility checks on a call read the presence of the node its work runs
+on, and a role with no node is refused as *the respondent has no enrolled
+node/profile*. The import chooses one of two bindings with `execution`:
+
+| `execution` | The machine | What it means |
+| --- | --- | --- |
+| `local` (the default) | a node the importing tenant enrols for the imported role's id, exactly as for any role of its own | the card is portable: the importing tenant runs the identity on its own runtime |
+| `origin` | the origin role's own node, which the origin tenant already enrolled | the partner's agent is recruited where it lives; the importing tenant enrols nothing |
+
+```bash
+curl -X POST localhost:4310/v1/profiles/cards/import \
+  -H 'x-reasonbraid-principal: hpr_0192…'             \
+  -H 'content-type: application/json'                 \
+  -d '{"tenant_id": "ten_0192…", "card": { … }, "digest": "sha256:4b7e…", "execution": "origin"}'
+```
+
+```json
+{
+  "role_id": "rol_0192…",
+  "origin_tenant_id": "ten_0192…",
+  "origin_role_id": "rol_0192…",
+  "execution": "origin",
+  "executes_on": "rol_0192…"
+}
+```
+
+`executes_on` is the node the origin role's latest incarnation runs on (under
+the one-node-per-role rule, the origin role's own id). The `origin` binding
+adds one rung, after the allowlist: the origin role must **have an enrolled
+node** in this deployment, or the import answers
+
+```text
+400 invalid_command — the origin role `rol_0192…` has no enrolled node in this deployment — the `origin` binding refuses
+```
+
+and is recorded as a refused effect, like every other rung.
+
+**The binding holds only while the agreement does** (`SIGNOFF-REPAIR.5.3.5.3.1`).
+Every time the server resolves the identity to its machine it re-asks the
+allowlist rung: both directions of the recruitment agreement accepted and
+unexpired. When either side revokes or the agreement expires, the identity
+resolves to **no machine** — its joins are refused for want of a node — and
+never to a local node of the same id: an identity has one binding, not a
+fallback. The same resolution feeds a call's close, so a panel's dependence
+facts for an origin-bound member are the **origin machine's** provider, model
+and harness.
+
+⚠️ What the `origin` binding does **not** do yet: deliver work. A call can seat
+an origin-bound identity, and the directory match and presence reads do not list
+it yet; the work that follows is still dispatched by the role id. Routing it to
+the origin's node waits on that node judging each command by its own tenant's
+revocation epoch (`SIGNOFF-REPAIR.5.3.5.3.2`), because a node that executes for
+two tenants must not judge one tenant's admission by the other's. The binding
+cannot be changed after the import: a repeat import is a replay, whatever
+`execution` it names.
+
 The full-class read of an imported role (`GET /v1/profiles/{role_id}` by the
 role or its tenant administrator) carries `imported_from` — the origin pair, the
-card digest and the time — so where a local role came from is on the ledger and
-not only in whoever still holds the card. A sibling or a network reader does not
-see it.
+card digest, the time, the `execution` binding and its `executes_on` node, and
+`runs_on`, the node it resolves to **now** — so where a local role came from is
+on the ledger and not only in whoever still holds the card. `runs_on` is `null`
+for an origin binding whose agreement no longer stands, and for a local binding
+it is the role's own id whether or not a node is enrolled yet. A sibling or a
+network reader does not see any of it.
 
 ⛔ **What the digest rung proves, and what it does not.** It proves the card's
 bytes are the ones the digest names — integrity. It does **not** prove the card

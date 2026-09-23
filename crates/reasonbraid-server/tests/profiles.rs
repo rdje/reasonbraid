@@ -4185,6 +4185,279 @@ async fn an_imported_identity_acts_once_the_importing_tenant_binds_a_node_to_it(
     );
 }
 
+/// `SIGNOFF-REPAIR.5.3.5.3.1` — the ORIGIN execution binding: an identity
+/// imported with `"execution": "origin"` runs on the origin role's own node,
+/// which the importing tenant never enrols. The binding is a ledger fact
+/// (`card_imports.executes_on`) and every eligibility read resolves through
+/// `role_execution`: the imported identity joins and is seated with no local
+/// node, its dependence facts are the origin machine's, and once an agreement
+/// direction is revoked it resolves to NO node — never to a local fallback.
+/// An origin role with no enrolled node cannot be bound.
+#[tokio::test]
+async fn an_origin_bound_identity_runs_on_the_origin_node_while_the_agreement_stands() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let world = call_world(&client, &base, "bind-origin", 0).await;
+    let (status, owner_b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "bind-origin-b" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{owner_b}");
+    let owner_b_id = owner_b["principal_id"].as_str().unwrap().to_string();
+    let tenant_b = owner_b["tenant_id"].as_str().unwrap().to_string();
+    // Two origin roles: one with a machine, one without.
+    let mut origin = Vec::new();
+    for (name, label, with_node) in [
+        ("bind-origin-role", "origin reviewer", true),
+        ("bind-origin-nodeless", "nodeless reviewer", false),
+    ] {
+        let (status, role) = enroll(
+            &client,
+            &base,
+            json!({ "kind": "role", "name": name, "tenant_id": tenant_b }),
+        )
+        .await;
+        assert_eq!(status, 200, "{role}");
+        let role = role["principal_id"].as_str().unwrap().to_string();
+        if with_node {
+            enroll_node(&client, &base, &owner_b_id, &tenant_b, &role).await;
+        }
+        let mut body = visibility_profile();
+        body["display_label"] = json!(label);
+        let (status, written) = put(
+            &client,
+            &base,
+            &format!("/v1/profiles/{role}"),
+            &role,
+            &body,
+        )
+        .await;
+        assert_eq!(status, 200, "{written}");
+        origin.push(role);
+    }
+    let (role_b, nodeless) = (origin[0].clone(), origin[1].clone());
+    // The origin machine's dependence fact, which the close must read.
+    sqlx::query("UPDATE incarnations SET provider = 'origin-provider' WHERE role_id = $1")
+        .bind(&role_b)
+        .execute(&pool)
+        .await
+        .expect("the origin incarnation's provider");
+    for step in [
+        "/v1/federation-agreements",
+        "/v1/federation-agreements/accept",
+    ] {
+        for (admin, tenant, remote) in [
+            (&world.human_id, &world.tenant, &tenant_b),
+            (&owner_b_id, &tenant_b, &world.tenant),
+        ] {
+            let mut body = json!({ "tenant_id": tenant, "remote_tenant_id": remote });
+            if step == "/v1/federation-agreements" {
+                body["directory_visibility"] = json!(false);
+                body["recruitment"] = json!(true);
+            }
+            let (status, answer) = post(&client, &base, step, admin, &body).await;
+            assert_eq!(status, 200, "{step}: {answer}");
+        }
+    }
+    let card_of = |role: String| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            let (status, exported) =
+                get(&client, &base, &format!("/v1/profiles/{role}/card"), &role).await;
+            assert_eq!(status, 200, "{exported}");
+            exported
+        }
+    };
+
+    // An origin role with no machine cannot be bound to one.
+    let exported = card_of(nodeless.clone()).await;
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/profiles/cards/import",
+        &world.human_id,
+        &json!({ "tenant_id": world.tenant, "card": exported["card"],
+                 "digest": exported["digest"], "execution": "origin" }),
+    )
+    .await;
+    assert_eq!(status, 400, "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("no enrolled node"),
+        "the refusal names the missing machine: {refused}"
+    );
+
+    // The origin binding.
+    let exported = card_of(role_b.clone()).await;
+    let (status, imported) = post(
+        &client,
+        &base,
+        "/v1/profiles/cards/import",
+        &world.human_id,
+        &json!({ "tenant_id": world.tenant, "card": exported["card"],
+                 "digest": exported["digest"], "execution": "origin" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{imported}");
+    assert_eq!(imported["executes_on"], json!(role_b), "{imported}");
+    let local = imported["role_id"].as_str().unwrap().to_string();
+    let bound: Option<String> =
+        sqlx::query_scalar("SELECT node_id FROM role_execution WHERE role_id = $1")
+            .bind(&local)
+            .fetch_one(&pool)
+            .await
+            .expect("the resolution");
+    assert_eq!(
+        bound.as_deref(),
+        Some(role_b.as_str()),
+        "resolved to the origin node"
+    );
+    let (status, read) = get(
+        &client,
+        &base,
+        &format!("/v1/profiles/{local}"),
+        &world.human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "{read}");
+    assert_eq!(
+        read["imported_from"]["execution"],
+        json!("origin"),
+        "{read}"
+    );
+    assert_eq!(
+        read["imported_from"]["executes_on"],
+        json!(role_b),
+        "{read}"
+    );
+    assert_eq!(read["imported_from"]["runs_on"], json!(role_b), "{read}");
+
+    let (status, attested) = post(
+        &client,
+        &base,
+        &format!("/v1/profiles/{local}/attest"),
+        &world.human_id,
+        &json!({ "taxonomy_id": "code_review", "evidence_ref": "evt_bind-origin/a" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{attested}");
+    let open_call = || {
+        let client = client.clone();
+        let base = base.clone();
+        let world_human = world.human_id.clone();
+        let body = call_body(&world, 1, 2);
+        async move {
+            let (status, opened) = post(&client, &base, "/v1/calls", &world_human, &body).await;
+            assert_eq!(status, 200, "{opened}");
+            opened["call_id"].as_str().unwrap().to_string()
+        }
+    };
+
+    // No node is enrolled for the local identity, and it joins and is seated.
+    let call_id = open_call().await;
+    let (status, joined) = post(
+        &client,
+        &base,
+        &format!("/v1/calls/{call_id}/respond"),
+        &local,
+        &json!({ "kind": "join" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the origin-bound identity joins: {joined}");
+    let (status, closed) = post(
+        &client,
+        &base,
+        &format!("/v1/calls/{call_id}/close"),
+        &world.human_id,
+        &json!({}),
+    )
+    .await;
+    assert_eq!(status, 200, "{closed}");
+    assert_eq!(closed["panel"], json!([local]), "seated: {closed}");
+    let (status, inspected) = get(
+        &client,
+        &base,
+        &format!("/v1/calls/{call_id}"),
+        &world.human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "{inspected}");
+    let provider = inspected["explanation"]["dependence_indicators"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["attribute"] == json!("provider"))
+        .cloned()
+        .expect("the provider indicator");
+    assert_eq!(
+        provider["undeclared"],
+        json!(0),
+        "the close reads the ORIGIN machine's incarnation: {inspected}"
+    );
+
+    // A revoked direction: the binding resolves to no node, and the join is
+    // refused for want of one.
+    let (status, revoked) = post(
+        &client,
+        &base,
+        "/v1/federation-agreements/revoke",
+        &owner_b_id,
+        &json!({ "tenant_id": tenant_b, "remote_tenant_id": world.tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "{revoked}");
+    let bound: Option<String> =
+        sqlx::query_scalar("SELECT node_id FROM role_execution WHERE role_id = $1")
+            .bind(&local)
+            .fetch_one(&pool)
+            .await
+            .expect("the resolution");
+    assert_eq!(bound, None, "no agreement, no machine");
+    let (status, read) = get(
+        &client,
+        &base,
+        &format!("/v1/profiles/{local}"),
+        &world.human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "{read}");
+    assert_eq!(
+        read["imported_from"]["executes_on"],
+        json!(role_b),
+        "the binding stays: {read}"
+    );
+    assert_eq!(
+        read["imported_from"]["runs_on"],
+        json!(null),
+        "it resolves nowhere: {read}"
+    );
+    let call_id = open_call().await;
+    let (status, refused) = post(
+        &client,
+        &base,
+        &format!("/v1/calls/{call_id}/respond"),
+        &local,
+        &json!({ "kind": "join" }),
+    )
+    .await;
+    assert_eq!(status, 403, "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("no enrolled node"),
+        "{refused}"
+    );
+}
+
 /// `SIGNOFF-REPAIR.11.4.7.2.1.5.4.1` — §4.2's `decision_rule_constraints`: the
 /// issuer narrows, for one subject, the decision rules the tenant's charter
 /// allows. Declared in the enrolment body, validated at the one grant-creation

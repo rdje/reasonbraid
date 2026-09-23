@@ -13,6 +13,20 @@ use serde::{Deserialize, Serialize};
 /// The card's schema version (the compatibility rung).
 pub const CARD_SCHEMA_VERSION: &str = "agent-card/1";
 
+/// Where an imported identity's work runs (DOC-0148, `SIGNOFF-REPAIR.5.3.5.3`),
+/// chosen by the importing administrator.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CardExecution {
+    /// The importing tenant enrols a machine for the imported role, as for any
+    /// role of its own (the dev rule: node == role).
+    #[default]
+    Local,
+    /// The origin role's own node executes what the local grant admits, while
+    /// the recruitment agreement stands (`SIGNOFF-REPAIR.5.3.5.3.1`).
+    Origin,
+}
+
 /// The portable card: the origin identity + the §10.1 profile + the
 /// capability declaration (the profile's capabilities). The canonical
 /// form is the struct's field order — the byte-identical regeneration

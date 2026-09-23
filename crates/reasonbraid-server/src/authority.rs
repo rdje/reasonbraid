@@ -364,8 +364,8 @@ where
     sqlx::query(
         "INSERT INTO authority_grants \
          (grant_id, boundary_id, tenant_id, issuer, subject_kind, subject_id, actions, selector, \
-          risk_ceiling, spend_limits, delegable, valid_from, expires_at, status) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
+          risk_ceiling, spend_limits, delegable, valid_from, expires_at, status, auto_bounds) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
     )
     .bind(&grant.grant_id)
     .bind(&grant.boundary_id)
@@ -384,6 +384,12 @@ where
     .bind(grant.valid_from)
     .bind(grant.expires_at)
     .bind(grant.status.as_str())
+    .bind(
+        grant
+            .auto_bounds
+            .as_ref()
+            .map(|bounds| serde_json::to_value(bounds).expect("auto bounds serialize")),
+    )
     .execute(&mut *tx)
     .await?;
     Ok(())
@@ -571,6 +577,7 @@ type GrantRow = (
     Value,
     String,
     Option<Value>,
+    Option<Value>,
     bool,
     DateTime<Utc>,
     DateTime<Utc>,
@@ -589,6 +596,7 @@ fn grant_from_row(row: GrantRow) -> Option<AuthorityGrant> {
         selector,
         risk_ceiling,
         spend_limits,
+        auto_bounds,
         delegable,
         valid_from,
         expires_at,
@@ -604,6 +612,10 @@ fn grant_from_row(row: GrantRow) -> Option<AuthorityGrant> {
         selector: serde_json::from_value(selector).ok()?,
         risk_ceiling: risk_ceiling.parse::<RiskClass>().ok()?,
         spend_limits,
+        // A stored block that is not the typed struct is a malformed grant, not
+        // an unbounded one: `None` here fails the whole row, as every other
+        // field does.
+        auto_bounds: auto_bounds.map(serde_json::from_value).transpose().ok()?,
         delegable,
         valid_from,
         expires_at,

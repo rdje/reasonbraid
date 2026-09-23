@@ -1,0 +1,21 @@
+-- 0090_authority_grants_auto_bounds.sql — SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.1
+-- (ROADMAP §11.5: a `thread:create:auto` grant carries *topic, audience, rate,
+-- depth, spend, and side-effect bounds*): the typed bounds a grant carries
+-- beside its `spend_limits`.
+--
+-- Until now the only bound on the row was `spend_limits` (a free JSON object
+-- read as `{"amount": N}`), and DOC-0137 found that NO route issues a grant:
+-- the enrolment issues one with no limits and every bounded auto grant in the
+-- repository was a test's SQL row. This column is added in the SAME change as
+-- its producer (the enrolment body) and its reader (`POST /v1/threads/auto`
+-- reads the ADMITTING grant's bounds), so it is never a schema with no
+-- producer — the `0068` shape this project names and refuses.
+--
+-- The shape is `reasonbraid_core::AutoBounds`: `topics` (the only topics an
+-- initiation may declare; a present list is non-empty) and `max_depth` (the
+-- deepest chain position, 1 or more, never above the site ceiling). NULL is
+-- what every existing grant reads as: unbounded by its issuer, exactly as
+-- before. Validation happens once, in the one grant-creation path, so a row
+-- can only carry what an issuer could have declared.
+
+ALTER TABLE authority_grants ADD COLUMN auto_bounds JSONB;

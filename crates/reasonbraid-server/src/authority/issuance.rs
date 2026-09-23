@@ -60,7 +60,12 @@ pub(crate) async fn create_grant_in_guard(
 ) -> Result<(), GrantCreateError> {
     let tenant = grant.tenant_id;
     let boundary = issuance_parent(tx.connection(tenant, GuardMode::Exclusive)?, grant).await?;
-    let violations = grant_exceeds_boundary(&boundary, grant);
+    let mut violations = grant_exceeds_boundary(&boundary, grant);
+    // The auto bounds are checked HERE, in the one path every producer takes
+    // (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.1`), so a row can only carry what an
+    // issuer could have declared, and the refusal is the same typed refusal a
+    // boundary overrun gives.
+    violations.extend(auto_bounds_violations(grant));
     if !violations.is_empty() {
         return Err(GrantCreateError::Refused(GrantRefused { violations }));
     }
@@ -72,6 +77,56 @@ pub(crate) async fn create_grant_in_guard(
     }
     insert_grant_row(tx.connection(tenant, GuardMode::Exclusive)?, grant).await?;
     Ok(())
+}
+
+/// What a grant's `auto_bounds` may say. Each rule refuses a declaration that
+/// would bind NOTHING or bind more than the site allows — the two ways a bound
+/// stops being a bound:
+/// - bounds on a grant without `thread_create_auto` bind no initiation;
+/// - an empty `topics` list admits no topic (omit the bound, or the action);
+/// - `max_depth` is 1 or more (zero admits no initiation) and never above
+///   `MAX_AUTONOMOUS_DEPTH`, the site ceiling `auto_lineage` applies.
+fn auto_bounds_violations(grant: &AuthorityGrant) -> Vec<reasonbraid_core::BoundaryViolation> {
+    use reasonbraid_core::BoundaryViolation;
+    let Some(bounds) = &grant.auto_bounds else {
+        return Vec::new();
+    };
+    let mut violations = Vec::new();
+    if !grant
+        .actions
+        .contains(&reasonbraid_core::GrantAction::ThreadCreateAuto)
+    {
+        violations.push(BoundaryViolation {
+            field: "grant.auto_bounds",
+            detail: "auto bounds on a grant without the thread_create_auto action bind nothing"
+                .into(),
+        });
+    }
+    if let Some(topics) = &bounds.topics {
+        if topics.is_empty() {
+            violations.push(BoundaryViolation {
+                field: "grant.auto_bounds.topics",
+                detail: "an empty topic bound admits no topic — omit the bound, or omit the action"
+                    .into(),
+            });
+        }
+    }
+    if let Some(depth) = bounds.max_depth {
+        let ceiling = crate::threads::MAX_AUTONOMOUS_DEPTH;
+        if depth == 0 {
+            violations.push(BoundaryViolation {
+                field: "grant.auto_bounds.max_depth",
+                detail: "a depth bound of zero admits no initiation — omit the bound, or omit the action"
+                    .into(),
+            });
+        } else if depth > ceiling {
+            violations.push(BoundaryViolation {
+                field: "grant.auto_bounds.max_depth",
+                detail: format!("a depth bound of {depth} exceeds the site ceiling of {ceiling}"),
+            });
+        }
+    }
+    violations
 }
 
 /// Load policy only inside the guarded tenant. The foreign-ID existence probe

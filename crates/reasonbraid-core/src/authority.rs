@@ -431,6 +431,27 @@ impl GrantSubject {
     }
 }
 
+/// The typed bounds a `thread_create_auto` grant carries beside its spend limit
+/// (ROADMAP §11.5: *topic, audience, rate, depth, spend, and side-effect
+/// bounds*; `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.1`). Every field is optional:
+/// an absent bound is no bound from the ISSUER, and the role's own profile
+/// still applies its wake-for-topic declaration. Rate is the role's `initiator`
+/// quota row; audience and side-effect bounds land with their readers.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AutoBounds {
+    /// The only topics an initiation under this grant may declare. A present
+    /// list is non-empty: an empty bound would admit nothing, and a grant that
+    /// admits nothing is issued without the action instead.
+    #[serde(default)]
+    pub topics: Option<Vec<String>>,
+    /// The deepest causation-chain position an initiation under this grant
+    /// may take, 1 or more and never above the site ceiling
+    /// (`MAX_AUTONOMOUS_DEPTH` on the server).
+    #[serde(default)]
+    pub max_depth: Option<u32>,
+}
+
 /// A scoped mandate under one boundary (§4.2/§4.4).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -444,6 +465,10 @@ pub struct AuthorityGrant {
     pub selector: TargetSelector,
     pub risk_ceiling: RiskClass,
     pub spend_limits: Option<Value>,
+    /// The auto grant's typed bounds. `default`, so a grant stored before the
+    /// field existed reads as unbounded by its issuer, exactly as it was.
+    #[serde(default)]
+    pub auto_bounds: Option<AutoBounds>,
     pub delegable: bool,
     pub valid_from: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
@@ -842,6 +867,7 @@ mod tests {
             selector: TargetSelector::TenantWide,
             risk_ceiling,
             spend_limits: None,
+            auto_bounds: None,
             delegable,
             valid_from: Utc.with_ymd_and_hms(2026, 9, 1, 0, 0, 0).unwrap(),
             expires_at: Utc.with_ymd_and_hms(2027, 9, 1, 0, 0, 0).unwrap(),

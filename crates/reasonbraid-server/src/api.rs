@@ -935,6 +935,15 @@ pub struct EnrollRequest {
     /// For a human: always the dev admin set (bootstrap trust — documented).
     #[serde(default)]
     pub actions: Option<Vec<String>>,
+    /// For a role: the grant's spend limit, `{"amount": N}`, checked against
+    /// the boundary's spend ceiling at issuance. Refused for a human.
+    #[serde(default)]
+    pub spend_limits: Option<Value>,
+    /// For a role holding `thread_create_auto`: the grant's typed bounds
+    /// (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.1`). Refused for a human, and refused
+    /// on a role without the action — bounds that bind nothing are not stored.
+    #[serde(default)]
+    pub auto_bounds: Option<reasonbraid_core::AutoBounds>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1012,6 +1021,8 @@ pub(crate) fn dev_grant(
     issuer: HumanPrincipalId,
     subject: GrantSubject,
     actions: Vec<GrantAction>,
+    spend_limits: Option<Value>,
+    auto_bounds: Option<reasonbraid_core::AutoBounds>,
 ) -> reasonbraid_core::AuthorityGrant {
     reasonbraid_core::AuthorityGrant {
         grant_id: format!("grt_{}", subject.id_string()),
@@ -1022,7 +1033,8 @@ pub(crate) fn dev_grant(
         actions,
         selector: TargetSelector::TenantWide,
         risk_ceiling: RiskClass::Low,
-        spend_limits: None,
+        spend_limits,
+        auto_bounds,
         delegable: false,
         // Coextensive with the boundary: a grant must never outlive its boundary
         // (the subset checker enforces it; wall-clock skew between enroll calls
@@ -1183,7 +1195,25 @@ async fn enroll_in_guard(
         }
     };
 
-    let grant = dev_grant(&boundary_ref, issuer, principal.clone(), actions);
+    // The auto grant's bounds have a producer
+    // (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.1`): this body, the one dev-profile
+    // issuer that already declares a role's actions. A human's dev grant is the
+    // admin set and carries no bound. What the bounds may say is checked once,
+    // in `create_grant_in_guard`, with the boundary's own checks.
+    if kind == "human" && (req.spend_limits.is_some() || req.auto_bounds.is_some()) {
+        return Err(ControlApiError::invalid_command(
+            "spend_limits and auto_bounds belong to a role's grant — a human's dev grant \
+             carries the admin set and no bound",
+        ));
+    }
+    let grant = dev_grant(
+        &boundary_ref,
+        issuer,
+        principal.clone(),
+        actions,
+        req.spend_limits.clone(),
+        req.auto_bounds.clone(),
+    );
     authority::create_grant_in_guard(tx, &grant)
         .await
         .map_err(|error| {
@@ -5518,15 +5548,37 @@ async fn create_thread_auto(
         action: GrantAction::ThreadCreateAuto,
         target: ResourceTarget::Tenant { tenant_id },
     };
-    match authority::authorize_guarded(&state.pool, &authz).await? {
+    let admitting_record = match authority::authorize_guarded(&state.pool, &authz).await? {
         AuthorizationOutcome::Denied { reason, record_id } => {
             crate::telemetry::metrics().incr("authorization_denials");
             return Err(ControlApiError::unauthorized(format!(
                 "authorization denied ({record_id}): {reason}"
             )));
         }
-        AuthorizationOutcome::Allowed { .. } => {}
-    }
+        AuthorizationOutcome::Allowed { record_id, .. } => record_id,
+    };
+    // The bounds are the ADMITTING grant's — the one the record names — never
+    // `max()` over the subject's grants (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.2`,
+    // discharging `.5.2` clause 2): an expired or not-yet-valid grant cannot
+    // admit, so it cannot raise the ceiling either.
+    let admitting: Option<(Option<Value>, Option<Value>)> = sqlx::query_as(
+        "SELECT g.spend_limits, g.auto_bounds FROM authorization_records r \
+         JOIN authority_grants g ON g.grant_id = r.grant_id WHERE r.record_id = $1",
+    )
+    .bind(&admitting_record)
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some((spend_limits, auto_bounds)) = admitting else {
+        return Err(ControlApiError::internal_with_log(format!(
+            "authorization record `{admitting_record}` admitted and names no grant"
+        )));
+    };
+    let auto_bounds: Option<reasonbraid_core::AutoBounds> = auto_bounds
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(|e| {
+            ControlApiError::internal_with_log(format!("stored auto bounds unreadable: {e}"))
+        })?;
 
     // 2. THE §11.5 checklist (server-side). The instant rides the same read,
     //    from the database's clock, for the operating-hours gate below.
@@ -5547,12 +5599,27 @@ async fn create_thread_auto(
         .map_err(|e| ControlApiError::internal_with_log(format!("profile unreadable: {e}")))?;
 
     // a. The topic gate: every initiation topic must ride the DECLARED
-    //    interests (the auto-wake-for-topic rule).
+    //    interests (the auto-wake-for-topic rule) — the ROLE's own declaration.
     for topic in &req.topics {
         if !profile.interests.contains(topic) {
             return Err(ControlApiError::unauthorized(format!(
                 "the auto-wake topic gate refuses: `{topic}` is not among the role's declared interests"
             )));
+        }
+    }
+    // a'. And the ISSUER's topic bound, when the admitting grant declares one
+    //     (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.2`): both apply, because they are
+    //     two declarations by two parties.
+    if let Some(allowed) = auto_bounds
+        .as_ref()
+        .and_then(|bounds| bounds.topics.as_ref())
+    {
+        for topic in &req.topics {
+            if !allowed.contains(topic) {
+                return Err(ControlApiError::unauthorized(format!(
+                    "the admitting grant's topic bound refuses: `{topic}` is not among the topics it allows"
+                )));
+            }
         }
     }
     // b. The confidentiality match.
@@ -5572,20 +5639,20 @@ async fn create_thread_auto(
             "the auto-wake is held: {hold}"
         )));
     }
-    // d. The spend bound: the grant's spend limits cover the declared budget.
+    // d. The spend bound: the ADMITTING grant's spend limit covers the declared
+    //    budget. ⛔ It used to be `max(spend_limits)` over every `active` grant
+    //    of the subject with no validity window, so an expired grant with a
+    //    larger limit raised the ceiling a live smaller one set (`.5.2` clause 2).
     if let Some(budget) = req.budget_amount {
-        let max_spend: Option<f64> = sqlx::query_scalar(
-            "SELECT max((spend_limits->>'amount')::float) FROM authority_grants \
-             WHERE subject_id = $1 AND status = 'active' AND actions @> '[\"thread_create_auto\"]'::jsonb",
-        )
-        .bind(role.to_string())
-        .fetch_one(&state.pool)
-        .await?;
-        match max_spend {
+        let limit = spend_limits
+            .as_ref()
+            .and_then(|limits| limits.get("amount"))
+            .and_then(Value::as_f64);
+        match limit {
             Some(limit) if limit >= budget => {}
             _ => {
                 return Err(ControlApiError::unauthorized(format!(
-                    "the declared budget {budget} exceeds the grant's spend bound"
+                    "the declared budget {budget} exceeds the admitting grant's spend bound"
                 )));
             }
         }
@@ -5618,9 +5685,19 @@ async fn create_thread_auto(
             Some((parent_id, projection))
         }
     };
+    // The depth ceiling in force: the admitting grant's `max_depth` when it
+    // declares one, else the site constant; issuance refuses a grant above the
+    // constant, and the `min` keeps that true even for a hand-inserted row.
+    let ceiling = auto_bounds
+        .as_ref()
+        .and_then(|bounds| bounds.max_depth)
+        .map_or(threads::MAX_AUTONOMOUS_DEPTH, |declared| {
+            declared.min(threads::MAX_AUTONOMOUS_DEPTH)
+        });
     let lineage = threads::auto_lineage(
         &role.to_string(),
         parent.as_ref().map(|(id, projection)| (id, projection)),
+        ceiling,
     )
     .map_err(|refusal| match refusal {
         threads::LineageRefusal::NotAParticipant => {
@@ -7151,9 +7228,12 @@ async fn list_grants(
                 String,
                 DateTime<Utc>,
                 DateTime<Utc>,
+                Option<Value>,
+                Option<Value>,
             );
             let rows: Vec<Row> = sqlx::query_as(
-        "SELECT grant_id, subject_kind, subject_id, actions, status, valid_from, expires_at \
+        "SELECT grant_id, subject_kind, subject_id, actions, status, valid_from, expires_at, \
+                spend_limits, auto_bounds \
          FROM authority_grants WHERE tenant_id = $1 ORDER BY valid_from DESC",
     )
     .bind(q.tenant_id.to_string())
@@ -7170,8 +7250,10 @@ async fn list_grants(
                         status,
                         valid_from,
                         expires_at,
+                        spend_limits,
+                        auto_bounds,
                     )| {
-                        json!({
+                        let mut grant = json!({
                             "grant_id": grant_id,
                             "subject_kind": subject_kind,
                             "subject_id": subject_id,
@@ -7179,7 +7261,17 @@ async fn list_grants(
                             "status": status,
                             "valid_from": valid_from.to_rfc3339(),
                             "expires_at": expires_at.to_rfc3339(),
-                        })
+                        });
+                        // The bounds an operator may read
+                        // (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.1`); absent
+                        // optional facts are OMITTED on the wire, never `null`.
+                        if let Some(spend_limits) = spend_limits {
+                            grant["spend_limits"] = spend_limits;
+                        }
+                        if let Some(auto_bounds) = auto_bounds {
+                            grant["auto_bounds"] = auto_bounds;
+                        }
+                        grant
                     },
                 )
                 .collect();

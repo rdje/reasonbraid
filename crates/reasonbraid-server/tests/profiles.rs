@@ -2159,6 +2159,346 @@ async fn the_auto_initiation_lands_under_the_grant_and_the_checklist() {
     );
 }
 
+/// `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.1` + `.2.3.2`, shipped together so the
+/// bounds are never stored unread: the auto grant's typed bounds have a
+/// PRODUCER (the enrolment body, the one dev-profile issuer that already
+/// declares a role's actions), a VALIDATOR (the one grant-creation path), an
+/// operator READ (`GET /v1/admin/grants`), and a READER — the initiation takes
+/// spend, topics and depth from the grant that ADMITTED it, the one its
+/// authorization record names, never `max()` over the role's grants.
+///
+/// DOC-0137 found that no route issues a grant, so every bounded auto grant in
+/// this repository was a test's SQL row; and `.5.2` clause 2 found that the
+/// spend gate read `max(spend_limits)` over every `active` grant with no
+/// validity window, so an EXPIRED grant with a larger limit raised the ceiling.
+#[tokio::test]
+async fn the_auto_grants_bounds_are_declared_at_enrolment_and_read_from_the_admitting_grant() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "bounds-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrols: {human}");
+    let tenant = human["tenant_id"].as_str().unwrap().to_string();
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let boundary_id = human["boundary_id"].as_str().unwrap().to_string();
+    sqlx::query(
+        "UPDATE enrollment_boundaries \
+         SET permitted_actions = permitted_actions || '[\"thread_create_auto\"]'::jsonb \
+         WHERE boundary_id = $1",
+    )
+    .bind(&boundary_id)
+    .execute(&pool)
+    .await
+    .expect("the boundary permits the auto action");
+
+    // ── The PRODUCER: the enrolment body declares the bounds.
+    let (status, bounded) = enroll(
+        &client,
+        &base,
+        json!({
+            "kind": "role", "name": "bounded-agent", "tenant_id": tenant,
+            // The invitation-response right too: the depth arm below seats the
+            // role in a thread it then names as its cause.
+            "actions": ["thread_create_auto", "thread_invitation_respond"],
+            "spend_limits": { "amount": 50.0 },
+            "auto_bounds": { "topics": ["parser trivia"], "max_depth": 1 },
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "a bounded auto grant is issued: {bounded}");
+    let role_id = bounded["principal_id"].as_str().unwrap().to_string();
+    let grant_id = bounded["grant_id"].as_str().unwrap().to_string();
+    let row: (Option<Value>, Option<Value>) = sqlx::query_as(
+        "SELECT spend_limits, auto_bounds FROM authority_grants WHERE grant_id = $1",
+    )
+    .bind(&grant_id)
+    .fetch_one(&pool)
+    .await
+    .expect("the grant row");
+    assert_eq!(
+        row.0,
+        Some(json!({ "amount": 50.0 })),
+        "the row carries the spend limit"
+    );
+    assert_eq!(
+        row.1,
+        Some(json!({ "topics": ["parser trivia"], "max_depth": 1 })),
+        "the row carries the typed bounds"
+    );
+
+    // ── The operator READ lists them, and omits them where there are none.
+    let (status, listed) = get(
+        &client,
+        &base,
+        &format!("/v1/admin/grants?tenant_id={tenant}"),
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "{listed}");
+    let grants = listed["grants"].as_array().unwrap();
+    let mine = grants
+        .iter()
+        .find(|g| g["grant_id"] == json!(grant_id))
+        .unwrap();
+    assert_eq!(mine["spend_limits"], json!({ "amount": 50.0 }), "{mine}");
+    assert_eq!(
+        mine["auto_bounds"],
+        json!({ "topics": ["parser trivia"], "max_depth": 1 }),
+        "{mine}"
+    );
+    let humans = grants
+        .iter()
+        .find(|g| g["subject_id"] == json!(human_id))
+        .unwrap();
+    assert!(
+        humans.get("spend_limits").is_none() && humans.get("auto_bounds").is_none(),
+        "a grant with no bound carries neither key: {humans}"
+    );
+
+    // ── The VALIDATOR: bounds that would bind nothing, or more than the site
+    //    allows, are refused in the one creation path with the field named.
+    for (name, body, names) in [
+        (
+            "no-action",
+            json!({ "auto_bounds": { "max_depth": 1 } }),
+            "without the thread_create_auto action",
+        ),
+        (
+            "depth-zero",
+            json!({ "actions": ["thread_create_auto"], "auto_bounds": { "max_depth": 0 } }),
+            "depth bound of zero",
+        ),
+        (
+            "depth-four",
+            json!({ "actions": ["thread_create_auto"], "auto_bounds": { "max_depth": 4 } }),
+            "site ceiling of 3",
+        ),
+        (
+            "empty-topics",
+            json!({ "actions": ["thread_create_auto"], "auto_bounds": { "topics": [] } }),
+            "empty topic bound",
+        ),
+    ] {
+        let mut request = json!({ "kind": "role", "name": name, "tenant_id": tenant });
+        for (key, value) in body.as_object().unwrap() {
+            request[key] = value.clone();
+        }
+        let (status, refused) = enroll(&client, &base, request).await;
+        assert_eq!(status, 400, "`{name}` is refused: {refused}");
+        assert!(
+            refused["message"].as_str().unwrap_or("").contains(names),
+            "`{name}`'s refusal says why: {refused}"
+        );
+    }
+    let (status, refused) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "bounded-human", "auto_bounds": { "max_depth": 1 } }),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "a human's dev grant carries no bound: {refused}"
+    );
+
+    // ── The READER, at initiation.
+    enroll_node(&client, &base, &human_id, &tenant, &role_id).await;
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &role_id,
+        &visibility_profile(),
+    )
+    .await;
+    assert_eq!(status, 200, "the role writes its profile");
+    let auto = |role: String,
+                key: &'static str,
+                topics: Value,
+                budget: Option<f64>,
+                cause: Option<String>| {
+        let client = client.clone();
+        let base = base.clone();
+        let tenant = tenant.clone();
+        async move {
+            let mut body = json!({
+                "tenant_id": tenant,
+                "subject": "a bounded initiation",
+                "objective": "probe",
+                "topics": topics,
+                "idempotency_key": key,
+            });
+            if let Some(budget) = budget {
+                body["budget_amount"] = json!(budget);
+            }
+            if let Some(cause) = cause {
+                body["caused_by"] = json!(cause);
+            }
+            let response = client
+                .post(format!("{base}/v1/threads/auto"))
+                .header(PRINCIPAL_HEADER, &role)
+                .json(&body)
+                .send()
+                .await
+                .expect("auto request");
+            let status = response.status().as_u16();
+            (status, response.json::<Value>().await.expect("auto json"))
+        }
+    };
+
+    // spend: within the admitting grant's limit lands, beyond it is refused.
+    let (status, landed) = auto(
+        role_id.clone(),
+        "b-spend-ok",
+        json!(["parser trivia"]),
+        Some(30.0),
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "{landed}");
+    let (status, refused) = auto(
+        role_id.clone(),
+        "b-spend-over",
+        json!(["parser trivia"]),
+        Some(60.0),
+        None,
+    )
+    .await;
+    assert_eq!(status, 403, "{refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("spend"),
+        "{refused}"
+    );
+
+    // `.5.2` clause 2: an EXPIRED grant with a larger limit must not raise the
+    // ceiling — the admitting grant is the live one, and only it is read.
+    sqlx::query(
+        "INSERT INTO authority_grants \
+         (grant_id, boundary_id, tenant_id, issuer, subject_kind, subject_id, actions, selector, \
+          risk_ceiling, spend_limits, delegable, valid_from, expires_at, status) \
+         VALUES ('grt_bounds_expired', $1, $2, $3, 'role', $4, '[\"thread_create_auto\"]', \
+                 '{\"kind\":\"tenant_wide\"}', 'low', '{\"amount\": 500.0}', false, \
+                 now() - interval '2 days', now() - interval '1 day', 'active')",
+    )
+    .bind(&boundary_id)
+    .bind(&tenant)
+    .bind(&human_id)
+    .bind(&role_id)
+    .execute(&pool)
+    .await
+    .expect("seed the expired, larger grant");
+    let (status, refused) = auto(
+        role_id.clone(),
+        "b-spend-expired",
+        json!(["parser trivia"]),
+        Some(60.0),
+        None,
+    )
+    .await;
+    assert_eq!(
+        status, 403,
+        "an expired grant's larger limit does not raise the ceiling: {refused}"
+    );
+
+    // topic: the grant's bound applies beside the role's own interests. A
+    // second role whose PROFILE declares the topic but whose GRANT does not.
+    let (status, narrow) = enroll(
+        &client,
+        &base,
+        json!({
+            "kind": "role", "name": "narrow-agent", "tenant_id": tenant,
+            "actions": ["thread_create_auto"],
+            "auto_bounds": { "topics": ["retention"] },
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "{narrow}");
+    let narrow_id = narrow["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &human_id, &tenant, &narrow_id).await;
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{narrow_id}"),
+        &narrow_id,
+        &visibility_profile(),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let (status, refused) = auto(
+        narrow_id.clone(),
+        "b-topic",
+        json!(["parser trivia"]),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, 403, "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("admitting grant's topic bound"),
+        "the refusal names the grant's bound, not the profile's: {refused}"
+    );
+    let (status, landed) = auto(narrow_id.clone(), "b-topic-none", json!([]), None, None).await;
+    assert_eq!(
+        status, 200,
+        "no topic declared is within any topic bound: {landed}"
+    );
+
+    // depth: the bounded role's grant says `max_depth: 1`, so a chain-starting
+    // initiation (depth 1) landed above and a caused one (depth 2) is refused
+    // with the ceiling in force — below the site's 3.
+    let thread_id = landed["thread_id"].as_str().unwrap().to_string();
+    let (status, invited) = thread_command(
+        &client,
+        &base,
+        &thread_id,
+        &human_id,
+        "b-depth-invite",
+        "thread.invite",
+        json!({ "tenant_id": tenant, "agent_role": role_id }),
+    )
+    .await;
+    assert_eq!(status, 200, "{invited}");
+    let (status, accepted) = thread_command(
+        &client,
+        &base,
+        &thread_id,
+        &role_id,
+        "b-depth-accept",
+        "thread.accept_invitation",
+        json!({ "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "{accepted}");
+    let (status, refused) = auto(
+        role_id.clone(),
+        "b-depth",
+        json!(["parser trivia"]),
+        None,
+        Some(thread_id),
+    )
+    .await;
+    assert_eq!(status, 429, "{refused}");
+    assert_eq!(refused["code"], json!("storm_control"), "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("depth 2 exceeds the maximum of 1"),
+        "the refusal names the grant's ceiling: {refused}"
+    );
+}
+
 /// `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2`: `wake_policy` and `operating_hours` were
 /// accepted, stored and read nowhere — DOC-0136 stored `"never"` on the running
 /// server and the role still initiated. Each now has a FORMAT the write refuses

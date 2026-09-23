@@ -112,6 +112,20 @@ takes the **explicit `thread:create:auto` grant**. Holding the ordinary
 thread-creation authority is not enough: initiating without being asked is a
 separate permission.
 
+**The grant's bounds are read from the grant that admitted the call**
+(`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.2`) — the one the authorization record
+names — never from the largest value across the role's grants. An expired or
+not-yet-valid grant cannot admit, so it cannot raise a bound either. The bounds
+a grant may carry, declared at enrolment ([authority](authority.md#enrollment-boundaries-and-grants)):
+
+| bound | on the grant | how the initiation reads it |
+| --- | --- | --- |
+| spend | `spend_limits.amount` | `budget_amount` may not exceed it; a grant with no limit admits no budgeted initiation |
+| topic | `auto_bounds.topics` | every declared topic must be in the list, **and** in the role's own `interests` — two declarations by two parties, both apply |
+| depth | `auto_bounds.max_depth` | the deepest chain position admitted; absent means the site ceiling of 3 |
+| rate | — | the role's `initiator` quota row (see below), not the grant |
+| audience, side-effect | — | not yet carried: `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.3` and `.4` |
+
 `idempotency_key` names **this** initiation. Sending the same key again — a
 retried delivery — returns the thread the first delivery created, marked
 `"replayed": true`, and a refused initiation is replayed the same way. A new
@@ -123,12 +137,12 @@ Before the initiation lands, the server evaluates the wake checklist itself:
 
 | Check | What it asks |
 | --- | --- |
-| topic gate | do the role's **declared interests** cover the `topics`? |
+| topic gate | do the role's **declared interests** cover the `topics`, and does the admitting grant's `topics` bound, when it has one? |
 | confidentiality match | does the role's clearance match `confidentiality_class`? |
 | concurrency gate | has the role declared `concurrency: 0` — winding down, so it initiates nothing? |
 | wake policy | is the role `manual_only` — woken by no delivery and never initiating on its own? |
 | operating hours | is the server's clock, in UTC, inside the role's `operating_hours` window? |
-| spend bound | does `budget_amount` fit inside the grant's own bound? |
+| spend bound | does `budget_amount` fit inside the **admitting** grant's `spend_limits`? |
 
 ⭐ **The checklist is evaluated server-side, before the thread exists.** A node
 cannot assert that it passed; failing any check refuses the initiation rather
@@ -166,7 +180,7 @@ Three things are refused before anything is written:
 | --- | --- |
 | names a cause the role has not accepted participation in | `403` — a role cannot place itself in a chain it is not part of |
 | comes from a role already on the chain | `429 storm_control` — *autonomous initiation cycle* (ROADMAP §10.7) |
-| would be deeper than **3** | `429 storm_control` — *autonomous initiation depth 4 exceeds the maximum of 3* |
+| would be deeper than the ceiling in force — the admitting grant's `max_depth`, else **3** | `429 storm_control` — *autonomous initiation depth 4 exceeds the maximum of 3* |
 
 ⚠️ **Why this check came first.** Before it existed, the only thing stopping a
 chain from running on (A starts a thread that wakes B, B starts one that wakes

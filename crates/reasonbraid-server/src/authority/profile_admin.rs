@@ -493,6 +493,11 @@ async fn import_after_admission(
             GrantAction::ThreadContribute,
             GrantAction::ThreadInvitationRespond,
         ],
+        // An imported role's grant carries neither the auto action nor any
+        // bound (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.1`): a card carries a
+        // profile, never authority, so there is nothing to carry.
+        None,
+        None,
     );
     if let Err(error) = super::create_grant_in_guard(tx, &grant).await {
         // The refusal's wording comes from the SAME renderer the HTTP surface

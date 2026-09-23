@@ -283,8 +283,9 @@ pub enum LineageRefusal {
     /// The role already auto-initiated a thread on this chain (§10.7 *cycle
     /// detection for agent-initiated calls*).
     Cycle { role: String },
-    /// The chain would exceed [`MAX_AUTONOMOUS_DEPTH`].
-    TooDeep { depth: u32 },
+    /// The chain would exceed the ceiling in force: the grant's `max_depth`
+    /// when it declares one, else [`MAX_AUTONOMOUS_DEPTH`].
+    TooDeep { depth: u32, ceiling: u32 },
 }
 
 impl std::fmt::Display for LineageRefusal {
@@ -299,9 +300,9 @@ impl std::fmt::Display for LineageRefusal {
                 "autonomous initiation cycle: `{role}` already initiated a thread on this causation \
                  chain"
             ),
-            Self::TooDeep { depth } => write!(
+            Self::TooDeep { depth, ceiling } => write!(
                 f,
-                "autonomous initiation depth {depth} exceeds the maximum of {MAX_AUTONOMOUS_DEPTH}"
+                "autonomous initiation depth {depth} exceeds the maximum of {ceiling}"
             ),
         }
     }
@@ -315,11 +316,18 @@ impl std::fmt::Display for LineageRefusal {
 /// at depth 1, and nothing here can tell a spontaneous wake from an omitted
 /// cause. What is enforced is that a DECLARED cause is honest: the role must
 /// participate in it, and it cannot rejoin its own chain or grow it past the
-/// limit. Bounding how often a role may start a chain is the rate gate, owned
-/// by `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2`.
+/// limit. Bounding how often a role may start a chain is the rate gate
+/// (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.1`, the role's `initiator` quota).
+///
+/// `ceiling` is the deepest position this initiation may take: the admitting
+/// grant's `max_depth` when it declares one, else [`MAX_AUTONOMOUS_DEPTH`]
+/// (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.2`). Issuance refuses a grant above the
+/// site constant, so the ceiling never exceeds it; a chain-starting initiation
+/// sits at depth 1, and a ceiling of 1 admits only those.
 pub fn auto_lineage(
     role: &str,
     parent: Option<(&ThreadId, &ThreadProjection)>,
+    ceiling: u32,
 ) -> Result<AutoLineage, LineageRefusal> {
     let Some((parent_id, parent)) = parent else {
         return Ok(AutoLineage {
@@ -337,8 +345,8 @@ pub fn auto_lineage(
         });
     }
     let depth = parent.autonomous_depth + 1;
-    if depth > MAX_AUTONOMOUS_DEPTH {
-        return Err(LineageRefusal::TooDeep { depth });
+    if depth > ceiling {
+        return Err(LineageRefusal::TooDeep { depth, ceiling });
     }
     let mut initiators = parent.autonomous_initiators.clone();
     initiators.push(role.to_owned());
@@ -2885,28 +2893,29 @@ mod tests {
         );
 
         // No declared cause: a new chain at depth 1.
-        let root = auto_lineage("rol_a", None).unwrap();
+        let root = auto_lineage("rol_a", None, MAX_AUTONOMOUS_DEPTH).unwrap();
         assert_eq!(
             (root.depth, root.caused_by, root.initiators.as_slice()),
             (1, None, &["rol_a".to_owned()][..])
         );
 
         // A cause the role does not participate in is refused.
+        let site = MAX_AUTONOMOUS_DEPTH;
         assert_eq!(
-            auto_lineage("rol_a", Some((&parent_id, &parent))),
+            auto_lineage("rol_a", Some((&parent_id, &parent)), site),
             Err(LineageRefusal::NotAParticipant)
         );
         parent
             .participants
             .insert("rol_a".into(), ParticipationState::Accepted);
-        let child = auto_lineage("rol_a", Some((&parent_id, &parent))).unwrap();
+        let child = auto_lineage("rol_a", Some((&parent_id, &parent)), site).unwrap();
         assert_eq!((child.depth, child.caused_by), (1, Some(parent_id)));
 
         // The chain carries its initiators: rejoining is a cycle.
         parent.autonomous_depth = 2;
         parent.autonomous_initiators = vec!["rol_a".into(), "rol_b".into()];
         assert_eq!(
-            auto_lineage("rol_a", Some((&parent_id, &parent))),
+            auto_lineage("rol_a", Some((&parent_id, &parent)), site),
             Err(LineageRefusal::Cycle {
                 role: "rol_a".into()
             })
@@ -2916,16 +2925,37 @@ mod tests {
         parent
             .participants
             .insert("rol_c".into(), ParticipationState::Accepted);
-        let deepest = auto_lineage("rol_c", Some((&parent_id, &parent))).unwrap();
+        let deepest = auto_lineage("rol_c", Some((&parent_id, &parent)), site).unwrap();
         assert_eq!(deepest.depth, MAX_AUTONOMOUS_DEPTH);
         assert_eq!(deepest.initiators, ["rol_a", "rol_b", "rol_c"]);
         parent.autonomous_depth = MAX_AUTONOMOUS_DEPTH;
         assert_eq!(
-            auto_lineage("rol_c", Some((&parent_id, &parent))),
+            auto_lineage("rol_c", Some((&parent_id, &parent)), site),
             Err(LineageRefusal::TooDeep {
-                depth: MAX_AUTONOMOUS_DEPTH + 1
+                depth: MAX_AUTONOMOUS_DEPTH + 1,
+                ceiling: site,
             })
         );
+
+        // A grant's own ceiling is lower than the site's: the same parent at
+        // depth 2 admits depth 3 under the site ceiling and refuses it under a
+        // grant ceiling of 2 — and the refusal names the ceiling in force.
+        parent.autonomous_depth = 2;
+        assert_eq!(
+            auto_lineage("rol_c", Some((&parent_id, &parent)), 2),
+            Err(LineageRefusal::TooDeep {
+                depth: 3,
+                ceiling: 2
+            })
+        );
+        assert!(LineageRefusal::TooDeep {
+            depth: 3,
+            ceiling: 2
+        }
+        .to_string()
+        .contains("maximum of 2"));
+        // A chain-starting initiation is depth 1, so a ceiling of 1 admits it.
+        assert_eq!(auto_lineage("rol_d", None, 1).unwrap().depth, 1);
     }
 
     /// The expected artifact is optional, but a value that is present must say

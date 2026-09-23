@@ -124,6 +124,7 @@ fn grant(
         selector,
         risk_ceiling: RiskClass::Low,
         spend_limits: Some(json!({ "amount": 50.0 })),
+        auto_bounds: None,
         delegable: false,
         valid_from: Utc::now() - Duration::days(1),
         expires_at: Utc::now() + Duration::days(30),

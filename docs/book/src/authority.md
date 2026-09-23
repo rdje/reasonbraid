@@ -13,8 +13,21 @@ thread-command machinery from the selected administrative repair.
 
 An enrollment boundary defines permitted actions, domains, risk, spend, delegation
 and a validity window. A grant names a subject, action set, selector, validity
-window and parent boundary. The core evaluator checks the supplied grant against
-the supplied boundary and returns an allowed or denied decision.
+window and parent boundary, an optional spend limit (`{"amount": N}`, within the
+boundary's ceiling) and — for `thread_create_auto` — optional typed **auto
+bounds**: `topics` (the only topics an initiation may declare) and `max_depth`
+(the deepest chain position it may take, never above the site ceiling of 3). The
+core evaluator checks the supplied grant against the supplied boundary and returns
+an allowed or denied decision.
+
+Bounds are declared where a role's actions are: in the enrolment body, the
+development profile's issuer (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.1`). A human's
+dev grant carries none. What they may say is checked once, in the one path every
+grant takes, and refused with the same `400 invalid_command` a boundary overrun
+gets: bounds on a grant without the auto action, an empty topic list, a depth of
+zero or above the ceiling. `GET /v1/admin/grants` lists a grant's `spend_limits`
+and `auto_bounds` when it has them. How an initiation reads them is in
+[recruitment](recruitment.md#a-node-initiating-a-thread-itself).
 
 The supplied grant must name the supplied boundary and belong to the same tenant.
 Its actions, risk, explicit spend limits, delegation flag and validity window must
@@ -1779,6 +1792,15 @@ specific action set on first enrollment, use for example:
 
 ```json
 {"tenant_id":"ten_…","kind":"role","name":"observer","actions":["thread_inspect"]}
+```
+
+A role that may start threads on its own declares its grant's bounds in the same
+body:
+
+```json
+{"tenant_id":"ten_…","kind":"role","name":"scout","actions":["thread_create_auto"],
+ "spend_limits":{"amount":50.0},
+ "auto_bounds":{"topics":["retention","evidence"],"max_depth":2}}
 ```
 
 Repeating the same tenant, kind and name returns the original principal, with

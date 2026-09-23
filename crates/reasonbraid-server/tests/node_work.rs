@@ -1122,11 +1122,13 @@ async fn result_after_close_is_stored_as_a_rejection() {
     assert_eq!(status, 200, "redelivery answered");
     assert_eq!(receipt["accepted"], json!(true));
 
+    // The fold's row is keyed by the work item — the node and its command id
+    // (`SIGNOFF-REPAIR.4.3.3`), and under the dev rule the node id is the role's.
     let stored: (Value,) = sqlx::query_as(
         "SELECT response_result FROM idempotency WHERE tenant_id = $1 AND idempotency_key = $2",
     )
     .bind(&tenant)
-    .bind(&command_id)
+    .bind(format!("{role}:{command_id}"))
     .fetch_one(&pool)
     .await
     .expect("the stored result");

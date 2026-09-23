@@ -5877,3 +5877,80 @@ async fn a_foreign_receipt_neither_adjudicates_nor_is_disclosed() {
     );
     server.crash();
 }
+
+/// `SIGNOFF-REPAIR.4.3.3` — the `consumed` rung is bound to the node. Command
+/// ids are unique per node (`UNIQUE (node_id, command_id)`), so two nodes in a
+/// tenant can hold one id, and the rung used to join the work-result receipt on
+/// the operation id alone: another node's result read THIS node's row as
+/// consumed. Now only this node's own receipt does.
+#[tokio::test]
+async fn a_foreign_nodes_result_does_not_read_this_nodes_row_consumed() {
+    let _guard = channel_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base_url();
+    let client = reqwest::Client::new();
+    let (tenant, admin_id) = bootstrap_admin(&client, &base).await;
+    let node_a = "nod_00000000-0000-7000-8000-000000004331".to_string();
+    let node_b = "nod_00000000-0000-7000-8000-000000004332".to_string();
+    seed_node_in_tenant(&pool, &tenant, &node_a).await;
+    seed_node_in_tenant(&pool, &tenant, &node_b).await;
+
+    // One command id on both nodes, both durably held (acknowledged).
+    sqlx::query(
+        "INSERT INTO node_inbox (node_id, cursor, command_id, tenant_id, thread_id, payload, \
+                                 acknowledged_at) \
+         VALUES ($1, 1, 'cmd_twin', $3, 'thr_00000000-0000-7000-8000-000000000001', '{}', now()), \
+                ($2, 1, 'cmd_twin', $3, 'thr_00000000-0000-7000-8000-000000000001', '{}', now())",
+    )
+    .bind(&node_a)
+    .bind(&node_b)
+    .bind(&tenant)
+    .execute(&pool)
+    .await
+    .expect("seed the twin rows");
+    // Only node B's result came back.
+    sqlx::query(
+        "INSERT INTO node_events (event_id, node_id, operation_id, payload) \
+         VALUES ('evt_twin_b', $1, 'cmd_twin', \
+                 '{\"kind\":\"work_result\",\"command_id\":\"cmd_twin\"}')",
+    )
+    .bind(&node_b)
+    .execute(&pool)
+    .await
+    .expect("B's receipt");
+
+    let state_of = |node_id: String| {
+        let client = client.clone();
+        let base = base.clone();
+        let tenant = tenant.clone();
+        let admin_id = admin_id.clone();
+        async move {
+            let body: Value = client
+                .get(format!(
+                    "{base}/v1/nodes/inbox?tenant_id={tenant}&node_id={node_id}"
+                ))
+                .header(PRINCIPAL_HEADER, &admin_id)
+                .send()
+                .await
+                .expect("inspection request")
+                .json()
+                .await
+                .expect("inspection json");
+            let rows = body["rows"].as_array().expect("the rows").clone();
+            assert_eq!(rows.len(), 1, "{body}");
+            rows[0]["delivery_state"].as_str().unwrap().to_string()
+        }
+    };
+    assert_eq!(
+        state_of(node_a.clone()).await,
+        "transport_received",
+        "another node's result does not consume this node's row"
+    );
+    assert_eq!(
+        state_of(node_b.clone()).await,
+        "consumed",
+        "the node whose result came back reads consumed"
+    );
+    server.crash();
+}

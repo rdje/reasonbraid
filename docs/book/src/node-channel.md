@@ -312,7 +312,7 @@ queued → offered → transport_received → consumed
 | `queued` | the row exists and the server has not yet handed it to a transport | no offer and no acknowledgement recorded |
 | `offered` | **a response carried the row** — the server put it on the wire and the node has not confirmed holding it | `offered_at` set |
 | `transport_received` | **the node process durably holds the command** — it has journalled it. The agent has not read it and has not acted | `acknowledged_at` set |
-| `consumed` | the agent acted: a work result came back for this command | `acknowledged_at` set **and** a `work_result` event for the command id |
+| `consumed` | the agent acted: a work result came back for this command | `acknowledged_at` set **and** a `work_result` event **from this node** for the command id |
 | `revoked` | the command's authority was **withdrawn**: the grant that admitted it has been revoked | the admitting grant's `status` is no longer `active` |
 | `expired` | the command's authority **lapsed**: the grant that admitted it reached its own expiry | the admitting grant's `expires_at` has passed |
 | `dead_lettered` | the row was quarantined; the quarantine **is** the dead letter | `quarantined_at` set |
@@ -823,6 +823,16 @@ A node-emitted `work_result` folds into its thread through the same
 claim → authorize → validate → apply flow a CLI command rides, so it needs the
 same ordering against a tenant authority change that
 [a thread command has](authority.md#ordering-a-thread-command-against-an-authority-change).
+
+The fold's idempotency key is the **work item's identity: the node and its
+inbox command id**, never the command id alone (`SIGNOFF-REPAIR.4.3.3`).
+Command ids are unique per node, so two nodes in one tenant may hold one id —
+two work items that share a name — and each is owed its own fold. Until this
+repair the claim was keyed on the tenant and the command id, so the second
+node's result met the first node's claim, was stored as a rejection and lost.
+A node re-emitting its own result under a new event id still replays the
+stored outcome. The same rule binds the `consumed` rung above: only this node's
+own receipt consumes this node's row.
 
 `POST /v1/nodes/events` now takes the tenant's authority guard **first** — before
 the node's lease row, before the receipt, before the idempotency claim and before

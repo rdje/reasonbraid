@@ -9121,13 +9121,25 @@ pub(crate) fn node_result_command(payload: &Value) -> Option<(&str, &str)> {
     Some((kind, command_id))
 }
 
+/// The fold's idempotency key (`SIGNOFF-REPAIR.4.3.3`): the WORK ITEM's identity,
+/// which is a node's inbox row — the node and its command id — never the command
+/// id alone. Command ids are unique per node (`UNIQUE (node_id, command_id)`), so
+/// two nodes holding one id in a tenant are two work items, each owed its own
+/// fold; the same node re-emitting a result under a new event id still replays.
+/// Migration `0104` re-keyed the stored rows.
+pub(crate) fn node_result_fold_key(node_id: &str, command_id: &str) -> String {
+    format!("{node_id}:{command_id}")
+}
+
 /// The `.6.2` node-result path (called from the node channel's `events` handler):
 /// fold a node-emitted `work_result` into its thread through the SAME
 /// claim → authorize → validate → apply flow a CLI command rides. The idempotency
-/// key is the work item's inbox command id, so a duplicated transport produces a
-/// replay — never a second domain effect. The caller owns the transaction; a
-/// rejection is stored as the command's idempotent result and returned as the
-/// error (the receipt still commits — the node DID emit this event).
+/// key is the work item's identity — [`node_result_fold_key`], the node and its
+/// inbox command id — so a duplicated transport produces a replay, never a second
+/// domain effect, and another node's work item under the same id is its own. The
+/// caller owns the transaction; a rejection is stored as the work item's
+/// idempotent result and returned as the error (the receipt still commits — the
+/// node DID emit this event).
 ///
 /// `guarded_tenant` is the tenant whose authority guard the caller took BEFORE
 /// the node's lease row (`SIGNOFF-REPAIR.3.3.4.5`). Every effect below binds its
@@ -9227,11 +9239,12 @@ pub(crate) async fn apply_node_result_in_tx(
         json!({ "tenant_id": tenant_id.to_string(), "content": content })
     };
     // `None` for the target: this path's idempotency key is the server-assigned
-    // `command_id`, which belongs to exactly one thread, so no caller can vary
-    // the target under a fixed key. Binding it here would change every stored
-    // hash and turn an in-flight redelivery into a conflict for no gain
-    // (`SIGNOFF-REPAIR.3.4.6`).
+    // `command_id` (with its node), which belongs to exactly one thread, so no
+    // caller can vary the target under a fixed key. Binding it here would change
+    // every stored hash and turn an in-flight redelivery into a conflict for no
+    // gain (`SIGNOFF-REPAIR.3.4.6`).
     let hash = request_hash(operation, &principal, &body, None, None);
+    let fold_key = node_result_fold_key(node_id, command_id);
     let authz = CommandAuthz {
         actor: actor_handle_for_subject(&principal),
         principal: principal.clone(),
@@ -9246,7 +9259,7 @@ pub(crate) async fn apply_node_result_in_tx(
     // Claim FIRST: a re-emitted result (original event id, same payload) replays
     // the ORIGINAL stored outcome — the first receipt already applied the work
     // and settled its reservation.
-    match tx::claim_idempotency_in_tx(&mut *tx, &tenant_id.to_string(), command_id, &hash).await? {
+    match tx::claim_idempotency_in_tx(&mut *tx, &tenant_id.to_string(), &fold_key, &hash).await? {
         ClaimOutcome::Replay { .. } => return Ok(()),
         ClaimOutcome::Fresh => {}
     }
@@ -9267,7 +9280,7 @@ pub(crate) async fn apply_node_result_in_tx(
         let err = ControlApiError::unauthorized(format!(
             "the node `{node_id}` does not run role `{role_raw}`: its result is not the role's"
         ));
-        store_rejection(&mut *tx, &tenant_id, command_id, &err.failure_result()).await?;
+        store_rejection(&mut *tx, &tenant_id, &fold_key, &err.failure_result()).await?;
         return Err(err);
     }
 
@@ -9282,7 +9295,7 @@ pub(crate) async fn apply_node_result_in_tx(
             let err = ControlApiError::unauthorized(format!(
                 "authorization denied ({record_id}): {reason}"
             ));
-            store_rejection(&mut *tx, &tenant_id, command_id, &err.failure_result()).await?;
+            store_rejection(&mut *tx, &tenant_id, &fold_key, &err.failure_result()).await?;
             return Err(err);
         }
         AuthorizationOutcome::Allowed { .. } => {}
@@ -9329,7 +9342,7 @@ pub(crate) async fn apply_node_result_in_tx(
         Ok(p) => p,
         Err(e) => {
             let err: ControlApiError = e.into();
-            store_rejection(&mut *tx, &tenant_id, command_id, &err.failure_result()).await?;
+            store_rejection(&mut *tx, &tenant_id, &fold_key, &err.failure_result()).await?;
             return Err(err);
         }
     };
@@ -9338,7 +9351,7 @@ pub(crate) async fn apply_node_result_in_tx(
         tenant_id: tenant_id.to_string(),
         aggregate_type: threads::AGGREGATE_TYPE.to_string(),
         aggregate_id: thread_id.to_string(),
-        idempotency_key: command_id.to_string(),
+        idempotency_key: fold_key,
         request_hash: hash,
         event_id: prepared.event_id.to_string(),
         event_type: prepared.event_type.to_string(),

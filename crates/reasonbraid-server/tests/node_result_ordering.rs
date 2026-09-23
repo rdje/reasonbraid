@@ -1021,3 +1021,160 @@ async fn a_storage_failure_in_the_fold_is_not_reported_as_an_accepted_receipt() 
          (status {status}, body {receipt}): the node will never re-emit it"
     );
 }
+
+/// `SIGNOFF-REPAIR.4.3.3` — the fold's idempotency is the WORK ITEM's, and a
+/// work item is a node's inbox row: command ids are unique per node
+/// (`UNIQUE (node_id, command_id)`), so two nodes in one tenant can hold one
+/// id, and each is owed its own fold. The claim used to be keyed on the tenant
+/// and the command id alone, so the second node's result met the first node's
+/// claim — a different request hash, hence a stored rejection — and was lost.
+///
+/// Two roles on one thread, each with its dispatched work item; node B's row is
+/// then given node A's command id (the state one trigger event reaching two
+/// nodes would produce). Both results fold; and a node re-emitting its own
+/// result under a NEW event id still replays rather than folding twice.
+#[tokio::test]
+async fn two_nodes_holding_one_command_id_each_fold_their_own_result() {
+    let _g = suite_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let base = server.base();
+    let a = fixture(&client, &base).await;
+
+    // The second role and node, accepted onto the same thread.
+    let role_b = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "agent-b", "tenant_id": a.tenant }),
+    )
+    .await["principal_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let (cert_b, key_b) = enroll_node(&client, &base, &a.human, &a.tenant, &role_b).await;
+    let thread: String =
+        sqlx::query_scalar("SELECT thread_id FROM node_inbox WHERE node_id = $1 LIMIT 1")
+            .bind(&a.role)
+            .fetch_one(&pool)
+            .await
+            .expect("A's work item names the thread");
+    let (status, invited) = command(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread}/commands"),
+        &a.human,
+        &envelope(
+            "thread.invite",
+            "key-invite-b",
+            json!({ "tenant_id": a.tenant, "agent_role": role_b }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "B is invited: {invited}");
+    let (status, accepted) = command(
+        &client,
+        &base,
+        &format!("/v1/threads/{thread}/commands"),
+        &role_b,
+        &envelope(
+            "thread.accept_invitation",
+            "key-accept-b",
+            json!({ "tenant_id": a.tenant }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "B accepts, dispatching its work: {accepted}");
+    let b = Fixture {
+        tenant: a.tenant.clone(),
+        tenant_id: a.tenant_id,
+        human: a.human.clone(),
+        role: role_b.clone(),
+        cert_hex: cert_b,
+        key_hex: key_b,
+    };
+
+    let (cmd_a, res_a, token_a, epoch_a) = work_item(&client, &base, &a).await;
+    let (cmd_b, res_b, token_b, epoch_b) = work_item(&client, &base, &b).await;
+    assert_ne!(cmd_a, cmd_b, "sanity: two trigger events, two ids");
+    // The collision: B's work item carries A's command id.
+    sqlx::query("UPDATE node_inbox SET command_id = $1 WHERE node_id = $2 AND command_id = $3")
+        .bind(&cmd_a)
+        .bind(&role_b)
+        .bind(&cmd_b)
+        .execute(&pool)
+        .await
+        .expect("B's row takes A's command id");
+
+    let before = contribution_count(&pool, &a.tenant).await;
+    let (status, receipt) = submit_event(
+        &client,
+        &base,
+        &a.role,
+        &token_a,
+        epoch_a,
+        "evt_00000000-0000-7000-8000-000000000031",
+        "op_00000000-0000-7000-8000-000000000031",
+        &work_result(
+            &cmd_a,
+            "A's own answer",
+            &res_a,
+            "att_00000000-0000-7000-8000-000000000031",
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "{receipt}");
+    assert_eq!(receipt["accepted"], json!(true), "{receipt}");
+    let (status, receipt) = submit_event(
+        &client,
+        &base,
+        &role_b,
+        &token_b,
+        epoch_b,
+        "evt_00000000-0000-7000-8000-000000000032",
+        "op_00000000-0000-7000-8000-000000000032",
+        &work_result(
+            &cmd_a,
+            "B's own answer",
+            &res_b,
+            "att_00000000-0000-7000-8000-000000000032",
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "{receipt}");
+    assert_eq!(receipt["accepted"], json!(true), "{receipt}");
+    assert_eq!(
+        contribution_count(&pool, &a.tenant).await,
+        before + 2,
+        "each node's result is its own work item's fold"
+    );
+
+    // The same node re-emitting under a NEW event id replays its own fold.
+    let (status, receipt) = submit_event(
+        &client,
+        &base,
+        &role_b,
+        &token_b,
+        epoch_b,
+        "evt_00000000-0000-7000-8000-000000000033",
+        "op_00000000-0000-7000-8000-000000000033",
+        &work_result(
+            &cmd_a,
+            "B's own answer",
+            &res_b,
+            "att_00000000-0000-7000-8000-000000000032",
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "{receipt}");
+    assert_eq!(
+        receipt["accepted"],
+        json!(true),
+        "a new event id is a new receipt"
+    );
+    assert_eq!(
+        contribution_count(&pool, &a.tenant).await,
+        before + 2,
+        "a re-emission replays; it does not fold again"
+    );
+}

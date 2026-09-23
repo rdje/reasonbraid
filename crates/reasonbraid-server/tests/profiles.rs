@@ -4672,6 +4672,7 @@ async fn an_origin_bound_identity_runs_on_the_origin_node_while_the_agreement_st
         let channel = channel.clone();
         let pool = pool.clone();
         let tenant = world.tenant.clone();
+        let origin_node = role_b.clone();
         async move {
             let work_id: String = sqlx::query_scalar(
                 "SELECT command_id FROM node_inbox WHERE thread_id = $1 AND command_id LIKE 'work_%'",
@@ -4692,11 +4693,13 @@ async fn an_origin_bound_identity_runs_on_the_origin_node_while_the_agreement_st
                     }),
                 )
                 .await;
+            // The fold's row is keyed by the work item — the emitting node and
+            // its command id (`SIGNOFF-REPAIR.4.3.3`); the origin node emitted it.
             let stored: Value = sqlx::query_scalar(
                 "SELECT response_result FROM idempotency WHERE tenant_id = $1 AND idempotency_key = $2",
             )
             .bind(&tenant)
-            .bind(&work_id)
+            .bind(format!("{origin_node}:{work_id}"))
             .fetch_one(&pool)
             .await
             .expect("the fold's stored outcome");

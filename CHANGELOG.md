@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-23 — Two machines holding a job with the same name now each get their answer counted (`SIGNOFF-REPAIR.4.3.3`)
+
+`REASONBRAID-REPAIR-0457`. The third of the four inbox-identity gaps found by `REASONBRAID-DOC-0152`.
+
+- 🔴 **Before:** job names are unique per machine, not per organisation, so two machines in one organisation could hold jobs with the same name. The server's "have I already counted this answer?" check looked only at the job name, so the second machine's answer was treated as a clash with the first's and thrown away. And the inbox view marked a job "answered" on one machine when the answer had come from the other.
+- ✅ **Now:** the answer check and the "answered" state both ask *which machine* as well as *which job*. Each machine's answer is counted; a machine re-sending its own answer is still recognised as a repeat.
+- ✅ Checked before choosing the fix: today the server never gives two machines the same job name (each job is named after the one event that created it, and one event goes to one machine), so nothing was lost in practice; the check simply permitted it. Old records were re-labelled where it was unambiguous which machine they belonged to.
+- ✅ Tested: two new checks failed on the old code exactly where predicted (one answer counted where two were owed; a job wrongly marked answered) and pass now; two deliberately broken versions (the answer check back on the job name alone; the answered state ignoring the machine) were each caught; thirteen suites pass (264 tests) after one test that read the stored answer by the old label was updated; strict lint clean.
+
 ## 2026-09-23 — Clearing out a machine's old delivered work no longer locks it out or hides later work (`SIGNOFF-REPAIR.4.3.2`)
 
 `REASONBRAID-REPAIR-0456`. The second of the four inbox-identity gaps found by `REASONBRAID-DOC-0152`.

@@ -2442,3 +2442,150 @@ async fn the_largest_result_a_node_can_produce_is_accepted() {
         other => panic!("expected the body limit's refusal, got {other:?}"),
     }
 }
+
+/// `SIGNOFF-REPAIR.4.4.10.1` — input the store cannot hold is refused as the
+/// CALLER's, permanently, and nothing of it is kept.
+///
+/// PostgreSQL holds no U+0000 in `jsonb` or `text`. Such input used to fail its
+/// write and come back `500 dependency_unavailable`, which reads as a transient
+/// outage: the node reconciled on it, re-emitted the same bytes, met the same
+/// 500, and never became schedulable again (measured by `DOC-0154`). It is a
+/// `400 unrepresentable_input` now, on the node channel and on the command API.
+#[tokio::test]
+async fn input_the_store_cannot_hold_is_refused_as_the_callers() {
+    let _g = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (tenant, human, role, thread, cert_hex, key_hex) =
+        dispatch_one_work_item(&client, &server.base(), "key-nul").await;
+    let key_der = from_hex(&key_hex).expect("key hex");
+    let der = rustls_pki_types::PrivateKeyDer::try_from(key_der).expect("key DER");
+    let key = rcgen::KeyPair::from_der_and_sign_algo(&der, &rcgen::PKCS_ECDSA_P256_SHA256)
+        .expect("key parses");
+    let fixture = journal_fixture("nul");
+    let node = reasonbraid_node::Node::open(
+        fixture.join("node.db"),
+        server.base(),
+        role.clone(),
+        from_hex(&cert_hex).expect("cert hex"),
+        key,
+    )
+    .await
+    .expect("open node");
+    node.reconcile().await.expect("reconcile");
+    let item = node
+        .journal()
+        .work_items()
+        .await
+        .expect("work items")
+        .into_iter()
+        .next()
+        .expect("the item");
+
+    // The node channel.
+    let refused = node
+        .channel()
+        .send_event(
+            &reasonbraid_core::EventId::new().to_string(),
+            item.operation_id.as_deref().expect("an operation"),
+            &json!({
+                "kind": "work_result",
+                "work_kind": "contribute",
+                "command_id": item.command_id,
+                "attempt_id": "patt_nul",
+                "content": "before\u{0}after",
+                "usage": null,
+            }),
+        )
+        .await;
+    match refused {
+        Err(reasonbraid_node::ChannelError::Server { status, code, .. }) => {
+            assert_eq!(
+                (status, code.as_str()),
+                (400, "unrepresentable_input"),
+                "a permanent refusal that names the input"
+            );
+        }
+        other => panic!("expected a typed 400, got {other:?}"),
+    }
+    let receipts: i64 = sqlx::query_scalar("SELECT count(*) FROM node_events WHERE node_id = $1")
+        .bind(&role)
+        .fetch_one(&pool)
+        .await
+        .expect("count receipts");
+    assert_eq!(receipts, 0, "nothing of the refused event was kept");
+
+    // The same refusal from a `text` column (SQLSTATE 22021), not only `jsonb`
+    // (22P05): a well-formed result under an operation id holding U+0000.
+    let refused = node
+        .channel()
+        .send_event(
+            &reasonbraid_core::EventId::new().to_string(),
+            "op_\u{0}",
+            &json!({ "kind": "ready" }),
+        )
+        .await;
+    match refused {
+        Err(reasonbraid_node::ChannelError::Server { status, code, .. }) => {
+            assert_eq!((status, code.as_str()), (400, "unrepresentable_input"));
+        }
+        other => panic!("expected a typed 400 for the text column, got {other:?}"),
+    }
+
+    // And the line is drawn at the INPUT: a store that genuinely fails a clean
+    // write is still the server's `500`, never the caller's permanent `400`. A
+    // node reads the two oppositely, so conflating them either way strands it.
+    sqlx::raw_sql(
+        "CREATE FUNCTION rb_test_events_fault() RETURNS trigger LANGUAGE plpgsql AS \
+         $$ BEGIN RAISE EXCEPTION 'injected store fault'; END $$; \
+         CREATE TRIGGER rb_test_events_fault BEFORE INSERT ON node_events \
+         FOR EACH ROW EXECUTE FUNCTION rb_test_events_fault()",
+    )
+    .execute(&pool)
+    .await
+    .expect("inject the fault");
+    let faulted = node
+        .channel()
+        .send_event(
+            &reasonbraid_core::EventId::new().to_string(),
+            "op_clean",
+            &json!({ "kind": "ready" }),
+        )
+        .await;
+    sqlx::raw_sql(
+        "DROP TRIGGER rb_test_events_fault ON node_events; DROP FUNCTION rb_test_events_fault()",
+    )
+    .execute(&pool)
+    .await
+    .expect("remove the fault");
+    match faulted {
+        Err(reasonbraid_node::ChannelError::Server { status, code, .. }) => {
+            assert_eq!(
+                (status, code.as_str()),
+                (500, "dependency_unavailable"),
+                "a store fault on clean input stays the server's"
+            );
+        }
+        other => panic!("expected the store fault's 500, got {other:?}"),
+    }
+
+    // The command API.
+    let (status, body) = command(
+        &client,
+        &server.base(),
+        &format!("/v1/threads/{thread}/commands"),
+        &human,
+        &envelope(
+            "thread.close",
+            "key-nul-close",
+            json!({ "tenant_id": tenant, "reason": "time\u{0}" }),
+        ),
+    )
+    .await;
+    assert_eq!(
+        (status, body["code"].as_str()),
+        (400, Some("unrepresentable_input")),
+        "the command API refuses it the same way: {body}"
+    );
+}

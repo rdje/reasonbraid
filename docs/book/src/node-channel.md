@@ -50,6 +50,26 @@ bounds it fails at 30 s.
 The bounds are `ChannelTimeouts`; production uses the defaults, and a test can
 shorten them with `NodeChannel::with_timeouts`.
 
+### Input the store cannot hold is refused, permanently
+
+The database keeps no U+0000 (the NUL character), in JSON or in text. Input
+that holds one is refused as the caller's, and nothing of it is kept
+(`SIGNOFF-REPAIR.4.4.10.1`):
+
+```text
+400 {"code":"unrepresentable_input","message":"the input holds a character the store cannot represent (U+0000); the same input will be refused again"}
+```
+
+This applies on the node channel and on the command API alike. A store that
+genuinely fails a clean write still answers `500 dependency_unavailable`: the
+first is permanent and the caller's, the second transient and the server's,
+and a node treats the two in opposite ways. Before this repair the NUL case
+answered `500`. A node whose provider output held a NUL therefore treated
+the refusal as an outage: it reconciled, re-sent the same bytes, got the same
+answer, and never returned to work (measured by `REASONBRAID-DOC-0154`). What
+the node itself now does with such output, and with any permanent refusal, is
+`SIGNOFF-REPAIR.4.4.10.2` and `.4.4.10.3`.
+
 ## Authentication (`.1.2.2`, certificate-proofed)
 
 The channel is authenticated end to end with the workload certificate

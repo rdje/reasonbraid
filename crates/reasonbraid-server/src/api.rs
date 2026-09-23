@@ -216,6 +216,10 @@ impl From<crate::evaluation::EvaluationError> for ControlApiError {
     /// decision is how one of them ends up disagreeing with the other six.
     fn from(error: crate::evaluation::EvaluationError) -> Self {
         match error {
+            // Input the store cannot hold is the caller's (`SIGNOFF-REPAIR.4.4.10.1`).
+            crate::evaluation::EvaluationError::Storage(cause) if unrepresentable_input(&cause) => {
+                cause.into()
+            }
             crate::evaluation::EvaluationError::Storage(cause) => {
                 Self::internal_with_log(format!("the evaluation store failed: {cause}"))
             }
@@ -255,6 +259,7 @@ impl ControlApiError {
             "quota_unconfigured" => StatusCode::SERVICE_UNAVAILABLE,
             "classification_unqualified" => StatusCode::CONFLICT,
             "publication_conflict" => StatusCode::CONFLICT,
+            UNREPRESENTABLE_INPUT => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -286,8 +291,36 @@ impl IntoResponse for ControlApiError {
     }
 }
 
+/// Did this write fail because the INPUT holds a character the store cannot
+/// represent (`SIGNOFF-REPAIR.4.4.10.1`)? PostgreSQL keeps no U+0000: `jsonb`
+/// refuses the escape (`22P05`, *unsupported Unicode escape sequence*) and
+/// `text` the byte (`22021`, *invalid byte sequence for encoding "UTF8": 0x00*).
+/// That is a property of the caller's input, as permanent as the input is, so
+/// it must never be answered as the store being unavailable: a node reads a
+/// 500 as transient, retries the same bytes, and never recovers.
+pub(crate) fn unrepresentable_input(e: &sqlx::Error) -> bool {
+    e.as_database_error()
+        .and_then(|d| d.code())
+        .is_some_and(|code| code == "22P05" || code == "22021")
+}
+
+/// The caller's answer when [`unrepresentable_input`] holds.
+pub(crate) const UNREPRESENTABLE_INPUT: &str = "unrepresentable_input";
+
+/// Its message: which character, and that resending cannot succeed.
+pub(crate) const UNREPRESENTABLE_INPUT_MESSAGE: &str =
+    "the input holds a character the store cannot represent (U+0000); \
+     the same input will be refused again";
+
 impl From<sqlx::Error> for ControlApiError {
     fn from(e: sqlx::Error) -> Self {
+        if unrepresentable_input(&e) {
+            return ControlApiError {
+                status: StatusCode::BAD_REQUEST,
+                code: UNREPRESENTABLE_INPUT,
+                message: UNREPRESENTABLE_INPUT_MESSAGE.to_string(),
+            };
+        }
         eprintln!("control api: database error: {e}");
         ControlApiError::internal()
     }
@@ -324,10 +357,9 @@ impl From<ApplyError> for ControlApiError {
                 code: "idempotency_mismatch",
                 message: e.to_string(),
             },
-            ApplyError::Sql(e) => {
-                eprintln!("control api: database error: {e}");
-                ControlApiError::internal()
-            }
+            // Through the one classification, so input the store cannot hold is
+            // the caller's refusal here too (`SIGNOFF-REPAIR.4.4.10.1`).
+            ApplyError::Sql(e) => e.into(),
         }
     }
 }

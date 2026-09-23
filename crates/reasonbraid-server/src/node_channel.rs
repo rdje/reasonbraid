@@ -656,6 +656,16 @@ impl IntoResponse for ApiError {
 
 impl From<sqlx::Error> for ApiError {
     fn from(e: sqlx::Error) -> Self {
+        // Input the store cannot hold is the CALLER's, and permanent
+        // (`SIGNOFF-REPAIR.4.4.10.1`): answered as the store's failure, a node
+        // re-sent the same bytes for ever.
+        if crate::api::unrepresentable_input(&e) {
+            return ApiError {
+                status: StatusCode::BAD_REQUEST,
+                code: crate::api::UNREPRESENTABLE_INPUT,
+                message: crate::api::UNREPRESENTABLE_INPUT_MESSAGE.to_string(),
+            };
+        }
         // The driver error detail never crosses the wire; it belongs in the server log
         // (eprintln until `tracing` lands with the observability work).
         eprintln!("node channel: database error: {e}");

@@ -272,6 +272,7 @@
 - [`2026-09-23_the-wake-checklist-is-a-node-gate-and-the-auto-grant-carries-six-bounds.md`](docs/decisions/2026-09-23_the-wake-checklist-is-a-node-gate-and-the-auto-grant-carries-six-bounds.md)
 - [`2026-09-23_this-sessions-findings-re-derived-against-the-running-server.md`](docs/decisions/2026-09-23_this-sessions-findings-re-derived-against-the-running-server.md)
 - [`2026-09-24_nul-in-provider-output-is-replaced-visibly.md`](docs/decisions/2026-09-24_nul-in-provider-output-is-replaced-visibly.md)
+- [`2026-09-24_the-server-outbox-has-a-producer-and-no-consumer.md`](docs/decisions/2026-09-24_the-server-outbox-has-a-producer-and-no-consumer.md)
 
 ## Promoted lessons
 

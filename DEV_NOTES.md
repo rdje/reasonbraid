@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-24 — The recovery options now say which ones actually exist (`SIGNOFF-REPAIR.4.4.7.1`)
+
+`REASONBRAID-REPAIR-0479`.
+
+- 🔴 **Before:** the list of recovery options for a job with an unknown outcome included "ask again, accepting a possible duplicate charge", as if it could be done. It could not, and the runbook and the book said the same.
+- ✅ **Now:** every option says whether it is available today. That one says it is not, why, and what will change it. The runbook and the book describe what an operator can really do: a revision can be requested again with a new challenge; a first answer cannot be requested again yet.
+- ⚠️ Next: building the "ask again, accepting a possible duplicate" action itself.
+- ✅ Tested: a new check failed on the old code and passes now; the live suite passes; a deliberately broken version was caught.
+- Technical: `AMBIGUOUS_ATTEMPT_ACTIONS: [AmbiguousAttemptAction; 4]` with `unavailable_because`; response fields `available` / `unavailable_because`; `node_channel` control extended; runbook and `node-channel.md` corrected.
+
 ## 2026-09-24 — Checked: operators were told to use a recovery action that does not exist (`SIGNOFF-REPAIR.4.4.7`)
 
 `REASONBRAID-DOC-0155`. A review; no code changed.

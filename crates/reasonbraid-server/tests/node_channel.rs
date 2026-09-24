@@ -1137,6 +1137,26 @@ async fn the_operator_lists_open_ambiguous_attempts_and_each_closure_ends_one() 
         ]
     );
     assert!(listed["never"].as_str().unwrap().contains("charge twice"));
+    // Every action says whether it can be taken TODAY (`SIGNOFF-REPAIR.4.4.7.1`):
+    // the re-ask was advertised for commits while nothing could set its flag.
+    for action in listed["safe_actions"].as_array().unwrap() {
+        let name = action["action"].as_str().unwrap();
+        let available = action["available"]
+            .as_bool()
+            .unwrap_or_else(|| panic!("`{name}` states its availability: {action}"));
+        if name == "reask_with_allow_possible_duplicate" {
+            assert!(!available, "the re-ask cannot be taken yet: {action}");
+            assert!(
+                action["unavailable_because"]
+                    .as_str()
+                    .is_some_and(|why| why.contains("SIGNOFF-REPAIR.4.4.7.2")),
+                "and it says why, and what will change it: {action}"
+            );
+        } else {
+            assert!(available, "`{name}` exists and can be taken: {action}");
+            assert!(action.get("unavailable_because").is_none(), "{action}");
+        }
+    }
 
     // (2) The tenant boundary: another tenant's administrator sees none of it
     // in its own tenant, and is refused this one's.

@@ -350,14 +350,23 @@ both answers carry `x-reasonbraid-authorization`.
     }
   ],
   "safe_actions": [
-    { "action": "provider_status_lookup", "who": "the node's operator", "effect": "…" },
-    { "action": "reask_with_allow_possible_duplicate", "who": "the thread's human", "effect": "…" },
-    { "action": "close_with_unresolved_register", "who": "the thread's human", "effect": "…" }
+    { "action": "provider_status_lookup", "who": "the node's operator", "effect": "…", "available": true },
+    { "action": "reask_with_allow_possible_duplicate", "who": "the thread's human", "effect": "…",
+      "available": false, "unavailable_because": "nothing sets the possible-duplicate flag yet (…)" },
+    { "action": "close_with_unresolved_register", "who": "the thread's human", "effect": "…", "available": true }
   ],
   "never": "re-fire the provider call to check: it can charge twice",
   "runbook": "docs/runbooks/provider-outage-ambiguous-charge.md"
 }
 ```
+
+⚠️ **Every action says whether it can be taken today** (`SIGNOFF-REPAIR.4.4.7.1`).
+The re-ask with the possible-duplicate flag was listed for a long time as
+though it could be taken, but nothing sets that flag.
+It reads `available: false`, with the reason, until `SIGNOFF-REPAIR.4.4.7.2`
+builds the authorization. Until then a revise can be re-asked with a new
+challenge (a new operation, not a retry), and a contribute cannot be re-asked
+at all.
 
 ⚠️ **The first three actions are not server verbs.** Each is taken where its
 authority lives. A status lookup runs on the node, and the node's next handshake

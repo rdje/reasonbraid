@@ -17,8 +17,10 @@
 
 ## Authority
 
-- Deciding re-ask vs leave-unresolved: the human whose thread it is (the
-  explicit `allow_possible_duplicate` flag — never a silent retry).
+- Deciding re-ask vs leave-unresolved: the human whose thread it is. ⚠️ The
+  explicit `allow_possible_duplicate` re-ask is NOT available yet: nothing sets
+  the flag until `SIGNOFF-REPAIR.4.4.7.2` builds the authorization, and
+  `rb inspect ambiguous` marks it `available: false` (`SIGNOFF-REPAIR.4.4.7.1`).
 - Reading: `rb-journal` + `rb inspect runs` (read-only).
 
 ## Safe first actions
@@ -46,10 +48,14 @@
 ## Recovery
 
 - **Provable non-completion** (the provider's lookup says no): settle the
-  reservation with zero usage; the thread's human re-asks normally.
-- **Unknowable:** leave `outcome_unknown`; the human decides — re-ask with
-  `allow_possible_duplicate` (the flag rides the retry policy) or close the
-  thread with the unresolved register (the honest close, `.1.5.3`).
+  reservation with zero usage. A REVISE can be re-asked by a new challenge (a
+  new operation, not a retry). A CONTRIBUTE cannot be re-asked today: work
+  reaches a node only from an accepted invitation or a challenge of a role's
+  contribution, and the role is already a participant.
+- **Unknowable:** leave `outcome_unknown`; the human decides whether to close
+  the thread with the unresolved register (the honest close, `.1.5.3`). The
+  re-ask with `allow_possible_duplicate` is the other policy §11.3 names; it
+  is not available until `SIGNOFF-REPAIR.4.4.7.2`.
 - **A provider-reported charge for an unknown attempt:** settle against the
   reported usage; the overrun reports, never clamps.
 - **An operator adjudicates** (`SIGNOFF-REPAIR.11.4.7.2.1.5.5`): when the

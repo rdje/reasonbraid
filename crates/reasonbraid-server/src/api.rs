@@ -2427,32 +2427,57 @@ async fn adjudicate_ambiguous_attempt(
 /// *Recovery*, as a fixed vocabulary. The first three are taken where the
 /// authority for them lives, which is why the list names who; the fourth is
 /// this surface's own verb (`SIGNOFF-REPAIR.11.4.7.2.1.5.5`).
-const AMBIGUOUS_ATTEMPT_ACTIONS: [(&str, &str, &str); 4] = [
-    (
-        "provider_status_lookup",
-        "the node's operator",
-        "a proven lookup lands the attempt completed or failed_known in the node's \
-         journal; the node's next handshake closes this row as resolved_by_node",
-    ),
-    (
-        "reask_with_allow_possible_duplicate",
-        "the thread's human",
-        "re-asks under the explicit possible-duplicate flag the retry policy honours; \
-         never a silent retry",
-    ),
-    (
-        "close_with_unresolved_register",
-        "the thread's human",
-        "closes the thread honestly with the attempt in its unresolved register",
-    ),
-    (
-        "adjudicate",
-        "the tenant's administrator",
-        "POST /v1/admin/nodes/ambiguous-attempts/adjudicate with `completed` or `failed_known` \
-         and a reason, when the provider's own records settle the question; the node applies it \
-         at its next handshake and the row closes adjudicated",
-    ),
+///
+/// ⛔ Each action states whether it can be taken TODAY (`SIGNOFF-REPAIR.4.4.7.1`).
+/// The re-ask was listed for commits as if it could, while nothing could set
+/// the flag it names; an operator following it would find no verb. Its
+/// availability flips when `.4.4.7.2` builds the authorization.
+const AMBIGUOUS_ATTEMPT_ACTIONS: [AmbiguousAttemptAction; 4] = [
+    AmbiguousAttemptAction {
+        action: "provider_status_lookup",
+        who: "the node's operator",
+        effect: "a proven lookup lands the attempt completed or failed_known in the node's \
+                 journal; the node's next handshake closes this row as resolved_by_node",
+        unavailable_because: None,
+    },
+    AmbiguousAttemptAction {
+        action: "reask_with_allow_possible_duplicate",
+        who: "the thread's human",
+        effect: "re-asks under the explicit possible-duplicate flag the retry policy honours; \
+                 never a silent retry",
+        unavailable_because: Some(
+            "nothing sets the possible-duplicate flag yet (SIGNOFF-REPAIR.4.4.7.2 builds the \
+             authorization). Until then a revise can be re-asked by a NEW challenge, as a new \
+             operation, and a contribute cannot be re-asked at all",
+        ),
+    },
+    AmbiguousAttemptAction {
+        action: "close_with_unresolved_register",
+        who: "the thread's human",
+        effect: "closes the thread honestly with the attempt in its unresolved register",
+        unavailable_because: None,
+    },
+    AmbiguousAttemptAction {
+        action: "adjudicate",
+        who: "the tenant's administrator",
+        effect: "POST /v1/admin/nodes/ambiguous-attempts/adjudicate with `completed` or \
+                 `failed_known` and a reason, when the provider's own records settle the \
+                 question; the node applies it at its next handshake and the row closes \
+                 adjudicated",
+        unavailable_because: None,
+    },
 ];
+
+/// One safe resolution action for an ambiguous attempt, and whether it can be
+/// taken today.
+struct AmbiguousAttemptAction {
+    action: &'static str,
+    who: &'static str,
+    effect: &'static str,
+    /// `None` when the action can be taken; otherwise why not, and what will
+    /// change that.
+    unavailable_because: Option<&'static str>,
+}
 
 /// `GET /v1/admin/nodes/ambiguous-attempts?tenant_id=…` — the tenant's
 /// ambiguous attempts that are still OPEN, with the safe actions for them
@@ -2543,8 +2568,17 @@ async fn list_ambiguous_attempts(
                 .collect();
             let safe_actions: Vec<Value> = AMBIGUOUS_ATTEMPT_ACTIONS
                 .iter()
-                .map(|(action, who, effect)| {
-                    json!({ "action": action, "who": who, "effect": effect })
+                .map(|a| {
+                    let mut entry = json!({
+                        "action": a.action,
+                        "who": a.who,
+                        "effect": a.effect,
+                        "available": a.unavailable_because.is_none(),
+                    });
+                    if let Some(why) = a.unavailable_because {
+                        entry["unavailable_because"] = json!(why);
+                    }
+                    entry
                 })
                 .collect();
             Ok(Json(json!({

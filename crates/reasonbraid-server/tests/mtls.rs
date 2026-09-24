@@ -22,9 +22,13 @@ fn ca() -> ServerCa {
     params.not_before = now;
     params.not_after = now + time::Duration::days(30);
     let cert = params.self_signed(&key).expect("CA self-sign");
+    let cert_der = cert.der().to_vec();
     ServerCa {
         issuer: rcgen::Issuer::new(params, key),
-        cert_der: cert.der().to_vec(),
+        not_after: reasonbraid_server::ca::validity_window(&cert_der)
+            .expect("the CA parses")
+            .1,
+        cert_der,
         key_der: Vec::new(),
     }
 }

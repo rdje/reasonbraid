@@ -130,7 +130,16 @@ secret, but the CHANNEL identity is the certificate:
    certificate and receives a fresh key + certificate for the same node id.
    Rotation is additive — the old leaf stays valid until expiry or revocation —
    and the node rotates automatically when less than half the leaf's lifetime
-   remains, so a running session is never cut.
+   remains (300 s, `reasonbraid_core::LEAF_ROTATE_REMAINING_SECS`, one
+   constant shared with the server), so a running session is never cut.
+
+   **A leaf never outlives its issuer** (`SIGNOFF-REPAIR.4.1.7`). The server
+   caps each leaf's expiry at the CA's own, so in the CA's last ten minutes a
+   leaf ends when the CA does. With 300 s or less left, a capped leaf would be
+   due for rotation the moment it was issued, so enrollment and rotation are
+   refused with `500 dependency_unavailable`. The message names the CA's expiry
+   and says the authority must be renewed (`SIGNOFF-REPAIR.4.1.8` owns the
+   renewal). The readiness read already reports an expired CA as unready.
 
    **A rotated identity is written to disk before it is used** (`.4.2.9`): the
    node persists the fresh certificate and key beside its journal, in the same

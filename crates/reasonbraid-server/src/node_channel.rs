@@ -595,6 +595,25 @@ impl ApiError {
         }
     }
 
+    /// Why a leaf was not issued (`SIGNOFF-REPAIR.4.1.7`). A bad host claim is
+    /// the caller's `400`; an issuer too close to its own expiry is the
+    /// server's dependency failing, the same `500 dependency_unavailable` a
+    /// store fault answers, with the reason stated because the node's operator
+    /// cannot fix it and needs to know it is not theirs to fix.
+    fn leaf_refused(refusal: &crate::ca::LeafRefused) -> Self {
+        match refusal {
+            crate::ca::LeafRefused::HostClaim(claim) => Self::host_claim_refused(claim),
+            crate::ca::LeafRefused::IssuerExhausted { .. } => {
+                eprintln!("node channel: leaf issuance refused: {refusal}");
+                ApiError {
+                    status: StatusCode::INTERNAL_SERVER_ERROR,
+                    code: "dependency_unavailable",
+                    message: format!("{refusal}"),
+                }
+            }
+        }
+    }
+
     /// No `x-reasonbraid-principal` header, or one that is not a typed principal
     /// id. `SIGNOFF-REPAIR.3.5.5` — the presence read had no caller at all.
     fn unauthenticated() -> Self {
@@ -2234,7 +2253,7 @@ async fn rotate(
     // the library refuses means a row predating that check — the rotation says
     // so instead of dropping the connection.
     let leaf = crate::ca::issue_node_leaf(&state.ca, &req.node_id, &host_claim)
-        .map_err(|refusal| ApiError::host_claim_refused(&refusal))?;
+        .map_err(|refusal| ApiError::leaf_refused(&refusal))?;
     let (cert_der, key_der) = (leaf.cert_der, leaf.key_der);
     let cert_fingerprint = crate::ca::cert_fingerprint(&cert_der);
     let now = Utc::now();
@@ -2886,7 +2905,7 @@ async fn enroll(
     // is that the caller receives an answer, and the token is not left
     // outstanding-and-unredeemable for the rest of its lifetime.
     let leaf = crate::ca::issue_node_leaf(&state.ca, &req.node_id, &req.host_claim)
-        .map_err(|refusal| ApiError::host_claim_refused(&refusal))?;
+        .map_err(|refusal| ApiError::leaf_refused(&refusal))?;
     let (cert_der, key_der) = (leaf.cert_der, leaf.key_der);
     let cert_fingerprint = crate::ca::cert_fingerprint(&cert_der);
     // `SIGNOFF-REPAIR.3.4.3.1.1`: the certificate's own expiry. This site's `now`

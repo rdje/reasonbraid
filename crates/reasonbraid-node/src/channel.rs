@@ -499,8 +499,9 @@ struct Lease {
 }
 
 /// A workload leaf stays valid 10 minutes (ADR-007); rotate when less than
-/// half of that remains.
-const ROTATE_REMAINING_SECS: i64 = 300;
+/// half of that remains. The value is core's, because the server refuses to
+/// issue a leaf that would be inside this window at birth (`SIGNOFF-REPAIR.4.1.7`).
+const ROTATE_REMAINING_SECS: i64 = reasonbraid_core::LEAF_ROTATE_REMAINING_SECS;
 
 /// Is the leaf inside its rotation window? A pure decision over two instants,
 /// extracted so a control can DRIVE the clock (`SIGNOFF-REPAIR.3.4.3.1.3`).

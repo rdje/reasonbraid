@@ -55,6 +55,7 @@ mod id;
 mod paths;
 mod retry;
 mod state;
+mod workload;
 
 pub use authority::{
     action_covered, actor_handle_for_subject, boundary_active_at, delegation_scope_is_subset,
@@ -87,3 +88,4 @@ pub use state::{
     ParticipationState, ParticipationTransition, ProviderAttemptState, ProviderAttemptTransition,
     ThreadState, ThreadTransition, TransitionError, UnknownProviderAttemptState,
 };
+pub use workload::LEAF_ROTATE_REMAINING_SECS;

@@ -2159,6 +2159,9 @@ async fn the_leaf_issuer_reports_a_refused_host_claim() {
     let refusal = reasonbraid_server::ca::issue_node_leaf(&ca, node, "h\u{e9}llo")
         .err()
         .expect("the library refuses this claim");
+    let reasonbraid_server::ca::LeafRefused::HostClaim(refusal) = refusal else {
+        panic!("the refusal is the host claim's: {refusal:?}");
+    };
     assert_eq!(refusal.host_claim, "h\u{e9}llo");
     assert!(
         reasonbraid_server::ca::check_host_claim("h\u{e9}llo").is_err(),

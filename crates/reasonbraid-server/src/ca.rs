@@ -26,6 +26,17 @@ pub struct ServerCa {
     pub issuer: Issuer<'static, KeyPair>,
     pub cert_der: Vec<u8>,
     pub key_der: Vec<u8>,
+    /// The CA certificate's own expiry, read out of it (`SIGNOFF-REPAIR.4.1.7`):
+    /// no leaf it signs may outlive it.
+    pub not_after: chrono::DateTime<chrono::Utc>,
+}
+
+/// The expiry a CA certificate carries. The certificates here are the server's
+/// own, generated or stored by it, so an unparsable one is a corrupted store.
+fn ca_not_after(cert_der: &[u8]) -> chrono::DateTime<chrono::Utc> {
+    validity_window(cert_der)
+        .expect("the server's own CA certificate parses")
+        .1
 }
 
 impl std::fmt::Debug for ServerCa {
@@ -58,9 +69,11 @@ fn generate_ca() -> ServerCa {
     params.not_after = now + time::Duration::days(365);
     let cert = params.self_signed(&key).expect("CA self-sign");
     let key_der = key.serialize_der();
+    let cert_der = cert.der().to_vec();
     ServerCa {
         issuer: Issuer::new(params, key),
-        cert_der: cert.der().to_vec(),
+        not_after: ca_not_after(&cert_der),
+        cert_der,
         key_der,
     }
 }
@@ -75,6 +88,7 @@ fn load_ca(ca_der: Vec<u8>, key_der: Vec<u8>) -> ServerCa {
     let issuer = Issuer::from_ca_cert_der(&cert_der, key).expect("stored CA cert parses");
     ServerCa {
         issuer,
+        not_after: ca_not_after(&ca_der),
         cert_der: ca_der,
         key_der,
     }
@@ -158,6 +172,35 @@ impl std::fmt::Display for HostClaimRefused {
 
 impl std::error::Error for HostClaimRefused {}
 
+/// Why [`issue_node_leaf`] issued nothing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LeafRefused {
+    /// The caller's host claim cannot be a SAN (`SIGNOFF-REPAIR.4.1.6`).
+    HostClaim(HostClaimRefused),
+    /// The issuer has no more than the node's rotation margin left
+    /// (`SIGNOFF-REPAIR.4.1.7`): a leaf capped at its expiry would be due for
+    /// rotation the instant it was issued. The CA must be renewed (`.4.1.8`).
+    IssuerExhausted {
+        issuer_not_after: chrono::DateTime<chrono::Utc>,
+    },
+}
+
+impl std::fmt::Display for LeafRefused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LeafRefused::HostClaim(refusal) => refusal.fmt(f),
+            LeafRefused::IssuerExhausted { issuer_not_after } => write!(
+                f,
+                "the certificate authority expires at {}, too soon to issue a leaf a node \
+                 would not have to rotate at once; the authority must be renewed",
+                issuer_not_after.to_rfc3339()
+            ),
+        }
+    }
+}
+
+impl std::error::Error for LeafRefused {}
+
 /// Would `issue_node_leaf` accept this host claim?
 ///
 /// The rule is the certificate library's OWN verdict, asked here rather than
@@ -181,28 +224,40 @@ pub fn check_host_claim(host_claim: &str) -> Result<(), HostClaimRefused> {
 /// server-generated (dev escrow, see the module note), and the returned
 /// `not_after` is the one signed into the certificate.
 ///
-/// Returns [`HostClaimRefused`] rather than panicking when the library will not
-/// accept the claim (`SIGNOFF-REPAIR.4.1.6`): the claim is a caller string, and
-/// a function that can only report a bad one by unwinding leaves its caller's
-/// typed error path unreachable.
+/// Returns [`LeafRefused::HostClaim`] rather than panicking when the library
+/// will not accept the claim (`SIGNOFF-REPAIR.4.1.6`): the claim is a caller
+/// string, and a function that can only report a bad one by unwinding leaves
+/// its caller's typed error path unreachable.
+///
+/// The leaf never outlives its issuer (`SIGNOFF-REPAIR.4.1.7`): its `not_after`
+/// is the earlier of `now + LEAF_TTL_SECS` and the CA's own, and an issuer with
+/// no more than [`reasonbraid_core::LEAF_ROTATE_REMAINING_SECS`] left issues
+/// nothing ([`LeafRefused::IssuerExhausted`]).
 pub fn issue_node_leaf(
     ca: &ServerCa,
     node_id: &str,
     host_claim: &str,
-) -> Result<IssuedLeaf, HostClaimRefused> {
+) -> Result<IssuedLeaf, LeafRefused> {
+    let now = now_offset();
+    let issuer_left = ca.not_after.timestamp() - now.unix_timestamp();
+    if issuer_left <= reasonbraid_core::LEAF_ROTATE_REMAINING_SECS {
+        return Err(LeafRefused::IssuerExhausted {
+            issuer_not_after: ca.not_after,
+        });
+    }
     let key = KeyPair::generate().expect("leaf key generation");
-    let mut params =
-        CertificateParams::new(vec![host_claim.to_string()]).map_err(|e| HostClaimRefused {
+    let mut params = CertificateParams::new(vec![host_claim.to_string()]).map_err(|e| {
+        LeafRefused::HostClaim(HostClaimRefused {
             host_claim: host_claim.to_owned(),
             reason: e.to_string(),
-        })?;
+        })
+    })?;
     params
         .distinguished_name
         .push(DnType::CommonName, format!("node:{node_id}"));
     params.key_usages = vec![KeyUsagePurpose::DigitalSignature];
-    let now = now_offset();
     params.not_before = now - time::Duration::seconds(5);
-    params.not_after = now + time::Duration::seconds(LEAF_TTL_SECS);
+    params.not_after = now + time::Duration::seconds(LEAF_TTL_SECS.min(issuer_left));
     let not_after = chrono::DateTime::from_timestamp(params.not_after.unix_timestamp(), 0)
         .expect("the leaf validity window is representable");
     let cert = params.signed_by(&key, &ca.issuer).expect("leaf sign");
@@ -343,6 +398,70 @@ mod issued_leaf_binding {
     /// reading the same clock with the same constant, and on the enrollment
     /// path did not agree at all: that `now` is sampled BEFORE the enrollment
     /// transaction's database work.
+    /// A CA like [`generate_ca`]'s, but with only `secs` of validity left.
+    fn ca_valid_for(secs: i64) -> ServerCa {
+        let key = KeyPair::generate().expect("CA key generation");
+        let mut params = CertificateParams::new(vec![]).expect("CA params");
+        params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+        params
+            .distinguished_name
+            .push(DnType::CommonName, "reasonbraid-server-ca");
+        params.key_usages = vec![
+            KeyUsagePurpose::KeyCertSign,
+            KeyUsagePurpose::DigitalSignature,
+        ];
+        let now = now_offset();
+        params.not_before = now - time::Duration::days(364);
+        params.not_after = now + time::Duration::seconds(secs);
+        let cert = params.self_signed(&key).expect("CA self-sign");
+        load_ca(cert.der().to_vec(), key.serialize_der())
+    }
+
+    /// `SIGNOFF-REPAIR.4.1.7` — a leaf never outlives its issuer. With 400 s
+    /// left, the CA signs a leaf that ends when the CA does (not at the usual
+    /// 600 s); with 200 s left, which is inside the node's rotation margin, a
+    /// leaf would be due for rotation the instant it was issued, so issuance is
+    /// refused.
+    #[test]
+    fn a_leaf_never_outlives_its_issuer() {
+        let short = ca_valid_for(400);
+        let (_, issuer_not_after) = validity_window(&short.cert_der).expect("the CA parses");
+        let leaf = issue_node_leaf(&short, "nod_00000000-0000-7000-8000-000000000001", "host-a")
+            .expect("400 s is past the rotation margin, so it issues");
+        let (_, leaf_not_after) = validity_window(&leaf.cert_der).expect("the leaf parses");
+        assert_eq!(
+            leaf_not_after, issuer_not_after,
+            "the leaf ends when its issuer does"
+        );
+        assert_eq!(leaf.not_after, leaf_not_after, "and says so");
+
+        let spent = ca_valid_for(200);
+        assert!(
+            matches!(
+                issue_node_leaf(&spent, "nod_00000000-0000-7000-8000-000000000001", "host-a")
+                    .err(),
+                Some(LeafRefused::IssuerExhausted { issuer_not_after })
+                    if issuer_not_after == spent.not_after
+            ),
+            "an issuer inside the rotation margin issues nothing, and says when it ends"
+        );
+        // The operator reads why: the issuer's end, and that it needs renewing.
+        let refusal = issue_node_leaf(&spent, "nod_00000000-0000-7000-8000-000000000001", "host-a")
+            .err()
+            .expect("refused")
+            .to_string();
+        assert!(
+            refusal.contains(&spent.not_after.to_rfc3339()) && refusal.contains("renewed"),
+            "the refusal names the expiry and the remedy: {refusal}"
+        );
+        // An ordinary issuer still issues the full 600 s.
+        let ca = generate_ca();
+        let leaf = issue_node_leaf(&ca, "nod_00000000-0000-7000-8000-000000000001", "host-a")
+            .expect("a year-long issuer issues");
+        let (not_before, not_after) = validity_window(&leaf.cert_der).expect("parses");
+        assert_eq!((not_after - not_before).num_seconds(), LEAF_TTL_SECS + 5);
+    }
+
     #[test]
     fn the_returned_expiry_is_the_one_signed_into_the_certificate() {
         let ca = generate_ca();

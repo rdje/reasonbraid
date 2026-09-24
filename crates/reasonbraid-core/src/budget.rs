@@ -54,19 +54,37 @@ impl BudgetDimensions {
             && dim(self.wall_clock_seconds, requested.wall_clock_seconds)
     }
 
-    /// The held-sum of two dimension sets (ledger arithmetic).
-    pub fn add(&self, other: &BudgetDimensions) -> BudgetDimensions {
-        let sum = |a: Option<u64>, b: Option<u64>| match (a, b) {
-            (Some(a), Some(b)) => Some(a + b),
-            (Some(a), None) | (None, Some(a)) => Some(a),
-            (None, None) => None,
-        };
-        BudgetDimensions {
-            calls: sum(self.calls, other.calls),
-            input_tokens: sum(self.input_tokens, other.input_tokens),
-            output_tokens: sum(self.output_tokens, other.output_tokens),
-            wall_clock_seconds: sum(self.wall_clock_seconds, other.wall_clock_seconds),
+    /// The held-sum of two dimension sets (ledger arithmetic). A dimension whose
+    /// sum exceeds `u64` is a typed error, never a wrap and never saturation
+    /// (`SIGNOFF-REPAIR.4.5.2`): settled usage is what a node REPORTED, recorded
+    /// in full, and a wrapped sum reads small, so a ceiling would lend again.
+    /// Fallible for the same reason [`BudgetDimensions::subtract`] is.
+    pub fn add(&self, other: &BudgetDimensions) -> Result<BudgetDimensions, BudgetError> {
+        fn sum(
+            mine: Option<u64>,
+            adding: Option<u64>,
+            dimension: &'static str,
+        ) -> Result<Option<u64>, BudgetError> {
+            match (mine, adding) {
+                (Some(m), Some(a)) => m.checked_add(a).map(Some).ok_or(BudgetError::Overflow {
+                    dimension,
+                    held: m,
+                    adding: a,
+                }),
+                (Some(v), None) | (None, Some(v)) => Ok(Some(v)),
+                (None, None) => Ok(None),
+            }
         }
+        Ok(BudgetDimensions {
+            calls: sum(self.calls, other.calls, "calls")?,
+            input_tokens: sum(self.input_tokens, other.input_tokens, "input_tokens")?,
+            output_tokens: sum(self.output_tokens, other.output_tokens, "output_tokens")?,
+            wall_clock_seconds: sum(
+                self.wall_clock_seconds,
+                other.wall_clock_seconds,
+                "wall_clock_seconds",
+            )?,
+        })
     }
 
     /// Subtract `used` from `self`; any dimension that would underflow is a typed
@@ -139,6 +157,12 @@ pub enum BudgetError {
         held: u64,
         used: u64,
     },
+    /// A ledger sum exceeds what `u64` can count (`SIGNOFF-REPAIR.4.5.2`).
+    Overflow {
+        dimension: &'static str,
+        held: u64,
+        adding: u64,
+    },
 }
 
 impl std::fmt::Display for BudgetError {
@@ -155,6 +179,14 @@ impl std::fmt::Display for BudgetError {
             } => write!(
                 f,
                 "budget underflow: {used} {dimension} used from {held} held"
+            ),
+            BudgetError::Overflow {
+                dimension,
+                held,
+                adding,
+            } => write!(
+                f,
+                "budget overflow: {held} {dimension} plus {adding} exceeds what the ledger can count"
             ),
         }
     }
@@ -260,7 +292,37 @@ mod tests {
     fn add_and_subtract_are_total_and_fallible() {
         let a = dims(Some(2), Some(100), None);
         let b = dims(Some(3), None, None);
-        assert_eq!(a.add(&b), dims(Some(5), Some(100), None));
+        assert_eq!(a.add(&b).unwrap(), dims(Some(5), Some(100), None));
+        // A sum past `u64` is a typed error naming the dimension, never a wrap
+        // (`SIGNOFF-REPAIR.4.5.2`); the boundary itself still sums.
+        assert_eq!(
+            dims(Some(u64::MAX - 1), None, None)
+                .add(&dims(Some(1), None, None))
+                .unwrap(),
+            dims(Some(u64::MAX), None, None)
+        );
+        assert!(matches!(
+            dims(Some(1), Some(u64::MAX), None).add(&dims(Some(1), Some(1), None)),
+            Err(BudgetError::Overflow {
+                dimension: "input_tokens",
+                held: u64::MAX,
+                adding: 1,
+            })
+        ));
+        // The operator reads this text in the refusal: it names the dimension
+        // and both addends.
+        assert_eq!(
+            BudgetError::Overflow {
+                dimension: "input_tokens",
+                held: u64::MAX,
+                adding: 1,
+            }
+            .to_string(),
+            format!(
+                "budget overflow: {} input_tokens plus 1 exceeds what the ledger can count",
+                u64::MAX
+            )
+        );
 
         assert_eq!(
             a.subtract(&dims(Some(1), Some(40), None)).unwrap(),

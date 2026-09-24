@@ -3803,6 +3803,72 @@ fn dims(calls: Option<u64>, tokens: Option<u64>) -> reasonbraid_core::BudgetDime
     }
 }
 
+/// `SIGNOFF-REPAIR.4.5.2` — two settled usages that sum past `u64` answer a
+/// typed `ledger_overflow` naming the dimension: never a wrapped (small) total,
+/// and never a panic in the handler.
+#[tokio::test]
+async fn the_usage_surface_refuses_a_ledger_it_cannot_count() {
+    let _guard = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (status, alice) = enroll(
+        &client,
+        &server.base(),
+        json!({ "kind": "human", "name": "overflow-alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "enroll: {alice}");
+    let tenant = alice["tenant_id"].as_str().unwrap().to_string();
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+
+    let thread = "thr_00000000-0000-7000-8000-000000000901";
+    sqlx::query(
+        "INSERT INTO budget_ceilings (ceiling_id, tenant_id, thread_id, dimensions, policy_version) \
+         VALUES ('ceil_overflow', $1, $2, $3, 'dev-budget-1')",
+    )
+    .bind(&tenant)
+    .bind(thread)
+    .bind(serde_json::to_value(dims(Some(100), Some(100_000))).unwrap())
+    .execute(&pool)
+    .await
+    .expect("ceiling");
+    for id in ["res_overflow_a", "res_overflow_b"] {
+        sqlx::query(
+            "INSERT INTO budget_reservations \
+             (reservation_id, ceiling_id, tenant_id, thread_id, dimensions, usage, status, created_at, settled_at) \
+             VALUES ($1, 'ceil_overflow', $2, $3, $4, $5, 'settled', now(), now())",
+        )
+        .bind(id)
+        .bind(&tenant)
+        .bind(thread)
+        .bind(serde_json::to_value(dims(Some(1), Some(10))).unwrap())
+        .bind(serde_json::to_value(dims(Some(1), Some(1u64 << 63))).unwrap())
+        .execute(&pool)
+        .await
+        .expect("settled");
+    }
+
+    let (status, usage) = get(
+        &client,
+        &server.base(),
+        &format!("/v1/admin/usage?tenant_id={tenant}"),
+        &alice_id,
+    )
+    .await;
+    assert_eq!(
+        (status, usage["code"].as_str()),
+        (500, Some("ledger_overflow")),
+        "the surface refuses a sum it cannot count: {usage}"
+    );
+    assert!(
+        usage["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("input_tokens")),
+        "the refusal names the dimension: {usage}"
+    );
+}
+
 /// THE `.3.3` acceptance: the usage-reconciliation surface sums the LEDGER
 /// rows (held vs settled vs overrun vs denied, per dimension) — measured:
 /// the seeded rows' arithmetic is recomputed in the test and must match the

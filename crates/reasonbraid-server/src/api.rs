@@ -10758,6 +10758,21 @@ async fn list_cross_domain_receipts(
     ))
 }
 
+/// The usage view's answer when a ledger sum exceeds `u64`
+/// (`SIGNOFF-REPAIR.4.5.2`): a recorded usage too large to count, which only a
+/// node's report can put there. Its own code, rather than a wrong total or a
+/// bare `internal`, so the operator knows to look for that report.
+fn ledger_overflow(error: BudgetError) -> ControlApiError {
+    ControlApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        code: LEDGER_OVERFLOW,
+        message: format!("the budget ledger cannot be summed: {error}"),
+    }
+}
+
+/// The code [`ledger_overflow`] answers with.
+pub(crate) const LEDGER_OVERFLOW: &str = "ledger_overflow";
+
 async fn admin_usage(
     State(state): State<Arc<ApiState>>,
     Query(q): Query<AdminListQuery>,
@@ -10808,8 +10823,8 @@ async fn admin_usage(
                     });
                 match status.as_str() {
                     "active" if *holding => {
-                        *held = held.add(&reserved);
-                        tenant_held = tenant_held.add(&reserved);
+                        *held = held.add(&reserved).map_err(ledger_overflow)?;
+                        tenant_held = tenant_held.add(&reserved).map_err(ledger_overflow)?;
                     }
                     "settled" => {
                         let used: BudgetDimensions = usage
@@ -10818,8 +10833,8 @@ async fn admin_usage(
                                 serde_json::from_value(u.clone()).expect("stored usage parses")
                             })
                             .unwrap_or_default();
-                        *settled = settled.add(&used);
-                        tenant_settled = tenant_settled.add(&used);
+                        *settled = settled.add(&used).map_err(ledger_overflow)?;
+                        tenant_settled = tenant_settled.add(&used).map_err(ledger_overflow)?;
                         // The overrun per dimension = used minus reserved, floored at
                         // None (an unused remainder is NOT a negative overrun).
                         let over = BudgetDimensions {
@@ -10840,8 +10855,8 @@ async fn admin_usage(
                                 .zip(reserved.wall_clock_seconds)
                                 .map(|(u, r)| u.saturating_sub(r)),
                         };
-                        *overrun = overrun.add(&over);
-                        tenant_overrun = tenant_overrun.add(&over);
+                        *overrun = overrun.add(&over).map_err(ledger_overflow)?;
+                        tenant_overrun = tenant_overrun.add(&over).map_err(ledger_overflow)?;
                     }
                     "denied" => {
                         *denied += 1;

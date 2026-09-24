@@ -104,7 +104,10 @@ impl LocalBudget {
     /// (consumed + dims) — the second boundary of the WP5 acceptance.
     pub async fn try_reserve(&self, dims: &BudgetDimensions) -> Result<(), BudgetError> {
         let mut consumed = self.consumed.lock().await;
-        let next = consumed.add(dims);
+        // A sum past `u64` covers nothing (`SIGNOFF-REPAIR.4.5.2`).
+        let next = consumed.add(dims).map_err(|e| BudgetError::Unavailable {
+            detail: format!("local headroom cannot be counted: {e}"),
+        })?;
         if !self.ceiling.covers(&next) {
             return Err(BudgetError::Unavailable {
                 detail: "local headroom does not cover the reservation".to_string(),
@@ -119,7 +122,17 @@ impl LocalBudget {
     pub async fn settle(&self, reserved: &BudgetDimensions, usage: &BudgetDimensions) {
         let mut consumed = self.consumed.lock().await;
         let released = consumed.subtract(reserved).unwrap_or_default();
-        *consumed = released.add(usage);
+        // Usage is what the provider reported, recorded in full. One too large to
+        // count leaves the headroom spent BEYOND COUNTING, never wrapped small
+        // (`SIGNOFF-REPAIR.4.5.2`). Every dimension at `u64::MAX` rather than at
+        // the ceiling, so a later settlement's subtraction cannot reopen room the
+        // uncountable usage took.
+        *consumed = released.add(usage).unwrap_or(BudgetDimensions {
+            calls: Some(u64::MAX),
+            input_tokens: Some(u64::MAX),
+            output_tokens: Some(u64::MAX),
+            wall_clock_seconds: Some(u64::MAX),
+        });
     }
 
     /// Release a hold that was never consumed (pre-dispatch refusals).
@@ -624,6 +637,59 @@ async fn settle_unknown<A: Adapter>(
                 attempt_id,
                 detail: "status lookup unsupported by the adapter".to_string(),
             })
+        }
+    }
+}
+
+#[cfg(test)]
+mod local_budget_tests {
+    use super::*;
+
+    fn dims(calls: u64, tokens: u64) -> BudgetDimensions {
+        BudgetDimensions {
+            calls: Some(calls),
+            input_tokens: Some(tokens),
+            output_tokens: Some(tokens),
+            wall_clock_seconds: Some(calls),
+        }
+    }
+
+    /// `SIGNOFF-REPAIR.4.5.2` — a settlement whose reported usage cannot be
+    /// counted leaves the local headroom spent, and a LATER settlement that
+    /// frees its own unused hold does not reopen it.
+    #[tokio::test]
+    async fn an_uncountable_settlement_spends_the_headroom_for_good() {
+        let local = LocalBudget::new(dims(100, 100_000));
+        let hold = dims(1, 1_000);
+        local.try_reserve(&hold).await.expect("first hold");
+        local.try_reserve(&hold).await.expect("second hold");
+        // The first attempt reports more tokens than can be summed with the
+        // second's hold.
+        local.settle(&hold, &dims(1, u64::MAX)).await;
+        // The second used no call and almost no tokens, freeing nearly all of
+        // its hold: room for a small request, IF that freed room were real.
+        local.settle(&hold, &dims(0, 1)).await;
+        assert!(
+            local.try_reserve(&dims(1, 1)).await.is_err(),
+            "the headroom stays spent"
+        );
+    }
+
+    /// A reservation whose sum with the consumed amount cannot be counted is
+    /// refused, not panicked on.
+    #[tokio::test]
+    async fn an_uncountable_reservation_is_refused() {
+        let local = LocalBudget::new(dims(100, u64::MAX));
+        local
+            .try_reserve(&dims(1, u64::MAX))
+            .await
+            .expect("the whole ceiling");
+        match local.try_reserve(&dims(1, 1)).await {
+            Err(BudgetError::Unavailable { detail }) => assert!(
+                detail.contains("cannot be counted"),
+                "the refusal names the overflow: {detail}"
+            ),
+            other => panic!("expected the overflow refusal, got {other:?}"),
         }
     }
 }

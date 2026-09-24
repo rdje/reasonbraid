@@ -190,7 +190,11 @@ where
             serde_json::from_value(row).map_err(|e| BudgetError::Unavailable {
                 detail: format!("stored held amount is malformed: {e}"),
             })?;
-        held = held.add(&dims);
+        // A sum past `u64` fails closed: a ledger that cannot be summed cannot
+        // vouch for room (`SIGNOFF-REPAIR.4.5.2`).
+        held = held.add(&dims).map_err(|e| BudgetError::Unavailable {
+            detail: format!("the ceiling's held sum cannot be counted: {e}"),
+        })?;
     }
 
     let remaining = ceiling
@@ -465,9 +469,13 @@ where
             serde_json::from_value(row).map_err(|e| BudgetError::Unavailable {
                 detail: format!("stored spend is malformed: {e}"),
             })?;
-        spend = spend.add(&dims);
+        spend = spend.add(&dims).map_err(|e| BudgetError::Unavailable {
+            detail: format!("the tenant's recorded spend cannot be counted: {e}"),
+        })?;
     }
-    let projected = spend.add(requested);
+    let projected = spend.add(requested).map_err(|e| BudgetError::Unavailable {
+        detail: format!("the tenant's recorded spend cannot be counted: {e}"),
+    })?;
 
     // A dimension the threshold does not meter is NOT constrained by it (the
     // breaker is an addition to the ceiling, not a second ceiling).

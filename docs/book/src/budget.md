@@ -131,6 +131,32 @@ routing, §14.3 — never clamped). Release returns the unused hold. Expired
 reservations stop holding. An **indeterminate** attempt keeps its hold
 (§14.6: release only amounts not potentially consumed).
 
+### A usage too large to count
+
+Settled usage is what a node *reported*, recorded in full, so the ledger can
+hold numbers no honest provider produces. Until `SIGNOFF-REPAIR.4.5.2`, its sums
+used plain `u64` addition, and the workspace declares no `[profile.release]`,
+so a release build does not check for overflow. Two reports of 2⁶³ tokens
+panicked a debug server's admission. In a release build they would have wrapped
+to a small held sum, and the ceiling would have lent again. That last part
+follows from Rust's release default; it was not run.
+
+`BudgetDimensions::add` is now fallible, like `subtract` beside it. A sum past
+`u64` is a typed `BudgetError::Overflow` naming the dimension; it never wraps
+and never saturates. The unchecked form no longer exists. Every reader fails
+closed:
+
+| Reader | Answer on overflow |
+| --- | --- |
+| Admission's held sum | `Unavailable`: *the ceiling's held sum cannot be counted* |
+| The breaker's spend, and spend plus the request | `Unavailable`: *the tenant's recorded spend cannot be counted* |
+| `GET /v1/admin/usage` | `500 ledger_overflow`, naming the dimension |
+| The node's `LocalBudget` | reservation refused; a settlement leaves the headroom spent beyond counting, so a later settlement cannot reopen it |
+
+Settlement itself does not reject a large report. The work happened, and
+§14.3 records overruns without clamping. A usage too large to count now stops
+the ceiling from lending, which is the safe reading of it.
+
 ## Administering the spend breaker
 
 The per-tenant spend latch is armed and reset through two `tenant_admin` routes.

@@ -579,3 +579,164 @@ async fn the_reference_carries_the_stored_instants_not_the_ones_bound_to_the_ins
         "a stored TIMESTAMPTZ carries no sub-microsecond digits"
     );
 }
+
+/// Two settled reservations whose reported usage sums past `u64`
+/// (`SIGNOFF-REPAIR.4.5.2`). Settlement takes the node's reported usage as it
+/// is and records it in full (§14.3: never clamped), so the ledger's sums must
+/// not wrap: a wrapped held sum reads SMALL and the ceiling lends again.
+async fn two_settlements_past_u64(pool: &PgPool, tenant: &str, thread: &str) -> String {
+    let ceiling_id = ceiling(pool, tenant, thread, 10, 100).await;
+    // Both are held BEFORE either settles: once one settlement is recorded,
+    // the ceiling (rightly) has no room for another reservation.
+    let mut held = Vec::new();
+    for _ in 0..2 {
+        held.push(
+            create_reservation(
+                pool,
+                &ceiling_id,
+                tenant,
+                thread,
+                &dims(Some(1), Some(10)),
+                Duration::minutes(10),
+                Utc::now(),
+            )
+            .await
+            .expect("room for the call"),
+        );
+    }
+    let half = 1u64 << 63;
+    for reservation in &held {
+        settle_reservation(
+            pool,
+            &reservation.reference.reservation_id,
+            &dims(Some(1), Some(half)),
+            Utc::now(),
+        )
+        .await
+        .expect("settled")
+        .expect("the reservation was active");
+    }
+    ceiling_id
+}
+
+/// The ceiling's held sum overflows: admission refuses, naming the overflow,
+/// rather than panicking (debug) or wrapping to a small sum and lending
+/// (release).
+#[tokio::test]
+async fn a_held_sum_past_u64_refuses_rather_than_wrapping() {
+    let _guard = budget_guard().await;
+    let Some(pool) = pool().await else { return };
+    let tenant = "ten_00000000-0000-7000-8000-000000000206";
+    let thread = "thr_00000000-0000-7000-8000-000000000206";
+    let ceiling_id = two_settlements_past_u64(&pool, tenant, thread).await;
+
+    let refused = create_reservation(
+        &pool,
+        &ceiling_id,
+        tenant,
+        thread,
+        &dims(Some(1), Some(10)),
+        Duration::minutes(10),
+        Utc::now(),
+    )
+    .await;
+    match refused {
+        Err(BudgetError::Unavailable { detail }) => assert!(
+            detail.contains("overflow") && detail.contains("ceiling"),
+            "the refusal is the ceiling sum's overflow: {detail}"
+        ),
+        other => panic!("expected the overflow refusal, got {other:?}"),
+    }
+}
+
+/// The breaker's tenant-wide spend overflows the same way, and it is summed
+/// FIRST, so it is refused before the ceiling is read.
+#[tokio::test]
+async fn a_spend_sum_past_u64_refuses_rather_than_wrapping() {
+    let _guard = budget_guard().await;
+    let Some(pool) = pool().await else { return };
+    // The seeded tenant: a breaker row references `tenants`.
+    let tenant = "ten_00000000-0000-7000-8000-000000000000";
+    let thread = "thr_00000000-0000-7000-8000-000000000207";
+    let ceiling_id = two_settlements_past_u64(&pool, tenant, thread).await;
+    sqlx::query("INSERT INTO spend_breakers (tenant_id, threshold) VALUES ($1, $2)")
+        .bind(tenant)
+        .bind(serde_json::to_value(dims(Some(1_000), Some(u64::MAX))).expect("threshold"))
+        .execute(&pool)
+        .await
+        .expect("arm");
+
+    let refused = create_reservation(
+        &pool,
+        &ceiling_id,
+        tenant,
+        thread,
+        &dims(Some(1), Some(10)),
+        Duration::minutes(10),
+        Utc::now(),
+    )
+    .await;
+    match refused {
+        Err(BudgetError::Unavailable { detail }) => assert!(
+            detail.contains("overflow") && detail.contains("spend"),
+            "the refusal is the spend sum's overflow: {detail}"
+        ),
+        other => panic!("expected the overflow refusal, got {other:?}"),
+    }
+}
+
+/// The breaker's PROJECTION overflows even when its spend alone does not: one
+/// settlement of `u64::MAX` tokens is countable, and the request on top of it
+/// is not.
+#[tokio::test]
+async fn a_projected_spend_past_u64_refuses_rather_than_wrapping() {
+    let _guard = budget_guard().await;
+    let Some(pool) = pool().await else { return };
+    let tenant = "ten_00000000-0000-7000-8000-000000000000";
+    let thread = "thr_00000000-0000-7000-8000-000000000208";
+    let ceiling_id = ceiling(&pool, tenant, thread, 10, 100).await;
+    let held = create_reservation(
+        &pool,
+        &ceiling_id,
+        tenant,
+        thread,
+        &dims(Some(1), Some(10)),
+        Duration::minutes(10),
+        Utc::now(),
+    )
+    .await
+    .expect("room for the call");
+    settle_reservation(
+        &pool,
+        &held.reference.reservation_id,
+        &dims(Some(1), Some(u64::MAX)),
+        Utc::now(),
+    )
+    .await
+    .expect("settled")
+    .expect("the reservation was active");
+    sqlx::query("INSERT INTO spend_breakers (tenant_id, threshold) VALUES ($1, $2)")
+        .bind(tenant)
+        .bind(serde_json::to_value(dims(Some(1_000), Some(u64::MAX))).expect("threshold"))
+        .execute(&pool)
+        .await
+        .expect("arm");
+
+    match create_reservation(
+        &pool,
+        &ceiling_id,
+        tenant,
+        thread,
+        &dims(Some(1), Some(10)),
+        Duration::minutes(10),
+        Utc::now(),
+    )
+    .await
+    {
+        Err(BudgetError::Unavailable { detail }) => assert!(
+            detail.contains("overflow") && detail.contains("spend"),
+            "the refusal is the projection's overflow: {detail}"
+        ),
+        other => panic!("expected the overflow refusal, got {other:?}"),
+    }
+}

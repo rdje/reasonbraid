@@ -66,9 +66,21 @@ first is permanent and the caller's, the second transient and the server's,
 and a node treats the two in opposite ways. Before this repair the NUL case
 answered `500`. A node whose provider output held a NUL therefore treated
 the refusal as an outage: it reconciled, re-sent the same bytes, got the same
-answer, and never returned to work (measured by `REASONBRAID-DOC-0154`). What
-the node itself now does with such output, and with any permanent refusal, is
-`SIGNOFF-REPAIR.4.4.10.2` and `.4.4.10.3`.
+answer, and never returned to work (measured by `REASONBRAID-DOC-0154`). The
+node now reads that answer as a refusal of that one event, for good. It
+journals the refusal and stops offering the event, whether the refusal comes
+when the worker first sends it or when a reconcile re-sends it
+(`SIGNOFF-REPAIR.4.4.10.2`):
+
+```text
+node: nod_… — the control plane REFUSED event evt_… for good: unrepresentable_input (…); journaled, and not offered again
+```
+
+Only a refusal of the event's own bytes counts as permanent. Authentication
+and fencing, an unknown node, a cursor disagreement, a store fault and a
+protocol mismatch are all cured by a reconcile, so they stay what they were.
+What the node does with NUL output in the first place is
+`SIGNOFF-REPAIR.4.4.10.3`.
 
 ## Authentication (`.1.2.2`, certificate-proofed)
 
@@ -247,6 +259,7 @@ The reference node (`rb-node`) sorts a worker failure into one of three kinds
 | The **channel's** | the worker's poll failed; the node's send of a finished result failed; a dispatch was refused because the node is not schedulable | reconcile and resume: the reconcile re-handshakes and re-emits every pending result under its original id |
 | A **fact about one attempt** | the provider's response was lost and no status lookup can prove it (`outcome_unknown`) | nothing to recover: the attempt is already journaled, the worker logs it and moves on, and the retry gate owns the item (a retry needs the explicit possible-duplicate authorization) |
 | One **item's** | the item's payload cannot be read | the item is dead-lettered, once, and the tick goes on to the other items; the server quarantines it for an operator |
+| One **event's**, for good | the control plane refused the event's bytes: `400 unrepresentable_input`, or its body limit (`400`/`413`/`422`) | the event is journaled as refused, with the control plane's code and message, and never offered again; the node goes on (`SIGNOFF-REPAIR.4.4.10.2`) |
 
 Anything else (a journal the node cannot write, for instance) still stops the
 process. The decision is `WorkerError::calls_for_reconcile()`, in the library,

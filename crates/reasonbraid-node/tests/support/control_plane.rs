@@ -46,6 +46,10 @@ struct Recorded {
     /// the COMPLETE set of tenants the node may act for, and the node replaces
     /// its own with it, so a control that ticks must name its tenants here.
     revocation_epochs: BTreeMap<String, i64>,
+    /// An event whose payload `content` holds this marker is refused the way the
+    /// control plane refuses input it can never store (`SIGNOFF-REPAIR.4.4.10.2`):
+    /// a PERMANENT `400 unrepresentable_input`, and nothing recorded.
+    refuse_marker: Option<String>,
     handshakes: u32,
     events: Vec<ReceivedEvent>,
 }
@@ -66,10 +70,26 @@ impl StubControlPlane {
     /// [`StubControlPlane::start`], answering `revocation_epochs` on every
     /// handshake and poll.
     pub async fn start_with_epochs(revocation_epochs: BTreeMap<String, i64>) -> Self {
-        let recorded = Arc::new(Mutex::new(Recorded {
+        Self::serve(Recorded {
             revocation_epochs,
             ..Recorded::default()
-        }));
+        })
+        .await
+    }
+
+    /// [`StubControlPlane::start_with_epochs`], refusing PERMANENTLY every event
+    /// whose `content` holds `marker`.
+    pub async fn start_refusing(revocation_epochs: BTreeMap<String, i64>, marker: &str) -> Self {
+        Self::serve(Recorded {
+            revocation_epochs,
+            refuse_marker: Some(marker.to_string()),
+            ..Recorded::default()
+        })
+        .await
+    }
+
+    async fn serve(recorded: Recorded) -> Self {
+        let recorded = Arc::new(Mutex::new(recorded));
         let app = Router::new()
             .route("/v1/nodes/handshake", post(handshake))
             .route("/v1/nodes/events", post(events))
@@ -186,9 +206,28 @@ fn issued(body: &Value) -> bool {
 async fn events(
     State(recorded): State<Arc<Mutex<Recorded>>>,
     Json(body): Json<Value>,
-) -> Result<Json<EventReceipt>, StatusCode> {
+) -> Result<Json<EventReceipt>, (StatusCode, Json<Value>)> {
     if !issued(&body) {
-        return Err(StatusCode::UNAUTHORIZED);
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "code": "unauthorized", "message": "fenced" })),
+        ));
+    }
+    let marker = recorded.lock().expect("not poisoned").refuse_marker.clone();
+    if let Some(marker) = marker {
+        if body["payload"]["content"]
+            .as_str()
+            .is_some_and(|c| c.contains(&marker))
+        {
+            // The control plane's own answer (`SIGNOFF-REPAIR.4.4.10.1`).
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "code": "unrepresentable_input",
+                    "message": "the input holds a character the store cannot represent",
+                })),
+            ));
+        }
     }
     let event = ReceivedEvent {
         event_id: body["event_id"].as_str().unwrap_or_default().to_string(),

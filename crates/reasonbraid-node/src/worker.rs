@@ -534,6 +534,12 @@ impl<A: Adapter> Worker<A> {
                         self.node.node_id(),
                         item.command_id
                     ),
+                    EventDelivery::Refused => eprintln!(
+                        "worker: {} — the control plane refused the {work_kind} result for {} \
+                         for good; journaled",
+                        self.node.node_id(),
+                        item.command_id
+                    ),
                     EventDelivery::Deferred => eprintln!(
                         "worker: {} journaled a {work_kind} result for {}; the node is not \
                          schedulable, so the next reconcile delivers it",

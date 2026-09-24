@@ -101,6 +101,9 @@ pub enum EventDelivery {
     /// Not sent: the node is not schedulable. The event is pending in the journal
     /// and the next reconcile re-emits it with its original id.
     Deferred,
+    /// Refused for good by the control plane (`SIGNOFF-REPAIR.4.4.10.2`): journaled
+    /// with the refusal, and never offered again.
+    Refused,
 }
 
 /// A ReasonBraid node: the journal owns its durable local facts, the channel owns its
@@ -373,13 +376,7 @@ impl Node {
             }
             let payload: Value = serde_json::from_str(&event.payload)
                 .map_err(|e| NodeError::MalformedJournal(e.to_string()))?;
-            let receipt = self
-                .channel
-                .send_event(&event.event_id, &event.operation_id, &payload)
-                .await?;
-            self.record_refusal(&event.event_id, &receipt).await?;
-            self.journal
-                .acknowledge_event(&event.event_id, &max_cursor.to_string(), now)
+            self.deliver_at(&event.operation_id, &event.event_id, &payload, max_cursor)
                 .await?;
         }
 
@@ -406,7 +403,10 @@ impl Node {
         self.journal
             .record_outgoing_event(event_id, operation_id, payload, Utc::now())
             .await?;
-        self.send_journaled(operation_id, event_id, payload).await
+        let cursor = self.journal.last_acked_cursor().await?;
+        self.deliver_at(operation_id, event_id, payload, cursor)
+            .await
+            .map(|_| ())
     }
 
     /// Deliver an event the journal ALREADY holds as pending — a work result
@@ -425,30 +425,57 @@ impl Node {
         if !self.is_schedulable().await {
             return Ok(EventDelivery::Deferred);
         }
-        self.send_journaled(operation_id, event_id, payload).await?;
-        Ok(EventDelivery::Delivered)
+        let cursor = self.journal.last_acked_cursor().await?;
+        self.deliver_at(operation_id, event_id, payload, cursor)
+            .await
     }
 
-    /// Send a journaled event, record the server's refusal if its receipt reports
-    /// one, and acknowledge it. On a channel error the event stays pending in the
-    /// journal and the next reconcile re-emits it (original id).
-    async fn send_journaled(
+    /// Send one journaled event and settle it in the journal, acknowledged under
+    /// `cursor`: the one path every send takes (the worker's, `emit_event`'s, and
+    /// the reconcile's re-emission).
+    ///
+    /// A receipt is recorded, with the fold's refusal if it reports one
+    /// (`SIGNOFF-REPAIR.4.4.2`). A PERMANENT refusal of the event itself
+    /// ([`ChannelError::permanent_refusal`], `SIGNOFF-REPAIR.4.4.10.2`) is recorded
+    /// the same way and ends the event's life: re-sending the same bytes can only
+    /// be refused again, and doing so on every reconcile kept the node from ever
+    /// becoming schedulable. Any other channel error leaves the event pending for
+    /// the next reconcile (original id).
+    async fn deliver_at(
         &self,
         operation_id: &str,
         event_id: &str,
         payload: &Value,
-    ) -> Result<(), NodeError> {
-        let receipt = self
+        cursor: i64,
+    ) -> Result<EventDelivery, NodeError> {
+        let delivery = match self
             .channel
             .send_event(event_id, operation_id, payload)
             .await
-            .map_err(NodeError::Channel)?;
-        self.record_refusal(event_id, &receipt).await?;
-        let cursor = self.journal.last_acked_cursor().await?;
+        {
+            Ok(receipt) => {
+                self.record_refusal(event_id, &receipt).await?;
+                EventDelivery::Delivered
+            }
+            Err(e) => {
+                let Some((code, message)) = e.permanent_refusal() else {
+                    return Err(NodeError::Channel(e));
+                };
+                eprintln!(
+                    "node: {} — the control plane REFUSED event {event_id} for good: {code} \
+                     ({message}); journaled, and not offered again",
+                    self.node_id
+                );
+                self.journal
+                    .record_event_refusal(event_id, code, message)
+                    .await?;
+                EventDelivery::Refused
+            }
+        };
         self.journal
             .acknowledge_event(event_id, &cursor.to_string(), Utc::now())
             .await?;
-        Ok(())
+        Ok(delivery)
     }
 
     /// Journal the server's refusal of a work result, when its receipt reports

@@ -355,6 +355,32 @@ impl std::error::Error for ChannelError {
     }
 }
 
+impl ChannelError {
+    /// The control plane's code and message when it refused ONE event for good
+    /// (`SIGNOFF-REPAIR.4.4.10.2`), `None` otherwise.
+    ///
+    /// A refusal is permanent when it is about the bytes, so the same event is
+    /// refused again however often it is sent: `400 unrepresentable_input` for
+    /// input the store cannot hold, or the body extractor refusing them (`400`,
+    /// `413`, `422`). Everything else is cured by a reconcile, and must stay a
+    /// channel loss: authentication and fencing (`401`, `403`), an unknown node
+    /// (`404`), a cursor disagreement (`409`), a store fault (`5xx`), and
+    /// `protocol_incompatible` (a `400`, but about the node's whole protocol,
+    /// which its handshake reports first). Reading a transient answer as
+    /// permanent would drop a result; reading a permanent one as transient
+    /// wedged the node, re-sending the same bytes for ever.
+    pub fn permanent_refusal(&self) -> Option<(&str, &str)> {
+        match self {
+            ChannelError::Server {
+                status: 400 | 413 | 422,
+                code,
+                message,
+            } if code != "protocol_incompatible" => Some((code.as_str(), message.as_str())),
+            _ => None,
+        }
+    }
+}
+
 impl From<reqwest::Error> for ChannelError {
     fn from(e: reqwest::Error) -> Self {
         ChannelError::Http(e)
@@ -958,6 +984,57 @@ fn from_hex(s: &str) -> Result<Vec<u8>, String> {
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod permanent_refusals {
+    use super::ChannelError;
+
+    fn server(status: u16, code: &str) -> ChannelError {
+        ChannelError::Server {
+            status,
+            code: code.to_string(),
+            message: "m".to_string(),
+        }
+    }
+
+    /// The table `permanent_refusal` decides (`SIGNOFF-REPAIR.4.4.10.2`): only a
+    /// refusal of the event's BYTES is permanent; every answer a reconcile cures
+    /// stays a channel loss.
+    #[test]
+    fn only_a_refusal_of_the_bytes_is_permanent() {
+        for (status, code) in [
+            (400, "unrepresentable_input"),
+            (400, "unknown"),
+            (413, "unknown"),
+            (422, "unknown"),
+        ] {
+            assert!(
+                server(status, code).permanent_refusal().is_some(),
+                "{status} {code} is permanent"
+            );
+        }
+        for (status, code) in [
+            (400, "protocol_incompatible"),
+            (401, "unauthorized"),
+            (403, "unauthorized"),
+            (404, "unknown_node"),
+            (409, "version_conflict"),
+            (500, "dependency_unavailable"),
+            (503, "unknown"),
+        ] {
+            assert!(
+                server(status, code).permanent_refusal().is_none(),
+                "{status} {code} is cured by a reconcile"
+            );
+        }
+        assert!(ChannelError::NotAuthenticated.permanent_refusal().is_none());
+        assert_eq!(
+            server(400, "unrepresentable_input").permanent_refusal(),
+            Some(("unrepresentable_input", "m")),
+            "the code and message travel with it"
+        );
+    }
 }
 
 #[cfg(test)]

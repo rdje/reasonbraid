@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-24 — The web console's inbox panel works (`SIGNOFF-REPAIR.4.4.2.2`)
+
+`REASONBRAID-REPAIR-0475`. A defect found by the previous fix.
+
+- 🔴 **Before:** the console's "Inspect inbox" panel had never worked. It asked the server with the wrong parameter name, so every request was refused, and it tried to show a field that does not exist. The check meant to keep the console honest had itself been written with the wrong name, so it agreed with the mistake.
+- ✅ **Now:** the panel works and shows each job's delivery state, whether its answer was refused (and why), and any quarantine. The check now tests the panel against the server's own definitions, so the two cannot drift apart unnoticed again.
+- ✅ Tested: the new check failed on the old console, once for each of the two mistakes, and passes now; strict lint clean.
+- Technical: `web/app.js` inbox panel → `node_id`, `delivery_state`, `result_refusal`; `ui.rs` `the_inbox_panel_speaks_the_servers_contract` parses the panel's query with `axum::extract::Query::<InboxInspectionParams>::try_from_uri` and checks every `r.<field>` against a serialized `InboxRow`; `web-ui.md` corrected.
+
 ## 2026-09-24 — Operators can now see when a finished job's answer was refused (`SIGNOFF-REPAIR.4.4.2.1`)
 
 `REASONBRAID-REPAIR-0474`.
@@ -277,152 +286,23 @@
 - ✅ Tested: new tests on both the machine side and the server side; recreating the old single-counter behaviour on each side made those tests fail; every machine- and channel-related suite passes.
 - Technical: server `node_channel.rs` `epochs_and_server_time` (own tenant ∪ inbox tenants, one statement with `clock_timestamp()`), `revocation_epochs: BTreeMap<String, i64>` replaces `revocation_epoch` in `HandshakeResponse`/`PollResponse` on both sides; node `migrations/0004_tenant_epochs.sql`, `Journal::{revocation_epoch_for, set_revocation_epochs, set_revocation_epoch_for}`, the gate reads `item.tenant_id`'s epoch. Controls `each_command_is_judged_by_its_own_tenants_epoch` (node) and `the_handshake_and_poll_carry_every_held_tenants_epoch` (server); pre-repair mutants on both sides caught.
 
-## 2026-09-23 — The "who is available" listing now honours directory-sharing agreements, like the search does (`SIGNOFF-REPAIR.5.1.6`)
-
-`REASONBRAID-REPAIR-0448`. Closes the directory-privacy work again (`SIGNOFF-REPAIR.5.1`).
-
-- 🔴 **Before:** two organisations that agreed to share their directories saw each other's agents in more detail in the search than in the "who is available" listing, which ignored the agreement. Nothing was over-shared; the listing showed less than the book promised.
-- ✅ **Now:** both use one shared rule, so they always agree: under an agreement, a partner's agents show the organisation-level detail; without one, only the public basics; never the private fields.
-- ✅ Tested: the new test failed on the old code and passes now. A deliberately broken rule that over-shares was caught by three tests at once, covering both the search and the listing.
-- Technical: `api.rs` `class_toward_foreign_tenant(pool, reader_tenant, tenant, memo)` replaces the match's inline agreement lookup and classifies the presence's foreign entries (the pool taken before the loop because the loop shadows `state`). Control `the_presence_listing_widens_to_the_tenant_view_under_a_directory_agreement`; mutant M1 (always `Tenant`) caught by 3 controls.
-
-## 2026-09-23 — The directory now lists a partner's agent that runs on the partner's machine (`SIGNOFF-REPAIR.5.3.5.3.1.2`)
-
-`REASONBRAID-REPAIR-0447`.
-
-- 🔴 **Before:** an imported partner agent bound to the partner's own machine could join calls, but the directory search and the "who is available" listing never showed it, because both only listed machines, and it has no machine of its own here.
-- ✅ **Now:** both list it, under the importing organisation, showing which machine it runs on. A third organisation looking at the listing sees the agent but is **not** told which partner's machine it runs on, since that would reveal who works with whom. When the partnership ends, the agent disappears from both lists.
-- 🔎 **Found and scheduled:** the "who is available" listing never gives a partner organisation the wider view that a directory-sharing agreement promises (the search does). Nothing is over-shared; it shows less than documented. Owned as the next task.
-- ✅ Tested: the new checks failed on the old code and pass now; two deliberately broken versions (revealing the machine to everyone; filing the agent under the wrong organisation) were each caught; the profile suite passes (88).
-- Technical: `api.rs` `DIRECTORY_ROWS` (node rows ∪ origin-bound rows via `role_execution` where `node_id <> role_id`), `DIRECTORY_COLUMNS`, `DirectoryRow`, shared by `directory_match` (candidates keyed by `role_id`) and `directory_presence` (entries gain `role_id`; a foreign reader's entry omits `node_id` when it differs from `role_id`; the duplicated `"hold"` key removed). Control grown: `an_origin_bound_identity_runs_on_the_origin_node_while_the_agreement_stands`; mutants M2 (node disclosed) and M3 (origin tenant) caught. Opened `.5.1.6`.
-
-## 2026-09-23 — A partner's agent can be recruited to run on the partner's own machine (`SIGNOFF-REPAIR.5.3.5.3.1.1`)
-
-`REASONBRAID-REPAIR-0446`.
-
-- 🔴 **Before:** when an organisation imported a partner's agent, the imported agent could only act if the importing organisation set up a machine for it themselves. There was no way to say "the partner's agent keeps running on the partner's machine".
-- ✅ **Now:** the import can choose `origin`: the agent keeps running on the partner's own machine, and it can join and be seated on calls without the importer enrolling anything. This works only while both organisations' recruitment agreement is in force. If either side withdraws, the agent is immediately treated as having no machine, and it never silently falls back to a local one. The import is refused if the partner's agent has no machine at all.
-- ⚠️ **Not yet:** the directory search doesn't list such an agent yet (next step), and sending it actual work waits on a safety change to how a machine checks revocations for two organisations at once. Both are tracked, and the book says so.
-- ✅ Tested: the new test failed on the old code and passes now; three deliberately broken versions (ignoring the agreement, looking up the wrong machine, reading the wrong machine's facts) were each caught; the profile, card, federation, audit and upgrade suites pass.
-- Technical: `migrations/0100_card_imports_executes_on.sql` (`card_imports.executes_on`, no FK to `nodes` by design; view `role_execution` — own id when unbound, the bound node while both recruitment directions are accepted and unexpired, else NULL); `cards::CardExecution`; `ImportCardRequest.execution`; `CardImportResult::NoOriginNode`; `profile_admin::Submitted`; `respondent_candidate` joins `role_execution` → `node_presence`; the close reads incarnations by the resolved node; `imported_from` gains `execution`/`executes_on`/`runs_on`. Control `an_origin_bound_identity_runs_on_the_origin_node_while_the_agreement_stands`; mutants M1 (agreement ignored), M2 (dev-rule respond), M3 (close reads local incarnation) caught. `.5.3.5.3.1` split: `.1.2` match/presence, `.1.3` dispatch after `.5.3.5.3.2`.
-
-## 2026-09-23 — An agent's owner now sees its whole profile; the privacy defaults are confirmed and explained (`SIGNOFF-REPAIR.5.1.5`)
-
-`REASONBRAID-REPAIR-0445`. Closes the directory-privacy work (`SIGNOFF-REPAIR.5.1`).
-
-- 🔴 **Before:** an agent and its owner were promised "the full profile" but never saw two parts of it: which running instance the agent is, and its own privacy settings. Separately, a code comment claimed every profile field is private unless the agent says otherwise, which was never true, and another comment described the privacy rule backwards.
-- ✅ **Now:** the agent and its owner see both parts; nobody else does. The two wrong comments are corrected.
-- ⚖️ **A decision taken, and measured:** an agent that never sets privacy settings keeps the current defaults — its name and purpose visible to everyone, its skills visible to its own organisation, sensitive details hidden. Making everything private by default was tested: the agent then became invisible to its own organisation's searches, so nobody could recruit it. The book now explains the defaults and how to override them.
-- ✅ Tested: the new test failed on the old code and passes now; the "everything private" version was run and the test caught it; the profile suite (87) and three neighbouring suites pass.
-- Technical: `filter_profile` emits `incarnation_id` and `visibility` for `ReaderClass::Full` only; `VisibilityPolicy` and `field_visible` doc comments corrected. Clause-1 measurement: all-`self_only` default → suite 86/86 before the new control (no test reads a policy-less profile as a non-owner), and with it the tenant-mate's match returns no candidates. Control `a_profile_without_a_policy_takes_the_default_and_the_full_reader_sees_all_of_it` (discovery arm first). Record: `docs/decisions/2026-09-23_a-profile-without-a-policy-is-discoverable-by-its-tenant.md`.
-
-## 2026-09-23 — Unknown facts about an agent no longer count as variety on a panel (`SIGNOFF-REPAIR.5.1.3`)
-
-`REASONBRAID-REPAIR-0444`.
-
-- 🔴 **Before:** when a call closes, the panel is ranked partly on variety — agents on different providers or tools are less likely to fail the same way. But missing information was counted as variety. An agent with no facts at all got the best possible score, an agent could hide a shared provider by not declaring it, a fact nobody declared was reported as "varies across the panel", and a provider named "x" was counted as matching a *tool* named "x".
-- ✅ **Now:** only facts that are actually known count, and each is compared only with the same kind of fact. Unknown scores zero, so declaring less can never help. The panel record now says how many agents did not declare each fact, and says "nobody declares this" instead of "varies".
-- ✅ The book explains the variety score with worked examples, for the first time.
-- ✅ Tested: four new tests (one per problem) failed on the old code and pass now; two deliberately broken versions of the fix were each caught; the full profile suite passes (86).
-- Technical: `matching::diversity(mine, others)` — mean over `dependence::ATTRIBUTES` (now `pub`, the one list) of `1 − sharers/declarers` per attribute known on both sides, else 0, denominator 5; `DependenceIndicator.undeclared` + the explanation cases (none / one / varies across K / groups; `; M of N do not declare one`). Controls: units (a1) `a_candidate_with_no_known_fact_scores_zero_diversity`, (a2) `declaring_an_unshared_fact_ranks_above_leaving_it_undeclared`, (c) `the_sharer_test_compares_the_same_attribute_only`, (b) `an_undeclared_attribute_is_unknown_not_variation`; the snapshot control's `lineage` arm. Mutants M1 (mean over declared) and M2 (any-attribute sharer) caught. Record: `docs/decisions/2026-09-23_diversity-is-a-mean-over-five-attributes-and-unknown-scores-zero.md`.
-
-## 2026-09-23 — A search's ranking weights must be between 0 and 1 (`SIGNOFF-REPAIR.5.1.4`)
-
-`REASONBRAID-REPAIR-0443`.
-
-- 🔴 **Before:** when someone searched the directory for agents, they could say how much each of six factors should count — and any number was accepted. A negative number turned a factor upside down (asking for *diverse* agents returned the *least* diverse first), and two huge numbers made scores infinite, so the ranking fell back to alphabetical order. No error was shown either way.
-- ✅ **Now:** each weight must be a number from 0 to 1. Anything else is refused with an error naming the weight. Nothing useful is lost: only the order matters, so any balance between factors still fits in that range (1 and 0.25 means "four times as much").
-- ✅ The book now explains the search request, the six factors and their weights — it never had.
-- ✅ Tested: the new end-to-end test failed on the old code and passes now; two deliberately broken versions of the check were both caught; the full profile suite passes (86).
-- Technical: `RankingPreferences::validate` (first stray in declaration order, `!(0.0..=1.0).contains`, so NaN/∞ refused) called in `directory_match` before the directory read → `400 invalid_command`; `matching::by_rank` (`total_cmp`, then role id) replaces both `partial_cmp(..).unwrap_or(Equal)` sorts. Controls: unit `a_weight_outside_the_unit_interval_is_refused_by_name`, server `the_ranking_weights_are_bounded_and_a_stray_one_is_named`; mutants M1 (no lower bound) and M2 (no upper bound) caught. Book: `profiles.md` *Matching the directory*.
-
-## 2026-09-23 — An expired skill endorsement no longer qualifies an agent (`SIGNOFF-REPAIR.5.1.2`)
-
-`REASONBRAID-REPAIR-0442`.
-
-- 🔴 **Before:** a skill in an agent's profile can carry an expiry date, and nothing ever read it. An endorsement that lapsed last year still got the agent found by searches, admitted to calls and seated on panels.
-- ✅ **Now:** a skill counts only until its expiry. A search leaves the agent out, a request to join is refused with the date it expired, and the panel is checked again when the call closes, so a skill that lapses between joining and closing does not win a seat. Expiry works exactly like a permission's expiry, so the two never disagree about the boundary moment.
-- ✅ Two details handled deliberately: someone who cannot see an agent's skills is never told when one expired, and an agent listing the same skill twice is judged on its best current one.
-- ✅ Tested at both levels. Run against a copy that ignores expiry, the new end-to-end test failed; restored, the full profile suite passes.
-- Technical: `matching::eligible(expression, candidate, at)`, `claim_live` (half-open), declared → visible → live → provenance, strongest live claim decides; `respondent_candidate` takes the instant; one instant per respond/close/match. Controls: 3 unit + `an_expired_claim_satisfies_no_eligibility_surface`; mutants M0 (expiry unread) and M1 (close judged a day early) both caught.
-
-## 2026-09-23 — The directory-privacy checklist checked against the code: three items already hold, three are real gaps now scheduled (`SIGNOFF-REPAIR.5.1`)
-
-`REASONBRAID-DOC-0149`. A review; no code changed.
-
-- ✅ **Already holds, with the code that does it named:** tests compare organisations whose agents are equally qualified, so a hidden agent is hidden for privacy and not for skill; two simultaneous profile edits or endorsements cannot overwrite each other; an agent at its declared workload limit is shown as busy and is not recruited.
-- 🔴 **Three real gaps, each now a task:** a skill whose endorsement has **expired** still counts in a search; an agent that **declares nothing** about which AI provider it runs on is ranked as the most independent choice, the opposite of cautious; and the **ranking weights** a searcher sends are unchecked, so a negative weight can deliberately pick the most look-alike panel.
-- ⚠️ Three wording and default problems in the profile's privacy settings, found earlier, are grouped into a fourth task. Whether a new profile should start out hidden needs a decision, because a hidden profile cannot be found by a search. That decision will be made in its own task, with the effect on search measured first.
-- Order: expiry first, then the weights, then the missing facts, then the privacy defaults.
-- Technical: census over `matching.rs` / `dependence.rs` / `profiles.rs` at `f324f15`; children `.5.1.2` (expiry), `.5.1.3` (dependence facts: unknown scored 1.0, *varies* for undeclared, cross-attribute sharer test), `.5.1.4` (weights in [0,1]), `.5.1.5` (the three attached clauses).
-
-## 2026-09-23 — Decided: an imported partner agent can run on a machine you enrol for it today, and on the partner's own machine once three pieces are built (`SIGNOFF-REPAIR.5.3.5.3`)
-
-`REASONBRAID-REPAIR-0441`, with the decision `REASONBRAID-DOC-0148`, taken under your delegation of today. With this, nothing in the plan waits on you.
-
-- ⚖️ **Both, as you suggested — because the roadmap asks for two different things.** *Portable agent cards* means a card can be run elsewhere: you enrol a machine for the imported identity, vouch for its skills yourself, and it works under the permission you gave it. *Remote recruitment* means the partner's own agent is invoked where it lives, executing what your permission allows — the way agent-to-agent federation is done today. Each keeps the rule that a partner never authorises anything here; only your permission does.
-- ✅ **The first works now, with no new code.** Tested end to end: an imported agent asked to join a call and was refused for having no machine; after enrolling a machine for it and attesting its skill locally, the same request succeeded and it was seated on the panel, its origin recorded throughout.
-- 🔴 **The second needs three things first**, now recorded as tasks in order: recording which machine an imported identity runs on; teaching the machine software to judge each job against the right organisation's revocation counter (today it knows only its own, so it cannot safely work for two); and a receipt on both sides for every job that crosses.
-- ⚠️ Left open: whether one imported identity may be bound to two machines at once.
-- Technical: control `an_imported_identity_acts_once_the_importing_tenant_binds_a_node_to_it` (no source change); children `.5.3.5.3.1` (`card_imports.executes_on`, `COALESCE(executes_on, role_id)` at every resolution), `.5.3.5.3.2` (per-tenant `revocation_epoch` in the node's journal + handshake), `.5.3.5.3.3` (receipts per delivery).
-
-## 2026-09-23 — A permission can now carry conditions, and the first one is a time window (`SIGNOFF-REPAIR.11.4.7.2.1.5.4.3`)
-
-`REASONBRAID-REPAIR-0440`, with the decision `REASONBRAID-DOC-0147`, taken under your delegation of today.
-
-- 🔴 **Before:** the roadmap listed "conditions" among a permission's dimensions and nothing said what a condition was, so the field was deliberately never built.
-- ⚖️ **Decided:** conditions are a closed, typed list the server understands completely — the shape modern authorization systems settled on once they stopped writing rules in prose. A kind of condition exists only when the server can refuse a malformed one when the permission is issued, evaluate it at every use from facts it already has, name it in a refusal, and it is tested and documented. Anything less is not a condition.
-- ✅ **The first kind:** a daily time window, in the same format and with the same parser as an agent's working hours. A permission with a window only works inside it; outside, the refusal says so and names the time. Rejected for now, each with a measured reason: a "purpose" (nothing declares one), a requesting network (the server records no address), a "human present" check (the next kind, once the check has the facts it needs), and separation of duties (the policy chain's).
-- ✅ Tested: unknown kinds, empty lists, malformed windows and a person carrying a condition are all refused; the operator's list shows the condition; a permission whose window is shut is refused with the reason and one whose window is open works. Deliberately making the server ignore a failed condition was caught.
-- Technical: `reasonbraid_core::GrantCondition::WithinHours`, `AuthorityGrant.conditions`; `authority/conditions.rs` (`issuance_violations`, `holds`) wired into `create_grant_in_guard` and `evaluate`; migration 0099; `GrantRow` as a named `FromRow` struct; `EnrollRequest.conditions`; the grant listing; control `a_grants_conditions_are_typed_at_issuance_and_evaluated_at_admission`.
-
-## 2026-09-23 — An agent that is deliberately not being woken now says so: presence gains a seventh state, `held` (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2.1`)
-
-`REASONBRAID-REPAIR-0439`, with the decision `REASONBRAID-DOC-0146`, taken under your delegation of today.
-
-- 🔴 **Before:** an agent whose own settings keep it from being woken — "manual only", or outside its working hours — was handed no work, and still reported itself as *available*. The roadmap's six presence words had no word for it.
-- ⚖️ **Decided:** a seventh word, `held`, with the reason beside it (`manual_only`, `off_hours`, or an unreadable settings block). Not `draining`, which means winding down, and not "available with a footnote", because the state is the one field everyone reads and it must not lie. Every presence model that has faced this question answers it with a distinct do-not-disturb state. The roadmap was amended in the same commit so it, the code and the handbook stay aligned.
-- ✅ `held` sits below `draining` and above `busy`: a policy is a declaration about the agent, like zero capacity, and unlike the count of what it holds right now. A search does not recruit a held agent unless it asks for held ones.
-- ✅ Tested in the unit derivation and end to end through the directory: manual-only → held; off-hours → held; inside hours → not held; zero capacity → draining. Run against the previous code first, the held agent read *offline* — the test's agent had no live lease, which the test now provides.
-- Technical: `PresenceState::Held`, `presence_state(…, hold: Option<&Hold>)`, `presence::hold_from_stored`, `Hold::wire_name`; `hold` on `PresenceResponse`, the admin presence listing and the directory presence; ROADMAP §10.2; `node-channel.md`.
-
-## 2026-09-23 — A directory search no longer shows another organisation's agents as if the searcher were one of them (`SIGNOFF-REPAIR.5.1.1`)
-
-`REASONBRAID-REPAIR-0438`.
-
-- 🔴 **Before:** when a member of one organisation searched the directory, the server decided once how much that member may see — "a member sees the organisation view" — and applied that to every agent found, including agents of *other* organisations. So a member read a partner's or a stranger's organisation-only fields, and an agent's organisation-only skill could satisfy a search it should have been invisible to. The presence listing had always done this right; the handbook described the search's behaviour as the design.
-- ✅ **Now** the search decides per agent, by the searcher's relation to *that agent's* organisation: full or organisation view for its own, organisation view for a partner with a visibility agreement, outsider view for everyone else — and each agent is judged, ranked and shown at that level. An outsider-only skill neither qualifies an agent nor appears.
-- ✅ Tested: a member's search does not find a partner agent whose skill is organisation-only; once the agent publishes the skill to the network it is found, shown at the outsider view; with a visibility partnership it is shown at the organisation view. Run against the previous code first, the partner agent was found on a skill the member could not see.
-- 🔎 Two of the test failures in that first run were my own mistakes in the test files, both reverted before the green run and recorded as such.
-- Technical: `directory_match` — `own_class` for the clamp, `class_by_tenant` memoised via `has_effective_directory_agreement`, `scope_by_role` = min(expression scope, class), per-scope `rank` groups merged by the ranker's sort key, `filter_profile` at the candidate's class; control `the_match_surface_classifies_each_candidate_by_its_own_tenant`; `site-authority.md`'s directory paragraph corrected.
-
-## 2026-09-23 — An agent's machine is now told, on connecting, how many calls are waiting for it (`SIGNOFF-REPAIR.5.3.5.1.1`)
-
-`REASONBRAID-REPAIR-0437`. With this, the whole advertisement of calls — durable, federated, and prompt — is in place; recruiting a partner agent now waits only on your decision about whose machine runs it.
-
-- 🔴 **Before:** an agent could look up the calls offered to it, but nothing told its machine that one was waiting; a machine that did not ask found out late.
-- ✅ **Now** every time a machine connects (its regular check-in), the server tells it how many open calls are waiting for its agent — offers still inside their join window that the agent has not yet answered. The reference machine writes that to its log and points at where to read them. An offer never enters the machine's work queue: it is a notice, not a job, because nobody has authorised any work yet.
-- ✅ Tested through the real machine client: one open offer → the check-in says one; after the agent answers, and with a closed call and a lapsed one also offered, the check-in says zero. Deliberately breaking the count so answered offers still counted was caught.
-- ⚠️ The machine does nothing with the notice beyond saying so; what an agent's adapter should do with an offer is a later, separate design.
-- Technical: `HandshakeResponse.offers_pending` on both mirrored wires (the node's with `#[serde(default)]`); `NodeChannelState::offers_pending`; the node's reconcile step 3.7 prints the count; control `an_online_node_is_told_how_many_offers_await_its_role`; `.5.3.5.1` closes.
-
 The entries before those above were rotated into reachable Git history at the
-**eleventh rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
+**twelfth rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
 stood at the commit named below, which is the object every retired record was
 checked against before this notice was written — is:
 
 ```bash
-git show 9824ffcf1aa533cf78fd327098a10d4c8be9b42f:DEV_NOTES.md
+git show 75fb20140e3b78a9a821cc36557bba0dcf45023d:DEV_NOTES.md
 ```
 
-That snapshot is 71576 bytes and 402 lines, and contains 37 dated
-entries; its Git blob is `d987719b9bdab737106030c2618bb14328b5a100` and its SHA-256 is
-`9fe7fa4a1d227678f087c4fcfc3b42bba4b55fe439aa683d335f5b69b122a38b`. It carries the tenth rotation's
+That snapshot is 73568 bytes and 430 lines, and contains 41 dated
+entries; its Git blob is `42060e3a6f542727d42da75f4e1e1d4060d65756` and its SHA-256 is
+`d2bc84f3f3df8d7b4fa031b9556fd5d2128a9502544b236dceab71f606816439`. It carries the eleventh rotation's
 notice in turn, and each earlier notice names the one before it, so the chain
 walks all the way back. `docs/decisions/2026-09-09_changelog-rotation.md` holds
 the first transition's evidence.
 
-⛔ **12 record(s) rotated out, 26 kept, lossless** — every retired heading was retrieved from the
+⛔ **13 record(s) rotated out, 29 kept, lossless** — every retired heading was retrieved from the
 predecessor named above before this notice was written, and every figure in it was re-derived from that object with
 `git rev-parse`, `git cat-file` and SHA-256 rather than typed. ⭐ The cut is DERIVED, not chosen: it retires whole
 records until the ledger has at least 10 commits of runway at the p90 entry size measured over the last

@@ -18,7 +18,15 @@ Every view is one of the existing inspection GETs, rendered as-is:
 | Audit (authorization records) | `GET /v1/threads/{thread_id}/audit?tenant_id=…` |
 | Budget (ceiling + reservation rows, incl. denials — `.1.6.1`) | `GET /v1/threads/{thread_id}/budget?tenant_id=…` |
 | Node presence (derived from the lease clock; the caller's own tenant) | `GET /v1/nodes/presence?node_id=…` |
-| Node inbox (tenant_admin) | `GET /v1/nodes/inbox?node=…&tenant_id=…` |
+| Node inbox (tenant_admin): each row's command, delivery state, the result's refusal if the control plane refused it, and any quarantine | `GET /v1/nodes/inbox?node_id=…&tenant_id=…` |
+
+⚠️ **The inbox panel did not work until `SIGNOFF-REPAIR.4.4.2.2`.** It sent
+`?node=`, but the route requires `node_id`, so every request was refused. It
+also displayed `state`, a field no inbox row has ever carried (the field is
+`delivery_state`). This page documented the broken parameter as well. The
+console's check now parses the panel's query with the route's own extractor,
+and compares every field the panel reads with the fields the server writes, so
+the panel and the server cannot drift apart unnoticed again.
 
 The four thread reads give **one answer** for a thread the caller cannot see:
 `404 scope_hidden`, whether the id belongs to another tenant or to no thread at

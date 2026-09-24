@@ -380,7 +380,7 @@ async function viewInbox(out) {
         const nodeId = input.value.trim();
         if (!nodeId) return;
         const { status, body } = await api(
-          "/v1/nodes/inbox?node=" +
+          "/v1/nodes/inbox?node_id=" +
             encodeURIComponent(nodeId) +
             "&" +
             tenantQuery(),
@@ -393,10 +393,13 @@ async function viewInbox(out) {
               "div",
               { class: "inbox-result" },
               table(
-                ["command", "state", "quarantine"],
+                ["command", "state", "result", "quarantine"],
                 rows.map((r) => [
                   r.command_id,
-                  r.state,
+                  r.delivery_state,
+                  r.result_refusal
+                    ? `refused: ${r.result_refusal.code} — ${r.result_refusal.message}`
+                    : "—",
                   r.quarantined_at
                     ? `${r.quarantined_at} — ${r.quarantine_reason || ""}`
                     : "—",

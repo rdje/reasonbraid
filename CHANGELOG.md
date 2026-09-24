@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-24 — The web console's inbox panel works (`SIGNOFF-REPAIR.4.4.2.2`)
+
+`REASONBRAID-REPAIR-0475`. A defect found by the previous fix.
+
+- 🔴 **Before:** the console's "Inspect inbox" panel had never worked. It asked the server with the wrong parameter name, so every request was refused, and it tried to show a field that does not exist. The check meant to keep the console honest had itself been written with the wrong name, so it agreed with the mistake.
+- ✅ **Now:** the panel works and shows each job's delivery state, whether its answer was refused (and why), and any quarantine. The check now tests the panel against the server's own definitions, so the two cannot drift apart unnoticed again.
+- ✅ Tested: the new check failed on the old console, once for each of the two mistakes, and passes now; strict lint clean.
+
 ## 2026-09-24 — Operators can now see when a finished job's answer was refused (`SIGNOFF-REPAIR.4.4.2.1`)
 
 `REASONBRAID-REPAIR-0474`.

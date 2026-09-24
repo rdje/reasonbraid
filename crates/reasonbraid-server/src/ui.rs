@@ -59,7 +59,7 @@ mod tests {
             "/audit?",
             "/budget?",
             "/v1/nodes/presence?node_id=",
-            "/v1/nodes/inbox?node=",
+            "/v1/nodes/inbox?node_id=",
         ] {
             assert!(
                 APP_JS.contains(surface),
@@ -78,6 +78,93 @@ mod tests {
             INDEX_HTML.contains("/app.js") && INDEX_HTML.contains("/style.css"),
             "the shell loads its assets from the same origin"
         );
+    }
+
+    /// The inbox panel speaks the SERVER's contract, checked against the
+    /// server's own types rather than a list of strings (`SIGNOFF-REPAIR.4.4.2.2`).
+    ///
+    /// The panel sent `?node=` for two years of commits while the route required
+    /// `node_id`, and rendered `r.state`, a field no inbox row has had; the
+    /// surface list above pinned the broken prefix, so the check agreed with the
+    /// bug. Here the query the panel builds is parsed by the route's own
+    /// extractor, and every row field it reads must be a field the server
+    /// serializes.
+    #[test]
+    fn the_inbox_panel_speaks_the_servers_contract() {
+        let start = APP_JS
+            .find("\"/v1/nodes/inbox?")
+            .expect("the panel requests the inbox");
+        let panel_end = start
+            + APP_JS[start..]
+                .find("\n}\n")
+                .expect("the panel's function ends");
+        let panel = &APP_JS[start..panel_end];
+        let request = &panel[..panel.find(");").expect("the request expression ends")];
+
+        // The query's parameter names, as the panel writes them: every `name=`
+        // after `?` or `&` in the request, plus `tenant_id` when it appends
+        // `tenantQuery()`, whose own literal is checked to be that name.
+        assert!(APP_JS.contains("return \"tenant_id=\" + encodeURIComponent(state.tenant);"));
+        let mut query = Vec::new();
+        for (i, _) in request.match_indices('=') {
+            let before = &request[..i];
+            let name_start = before.rfind(['?', '&', '"']).map_or(0, |p| p + 1);
+            let name = &before[name_start..];
+            if !name.is_empty() && name.chars().all(|c| c.is_ascii_lowercase() || c == '_') {
+                query.push(format!("{name}=nod_00000000-0000-7000-8000-000000000001"));
+            }
+        }
+        if request.contains("tenantQuery()") {
+            query.push("tenant_id=ten_00000000-0000-7000-8000-000000000000".to_string());
+        }
+        let uri: axum::http::Uri = format!("/v1/nodes/inbox?{}", query.join("&"))
+            .parse()
+            .expect("a uri");
+        if let Err(e) =
+            axum::extract::Query::<crate::api::InboxInspectionParams>::try_from_uri(&uri)
+        {
+            panic!("the route refuses the panel's query `{uri}`: {e}");
+        }
+
+        // Every row field the panel reads is one the server writes.
+        let row = serde_json::to_value(crate::api::InboxRow {
+            cursor: 1,
+            command_id: String::new(),
+            thread_id: String::new(),
+            payload: serde_json::Value::Null,
+            acknowledged_at: None,
+            quarantined_at: None,
+            quarantine_reason: None,
+            delivery_state: String::new(),
+            result_refusal: None,
+        })
+        .expect("a row serializes");
+        let fields = row.as_object().expect("a row is an object");
+        let mut read = Vec::new();
+        for (i, _) in panel.match_indices("r.") {
+            let preceded_by_ident = panel[..i]
+                .chars()
+                .last()
+                .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
+            if preceded_by_ident {
+                continue;
+            }
+            let name: String = panel[i + 2..]
+                .chars()
+                .take_while(|c| c.is_ascii_lowercase() || *c == '_')
+                .collect();
+            if !name.is_empty() {
+                read.push(name);
+            }
+        }
+        assert!(!read.is_empty(), "the panel reads its rows");
+        for name in &read {
+            assert!(
+                fields.contains_key(name.as_str()),
+                "the panel reads `r.{name}`, which no inbox row has (rows carry {:?})",
+                fields.keys().collect::<Vec<_>>()
+            );
+        }
     }
 
     /// The shell serves over the real listener with typed content types —

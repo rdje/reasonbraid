@@ -3046,3 +3046,100 @@ async fn an_unknown_outcome_keeps_its_hold_past_its_window() {
         "the refusal is the breaker's, which counted the lost call: {body}"
     );
 }
+
+/// `SIGNOFF-REPAIR.4.5.4` — a node cannot settle a reservation that is not its
+/// work item's, even by naming it.
+///
+/// The node's result carries a `reservation_id`, and since REPAIR-0460 the fold
+/// settles the reservation the SERVER stored on the inbox row instead, so the
+/// field is never read. Nothing proved it: a fold that trusted the field would
+/// let one tenant's node spend (or free) another tenant's ceiling. Here node A
+/// reports its result naming tenant B's reservation, with a usage far above
+/// the hold: B's hold must stay exactly as it was, and A's own must settle
+/// with that usage.
+#[tokio::test]
+async fn a_node_cannot_settle_a_foreign_reservation_by_naming_it() {
+    let _g = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (_tenant_a, _human_a, role_a, _thread_a, cert_a, key_a) =
+        dispatch_one_work_item(&client, &server.base(), "key-own").await;
+    let (tenant_b, _human_b, role_b, _thread_b, _cert_b, _key_b) =
+        dispatch_one_work_item(&client, &server.base(), "key-foreign").await;
+    let reservation_of = |role: String| {
+        let pool = pool.clone();
+        async move {
+            sqlx::query_scalar::<_, String>(
+                "SELECT payload->'reservation'->>'reservation_id' FROM node_inbox \
+                 WHERE node_id = $1",
+            )
+            .bind(role)
+            .fetch_one(&pool)
+            .await
+            .expect("the work item's reservation")
+        }
+    };
+    let own = reservation_of(role_a.clone()).await;
+    let foreign = reservation_of(role_b.clone()).await;
+    assert_ne!(own, foreign, "two work items, two reservations");
+    let foreign_tenant: String =
+        sqlx::query_scalar("SELECT tenant_id FROM budget_reservations WHERE reservation_id = $1")
+            .bind(&foreign)
+            .fetch_one(&pool)
+            .await
+            .expect("the foreign reservation");
+    assert_eq!(foreign_tenant, tenant_b, "the foreign hold is tenant B's");
+
+    let (view, token, epoch) = handshake(&client, &server.base(), &role_a, &cert_a, &key_a).await;
+    let command_id = view["replay"][0]["command_id"]
+        .as_str()
+        .expect("A's work item")
+        .to_string();
+    let mut result = work_result(
+        &command_id,
+        "contribute",
+        "an answer whose result names someone else's hold",
+        &foreign,
+        "att_00000000-0000-7000-8000-000000000454",
+    );
+    result["usage"] = json!({ "input_tokens": 1_000_000, "output_tokens": 1_000_000 });
+    let (status, receipt) = submit_event(
+        &client,
+        &server.base(),
+        &role_a,
+        &token,
+        epoch,
+        "evt_00000000-0000-7000-8000-000000000454",
+        "op_00000000-0000-7000-8000-000000000454",
+        &result,
+    )
+    .await;
+    assert_eq!(status, 200, "the result is received: {receipt}");
+
+    let settled = |id: String| {
+        let pool = pool.clone();
+        async move {
+            sqlx::query_as::<_, (String, Option<Value>)>(
+                "SELECT status, usage FROM budget_reservations WHERE reservation_id = $1",
+            )
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .expect("the reservation")
+        }
+    };
+    let (foreign_status, foreign_usage) = settled(foreign).await;
+    assert_eq!(
+        (foreign_status.as_str(), foreign_usage),
+        ("active", None),
+        "tenant B's hold is untouched by A's result"
+    );
+    let (own_status, own_usage) = settled(own).await;
+    assert_eq!(own_status, "settled", "A's own hold settles");
+    assert_eq!(
+        own_usage.as_ref().map(|u| &u["input_tokens"]),
+        Some(&json!(1_000_000)),
+        "with A's reported usage: {own_usage:?}"
+    );
+}

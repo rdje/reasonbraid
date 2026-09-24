@@ -155,6 +155,11 @@ to refuse on it.
 
 ## Settle, release, overrun
 
+A node's result settles the reservation the **server** stored on the work
+item's inbox row. The `reservation_id` a node puts in its result is never read,
+and a live control proves it: a result naming another tenant's reservation
+leaves that hold untouched (`SIGNOFF-REPAIR.4.5.4`).
+
 Settlement records **actual** usage: lower than the reservation frees the
 difference; higher is an **overrun reported in full** (estimate errors feed
 routing, §14.3 — never clamped). Release returns the unused hold. Expired

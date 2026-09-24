@@ -273,6 +273,7 @@
 - [`2026-09-23_this-sessions-findings-re-derived-against-the-running-server.md`](docs/decisions/2026-09-23_this-sessions-findings-re-derived-against-the-running-server.md)
 - [`2026-09-24_nul-in-provider-output-is-replaced-losslessly.md`](docs/decisions/2026-09-24_nul-in-provider-output-is-replaced-losslessly.md)
 - [`2026-09-24_nul-in-provider-output-is-replaced-visibly.md`](docs/decisions/2026-09-24_nul-in-provider-output-is-replaced-visibly.md)
+- [`2026-09-24_the-ca-rotates-itself-with-an-overlapping-trust-set.md`](docs/decisions/2026-09-24_the-ca-rotates-itself-with-an-overlapping-trust-set.md)
 - [`2026-09-24_the-server-outbox-has-a-producer-and-no-consumer.md`](docs/decisions/2026-09-24_the-server-outbox-has-a-producer-and-no-consumer.md)
 
 ## Promoted lessons

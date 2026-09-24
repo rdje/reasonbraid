@@ -7,7 +7,7 @@ answers:
 # NUL in provider output is replaced visibly, and counted
 
 - **Type:** decision
-- **Status:** accepted (taken autonomously; flagged to the director for review)
+- **Status:** superseded by `2026-09-24_nul-in-provider-output-is-replaced-losslessly.md` (`SIGNOFF-REPAIR.4.4.10.3.1`, REPAIR-0488). The director's review found this form short of signoff: a count and no positions, so the replacement was lossy and ambiguous, and the marker never reached the contribution. Kept unchanged below as the record of what was decided first.
 - **Owner:** `SIGNOFF-REPAIR.4.4.10.3`
 - **Date:** 2026-09-24
 - **Work unit:** `REASONBRAID-REPAIR-0473`

@@ -92,17 +92,27 @@ impl WorkerError {
 /// in the platform can hold it (PostgreSQL refuses it in `jsonb` and in `text`),
 /// so the verbatim bytes could only ever be refused, and the whole paid result
 /// lost for one character. Each NUL becomes U+FFFD, the Unicode replacement
-/// character, which is visible where the NUL stood, and the result states how
-/// many were replaced (`nul_replaced`), so nothing about the change is hidden.
-/// Every other character, control characters included, is untouched.
-fn storable_content(chunks: &[String]) -> (String, usize) {
-    let content = chunks.concat();
-    let nul_replaced = content.matches('\0').count();
-    if nul_replaced == 0 {
-        (content, 0)
-    } else {
-        (content.replace('\0', "\u{FFFD}"), nul_replaced)
+/// character, which is visible where the NUL stood, and the result states
+/// EXACTLY where (`SIGNOFF-REPAIR.4.4.10.3.1`): canonical maximal runs
+/// `[start, len]` over Unicode scalar indices into the returned content. A
+/// U+FFFD the provider itself emitted is not in a run, so the replacement is
+/// lossless: the original is the content with the run scalars set back to
+/// U+0000. Every other character, control characters included, is untouched.
+fn storable_content(chunks: &[String]) -> (String, Vec<[usize; 2]>) {
+    let mut content = String::new();
+    let mut runs: Vec<[usize; 2]> = Vec::new();
+    for (at, c) in chunks.iter().flat_map(|chunk| chunk.chars()).enumerate() {
+        if c == '\0' {
+            match runs.last_mut() {
+                Some([start, len]) if *start + *len == at => *len += 1,
+                _ => runs.push([at, 1]),
+            }
+            content.push('\u{FFFD}');
+        } else {
+            content.push(c);
+        }
     }
+    (content, runs)
 }
 
 /// How long the node waits before its next reconcile attempt, after
@@ -503,7 +513,7 @@ impl<A: Adapter> Worker<A> {
         // is not pending, so neither a crash nor an unschedulable node can lose it.
         let event_id = EventId::new().to_string();
         let build_result = |report: &ExecutionReport| {
-            let (content, nul_replaced) = storable_content(&report.chunks);
+            let (content, nul_positions) = storable_content(&report.chunks);
             // The wall-clock seconds ride with the tokens (`SIGNOFF-REPAIR.4.4.6.1`):
             // the control plane settles them against the reservation's clock.
             let mut usage = json!(report.usage);
@@ -522,8 +532,8 @@ impl<A: Adapter> Worker<A> {
                 "content": content,
                 "usage": usage,
             });
-            if nul_replaced > 0 {
-                payload["nul_replaced"] = json!(nul_replaced);
+            if !nul_positions.is_empty() {
+                payload["nul_positions"] = json!(nul_positions);
             }
             ResultEvent {
                 event_id: event_id.clone(),
@@ -689,19 +699,34 @@ impl<A: Adapter> Worker<A> {
 mod tests {
     use super::*;
 
-    /// Only U+0000 changes, each one to U+FFFD, and the count is exact
-    /// (`SIGNOFF-REPAIR.4.4.10.3`); content without NUL is returned as it came.
+    /// Only U+0000 changes, each one to U+FFFD, and its place is exact
+    /// (`SIGNOFF-REPAIR.4.4.10.3.1`): maximal runs over scalar indices, a run
+    /// continuing ACROSS a chunk boundary, a multi-byte scalar counting once,
+    /// and a provider's own U+FFFD never marked. Content without NUL is
+    /// returned as it came, with no runs.
     #[test]
-    fn storable_content_replaces_only_nul_and_counts_it() {
-        let chunks = ["a\0b".to_string(), "\0\u{1f}c\0".to_string()];
+    fn storable_content_replaces_only_nul_and_locates_it() {
+        let chunks = [
+            "a\0b".to_string(),
+            "\0".to_string(),
+            "\0é\u{FFFD}\0".to_string(),
+        ];
         assert_eq!(
             storable_content(&chunks),
-            ("a\u{FFFD}b\u{FFFD}\u{1f}c\u{FFFD}".to_string(), 3)
+            (
+                "a\u{FFFD}b\u{FFFD}\u{FFFD}é\u{FFFD}\u{FFFD}".to_string(),
+                vec![[1, 1], [3, 2], [7, 1]]
+            )
         );
-        let clean = ["plain \u{1} text".to_string()];
+        let clean = ["plain \u{1} text \u{FFFD}".to_string()];
         assert_eq!(
             storable_content(&clean),
-            ("plain \u{1} text".to_string(), 0)
+            ("plain \u{1} text \u{FFFD}".to_string(), vec![])
+        );
+        let all = ["\0\0\0".to_string()];
+        assert_eq!(
+            storable_content(&all),
+            ("\u{FFFD}\u{FFFD}\u{FFFD}".to_string(), vec![[0, 3]])
         );
     }
 

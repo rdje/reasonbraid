@@ -9455,7 +9455,7 @@ pub(crate) async fn apply_node_result_in_tx(
         .get("content")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    let body = if operation == threads::OP_REVISE {
+    let mut body = if operation == threads::OP_REVISE {
         let target = work
             .get("target_event_id")
             .and_then(|v| v.as_str())
@@ -9468,6 +9468,13 @@ pub(crate) async fn apply_node_result_in_tx(
     } else {
         json!({ "tenant_id": tenant_id.to_string(), "content": content })
     };
+    // Where the node replaced a U+0000 no store can hold (`SIGNOFF-REPAIR.4.4.10.3.1`):
+    // forwarded as the node stated it, and validated by the command like any
+    // author's, so a false claim is this result's rejection. Absent when the
+    // node replaced nothing, which keeps every other result's hash unchanged.
+    if let Some(runs) = payload.get("nul_positions") {
+        body["nul_positions"] = runs.clone();
+    }
     // `None` for the target: this path's idempotency key is the server-assigned
     // `command_id` (with its node), which belongs to exactly one thread, so no
     // caller can vary the target under a fixed key. Binding it here would change

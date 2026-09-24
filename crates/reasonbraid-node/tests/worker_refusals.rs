@@ -204,24 +204,26 @@ async fn a_reconcile_that_meets_a_permanent_refusal_completes() {
     );
 }
 
-/// `SIGNOFF-REPAIR.4.4.10.3` — provider output holding U+0000 is DELIVERED, with
-/// each NUL replaced by U+FFFD (the Unicode replacement character) and the count
-/// stated in the result. No store in the platform can hold NUL, so the verbatim
-/// bytes could only ever be refused, losing the whole paid result for one
-/// character. The stub refuses NUL exactly as the control plane does since
-/// `.4.4.10.1`. The chunk is the fixture corpus's own `malformed_output`.
+/// `SIGNOFF-REPAIR.4.4.10.3` / `.4.4.10.3.1` — provider output holding U+0000 is
+/// DELIVERED, with each NUL replaced by U+FFFD (the Unicode replacement
+/// character) and its exact place stated in the result as `nul_positions`, runs
+/// of `[start, len]` over Unicode scalar indices. No store in the platform can
+/// hold NUL, so the verbatim bytes could only ever be refused. The positions
+/// make the replacement LOSSLESS: a U+FFFD the provider itself emitted is not
+/// marked, so the original is exactly the content with the marked scalars set
+/// back to U+0000. The stub refuses NUL exactly as the control plane does since
+/// `.4.4.10.1`. The chunk is the fixture corpus's own `malformed_output`, with a
+/// genuine U+FFFD and a run of two NULs added.
 #[tokio::test]
-async fn output_holding_nul_is_delivered_with_the_nul_replaced_and_counted() {
+async fn output_holding_nul_is_delivered_with_the_nul_replaced_and_located() {
     let stub =
         StubControlPlane::start_refusing(BTreeMap::from([(TENANT.to_string(), 7)]), "\u{0}").await;
     let fixture = fixture("nul-output");
     let node = reconciled_node(&stub, &fixture.join("node.db")).await;
     seed(node.journal(), "nul-output").await;
 
-    worker(&node, "\u{1f}\u{0} garbage {{{ not-json")
-        .tick()
-        .await
-        .expect("the tick");
+    let original = "\u{1f}\u{0}\u{FFFD}\u{0}\u{0} garbage {{{ not-json";
+    worker(&node, original).tick().await.expect("the tick");
     assert!(
         node.journal()
             .event_refusals()
@@ -232,14 +234,29 @@ async fn output_holding_nul_is_delivered_with_the_nul_replaced_and_counted() {
     );
     let delivered = stub.events();
     assert_eq!(delivered.len(), 1, "the result was delivered");
+    let content = delivered[0].payload["content"].as_str().expect("content");
     assert_eq!(
-        delivered[0].payload["content"], "\u{1f}\u{FFFD} garbage {{{ not-json",
+        content, "\u{1f}\u{FFFD}\u{FFFD}\u{FFFD}\u{FFFD} garbage {{{ not-json",
         "each NUL is U+FFFD, and everything else is verbatim"
     );
     assert_eq!(
-        delivered[0].payload["nul_replaced"], 1,
-        "the result says how many were replaced"
+        delivered[0].payload["nul_positions"],
+        serde_json::json!([[1, 1], [3, 2]]),
+        "the result says exactly where, and the provider's own U+FFFD is not marked"
     );
+    assert!(
+        delivered[0].payload.get("nul_replaced").is_none(),
+        "the count is derivable from the runs, so it is not a second copy"
+    );
+    // The replacement is lossless: the original is restored from the runs.
+    let mut restored: Vec<char> = content.chars().collect();
+    for run in delivered[0].payload["nul_positions"].as_array().unwrap() {
+        let (start, len) = (run[0].as_u64().unwrap(), run[1].as_u64().unwrap());
+        for at in start..start + len {
+            restored[at as usize] = '\u{0}';
+        }
+    }
+    assert_eq!(restored.into_iter().collect::<String>(), original);
 }
 
 /// Output without NUL is untouched, and says nothing about replacement.
@@ -262,7 +279,8 @@ async fn output_without_nul_is_verbatim_and_unannotated() {
         "\u{1f} garbage {{{ not-json"
     );
     assert!(
-        delivered[0].payload.get("nul_replaced").is_none(),
+        delivered[0].payload.get("nul_positions").is_none()
+            && delivered[0].payload.get("nul_replaced").is_none(),
         "no annotation when nothing was replaced: {}",
         delivered[0].payload
     );

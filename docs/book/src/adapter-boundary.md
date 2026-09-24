@@ -110,21 +110,38 @@ authorized adjudication (`reconciled`).
 
 ### The one exception to *verbatim*: U+0000
 
-No store in the platform can hold the NUL character, so a result carrying one
-could never be accepted, and the whole paid answer would be lost over a single
-character. When the node builds a result, each U+0000 becomes U+FFFD (the
-Unicode replacement character, visible where the NUL stood), and the result
-says how many were replaced (`SIGNOFF-REPAIR.4.4.10.3`):
+No store in the platform can hold the NUL character: PostgreSQL refuses it in
+`jsonb` and in `text`. A result carrying one could never be accepted, and the
+whole paid answer would be lost over a single character. So when the node
+builds a result, each U+0000 becomes U+FFFD, the Unicode replacement character,
+visible where the NUL stood. The result also says exactly **where**, as
+`nul_positions`: canonical runs `[start, len]` over Unicode scalar indices into
+the delivered content (`SIGNOFF-REPAIR.4.4.10.3.1`):
 
 ```text
-provider output   "before\0after"
-delivered content "before\u{FFFD}after"   and   "nul_replaced": 1
+provider output   "before\0after\u{FFFD}"
+delivered content "before\u{FFFD}after\u{FFFD}"   and   "nul_positions": [[6, 1]]
 ```
 
+The replacement is **lossless**. A U+FFFD the provider emitted itself (the last
+one above) is not in a run, so the original is exactly the content with the
+run scalars set back to U+0000. Runs are maximal, so an all-NUL result is one
+run, however long.
+
+The positions do not stop at the node. The control plane validates them for
+any author (runs in order, non-empty, never touching, in bounds, over U+FFFD
+only; anything else is `400 invalid_command`). It then stores them on the
+`thread.contribution_submitted` or `thread.revised` event, which is what every
+reader and agent sees. A person contributing through the API may send the same
+field under the same rule. A blind contribution's positions are withheld with
+its content until the commitment point.
+
 Nothing else changes, control characters included. Output without NUL is
-delivered exactly as it came, with no `nul_replaced` field. The decision and
-its alternative, failing the attempt instead, are recorded in
-`docs/decisions/2026-09-24_nul-in-provider-output-is-replaced-visibly.md`.
+delivered exactly as it came, with no `nul_positions` field. Until
+`SIGNOFF-REPAIR.4.4.10.3.1` the result carried only a count, `nul_replaced`.
+That lost the positions, confused a provider's own U+FFFD with a replaced NUL,
+and never reached the contribution. The decision is recorded in
+`docs/decisions/2026-09-24_nul-in-provider-output-is-replaced-losslessly.md`.
 
 ### Two bounds on every attempt
 

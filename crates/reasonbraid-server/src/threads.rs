@@ -664,6 +664,10 @@ pub struct ContributeBody {
     /// contribution.
     #[serde(default)]
     pub ballot: Option<BallotInput>,
+    /// `SIGNOFF-REPAIR.4.4.10.3.1`: where `content` holds a U+FFFD that stands
+    /// for a U+0000 no store can hold. Validated by [`check_nul_positions`].
+    #[serde(default)]
+    pub nul_positions: Vec<[u64; 2]>,
 }
 
 /// One ballot (`SIGNOFF-REPAIR.8.1.1.2`). The choice is the whole record: the
@@ -800,6 +804,60 @@ pub struct ReviseBody {
     pub tenant_id: TenantId,
     pub target_event_id: String,
     pub content: String,
+    /// `SIGNOFF-REPAIR.4.4.10.3.1`, as on [`ContributeBody`].
+    #[serde(default)]
+    pub nul_positions: Vec<[u64; 2]>,
+}
+
+/// Validate a `nul_positions` claim against the content it describes
+/// (`SIGNOFF-REPAIR.4.4.10.3.1`). No store can hold U+0000, so a node replaces
+/// each one with U+FFFD and states where; the claim makes that replacement
+/// LOSSLESS (the original is the content with those scalars set back to U+0000)
+/// and visible to every reader of the event. It is only trustworthy if checked:
+/// canonical runs `[start, len]` over Unicode scalar indices, each non-empty,
+/// in order, never adjacent to the previous one (two runs that touch are one),
+/// in bounds, and covering nothing but U+FFFD. The same rule holds for any
+/// author, so a marked scalar always was a replaced NUL.
+pub fn check_nul_positions(content: &str, runs: &[[u64; 2]]) -> Result<(), ThreadError> {
+    if runs.is_empty() {
+        return Ok(());
+    }
+    let scalars: Vec<char> = content.chars().collect();
+    let refuse = |why: String| Err(ThreadError::InvalidCommand(format!("nul_positions: {why}")));
+    let mut previous_end: Option<u64> = None;
+    for &[start, len] in runs {
+        if len == 0 {
+            return refuse(format!("the run at {start} is empty"));
+        }
+        if previous_end.is_some_and(|end| start <= end) {
+            return refuse(format!(
+                "the run at {start} is out of order or touches the one before it"
+            ));
+        }
+        let Some(end) = start.checked_add(len) else {
+            return refuse(format!("the run at {start} overflows"));
+        };
+        if end > scalars.len() as u64 {
+            return refuse(format!(
+                "the run at {start} ends past the content's {} scalars",
+                scalars.len()
+            ));
+        }
+        if let Some(at) = (start..end).find(|&at| scalars[at as usize] != '\u{FFFD}') {
+            return refuse(format!("scalar {at} is not U+FFFD"));
+        }
+        previous_end = Some(end);
+    }
+    Ok(())
+}
+
+/// Attach a validated `nul_positions` claim to an event body, omitted when
+/// there is none, so an ordinary contribution's body is unchanged.
+fn with_nul_positions(mut body: Value, runs: &[[u64; 2]]) -> Value {
+    if !runs.is_empty() {
+        body["nul_positions"] = serde_json::json!(runs);
+    }
+    body
 }
 
 /// The close outcome (`.2.4.1`, §13.4): the TWELVE valid terminals with the two
@@ -1941,6 +1999,7 @@ where
         OP_CONTRIBUTE => {
             let body: ContributeBody = serde_json::from_value(body.clone())
                 .map_err(|e| ThreadError::InvalidCommand(e.to_string()))?;
+            check_nul_positions(&body.content, &body.nul_positions)?;
             require_open(&projection, "contribute")?;
             ensure_participant(&projection, principal)?;
             // `.2.2` (ADR-029): structured claims ride a `claim`-kind
@@ -2385,39 +2444,42 @@ where
                 == Some("blind_solicit");
             (
                 EVENT_CONTRIBUTED,
-                json!({
-                    "operation": OP_CONTRIBUTE,
-                    "thread_id": thread_id.to_string(),
-                    "tenant_id": tenant_id.to_string(),
-                    "actor_principal_id": principal,
-                    "author": principal,
-                    "content": body.content,
-                    "kind": body.kind,
-                    "evidence_refs": evidence_refs,
-                    "claims": claims,
-                    "target_claim_digest": body.target_claim_digest,
-                    "ref_event_id": body.ref_event_id,
-                    "synthesis": body.synthesis,
-                    "ballot": cast.map(|choice| json!({ "choice": choice })),
-                    // The rule is the THREAD's, derived (`.8.1.1.3`): null when the
-                    // thread declared none, never an adjudicator's word.
-                    "verdict": body.verdict.as_ref().map(|v| json!({
-                        "target_digest": v.target_digest,
-                        "rule": projection.decision_rule.map(|r| r.as_str()),
-                        "outcome": v.outcome.canonical(),
-                    })),
-                    "assessment": body.assessment.as_ref().map(|a| json!({
-                        "claim_digest": a.claim_digest,
-                        "snapshot_id": a.snapshot_id,
-                        "assessment": a.assessment,
-                        "excerpt": a.excerpt,
-                        "rationale": a.rationale,
-                        "selector": a.selector,
-                        "assessment_id": recorded_assessment,
-                    })),
-                    "round": projection.current_round,
-                    "blind": blind,
-                }),
+                with_nul_positions(
+                    json!({
+                        "operation": OP_CONTRIBUTE,
+                        "thread_id": thread_id.to_string(),
+                        "tenant_id": tenant_id.to_string(),
+                        "actor_principal_id": principal,
+                        "author": principal,
+                        "content": body.content,
+                        "kind": body.kind,
+                        "evidence_refs": evidence_refs,
+                        "claims": claims,
+                        "target_claim_digest": body.target_claim_digest,
+                        "ref_event_id": body.ref_event_id,
+                        "synthesis": body.synthesis,
+                        "ballot": cast.map(|choice| json!({ "choice": choice })),
+                        // The rule is the THREAD's, derived (`.8.1.1.3`): null when the
+                        // thread declared none, never an adjudicator's word.
+                        "verdict": body.verdict.as_ref().map(|v| json!({
+                            "target_digest": v.target_digest,
+                            "rule": projection.decision_rule.map(|r| r.as_str()),
+                            "outcome": v.outcome.canonical(),
+                        })),
+                        "assessment": body.assessment.as_ref().map(|a| json!({
+                            "claim_digest": a.claim_digest,
+                            "snapshot_id": a.snapshot_id,
+                            "assessment": a.assessment,
+                            "excerpt": a.excerpt,
+                            "rationale": a.rationale,
+                            "selector": a.selector,
+                            "assessment_id": recorded_assessment,
+                        })),
+                        "round": projection.current_round,
+                        "blind": blind,
+                    }),
+                    &body.nul_positions,
+                ),
                 serde_json::to_value(&projection).expect("projection serializes"),
             )
         }
@@ -2509,6 +2571,7 @@ where
         OP_REVISE => {
             let body: ReviseBody = serde_json::from_value(body.clone())
                 .map_err(|e| ThreadError::InvalidCommand(e.to_string()))?;
+            check_nul_positions(&body.content, &body.nul_positions)?;
             require_open(&projection, "revise")?;
             ensure_participant(&projection, principal)?;
             match event_type_in_thread(&mut *tx, tenant_id, thread_id, &body.target_event_id)
@@ -2533,15 +2596,18 @@ where
             projection.revisions += 1;
             (
                 EVENT_REVISED,
-                json!({
-                    "operation": OP_REVISE,
-                    "thread_id": thread_id.to_string(),
-                    "tenant_id": tenant_id.to_string(),
-                    "actor_principal_id": principal,
-                    "author": principal,
-                    "target_event_id": body.target_event_id,
-                    "content": body.content,
-                }),
+                with_nul_positions(
+                    json!({
+                        "operation": OP_REVISE,
+                        "thread_id": thread_id.to_string(),
+                        "tenant_id": tenant_id.to_string(),
+                        "actor_principal_id": principal,
+                        "author": principal,
+                        "target_event_id": body.target_event_id,
+                        "content": body.content,
+                    }),
+                    &body.nul_positions,
+                ),
                 serde_json::to_value(&projection).expect("projection serializes"),
             )
         }
@@ -2691,6 +2757,61 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `SIGNOFF-REPAIR.4.4.10.3.1` — a claim rides the event body exactly when
+    /// there is one: an ordinary contribution's body is unchanged, key and all.
+    #[test]
+    fn with_nul_positions_attaches_only_a_present_claim() {
+        let body = serde_json::json!({ "content": "a\u{FFFD}b" });
+        assert_eq!(with_nul_positions(body.clone(), &[]), body);
+        assert_eq!(
+            with_nul_positions(body, &[[1, 1]]),
+            serde_json::json!({ "content": "a\u{FFFD}b", "nul_positions": [[1, 1]] })
+        );
+    }
+
+    /// `SIGNOFF-REPAIR.4.4.10.3.1` — the claim is accepted exactly when it is
+    /// canonical, in bounds and over U+FFFD only; each refusal names its rule.
+    #[test]
+    fn check_nul_positions_accepts_only_a_true_canonical_claim() {
+        let r = '\u{FFFD}';
+        let content: String = ['a', r, r, 'b', r, 'é', r].iter().collect();
+        let ok = |runs: &[[u64; 2]]| check_nul_positions(&content, runs).is_ok();
+        let why = |runs: &[[u64; 2]]| match check_nul_positions(&content, runs) {
+            Err(ThreadError::InvalidCommand(m)) => m,
+            other => panic!("expected a refusal, got {other:?}"),
+        };
+        assert!(ok(&[]));
+        assert!(ok(&[[1, 2]]));
+        assert!(ok(&[[1, 1]]), "a run may cover part of a U+FFFD stretch");
+        assert!(
+            ok(&[[1, 2], [4, 1], [6, 1]]),
+            "the last scalar is in bounds"
+        );
+        assert!(
+            ok(&[[2, 1], [4, 1]]),
+            "a gap of one scalar keeps runs apart"
+        );
+        assert!(why(&[[1, 0]]).contains("empty"));
+        assert!(why(&[[0, 1]]).contains("scalar 0 is not U+FFFD"));
+        assert!(why(&[[1, 3]]).contains("scalar 3 is not U+FFFD"));
+        assert!(why(&[[6, 2]]).contains("ends past"));
+        assert!(why(&[[7, 1]]).contains("ends past"), "one past the end");
+        assert!(
+            why(&[[1, 1], [2, 1]]).contains("touches"),
+            "adjacent runs are one"
+        );
+        assert!(why(&[[4, 1], [1, 1]]).contains("out of order"));
+        assert!(
+            why(&[[1, 2], [1, 2]]).contains("out of order"),
+            "a repeated run"
+        );
+        assert!(why(&[[u64::MAX, 2]]).contains("overflows"));
+        assert!(
+            why(&[[5, 1]]).contains("scalar 5 is not U+FFFD"),
+            "é counts as one scalar"
+        );
+    }
 
     /// The evaluator-access registry (`.1.4.3`): the dev registry qualifies
     /// `general` only — `confidential` has NO qualified evaluator, so the

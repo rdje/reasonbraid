@@ -86,8 +86,9 @@ Only a refusal of the event's own bytes counts as permanent. Authentication
 and fencing, an unknown node, a cursor disagreement, a store fault and a
 protocol mismatch are all cured by a reconcile, so they stay what they were.
 A node's own results never meet the NUL refusal: it replaces each U+0000 with
-U+FFFD before delivery and says so (`SIGNOFF-REPAIR.4.4.10.3`; the adapter
-chapter has the detail).
+U+FFFD before delivery and states where, in `nul_positions`. The control plane
+validates the positions and carries them onto the contribution
+(`SIGNOFF-REPAIR.4.4.10.3.1`; the adapter chapter has the detail).
 
 ## Authentication (`.1.2.2`, certificate-proofed)
 

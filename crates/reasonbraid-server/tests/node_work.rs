@@ -2640,10 +2640,12 @@ async fn input_the_store_cannot_hold_is_refused_as_the_callers() {
     );
 }
 
-/// `SIGNOFF-REPAIR.4.4.10.3`, end to end: a provider whose output holds U+0000
-/// still gets its work into the thread. The node replaces each NUL with U+FFFD
-/// and says how many; the control plane, which could never store the NUL,
-/// stores the contribution.
+/// `SIGNOFF-REPAIR.4.4.10.3` / `.4.4.10.3.1`, end to end: a provider whose
+/// output holds U+0000 still gets its work into the thread, and the thread's
+/// READERS can tell. The node replaces each NUL with U+FFFD and locates it in
+/// `nul_positions`; the control plane, which could never store the NUL,
+/// stores the contribution with those positions, and a U+FFFD the provider
+/// itself emitted stays unmarked, so the original is recoverable exactly.
 #[tokio::test]
 async fn provider_output_holding_nul_lands_as_a_contribution() {
     let _g = guard().await;
@@ -2672,7 +2674,7 @@ async fn provider_output_holding_nul_lands_as_a_contribution() {
         reasonbraid_adapter::FakeAdapter::new(
             vec![
                 reasonbraid_adapter::ScriptStep::EmitChunk {
-                    chunk: "before\u{0}after".to_string(),
+                    chunk: "before\u{0}after\u{FFFD}".to_string(),
                 },
                 reasonbraid_adapter::ScriptStep::Complete { usage: None },
             ],
@@ -2712,8 +2714,18 @@ async fn provider_output_holding_nul_lands_as_a_contribution() {
         .collect();
     assert_eq!(
         contents,
-        ["before\u{FFFD}after"],
+        ["before\u{FFFD}after\u{FFFD}"],
         "the contribution landed, the NUL visible as U+FFFD"
+    );
+    let marked: Vec<&Value> = events
+        .iter()
+        .filter(|e| e["event_type"] == "thread.contribution_submitted")
+        .map(|e| &e["body"]["nul_positions"])
+        .collect();
+    assert_eq!(
+        marked,
+        [&json!([[6, 1]])],
+        "the contribution says where the NUL stood, and only there"
     );
 }
 
@@ -3141,5 +3153,98 @@ async fn a_node_cannot_settle_a_foreign_reservation_by_naming_it() {
         own_usage.as_ref().map(|u| &u["input_tokens"]),
         Some(&json!(1_000_000)),
         "with A's reported usage: {own_usage:?}"
+    );
+}
+
+/// `SIGNOFF-REPAIR.4.4.10.3.1` — `nul_positions` is a CLAIM about the content,
+/// validated by the server for any author, node or human: canonical runs
+/// (ordered, non-empty, non-adjacent), in bounds, and covering only U+FFFD. A
+/// valid claim is stored on the contribution; every other shape is the
+/// caller's `400 invalid_command`, so a reader can trust that a marked scalar
+/// really was a NUL replaced, never text the author chose to disown.
+#[tokio::test]
+async fn nul_positions_are_validated_and_carried_for_any_author() {
+    let _g = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (tenant, human, _role, thread, _cert, _key) =
+        dispatch_one_work_item(&client, &server.base(), "key-nul-claims").await;
+    let contribute = |key: &str, content: &str, positions: Value| {
+        envelope(
+            "thread.contribute",
+            key,
+            json!({ "tenant_id": tenant, "content": content, "nul_positions": positions }),
+        )
+    };
+    let path = format!("/v1/threads/{thread}/commands");
+
+    for (key, content, positions, why) in [
+        (
+            "nul-off",
+            "a\u{FFFD}b",
+            json!([[0, 1]]),
+            "a run over a scalar that is not U+FFFD",
+        ),
+        (
+            "nul-oob",
+            "a\u{FFFD}b",
+            json!([[3, 1]]),
+            "a run past the end",
+        ),
+        ("nul-empty", "a\u{FFFD}b", json!([[1, 0]]), "an empty run"),
+        (
+            "nul-adjacent",
+            "a\u{FFFD}\u{FFFD}b",
+            json!([[1, 1], [2, 1]]),
+            "two runs that are one",
+        ),
+        (
+            "nul-order",
+            "\u{FFFD}a\u{FFFD}",
+            json!([[2, 1], [0, 1]]),
+            "runs out of order",
+        ),
+        (
+            "nul-shape",
+            "a\u{FFFD}b",
+            json!([[1]]),
+            "a run that is not [start, len]",
+        ),
+    ] {
+        let (status, body) = command(
+            &client,
+            &server.base(),
+            &path,
+            &human,
+            &contribute(key, content, positions),
+        )
+        .await;
+        assert_eq!(
+            (status, body["code"].as_str()),
+            (400, Some("invalid_command")),
+            "{why} is refused: {body}"
+        );
+    }
+
+    let (status, body) = command(
+        &client,
+        &server.base(),
+        &path,
+        &human,
+        &contribute("nul-valid", "a\u{FFFD}\u{FFFD}b\u{FFFD}", json!([[1, 2]])),
+    )
+    .await;
+    assert_eq!(status, 200, "a true claim is accepted: {body}");
+    let events = thread_events(&client, &server.base(), &thread, &tenant, &human).await;
+    let stored: Vec<&Value> = events
+        .iter()
+        .filter(|e| e["event_type"] == "thread.contribution_submitted")
+        .map(|e| &e["body"]["nul_positions"])
+        .collect();
+    assert_eq!(
+        stored,
+        [&json!([[1, 2]])],
+        "only the valid claim landed, carried as sent; the last U+FFFD is the author's own"
     );
 }

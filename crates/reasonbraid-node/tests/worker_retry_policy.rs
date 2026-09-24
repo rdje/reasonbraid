@@ -362,3 +362,131 @@ async fn an_authorized_ambiguous_outcome_redispatches() {
         "the authorized ambiguous outcome re-dispatched exactly one more attempt"
     );
 }
+
+/// Re-deliver `command_id` the way a re-ask does: the same command, a FRESH
+/// admission decision, and `payload` (`SIGNOFF-REPAIR.4.4.7.2.1`).
+async fn redeliver(journal: &Journal, command_id: &str, payload: &Value) {
+    let decided_at = (Utc::now() + chrono::Duration::seconds(1)).to_rfc3339();
+    journal
+        .record_command(
+            &CommandInput {
+                command_id,
+                tenant_id: "ten_00000000-0000-7000-8000-000000000000",
+                thread_id: "thr_00000000-0000-7000-8000-000000000000",
+                payload,
+                authz_ref: Some("authz_00000000-0000-7000-8000-000000000002"),
+                policy_digest: Some("digest-a"),
+                decided_at: Some(&decided_at),
+                revocation_epoch: Some(7),
+                server_cursor: "2",
+            },
+            Utc::now(),
+        )
+        .await
+        .expect("the re-delivery");
+}
+
+/// THE re-ask reaches the node (`SIGNOFF-REPAIR.4.4.7.2.1`). An `outcome_unknown`
+/// attempt is re-asked: the same command comes back with a fresh decision, the
+/// possible-duplicate flag and a NEW reservation (the original stays held for
+/// the attempt that may have run). The node's journal takes those two
+/// authorization fields, so the retry gate honours the flag, re-dispatches, and
+/// charges the NEW reservation. Before this leaf the journal ignored a
+/// re-delivered payload, and the gate still refused `retry_requires_authorization`.
+#[tokio::test]
+async fn a_reask_redelivery_authorizes_the_possible_duplicate_retry() {
+    let (stub, _fixture, node) = schedulable_node("retry-reask").await;
+    let original = work_payload(true, false);
+    let (command_id, operation_id) = seed_command(node.journal(), "reask", &original).await;
+    let attempt_id = reasonbraid_core::ProviderAttemptId::new().to_string();
+    node.journal()
+        .prepare_attempt(&attempt_id, &operation_id, Utc::now())
+        .await
+        .expect("prepare");
+    node.journal()
+        .record_dispatch(&attempt_id, None, Utc::now())
+        .await
+        .expect("dispatch");
+    node.journal()
+        .record_outcome_unknown(&attempt_id, Some("lost"), Utc::now())
+        .await
+        .expect("outcome unknown");
+
+    let mut reasked = original.clone();
+    reasked["allow_possible_duplicate"] = json!(true);
+    reasked["reservation"]["reservation_id"] = json!("res_00000000-0000-7000-8000-00000000000b");
+    redeliver(node.journal(), &command_id, &reasked).await;
+
+    let worker = Worker::new(
+        node.clone(),
+        completing_adapter(),
+        local(),
+        Duration::from_secs(1),
+    );
+    let item = node
+        .journal()
+        .work_items()
+        .await
+        .expect("work items")
+        .into_iter()
+        .find(|w| w.command_id == command_id)
+        .expect("the item");
+    worker
+        .process(&item)
+        .await
+        .expect("the re-asked retry runs");
+    assert_eq!(
+        attempt_count(node.journal(), &operation_id).await,
+        2,
+        "the re-ask re-dispatched exactly one more attempt"
+    );
+    let delivered = stub
+        .events()
+        .into_iter()
+        .find(|e| e.payload["kind"] == "work_result")
+        .expect("the re-run's result");
+    assert_eq!(
+        delivered.payload["reservation_id"], "res_00000000-0000-7000-8000-00000000000b",
+        "and ran under the NEW reservation"
+    );
+}
+
+/// A re-delivery refreshes the work's AUTHORIZATION and never the work
+/// (`SIGNOFF-REPAIR.4.4.7.2.1`): a changed `kind` or any other field is ignored,
+/// so a redelivery can widen what a node may risk, never change what it was
+/// asked to do.
+#[tokio::test]
+async fn a_redelivery_never_changes_the_work() {
+    let (_stub, _fixture, node) = schedulable_node("retry-work-fixed").await;
+    let original = work_payload(true, false);
+    let (command_id, _operation_id) = seed_command(node.journal(), "fixed", &original).await;
+
+    let mut altered = original.clone();
+    altered["kind"] = json!("revise");
+    altered["target_event_id"] = json!("evt_injected");
+    altered["allow_possible_duplicate"] = json!(true);
+    redeliver(node.journal(), &command_id, &altered).await;
+
+    let item = node
+        .journal()
+        .work_items()
+        .await
+        .expect("work items")
+        .into_iter()
+        .find(|w| w.command_id == command_id)
+        .expect("the item");
+    let held: Value = serde_json::from_str(&item.payload).expect("the payload");
+    assert_eq!(
+        held["kind"], original["kind"],
+        "the work kind is as first delivered"
+    );
+    assert!(
+        held.get("target_event_id").is_none(),
+        "no field is added: {held}"
+    );
+    assert_eq!(
+        held["allow_possible_duplicate"],
+        json!(true),
+        "the authorization is refreshed"
+    );
+}

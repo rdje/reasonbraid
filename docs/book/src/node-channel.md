@@ -778,6 +778,19 @@ tell a caller to wait for capacity that is not coming back on its own.
 ⚠️ A node that declares **no** concurrency at all never reads `busy`, however
 much it holds. It never said what it can take, so there is no limit to be at.
 
+### A re-delivery may change what the node may risk, never what it does
+
+A command the node already holds may come back: a replay, or a re-ask of an
+attempt whose outcome is unknown. When it comes back with a **fresh admission
+decision**, the node takes the new decision facts and exactly two fields of the
+work: its authorization. These are `allow_possible_duplicate` and the
+`reservation` it runs under (`SIGNOFF-REPAIR.4.4.7.2.1`). Everything else stays
+as first delivered: the work's kind, its target, and every other field that
+says what to do. So a re-ask can let the retry gate re-run an ambiguous
+attempt, under its own fresh reservation, but no re-delivery can turn a
+contribution into something else. Before this, the node took nothing from a
+re-delivery except the decision facts, so a re-ask could never reach it.
+
 ### A completed result and its event are written together
 
 The node writes a finished attempt's `completed` record and its outgoing

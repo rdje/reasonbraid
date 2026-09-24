@@ -287,6 +287,30 @@ pub struct JournalCounts {
     pub events_acked: i64,
 }
 
+/// The payload a re-delivery with a FRESH admission decision leaves in the
+/// journal (`SIGNOFF-REPAIR.4.4.7.2.1`): the work as FIRST delivered, with only
+/// its AUTHORIZATION fields taken from the re-delivery.
+///
+/// A re-ask is the same command coming back with the possible-duplicate flag and
+/// a fresh reservation (the original stays held for the attempt that may have
+/// run). Those two fields are what a later decision may change, and they are
+/// taken; everything else, the work's kind and every field that says what to do,
+/// stays as first delivered. So a re-delivery can widen what the node may
+/// risk, and never change what it was asked to do. Before this, the journal
+/// took nothing from a re-delivery but the decision facts, and a re-ask could
+/// never reach the retry gate.
+fn with_refreshed_authorization(mut held: Value, redelivered: &Value) -> Value {
+    const AUTHORIZATION: [&str; 2] = ["allow_possible_duplicate", "reservation"];
+    if let Some(held) = held.as_object_mut() {
+        for field in AUTHORIZATION {
+            if let Some(value) = redelivered.get(field) {
+                held.insert(field.to_string(), value.clone());
+            }
+        }
+    }
+    held
+}
+
 /// A node-local journal handle. The pool is capped at ONE connection: the journal is a
 /// single-writer local store, and serializing writers makes the state-machine guards
 /// (`WHERE status = ?`) authoritative rather than a race-detection net. `Clone` shares
@@ -531,14 +555,26 @@ impl Journal {
         // `work_items` ordering for no stated reason, and unjustified behaviour
         // is not kept by inertia. The receipt means first delivery again.
         if already_known && cmd.decided_at.is_some() {
+            let held: String =
+                sqlx::query_scalar("SELECT payload FROM commands WHERE command_id = ?")
+                    .bind(cmd.command_id)
+                    .fetch_one(&self.pool)
+                    .await?;
+            let held: Value =
+                serde_json::from_str(&held).map_err(|e| JournalError::CorruptState {
+                    key: "command payload",
+                    value: e.to_string(),
+                })?;
+            let payload = with_refreshed_authorization(held, cmd.payload);
             sqlx::query(
                 "UPDATE commands SET authz_ref = ?, policy_digest = ?, decided_at = ?, \
-                 revocation_epoch = ? WHERE command_id = ?",
+                 revocation_epoch = ?, payload = ? WHERE command_id = ?",
             )
             .bind(cmd.authz_ref)
             .bind(cmd.policy_digest)
             .bind(cmd.decided_at)
             .bind(cmd.revocation_epoch)
+            .bind(&payload)
             .bind(cmd.command_id)
             .execute(&self.pool)
             .await?;

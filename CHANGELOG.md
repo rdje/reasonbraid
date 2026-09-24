@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-24 — A machine can now receive permission to retry a job whose outcome is unknown (`SIGNOFF-REPAIR.4.4.7.2.1`)
+
+`REASONBRAID-REPAIR-0480`. The first part of the "ask again, accepting a possible duplicate" action.
+
+- 🔴 **Before:** once a machine had a job, nothing sent later could change it. That included permission to retry a job whose outcome is unknown, so even an authorized retry could never reach the machine.
+- ✅ **Now:** when a job is sent again with a fresh approval, the machine takes two things from it: whether a possible duplicate is allowed, and which budget hold to run under. It keeps everything that says what the job is. A resend can extend what a machine may risk; it can never change what it was asked to do.
+- ⚠️ Next: the server-side action that sends such a resend, then the command-line action and a full end-to-end check.
+- ✅ Tested: two new checks failed on the old code and pass now; 112 machine tests and two live suites pass; every deliberately broken version was caught; strict lint clean.
+
 ## 2026-09-24 — The recovery options now say which ones actually exist (`SIGNOFF-REPAIR.4.4.7.1`)
 
 `REASONBRAID-REPAIR-0479`.

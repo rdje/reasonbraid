@@ -279,9 +279,13 @@ where
             scope_id: scope_id.to_string(),
         });
     }
+    // Locked before the window is counted (`SIGNOFF-REPAIR.4.5.3`): a concurrent
+    // check waits here and then counts the use this one records. Unlocked, two
+    // checks each counted the uses committed so far and both passed a quota
+    // with room for one.
     let row: Option<(String, i64, i64)> = sqlx::query_as(
         "SELECT quota_id, ceiling, window_seconds FROM usage_quotas \
-         WHERE tenant_id = $1 AND scope_kind = $2 AND scope_id = $3",
+         WHERE tenant_id = $1 AND scope_kind = $2 AND scope_id = $3 FOR UPDATE",
     )
     .bind(tenant_id)
     .bind(scope_kind)

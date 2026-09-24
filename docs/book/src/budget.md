@@ -123,6 +123,36 @@ possible charge, never toward lending it twice.
 > direction. A node that never reports again gives the server nothing to act on,
 > so its hold lapses at the end of its window, as before.
 
+## Admission is serialized
+
+Each admission check sums what is already committed and then records its own
+row: the ceiling's held amount, the breaker's tenant-wide spend, and a quota's
+uses in its window. Until `SIGNOFF-REPAIR.4.5.3` none of them locked anything.
+Command paths hold the tenant's authority guard in shared mode, so two
+admissions could interleave. Each would sum the rows committed so far, see room
+for one, and both would record it: the ceiling, the breaker or the quota
+overshot by one admission per race.
+
+Each check now locks the row it decides against before it sums:
+
+| Check | Lock |
+| --- | --- |
+| Ceiling (`create_reservation_in_tx`) | `budget_ceilings … FOR UPDATE` |
+| Spend breaker (`check_spend_breaker_in_tx`) | `spend_breakers … FOR UPDATE`, after the ceiling |
+| Quota (`quota::check_in_tx`) | `usage_quotas … FOR UPDATE` |
+
+A second admission waits on the lock. Under READ COMMITTED its later sum sees
+what the first committed, so it decides on the first's hold or use. The breaker
+lock is the one that matters across ceilings: two admissions against different
+threads of one tenant share no ceiling, but the breaker sums both. Every
+admission takes the ceiling first and the breaker second. The breaker's arm and
+reset verbs run under the tenant's exclusive guard, which shared-guard
+admissions already exclude.
+
+The live controls watch the second admission wait in `pg_stat_activity`
+rather than sleeping and hoping, then commit the first, and require the second
+to refuse on it.
+
 ## Settle, release, overrun
 
 Settlement records **actual** usage: lower than the reservation frees the

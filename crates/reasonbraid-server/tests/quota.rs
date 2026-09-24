@@ -348,3 +348,132 @@ async fn the_invite_quota_bounds_the_storm_and_records_every_refusal() {
         "the refused unconfigured invite recorded NO use (nothing new after the removal)"
     );
 }
+
+/// `SIGNOFF-REPAIR.4.5.3` — the quota check serializes on its QUOTA row.
+///
+/// `quota::check_in_tx` counts the window's uses, then records one. Unlocked,
+/// two invites in flight together each counted the uses committed so far and
+/// both passed a ceiling that had room for one. Now, while another admission
+/// holds the quota, a second invite WAITS (observed in `pg_stat_activity`,
+/// never inferred from a sleep), and once the first's use commits the second
+/// counts it and is refused.
+#[tokio::test]
+async fn a_second_invite_waits_for_the_quota_and_counts_the_first_use() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "race-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let tenant = human["tenant_id"].as_str().unwrap().to_string();
+    let (status, created) = command(
+        &client,
+        &base,
+        "/v1/threads",
+        &human_id,
+        &envelope(
+            "thread.create",
+            "race-create",
+            json!({
+                "tenant_id": tenant,
+                "subject": "the race",
+                "objective": "serialize the quota",
+                "budget": { "calls": 3 },
+                "participant_rules": { "allow_explicit_invites": true, "allow_join_requests": false },
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "the thread creates: {created}");
+    let thread_id = created["thread_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "race-role", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "the role enrolls: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+
+    // Room for exactly one use.
+    let quota_id: String = sqlx::query_scalar(
+        "UPDATE usage_quotas SET ceiling = 1 WHERE tenant_id = $1 AND scope_kind = 'tenant' \
+         RETURNING quota_id",
+    )
+    .bind(&tenant)
+    .fetch_one(&pool)
+    .await
+    .expect("shrink the ceiling");
+
+    // The first admission, in flight, holds the quota.
+    let mut first = pool.begin().await.expect("begin");
+    sqlx::query("SELECT 1 FROM usage_quotas WHERE quota_id = $1 FOR UPDATE")
+        .bind(&quota_id)
+        .execute(&mut *first)
+        .await
+        .expect("the in-flight lock");
+    let holder: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+        .fetch_one(&mut *first)
+        .await
+        .expect("pid");
+
+    let second = {
+        let (client, base, human_id) = (client.clone(), base.clone(), human_id.clone());
+        let env = envelope(
+            "thread.invite",
+            "race-invite",
+            json!({ "tenant_id": tenant, "agent_role": role_id }),
+        );
+        let path = format!("/v1/threads/{thread_id}/commands");
+        tokio::spawn(async move { command(&client, &base, &path, &human_id, &env).await })
+    };
+    let waiting = tokio::time::timeout(std::time::Duration::from_secs(4), async {
+        loop {
+            if second.is_finished() {
+                return false;
+            }
+            let waiting: bool = sqlx::query_scalar(
+                "SELECT EXISTS (SELECT 1 FROM pg_stat_activity \
+                 WHERE datname = current_database() AND wait_event_type = 'Lock' \
+                 AND query LIKE '%usage_quotas%' AND $1 = ANY(pg_blocking_pids(pid)))",
+            )
+            .bind(holder)
+            .fetch_one(&pool)
+            .await
+            .expect("pg_stat_activity");
+            if waiting {
+                return true;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap_or(false);
+    assert!(
+        waiting,
+        "the second invite waits on the quota the first holds"
+    );
+
+    // The first admission's use commits: the one use is spent.
+    sqlx::query("INSERT INTO quota_events (quota_id, kind, at) VALUES ($1, 'use', now())")
+        .bind(&quota_id)
+        .execute(&mut *first)
+        .await
+        .expect("the first use");
+    first.commit().await.expect("the first admission commits");
+
+    let (status, refused) = second.await.expect("the second invite ran");
+    assert_eq!(
+        (status, refused["code"].as_str()),
+        (429, Some("quota_exceeded")),
+        "the second counts the first's use: {refused}"
+    );
+}

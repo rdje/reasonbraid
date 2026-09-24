@@ -740,3 +740,205 @@ async fn a_projected_spend_past_u64_refuses_rather_than_wrapping() {
         other => panic!("expected the overflow refusal, got {other:?}"),
     }
 }
+
+/// The backend of `job` when PostgreSQL reports it waiting on a lock `holder`
+/// holds, running a statement containing `query`. A job that FINISHED, or a
+/// timeout, is not evidence of a lock and answers `None` (`.4.3.4`'s method:
+/// the wait is observed, never inferred from a sleep).
+async fn waiter<T>(
+    pool: &PgPool,
+    holder: i32,
+    query: &str,
+    job: &tokio::task::JoinHandle<T>,
+) -> Option<i32> {
+    tokio::time::timeout(std::time::Duration::from_secs(4), async {
+        loop {
+            if job.is_finished() {
+                return None;
+            }
+            let pid: Option<i32> = sqlx::query_scalar(
+                "SELECT pid FROM pg_stat_activity WHERE datname = current_database() \
+                 AND wait_event_type = 'Lock' AND query LIKE $1 \
+                 AND $2 = ANY(pg_blocking_pids(pid)) ORDER BY pid LIMIT 1",
+            )
+            .bind(format!("%{query}%"))
+            .bind(holder)
+            .fetch_optional(pool)
+            .await
+            .expect("pg_stat_activity");
+            if pid.is_some() {
+                return pid;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap_or(None)
+}
+
+/// A transaction standing in for an admission in flight: it holds `lock` (a
+/// `FOR UPDATE` on the row that admission decides against) and reports its
+/// backend.
+async fn in_flight(
+    pool: &PgPool,
+    lock: &str,
+    key: &str,
+) -> (sqlx::Transaction<'static, sqlx::Postgres>, i32) {
+    let mut tx = pool.begin().await.expect("begin");
+    sqlx::query(lock)
+        .bind(key)
+        .execute(&mut *tx)
+        .await
+        .expect("the in-flight lock");
+    let pid = sqlx::query_scalar("SELECT pg_backend_pid()")
+        .fetch_one(&mut *tx)
+        .await
+        .expect("pid");
+    (tx, pid)
+}
+
+/// `SIGNOFF-REPAIR.4.5.3` — admission serializes on its CEILING. While another
+/// admission holds the ceiling, a second one WAITS, and once the first commits
+/// its hold, the second sums it and is denied. Before this leaf the second read
+/// the ceiling unlocked and summed the rows committed so far, so two concurrent
+/// admissions could each see room for one call and both hold it.
+#[tokio::test]
+async fn a_second_admission_waits_for_the_ceiling_and_sees_the_first_hold() {
+    let _guard = budget_guard().await;
+    let Some(pool) = pool().await else { return };
+    let tenant = "ten_00000000-0000-7000-8000-000000000209";
+    let thread = "thr_00000000-0000-7000-8000-000000000209";
+    let ceiling_id = ceiling(&pool, tenant, thread, 1, 100).await;
+
+    let (mut first, holder) = in_flight(
+        &pool,
+        "SELECT 1 FROM budget_ceilings WHERE ceiling_id = $1 FOR UPDATE",
+        &ceiling_id,
+    )
+    .await;
+    let second = {
+        let (pool, ceiling_id) = (pool.clone(), ceiling_id.clone());
+        tokio::spawn(async move {
+            create_reservation(
+                &pool,
+                &ceiling_id,
+                tenant,
+                thread,
+                &dims(Some(1), Some(10)),
+                Duration::minutes(10),
+                Utc::now(),
+            )
+            .await
+        })
+    };
+    assert!(
+        waiter(&pool, holder, "budget_ceilings", &second)
+            .await
+            .is_some(),
+        "the second admission waits on the ceiling the first holds"
+    );
+
+    // The first admission's hold commits: the room for one call is taken.
+    sqlx::query(
+        "INSERT INTO budget_reservations \
+         (reservation_id, ceiling_id, tenant_id, thread_id, dimensions, status, expires_at, created_at) \
+         VALUES ('res_first_in_flight', $1, $2, $3, $4, 'active', now() + interval '10 minutes', now())",
+    )
+    .bind(&ceiling_id)
+    .bind(tenant)
+    .bind(thread)
+    .bind(serde_json::to_value(dims(Some(1), Some(10))).expect("dims"))
+    .execute(&mut *first)
+    .await
+    .expect("the first hold");
+    first.commit().await.expect("the first admission commits");
+
+    match second.await.expect("the second admission ran") {
+        Err(BudgetError::Unavailable { detail }) => assert!(
+            detail.contains("does not cover"),
+            "the second is denied on the first's hold: {detail}"
+        ),
+        other => panic!("the second admission must see the first hold, got {other:?}"),
+    }
+}
+
+/// The tenant's spend BREAKER serializes the same way: it sums every ceiling
+/// of the tenant, so two admissions against DIFFERENT ceilings, which do not
+/// share a ceiling lock, must still queue on the breaker.
+#[tokio::test]
+async fn a_second_admission_waits_for_the_breaker_and_sees_the_first_spend() {
+    let _guard = budget_guard().await;
+    let Some(pool) = pool().await else { return };
+    let tenant = "ten_00000000-0000-7000-8000-000000000000";
+    let thread = "thr_00000000-0000-7000-8000-000000000210";
+    let ceiling_id = ceiling(&pool, tenant, thread, 10, 1_000).await;
+    sqlx::query("INSERT INTO spend_breakers (tenant_id, threshold) VALUES ($1, $2)")
+        .bind(tenant)
+        .bind(serde_json::to_value(dims(Some(1), Some(1_000))).expect("threshold"))
+        .execute(&pool)
+        .await
+        .expect("arm");
+
+    let (mut first, holder) = in_flight(
+        &pool,
+        "SELECT 1 FROM spend_breakers WHERE tenant_id = $1 FOR UPDATE",
+        tenant,
+    )
+    .await;
+    let second = {
+        let (pool, ceiling_id) = (pool.clone(), ceiling_id.clone());
+        tokio::spawn(async move {
+            create_reservation(
+                &pool,
+                &ceiling_id,
+                tenant,
+                thread,
+                &dims(Some(1), Some(10)),
+                Duration::minutes(10),
+                Utc::now(),
+            )
+            .await
+        })
+    };
+    assert!(
+        waiter(&pool, holder, "spend_breakers", &second)
+            .await
+            .is_some(),
+        "the second admission waits on the breaker the first holds"
+    );
+
+    // The first admission's hold, on ANOTHER of the tenant's ceilings,
+    // commits: the breaker's one call is spent.
+    let other_thread = "thr_00000000-0000-7000-8000-000000000211";
+    let other = "ceil_breaker_other";
+    create_ceiling(
+        &pool,
+        other,
+        tenant,
+        other_thread,
+        &dims(Some(10), Some(1_000)),
+    )
+    .await
+    .expect("the tenant's other ceiling");
+    sqlx::query(
+        "INSERT INTO budget_reservations \
+         (reservation_id, ceiling_id, tenant_id, thread_id, dimensions, status, expires_at, created_at) \
+         VALUES ('res_first_spend', $1, $2, $3, $4, 'active', now() + interval '10 minutes', now())",
+    )
+    .bind(other)
+    .bind(tenant)
+    .bind(other_thread)
+    .bind(serde_json::to_value(dims(Some(1), Some(10))).expect("dims"))
+    .execute(&mut *first)
+    .await
+    .expect("the first hold");
+    first.commit().await.expect("the first admission commits");
+
+    match second.await.expect("the second admission ran") {
+        Err(BudgetError::Unavailable { detail }) => assert!(
+            detail.contains("circuit breaker"),
+            "the second trips the breaker on the first's spend: {detail}"
+        ),
+        other => panic!("the second admission must see the first spend, got {other:?}"),
+    }
+}

@@ -142,8 +142,13 @@ where
     E: std::ops::DerefMut,
     for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
 {
+    // The admission LOCKS the ceiling it decides against before summing what it
+    // holds (`SIGNOFF-REPAIR.4.5.3`): a concurrent admission waits here, and
+    // under READ COMMITTED its later sum sees the hold this one commits. Read
+    // unlocked, two admissions each saw room for one call and both held it.
     let ceiling_row: Option<(String, String, serde_json::Value)> = sqlx::query_as(
-        "SELECT ceiling_id, tenant_id, dimensions FROM budget_ceilings WHERE ceiling_id = $1",
+        "SELECT ceiling_id, tenant_id, dimensions FROM budget_ceilings \
+         WHERE ceiling_id = $1 FOR UPDATE",
     )
     .bind(ceiling_id)
     .fetch_optional(&mut *tx)
@@ -166,8 +171,9 @@ where
     check_spend_breaker_in_tx(&mut *tx, tenant_id, requested, at).await?;
 
     // held = holding reservations ([`holding!`]) + settled usage, summed in Rust
-    // over the stored rows (readable, testable — the single-writer dev profile
-    // needs no locking aggregate).
+    // over the stored rows. The ceiling lock above is what makes the sum safe
+    // to decide on: no other admission of this ceiling commits between this
+    // read and this transaction's insert.
     let held_rows: Vec<serde_json::Value> = sqlx::query_scalar(concat!(
         "SELECT COALESCE( \
              CASE WHEN ",
@@ -416,9 +422,13 @@ where
     for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
 {
     let breaker: Option<(serde_json::Value, Option<DateTime<Utc>>, Option<String>)> =
+        // Locked for the same reason as the ceiling (`SIGNOFF-REPAIR.4.5.3`), and
+        // it is the lock that matters across ceilings: two admissions against
+        // different ceilings of one tenant share no ceiling lock, and the spend
+        // below sums both. Taken after the ceiling, in every admission.
         sqlx::query_as(
             "SELECT threshold, tripped_at, tripped_reason FROM spend_breakers \
-             WHERE tenant_id = $1",
+             WHERE tenant_id = $1 FOR UPDATE",
         )
         .bind(tenant_id)
         .fetch_optional(&mut *tx)

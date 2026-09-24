@@ -3,6 +3,7 @@
 #[path = "support/mod.rs"]
 mod pg_test_support;
 
+use std::collections::BTreeMap;
 use std::sync::OnceLock;
 use std::time::Duration;
 
@@ -85,8 +86,15 @@ async fn joined<T>(mut job: JoinHandle<T>) -> T {
 
 // The baseline used the eight pre-feature tables. Qualification includes the
 // outcome table so rollback/replay checks cover the complete durable result.
-async fn snapshot(pool: &PgPool) -> Vec<Value> {
-    let mut result = Vec::new();
+/// Every durable table a bootstrap may write, as its rows, KEYED BY TABLE NAME
+/// (`SIGNOFF-REPAIR.11.35`). It was a list whose meaning was its order, so
+/// inserting `card_imports` at position 5 (REPAIR-0431) silently shifted both
+/// readers of it: the growth expectation and the quota lookup. Keyed, an added
+/// table fails by name or not at all.
+type Snapshot = BTreeMap<&'static str, Value>;
+
+async fn snapshot(pool: &PgPool) -> Snapshot {
+    let mut result = Snapshot::new();
     for table in [
         "tenants",
         "enrollment_boundaries",
@@ -99,7 +107,7 @@ async fn snapshot(pool: &PgPool) -> Vec<Value> {
         "tenant_authority_guards",
         "tenant_bootstrap_requests",
     ] {
-        result.push(sqlx::query_scalar(&format!("SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text), '[]'::jsonb) FROM {table} t"))
+        result.insert(table, sqlx::query_scalar(&format!("SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text), '[]'::jsonb) FROM {table} t"))
             .fetch_one(pool).await.unwrap());
     }
     result
@@ -170,20 +178,34 @@ async fn invalid_key_or_mode_is_a_semantic_bad_request_without_effects() {
         .all(|(status, body)| *status == 400 && body["code"] == "invalid_command"));
 }
 
-fn assert_one_bootstrap(before: &[Value], after: &[Value]) {
-    let growth: Vec<usize> = before
+fn assert_one_bootstrap(before: &Snapshot, after: &Snapshot) {
+    let growth: BTreeMap<&str, usize> = before
         .iter()
-        .zip(after)
-        .map(|(before, after)| after.as_array().unwrap().len() - before.as_array().unwrap().len())
+        .map(|(table, before)| {
+            let after = after[table].as_array().unwrap().len();
+            (*table, after - before.as_array().unwrap().len())
+        })
         .collect();
     // ⛔ The `usage_quotas` entry is FOUR and it is derived below rather than
     // written here (`SIGNOFF-REPAIR.11.28`). It was 2 until
     // `SIGNOFF-REPAIR.11.14.3.14` gave every tenant two acquisition defaults,
     // and this array said 2 for three days because a growth COUNT has no
-    // producer — nothing in it names which rows it expects.
+    // producer — nothing in it names which rows it expects. Each count is now
+    // addressed by its table (`SIGNOFF-REPAIR.11.35`).
     assert_eq!(
         growth,
-        [1, 1, 1, 1, 0, 4, 1, 1, 1],
+        BTreeMap::from([
+            ("tenants", 1),
+            ("enrollment_boundaries", 1),
+            ("authority_grants", 1),
+            ("human_principals", 1),
+            ("card_imports", 0),
+            ("agent_roles", 0),
+            ("usage_quotas", 4),
+            ("enrollments", 1),
+            ("tenant_authority_guards", 1),
+            ("tenant_bootstrap_requests", 1),
+        ]),
         "no losing provisional row or guard may survive"
     );
     // The four quota rows a bootstrap creates, NAMED: the tenant's invite
@@ -200,8 +222,8 @@ fn assert_one_bootstrap(before: &[Value], after: &[Value]) {
         kinds.sort();
         kinds
     };
-    let mut added = quota_scopes(&after[5]);
-    for kind in quota_scopes(&before[5]) {
+    let mut added = quota_scopes(&after["usage_quotas"]);
+    for kind in quota_scopes(&before["usage_quotas"]) {
         if let Some(at) = added.iter().position(|existing| *existing == kind) {
             added.remove(at);
         }

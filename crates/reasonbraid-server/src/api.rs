@@ -2503,8 +2503,9 @@ async fn adjudicate_ambiguous_attempt(
 ///
 /// ⛔ Each action states whether it can be taken TODAY (`SIGNOFF-REPAIR.4.4.7.1`).
 /// The re-ask was listed for commits as if it could, while nothing could set
-/// the flag it names; an operator following it would find no verb. Its
-/// availability flips when `.4.4.7.2` builds the authorization.
+/// the flag it names; an operator following it would have found no verb. Since
+/// `.4.4.7.2` it is the tenant administrator's possible-duplicate replay, and
+/// every action on the list can be taken.
 const AMBIGUOUS_ATTEMPT_ACTIONS: [AmbiguousAttemptAction; 4] = [
     AmbiguousAttemptAction {
         action: "provider_status_lookup",
@@ -2515,14 +2516,13 @@ const AMBIGUOUS_ATTEMPT_ACTIONS: [AmbiguousAttemptAction; 4] = [
     },
     AmbiguousAttemptAction {
         action: "reask_with_allow_possible_duplicate",
-        who: "the thread's human",
-        effect: "re-asks under the explicit possible-duplicate flag the retry policy honours; \
-                 never a silent retry",
-        unavailable_because: Some(
-            "nothing sets the possible-duplicate flag yet (SIGNOFF-REPAIR.4.4.7.2 builds the \
-             authorization). Until then a revise can be re-asked by a NEW challenge, as a new \
-             operation, and a contribute cannot be re-asked at all",
-        ),
+        who: "the tenant's administrator",
+        effect: "once the node has dead-lettered the item as retry_requires_authorization, \
+                 POST /v1/nodes/replay with allow_possible_duplicate and a reason \
+                 (`rb node replay --allow-possible-duplicate --reason …`): a fresh reservation \
+                 pays for the possible duplicate, the original stays held, and the node re-runs \
+                 the item once; never a silent retry",
+        unavailable_because: None,
     },
     AmbiguousAttemptAction {
         action: "close_with_unresolved_register",

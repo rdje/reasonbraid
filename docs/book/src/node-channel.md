@@ -351,8 +351,8 @@ both answers carry `x-reasonbraid-authorization`.
   ],
   "safe_actions": [
     { "action": "provider_status_lookup", "who": "the node's operator", "effect": "…", "available": true },
-    { "action": "reask_with_allow_possible_duplicate", "who": "the thread's human", "effect": "…",
-      "available": false, "unavailable_because": "nothing sets the possible-duplicate flag yet (…)" },
+    { "action": "reask_with_allow_possible_duplicate", "who": "the tenant's administrator",
+      "effect": "… POST /v1/nodes/replay with allow_possible_duplicate and a reason …", "available": true },
     { "action": "close_with_unresolved_register", "who": "the thread's human", "effect": "…", "available": true }
   ],
   "never": "re-fire the provider call to check: it can charge twice",
@@ -361,12 +361,11 @@ both answers carry `x-reasonbraid-authorization`.
 ```
 
 ⚠️ **Every action says whether it can be taken today** (`SIGNOFF-REPAIR.4.4.7.1`).
-The re-ask with the possible-duplicate flag was listed for a long time as
-though it could be taken, but nothing sets that flag.
-It reads `available: false`, with the reason, until `SIGNOFF-REPAIR.4.4.7.2`
-builds the authorization. Until then a revise can be re-asked with a new
-challenge (a new operation, not a retry), and a contribute cannot be re-asked
-at all.
+The re-ask with the possible-duplicate flag used to be listed as though it
+could be taken, while nothing set that flag. Since `SIGNOFF-REPAIR.4.4.7.2` it
+is the tenant administrator's possible-duplicate replay
+([authority](authority.md#replaying-with-the-possible-duplicate-authorization)),
+and every action on the list is available.
 
 ⚠️ **The first three actions are not server verbs.** Each is taken where its
 authority lives. A status lookup runs on the node, and the node's next handshake

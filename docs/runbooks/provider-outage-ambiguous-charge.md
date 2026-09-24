@@ -17,10 +17,10 @@
 
 ## Authority
 
-- Deciding re-ask vs leave-unresolved: the human whose thread it is. ⚠️ The
-  explicit `allow_possible_duplicate` re-ask is NOT available yet: nothing sets
-  the flag until `SIGNOFF-REPAIR.4.4.7.2` builds the authorization, and
-  `rb inspect ambiguous` marks it `available: false` (`SIGNOFF-REPAIR.4.4.7.1`).
+- Deciding re-ask vs leave-unresolved: the human whose thread it is decides;
+  the tenant's administrator takes the possible-duplicate re-ask, because it is
+  a budget authorization (§11.3, §14.6): `rb node replay --node … --command …
+  --allow-possible-duplicate --reason "…"` (`SIGNOFF-REPAIR.4.4.7.2`).
 - Reading: `rb-journal` + `rb inspect runs` (read-only).
 
 ## Safe first actions
@@ -52,10 +52,13 @@
   new operation, not a retry). A CONTRIBUTE cannot be re-asked today: work
   reaches a node only from an accepted invitation or a challenge of a role's
   contribution, and the role is already a participant.
-- **Unknowable:** leave `outcome_unknown`; the human decides whether to close
-  the thread with the unresolved register (the honest close, `.1.5.3`). The
-  re-ask with `allow_possible_duplicate` is the other policy §11.3 names; it
-  is not available until `SIGNOFF-REPAIR.4.4.7.2`.
+- **Unknowable:** leave `outcome_unknown`; the human decides:
+  - close the thread with the unresolved register (the honest close, `.1.5.3`); or
+  - accept the duplicate risk. On its next tick the node dead-letters the item
+    as `retry_requires_authorization`, and the administrator replays it with
+    `--allow-possible-duplicate --reason "…"`. A fresh reservation pays for the
+    possible duplicate, the original stays held, and the node re-runs the item
+    once. The effect is audited as `node_command_replay_possible_duplicate`.
 - **A provider-reported charge for an unknown attempt:** settle against the
   reported usage; the overrun reports, never clamps.
 - **An operator adjudicates** (`SIGNOFF-REPAIR.11.4.7.2.1.5.5`): when the

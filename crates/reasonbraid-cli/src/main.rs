@@ -181,6 +181,14 @@ enum NodeCommand {
         /// The dead-lettered command id to replay.
         #[arg(long)]
         command: String,
+        /// Authorize the possible duplicate of an `outcome_unknown` the node
+        /// refused to retry (`retry_requires_authorization`): a fresh reservation
+        /// pays for the re-run. Requires `--reason` (`SIGNOFF-REPAIR.4.4.7.2`).
+        #[arg(long)]
+        allow_possible_duplicate: bool,
+        /// Why the duplicate risk is accepted; only with `--allow-possible-duplicate`.
+        #[arg(long)]
+        reason: Option<String>,
         /// The acting principal (a state-file name or a raw hpr_…/rol_… id).
         #[arg(long)]
         as_: Option<String>,
@@ -1222,6 +1230,8 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
         Command::Node(NodeCommand::Replay {
             node,
             command,
+            allow_possible_duplicate,
+            reason,
             as_,
             tenant,
             json,
@@ -1232,7 +1242,18 @@ async fn run(cli: Cli, cfg: &Config) -> Result<String, reasonbraid_cli::CliError
                     "cannot determine the tenant — pass --tenant".to_string(),
                 )
             })?;
-            run_replay_command(cfg, &principal, &tenant, &node, &command, json).await
+            let duplicate =
+                reasonbraid_cli::possible_duplicate_reason(allow_possible_duplicate, reason)?;
+            run_replay_command(
+                cfg,
+                &principal,
+                &tenant,
+                &node,
+                &command,
+                duplicate.as_deref(),
+                json,
+            )
+            .await
         }
         Command::Node(NodeCommand::Inbox {
             node,

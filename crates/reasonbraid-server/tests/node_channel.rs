@@ -1144,17 +1144,19 @@ async fn the_operator_lists_open_ambiguous_attempts_and_each_closure_ends_one() 
         let available = action["available"]
             .as_bool()
             .unwrap_or_else(|| panic!("`{name}` states its availability: {action}"));
+        // Every one exists since `SIGNOFF-REPAIR.4.4.7.2`: the re-ask is the
+        // tenant administrator's possible-duplicate replay.
+        assert!(available, "`{name}` exists and can be taken: {action}");
+        assert!(action.get("unavailable_because").is_none(), "{action}");
         if name == "reask_with_allow_possible_duplicate" {
-            assert!(!available, "the re-ask cannot be taken yet: {action}");
+            assert_eq!(action["who"], "the tenant's administrator", "{action}");
             assert!(
-                action["unavailable_because"]
+                action["effect"]
                     .as_str()
-                    .is_some_and(|why| why.contains("SIGNOFF-REPAIR.4.4.7.2")),
-                "and it says why, and what will change it: {action}"
+                    .is_some_and(|e| e.contains("POST /v1/nodes/replay")
+                        && e.contains("allow_possible_duplicate")),
+                "the action names the verb that takes it: {action}"
             );
-        } else {
-            assert!(available, "`{name}` exists and can be taken: {action}");
-            assert!(action.get("unavailable_because").is_none(), "{action}");
         }
     }
 

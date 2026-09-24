@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-24 — Operators can re-run a job whose outcome is unknown, from the screen's advice and the command line (`SIGNOFF-REPAIR.4.4.7.2.3`)
+
+`REASONBRAID-REPAIR-0482`. Completes the machine-recovery work found by `REASONBRAID-DOC-0153`.
+
+- ✅ **Now:** the operator's list of recovery options shows "ask again, accepting a possible duplicate charge" as available. It names who takes it (the tenant's administrator) and how. The command-line tool can do it: `rb node replay … --allow-possible-duplicate --reason "…"`. It insists on a reason, and refuses a reason given without the approval.
+- ⭐ **The whole machine-recovery review is done:** every gap found on 23 September is closed. That covers lost answers, answers refused or wedged, stuck machines, timeouts, retries, budgets and the operator's views.
+- ✅ Tested: the availability check failed on the old code and passes now; the command-line rules are checked, and all seven deliberately broken versions were caught; live suites pass; strict lint clean.
+- Technical: `AMBIGUOUS_ATTEMPT_ACTIONS` re-ask → available, `who` = the tenant's administrator, `effect` = the verb; CLI `rb node replay --allow-possible-duplicate --reason` via `possible_duplicate_reason` + `replay_request_body` (unit-tested; mutants 7/7). Closes `.4.4.7.2`, `.4.4.7`, `.4.4`.
+
 ## 2026-09-24 — An administrator can now authorize re-running a job whose outcome is unknown (`SIGNOFF-REPAIR.4.4.7.2.2`)
 
 `REASONBRAID-REPAIR-0481`.

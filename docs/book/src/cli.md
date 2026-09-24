@@ -628,6 +628,19 @@ delivery tail:
  node replay --node rol_… --command work_evt_… --as alice
 ```
 
+A command the node dead-lettered as `retry_requires_authorization` (an
+`outcome_unknown` it will not re-run on its own) can be replayed with the
+possible-duplicate authorization, and its reason (`SIGNOFF-REPAIR.4.4.7.2`). A
+fresh reservation pays for the re-run, and the original stays held:
+
+```text
+ node replay --node rol_… --command work_evt_… \
+     --allow-possible-duplicate --reason "the provider's records show no charge" --as alice
+replayed command work_evt_… in node rol_…'s inbox (…), authorizing a possible duplicate under reservation res_…
+```
+
+Each flag without the other is refused before anything is sent.
+
 The spend circuit breaker (`.3.2`): a per-tenant latch — once the tenant's
 recorded spend crosses the declared threshold, new dispatch reservations are
 refused with the typed reason until the operator resets:

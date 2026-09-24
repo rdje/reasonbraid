@@ -1240,33 +1240,80 @@ pub async fn run_quarantine_command(
     ))
 }
 
+/// The reason a possible-duplicate replay carries, when one was asked for
+/// (`SIGNOFF-REPAIR.4.4.7.2.3`). The authorization and its reason come
+/// together or not at all: the authorization without a reason is refused
+/// here rather than by the server, and a reason without the authorization
+/// would be silently ignored, so it is refused too.
+pub fn possible_duplicate_reason(
+    allow_possible_duplicate: bool,
+    reason: Option<String>,
+) -> Result<Option<String>, CliError> {
+    match (allow_possible_duplicate, reason) {
+        (true, Some(reason)) if !reason.trim().is_empty() => Ok(Some(reason)),
+        (true, _) => Err(CliError::usage(
+            "--allow-possible-duplicate needs --reason: why the duplicate risk is accepted"
+                .to_string(),
+        )),
+        (false, Some(_)) => Err(CliError::usage(
+            "--reason only applies with --allow-possible-duplicate".to_string(),
+        )),
+        (false, None) => Ok(None),
+    }
+}
+
+/// The replay's request body: the plain replay, or, with a reason, the
+/// possible-duplicate one.
+pub fn replay_request_body(
+    tenant: &str,
+    node_id: &str,
+    command_id: &str,
+    possible_duplicate_reason: Option<&str>,
+) -> Value {
+    let mut body = json!({
+        "tenant_id": tenant,
+        "node_id": node_id,
+        "command_id": command_id,
+    });
+    if let Some(reason) = possible_duplicate_reason {
+        body["allow_possible_duplicate"] = json!(true);
+        body["reason"] = json!(reason);
+    }
+    body
+}
+
 /// Replay one dead-lettered inbox command (`.2.4`; tenant_admin): the
 /// quarantine clears and the command re-enters the delivery tail with a
-/// fresh admission decision.
+/// fresh admission decision. With `possible_duplicate_reason`, the replay also
+/// authorizes the possible duplicate of an `outcome_unknown` the node refused to
+/// retry, and runs under a fresh reservation (`SIGNOFF-REPAIR.4.4.7.2`).
 pub async fn run_replay_command(
     cfg: &Config,
     principal: &PrincipalRef,
     tenant: &str,
     node_id: &str,
     command_id: &str,
+    possible_duplicate_reason: Option<&str>,
     json_out: bool,
 ) -> Result<String, CliError> {
     let client = ApiClient::for_base(&cfg.server_base)?;
     let response = client
         .replay_command(
             &principal.id,
-            json!({
-                "tenant_id": tenant,
-                "node_id": node_id,
-                "command_id": command_id,
-            }),
+            replay_request_body(tenant, node_id, command_id, possible_duplicate_reason),
         )
         .await?;
     if json_out {
         return or_json(&response, true);
     }
+    let authorization = match response["reservation_id"].as_str() {
+        Some(reservation) => {
+            format!(", authorizing a possible duplicate under reservation {reservation}")
+        }
+        None => String::new(),
+    };
     Ok(format!(
-        "replayed command {} in node {}'s inbox ({})",
+        "replayed command {} in node {}'s inbox ({}){authorization}",
         response["command_id"].as_str().unwrap_or("?"),
         response["node_id"].as_str().unwrap_or("?"),
         response["replayed_at"].as_str().unwrap_or("?"),
@@ -1835,6 +1882,35 @@ fn format_ambiguous_attempts(tenant: &str, response: &Value) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// The possible-duplicate authorization and its reason travel together
+    /// (`SIGNOFF-REPAIR.4.4.7.2.3`): each without the other is a usage error, a
+    /// blank reason is no reason, and the plain replay stays exactly as it was.
+    #[test]
+    fn a_possible_duplicate_replay_needs_its_reason_and_nothing_else_does() {
+        use super::{possible_duplicate_reason, replay_request_body};
+        assert_eq!(
+            possible_duplicate_reason(true, Some("no charge on the invoice".to_string()))
+                .expect("both"),
+            Some("no charge on the invoice".to_string())
+        );
+        assert!(possible_duplicate_reason(true, None).is_err());
+        assert!(possible_duplicate_reason(true, Some("  ".to_string())).is_err());
+        assert!(possible_duplicate_reason(false, Some("why".to_string())).is_err());
+        assert_eq!(
+            possible_duplicate_reason(false, None).expect("neither"),
+            None
+        );
+
+        let plain = replay_request_body("ten_x", "rol_x", "work_evt_x", None);
+        assert_eq!(
+            plain,
+            serde_json::json!({ "tenant_id": "ten_x", "node_id": "rol_x", "command_id": "work_evt_x" })
+        );
+        let authorized = replay_request_body("ten_x", "rol_x", "work_evt_x", Some("why"));
+        assert_eq!(authorized["allow_possible_duplicate"], true);
+        assert_eq!(authorized["reason"], "why");
+    }
+
     use super::*;
 
     /// The incident view prints one line per active incident.

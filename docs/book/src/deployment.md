@@ -1865,7 +1865,8 @@ procedure ran, not proof against a hostile operator
   | --- | --- |
   | `postgres` | `SELECT 1` answers within 2 s |
   | `secret_store` | the declared store answers for the CA material — the read the server makes at start-up |
-  | `server_ca` | the CA certificate is inside its validity window, so the node certificates it signs will be accepted |
+  | `server_ca` | the ISSUING CA certificate (the newest generation, read afresh each probe) is inside its validity window, so the node certificates it signs will be accepted |
+  | `server_ca_renewal` | the CA renews itself: each probe mints a successor once a third of the issuing CA's life remains, and adopts one another server minted (`SIGNOFF-REPAIR.4.1.8.2`). `down` means renewal was due and FAILED, which is months before the CA would actually expire |
   | `publication_root` | the declared `--publication-repo-root` is still a usable directory (listed only when one is declared) |
 
   Each entry carries `observed_at` (when it was last probed), `age_ms` (how old

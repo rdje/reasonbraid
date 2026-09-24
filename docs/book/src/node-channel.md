@@ -148,8 +148,17 @@ secret, but the CHANNEL identity is the certificate:
    its own validity window. The window is checked by the server, since a trust
    anchor's validity is not something the chain verifier checks. So a successor
    can start issuing while the older generation's leaves keep working until they
-   expire. `rb-server` loads every generation at boot; minting the successor
-   automatically is `SIGNOFF-REPAIR.4.1.8.2`.
+   expire. `rb-server` loads every generation at boot.
+
+   **The CA renews itself** (`SIGNOFF-REPAIR.4.1.8.2`). The health prober's
+   `server_ca_renewal` dependency runs every 10 s. When a third or less of the
+   issuing CA's life remains, it mints the next generation and the server
+   switches to issuing from it in-process, with no restart. The rule is
+   cert-manager's default: about four months early for a one-year CA. The
+   insert happens only while the newest stored generation is still that
+   server's issuer, so of several servers exactly one mints, and each of the
+   others adopts it on its next probe. If renewal is due and fails, the
+   dependency reads `down`.
 
    **A rotated identity is written to disk before it is used** (`.4.2.9`): the
    node persists the fresh certificate and key beside its journal, in the same

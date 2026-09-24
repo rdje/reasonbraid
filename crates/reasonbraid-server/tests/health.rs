@@ -33,18 +33,32 @@ async fn pool() -> Option<PgPool> {
 }
 
 /// A real certificate whose validity window closed a day ago.
-fn expired_certificate() -> Vec<u8> {
-    let mut params =
-        rcgen::CertificateParams::new(vec!["expired.invalid".to_owned()]).expect("params");
+/// A CA whose own window closed yesterday, as the set holds one
+/// (`SIGNOFF-REPAIR.4.1.8.2`: the probe reads the set's issuer, not bytes).
+fn expired_ca() -> Arc<reasonbraid_server::ca::CaSet> {
+    let mut params = rcgen::CertificateParams::new(vec![]).expect("params");
+    params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
     let now = time::OffsetDateTime::now_utc();
     params.not_before = now - time::Duration::days(30);
     params.not_after = now - time::Duration::days(1);
     let key = rcgen::KeyPair::generate().expect("key");
-    params
+    let cert_der = params
         .self_signed(&key)
         .expect("self-signed")
         .der()
-        .to_vec()
+        .to_vec();
+    let not_after = reasonbraid_server::ca::validity_window(&cert_der)
+        .expect("parses")
+        .1;
+    let key_der = key.serialize_der();
+    Arc::new(reasonbraid_server::ca::CaSet::single(Arc::new(
+        reasonbraid_server::ca::ServerCa {
+            issuer: rcgen::Issuer::new(params, key),
+            cert_der,
+            key_der,
+            not_after,
+        },
+    )))
 }
 
 async fn read(client: &reqwest::Client, base: &str) -> (u16, Value) {
@@ -101,7 +115,7 @@ async fn a_stopped_dependency_is_reported_down_with_its_last_up_instant() {
             pool: pool.clone(),
         },
         Dependency::ServerCa {
-            cert_der: Arc::new(ca.cert_der.clone()),
+            cas: Arc::new(reasonbraid_server::ca::CaSet::single(Arc::new(ca))),
         },
         Dependency::PublicationRoot(root.clone()),
     ];
@@ -180,9 +194,7 @@ async fn a_stopped_dependency_is_reported_down_with_its_last_up_instant() {
         .await
         .expect("connect to the empty database");
     let stopped = vec![
-        Dependency::ServerCa {
-            cert_der: Arc::new(expired_certificate()),
-        },
+        Dependency::ServerCa { cas: expired_ca() },
         Dependency::SecretStore {
             store: SecretStore::dev(),
             pool: empty_pool.clone(),

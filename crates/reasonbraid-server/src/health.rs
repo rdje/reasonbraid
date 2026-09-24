@@ -66,7 +66,19 @@ pub enum Dependency {
     },
     /// The workload-identity CA's certificate is inside its validity window, so
     /// the leaves it signs will chain.
-    ServerCa { cert_der: Arc<Vec<u8>> },
+    ///
+    /// Reads the set's CURRENT issuer on every probe, so a renewal
+    /// (`SIGNOFF-REPAIR.4.1.8.2`) is seen without a restart.
+    ServerCa { cas: Arc<crate::ca::CaSet> },
+    /// The CA renews itself (`SIGNOFF-REPAIR.4.1.8.2`): each probe mints the
+    /// successor when a third of the issuing CA's life remains, and adopts one
+    /// another server minted. Down means renewal was due and FAILED, the
+    /// failure an operator must hear about long before the CA expires.
+    CaRenewal {
+        cas: Arc<crate::ca::CaSet>,
+        pool: PgPool,
+        store: crate::secret_store::SecretStore,
+    },
     /// The declared publication root is still a usable directory — the same
     /// check the boot makes before it mutates anything.
     PublicationRoot(PathBuf),
@@ -79,6 +91,7 @@ impl Dependency {
             Dependency::Postgres(_) => "postgres",
             Dependency::SecretStore { .. } => "secret_store",
             Dependency::ServerCa { .. } => "server_ca",
+            Dependency::CaRenewal { .. } => "server_ca_renewal",
             Dependency::PublicationRoot(_) => "publication_root",
         }
     }
@@ -104,8 +117,12 @@ impl Dependency {
                 Ok(None) => Err("the store holds no CA material".to_owned()),
                 Err(e) => Err(e.to_string()),
             },
-            Dependency::ServerCa { cert_der } => {
-                let (not_before, not_after) = crate::ca::validity_window(cert_der)?;
+            Dependency::CaRenewal { cas, pool, store } => crate::ca::renew_if_due(cas, pool, store)
+                .await
+                .map(|_| ())
+                .map_err(|e| format!("the CA's renewal was due and failed: {e}")),
+            Dependency::ServerCa { cas } => {
+                let (not_before, not_after) = crate::ca::validity_window(&cas.issuer().cert_der)?;
                 let now = Utc::now();
                 if now < not_before {
                     Err(format!("not valid before {}", not_before.to_rfc3339()))

@@ -659,6 +659,127 @@ async fn an_older_generations_leaf_still_handshakes_after_a_successor_issues() {
         .expect("the new node's leaf chains to the successor");
 }
 
+/// `SIGNOFF-REPAIR.4.1.8.2`, live — the CA renews ITSELF. With the issuing
+/// generation a third or less from its end, one probe of the renewal
+/// dependency mints exactly one successor, which issues from then on while the
+/// old generation stays trusted; probing again mints nothing more; and a second
+/// server still holding the old view adopts that successor instead of minting
+/// its own. Before this leaf nothing minted a successor at all.
+#[tokio::test]
+async fn the_ca_mints_its_own_successor_once_and_every_server_adopts_it() {
+    use reasonbraid_server::health::Dependency;
+    let _guard = enroll_guard().await;
+    let Some(pool) = pool().await else { return };
+    forget_successor_generations(&pool).await;
+    ensure_server_ca(&pool).await.expect("the first generation");
+    let store = reasonbraid_server::secret_store::SecretStore::dev();
+
+    // A generation 200 days into a 300-day life: due.
+    let key = rcgen::KeyPair::generate().expect("key");
+    let mut params = rcgen::CertificateParams::new(vec![]).expect("params");
+    params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
+    params.key_usages = vec![
+        rcgen::KeyUsagePurpose::KeyCertSign,
+        rcgen::KeyUsagePurpose::DigitalSignature,
+    ];
+    let now =
+        time::OffsetDateTime::from_unix_timestamp(chrono::Utc::now().timestamp()).expect("clock");
+    params.not_before = now - time::Duration::days(200);
+    params.not_after = now + time::Duration::days(100);
+    let due_der = params.self_signed(&key).expect("self-sign").der().to_vec();
+    sqlx::query(
+        "INSERT INTO server_ca (ca_id, ca_der, key_der) \
+         VALUES ((SELECT max(ca_id) + 1 FROM server_ca), $1, $2)",
+    )
+    .bind(&due_der)
+    .bind(key.serialize_der())
+    .execute(&pool)
+    .await
+    .expect("the due generation");
+
+    let first = Arc::new(
+        reasonbraid_server::ca::load_ca_set(&pool, &store)
+            .await
+            .expect("set"),
+    );
+    let second = Arc::new(
+        reasonbraid_server::ca::load_ca_set(&pool, &store)
+            .await
+            .expect("set"),
+    );
+    assert_eq!(
+        first.issuer().cert_der,
+        due_der,
+        "the due generation issues"
+    );
+
+    let renewal = |cas: Arc<reasonbraid_server::ca::CaSet>| Dependency::CaRenewal {
+        cas,
+        pool: pool.clone(),
+        store,
+    };
+    let minted = renewal(first.clone()).probe().await;
+    let generations_after_first: i64 = sqlx::query_scalar("SELECT count(*) FROM server_ca")
+        .fetch_one(&pool)
+        .await
+        .expect("count");
+    let again = renewal(first.clone()).probe().await;
+    let adopted = renewal(second.clone()).probe().await;
+    let generations_after_all: i64 = sqlx::query_scalar("SELECT count(*) FROM server_ca")
+        .fetch_one(&pool)
+        .await
+        .expect("count");
+    let successor: Vec<u8> =
+        sqlx::query_scalar("SELECT ca_der FROM server_ca ORDER BY ca_id DESC LIMIT 1")
+            .fetch_one(&pool)
+            .await
+            .expect("the newest");
+    let old_leaf = {
+        let key = rcgen::KeyPair::generate().expect("leaf key");
+        let mut leaf = rcgen::CertificateParams::new(vec!["host-old".to_string()]).expect("params");
+        leaf.not_before = now - time::Duration::seconds(5);
+        leaf.not_after = now + time::Duration::seconds(600);
+        let issuer = rcgen::Issuer::new(
+            params,
+            rcgen::KeyPair::from_der_and_sign_algo(
+                &rustls_pki_types::PrivateKeyDer::try_from(
+                    sqlx::query_scalar::<_, Vec<u8>>(
+                        "SELECT key_der FROM server_ca WHERE ca_der = $1",
+                    )
+                    .bind(&due_der)
+                    .fetch_one(&pool)
+                    .await
+                    .expect("the due key"),
+                )
+                .expect("key DER"),
+                &rcgen::PKCS_ECDSA_P256_SHA256,
+            )
+            .expect("key"),
+        );
+        leaf.signed_by(&key, &issuer).expect("sign").der().to_vec()
+    };
+    forget_successor_generations(&pool).await;
+
+    minted.expect("the renewal succeeds");
+    again.expect("probing again succeeds");
+    adopted.expect("the second server's probe succeeds");
+    assert_eq!(generations_after_first, 3, "one successor was minted");
+    assert_eq!(
+        generations_after_all, 3,
+        "and only one, however often or by whom it is probed"
+    );
+    assert_ne!(successor, due_der);
+    assert_eq!(first.issuer().cert_der, successor, "the successor issues");
+    assert_eq!(
+        second.issuer().cert_der,
+        successor,
+        "the other server adopted it"
+    );
+    first
+        .verify_leaf(&old_leaf)
+        .expect("the old generation's leaves stay trusted");
+}
+
 /// Every refusal class is audited and effect-free: unknown token, expired token,
 /// node-id mismatch, nonce mismatch.
 #[tokio::test]

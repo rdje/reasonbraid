@@ -117,8 +117,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             store,
             pool: pool.clone(),
         },
-        health::Dependency::ServerCa {
-            cert_der: Arc::new(ca.issuer().cert_der.clone()),
+        health::Dependency::ServerCa { cas: ca.clone() },
+        health::Dependency::CaRenewal {
+            cas: ca.clone(),
+            pool: pool.clone(),
+            store,
         },
     ];
     if let Some(root) = &publication_repo_root {

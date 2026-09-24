@@ -388,6 +388,30 @@ impl CaSet {
         self.read().last().expect("never empty").clone()
     }
 
+    /// How many generations the set holds.
+    pub fn len(&self) -> usize {
+        self.read().len()
+    }
+
+    /// Never true: a set always holds its first generation.
+    pub fn is_empty(&self) -> bool {
+        false
+    }
+
+    /// Adopt the stored generations, oldest first (`SIGNOFF-REPAIR.4.1.8.2`).
+    /// One assignment under the write lock, so a reader sees the old set or the
+    /// new one, never a mixture.
+    fn replace(&self, generations: Vec<Arc<ServerCa>>) {
+        assert!(
+            !generations.is_empty(),
+            "a CA set has at least one generation"
+        );
+        *self
+            .generations
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = generations;
+    }
+
     /// Verify a node leaf against every generation inside its own window now.
     /// The window is checked HERE because a trust anchor's own validity is not
     /// something webpki checks: an expired generation must stop vouching.
@@ -416,6 +440,60 @@ impl CaSet {
         }
         verify_leaf_against(&trusted, cert_der, now)
     }
+}
+
+/// Is `ca` due for a successor at `now`? When a THIRD or less of its lifetime
+/// remains (`SIGNOFF-REPAIR.4.1.8.2`; cert-manager's default `renewBefore`, per
+/// `docs/decisions/2026-09-24_the-ca-rotates-itself-with-an-overlapping-trust-set.md`).
+/// An unparsable CA is due: it cannot be shown to have time left.
+pub fn renewal_due(ca: &ServerCa, now: chrono::DateTime<chrono::Utc>) -> bool {
+    let Ok((not_before, not_after)) = validity_window(&ca.cert_der) else {
+        return true;
+    };
+    (not_after - now) * 3 <= not_after - not_before
+}
+
+/// Mint the issuing CA's successor if it is due, and adopt whatever the store
+/// then holds (`SIGNOFF-REPAIR.4.1.8.2`). Returns whether the set changed.
+///
+/// Race-safe across servers: the insert happens only while the newest STORED
+/// generation is still this server's issuer, and `ca_id` is the primary key,
+/// so of several servers noticing at once exactly one mints; every one then
+/// reloads and adopts it. A server that finds a successor already stored by
+/// another adopts it without minting.
+pub async fn renew_if_due(
+    cas: &CaSet,
+    pool: &PgPool,
+    store: &crate::secret_store::SecretStore,
+) -> Result<bool, sqlx::Error> {
+    let issuer = cas.issuer();
+    if !renewal_due(&issuer, chrono::Utc::now()) {
+        return Ok(false);
+    }
+    let successor = generate_ca();
+    sqlx::query(
+        "INSERT INTO server_ca (ca_id, ca_der, key_der) \
+         SELECT (SELECT max(ca_id) + 1 FROM server_ca), $1, $2 \
+         WHERE (SELECT ca_der FROM server_ca ORDER BY ca_id DESC LIMIT 1) = $3 \
+         ON CONFLICT (ca_id) DO NOTHING",
+    )
+    .bind(&successor.cert_der)
+    .bind(&successor.key_der)
+    .bind(&issuer.cert_der)
+    .execute(pool)
+    .await?;
+    let generations: Vec<Arc<ServerCa>> = store
+        .load_ca_generations(pool)
+        .await?
+        .into_iter()
+        .map(|(ca_der, key_der)| Arc::new(load_ca(ca_der, key_der)))
+        .collect();
+    let changed = generations.len() != cas.len()
+        || generations.last().map(|ca| &ca.cert_der) != Some(&issuer.cert_der);
+    if !generations.is_empty() {
+        cas.replace(generations);
+    }
+    Ok(changed)
 }
 
 /// Load every stored CA generation through the declared store, creating the
@@ -612,6 +690,50 @@ mod issued_leaf_binding {
         edge_set
             .verify_leaf_at(&edge_leaf, edge - chrono::Duration::seconds(1))
             .expect("one second before, it does");
+    }
+
+    /// `SIGNOFF-REPAIR.4.1.8.2` — adopting a reloaded set replaces it whole,
+    /// and the set reports its size truthfully before and after.
+    #[test]
+    fn a_set_adopts_a_reloaded_generation_list_whole() {
+        let first = Arc::new(ca_valid_for(30 * 86_400));
+        let set = CaSet::single(first.clone());
+        assert_eq!(set.len(), 1);
+        assert!(!set.is_empty());
+        let successor = Arc::new(generate_ca());
+        set.replace(vec![first, successor.clone()]);
+        assert_eq!(set.len(), 2, "both generations held");
+        assert_eq!(
+            set.issuer().cert_der,
+            successor.cert_der,
+            "the adopted newest issues"
+        );
+        assert!(!set.is_empty());
+    }
+
+    /// `SIGNOFF-REPAIR.4.1.8.2` — a CA is due for a successor when a THIRD or
+    /// less of its lifetime remains, exactly: 300 days long, it is not due with
+    /// 101 days left and is due with 100.
+    #[test]
+    fn renewal_is_due_at_a_third_of_the_lifetime_exactly() {
+        let key = KeyPair::generate().expect("key");
+        let mut params = CertificateParams::new(vec![]).expect("params");
+        params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+        let now = now_offset();
+        params.not_before = now - time::Duration::days(200);
+        params.not_after = now + time::Duration::days(100);
+        let cert = params.self_signed(&key).expect("self-sign");
+        let ca = load_ca(cert.der().to_vec(), key.serialize_der());
+        let now = chrono::DateTime::from_timestamp(now.unix_timestamp(), 0).expect("instant");
+        assert!(
+            renewal_due(&ca, now),
+            "100 of 300 days left is a third: due"
+        );
+        assert!(
+            !renewal_due(&ca, now - chrono::Duration::days(1)),
+            "a day earlier, 101 of 300 left: not yet"
+        );
+        assert!(!renewal_due(&generate_ca(), now), "a fresh CA is not due");
     }
 
     /// `SIGNOFF-REPAIR.4.1.7` — a leaf never outlives its issuer. With 400 s

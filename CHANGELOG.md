@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-24 — Tenant-owned administration checked and closed (`SIGNOFF-REPAIR.3.5`)
+
+`REASONBRAID-DOC-0160`. A closing check; no code changed.
+
+- ✅ **Closed:** every piece of this review was already done, but it had never been formally closed. Each of its goals was checked against the code and the test that proves it. One organisation's administrator cannot change or read another organisation's machines, queues, enrollment tokens or spending cut-off. A frozen organisation's administrator can still look at its own records, as approved.
+- ⏭️ **Next:** ownership of resources and resolvers (`.7.1`), which has not been reviewed yet.
+
 ## 2026-09-24 — The server's certificate authority now renews itself, and the node-machine review is complete (`SIGNOFF-REPAIR.4.1.8.2`)
 
 `REASONBRAID-REPAIR-0493`. The second of the two steps decided in `REASONBRAID-DOC-0159`.

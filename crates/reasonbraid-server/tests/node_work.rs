@@ -2222,6 +2222,22 @@ async fn a_refused_result_is_settled_and_the_node_journals_the_refusal() {
     let refusal: Value = serde_json::from_str(&refusals[0].2).expect("refusal JSON");
     assert_eq!(refusal["code"], json!("invalid_transition"), "{refusal}");
 
+    // The attempt's wall-clock time is CHARGED to the reservation
+    // (`SIGNOFF-REPAIR.4.4.6.1`): the node measures it and reports it, and the
+    // settlement records it, so the ceiling's clock is spent like its tokens.
+    let charged: Option<i64> = sqlx::query_scalar(
+        "SELECT (usage->>'wall_clock_seconds')::bigint FROM budget_reservations \
+         WHERE reservation_id = $1",
+    )
+    .bind(&reservation)
+    .fetch_one(&pool)
+    .await
+    .expect("the reservation's usage");
+    assert!(
+        charged.is_some_and(|s| s >= 1),
+        "the settlement charges the attempt's wall-clock seconds: {charged:?}"
+    );
+
     // The reservation is SETTLED, not left to expire.
     let status: String =
         sqlx::query_scalar("SELECT status FROM budget_reservations WHERE reservation_id = $1")

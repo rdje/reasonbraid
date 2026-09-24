@@ -504,6 +504,15 @@ impl<A: Adapter> Worker<A> {
         let event_id = EventId::new().to_string();
         let build_result = |report: &ExecutionReport| {
             let (content, nul_replaced) = storable_content(&report.chunks);
+            // The wall-clock seconds ride with the tokens (`SIGNOFF-REPAIR.4.4.6.1`):
+            // the control plane settles them against the reservation's clock.
+            let mut usage = json!(report.usage);
+            if let Some(seconds) = report.wall_clock_seconds {
+                if !usage.is_object() {
+                    usage = json!({});
+                }
+                usage["wall_clock_seconds"] = json!(seconds);
+            }
             let mut payload = json!({
                 "kind": "work_result",
                 "work_kind": work_kind,
@@ -511,7 +520,7 @@ impl<A: Adapter> Worker<A> {
                 "reservation_id": report.reservation_id,
                 "attempt_id": report.attempt_id,
                 "content": content,
-                "usage": report.usage,
+                "usage": usage,
             });
             if nul_replaced > 0 {
                 payload["nul_replaced"] = json!(nul_replaced);

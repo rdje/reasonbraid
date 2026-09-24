@@ -153,6 +153,19 @@ pub struct ExecutionReport {
     /// one ([`execute_attempt_emitting`]): pending in the journal from the same
     /// transaction that completed the attempt, and the caller's to deliver.
     pub result_event: Option<ResultEvent>,
+    /// The wall-clock seconds the attempt took from its dispatch record to its
+    /// end, rounded up (`SIGNOFF-REPAIR.4.4.6.1`): charged to the local ledger and
+    /// reported to the control plane with the tokens. `None` for an attempt that
+    /// never crossed the dispatch boundary, which spent nothing.
+    pub wall_clock_seconds: Option<u64>,
+}
+
+/// The seconds since `dispatched_at`, rounded UP and never below one: an attempt
+/// that crossed the dispatch boundary costs at least a second, and never less
+/// than it took (`SIGNOFF-REPAIR.4.4.6.1`).
+fn seconds_since(dispatched_at: tokio::time::Instant) -> u64 {
+    let millis = u64::try_from(dispatched_at.elapsed().as_millis()).unwrap_or(u64::MAX);
+    millis.div_ceil(1000).max(1)
 }
 
 /// Builds the outgoing result event from a completed attempt's report.
@@ -313,6 +326,7 @@ async fn supervise(
             usage: None,
             reservation_id: reservation.reservation_id.clone(),
             result_event: None,
+            wall_clock_seconds: None,
         })
     };
     if let Err(e) = reservation.applicable_at(now) {
@@ -334,6 +348,8 @@ async fn supervise(
         .prepare_attempt(&attempt_id, operation_id, now)
         .await?;
     journal.record_dispatch(&attempt_id, None, now).await?;
+    // The attempt's clock starts at its dispatch record (`SIGNOFF-REPAIR.4.4.6.1`).
+    let dispatched_at = tokio::time::Instant::now();
 
     // The deadline, as an instant on the runtime's clock (a deadline already
     // past waits for nothing), and as the text the evidence names.
@@ -358,6 +374,7 @@ async fn supervise(
                 local,
                 result_event,
                 now,
+                dispatched_at,
             },
             attempt_id,
             Vec::new(),
@@ -382,6 +399,7 @@ async fn supervise(
                 usage: None,
                 reservation_id: reservation.reservation_id.clone(),
                 result_event: None,
+                wall_clock_seconds: None,
             })
         }
         InvokeOutcome::Accepted(ack, mut handle) => {
@@ -440,6 +458,7 @@ async fn supervise(
                     let normalized = usage.as_ref().map(|u| adapter.normalize_usage(u));
                     // Settle ACTUAL usage against the hold (overruns land in the
                     // local ledger as-is — recorded, never clamped).
+                    let wall_clock_seconds = seconds_since(dispatched_at);
                     let actual = BudgetDimensions::attempt_usage(
                         normalized
                             .as_ref()
@@ -447,6 +466,7 @@ async fn supervise(
                         normalized
                             .as_ref()
                             .and_then(|u| u.output_tokens.map(|v| v as u64)),
+                        Some(wall_clock_seconds),
                     );
                     local.settle(&reservation.dimensions, &actual).await;
                     let mut report = ExecutionReport {
@@ -456,6 +476,7 @@ async fn supervise(
                         usage: normalized,
                         reservation_id: reservation.reservation_id.clone(),
                         result_event: None,
+                        wall_clock_seconds: Some(wall_clock_seconds),
                     };
                     land_completed(journal, &mut report, usage.as_ref(), result_event, now).await?;
                     Ok(report)
@@ -464,7 +485,9 @@ async fn supervise(
                     journal
                         .record_failed_known(&attempt_id, Some(&json!({ "reason": reason })), now)
                         .await?;
-                    let actual = BudgetDimensions::attempt_usage(None, None);
+                    let wall_clock_seconds = seconds_since(dispatched_at);
+                    let actual =
+                        BudgetDimensions::attempt_usage(None, None, Some(wall_clock_seconds));
                     local.settle(&reservation.dimensions, &actual).await;
                     Ok(ExecutionReport {
                         attempt_id,
@@ -473,6 +496,7 @@ async fn supervise(
                         usage: None,
                         reservation_id: reservation.reservation_id.clone(),
                         result_event: None,
+                        wall_clock_seconds: Some(wall_clock_seconds),
                     })
                 }
                 Terminal::Lost(reason) => {
@@ -485,6 +509,7 @@ async fn supervise(
                             local,
                             result_event,
                             now,
+                            dispatched_at,
                         },
                         attempt_id,
                         chunks,
@@ -514,6 +539,7 @@ struct UnknownOutcome<'a, A: Adapter> {
     local: &'a LocalBudget,
     result_event: Option<ResultEventBuilder<'a>>,
     now: chrono::DateTime<Utc>,
+    dispatched_at: tokio::time::Instant,
 }
 
 /// Step 5: the attempt has no result the supervisor can vouch for. Journal the
@@ -534,6 +560,7 @@ async fn settle_unknown<A: Adapter>(
         local,
         result_event,
         now,
+        dispatched_at,
     } = at;
     journal
         .record_outcome_unknown(&attempt_id, Some(reason), now)
@@ -541,6 +568,7 @@ async fn settle_unknown<A: Adapter>(
     match adapter.query_status(operation_id).await {
         StatusLookupOutcome::Supported(AttemptResult::Completed { usage }) => {
             let normalized = usage.as_ref().map(|u| adapter.normalize_usage(u));
+            let wall_clock_seconds = seconds_since(dispatched_at);
             let mut report = ExecutionReport {
                 attempt_id,
                 final_state: ProviderAttemptState::Completed,
@@ -548,6 +576,7 @@ async fn settle_unknown<A: Adapter>(
                 usage: normalized,
                 reservation_id: reservation.reservation_id.clone(),
                 result_event: None,
+                wall_clock_seconds: Some(wall_clock_seconds),
             };
             land_completed(journal, &mut report, usage.as_ref(), result_event, now).await?;
             let actual = BudgetDimensions::attempt_usage(
@@ -559,6 +588,7 @@ async fn settle_unknown<A: Adapter>(
                     .usage
                     .as_ref()
                     .and_then(|u| u.output_tokens.map(|v| v as u64)),
+                Some(wall_clock_seconds),
             );
             local.settle(&reservation.dimensions, &actual).await;
             Ok(report)
@@ -573,7 +603,8 @@ async fn settle_unknown<A: Adapter>(
                     now,
                 )
                 .await?;
-            let actual = BudgetDimensions::attempt_usage(None, None);
+            let wall_clock_seconds = seconds_since(dispatched_at);
+            let actual = BudgetDimensions::attempt_usage(None, None, Some(wall_clock_seconds));
             local.settle(&reservation.dimensions, &actual).await;
             Ok(ExecutionReport {
                 attempt_id,
@@ -582,6 +613,7 @@ async fn settle_unknown<A: Adapter>(
                 usage: None,
                 reservation_id: reservation.reservation_id.clone(),
                 result_event: None,
+                wall_clock_seconds: Some(wall_clock_seconds),
             })
         }
         StatusLookupOutcome::Unsupported => {

@@ -2112,7 +2112,7 @@ async fn budget_read_surface_exposes_the_ledger_through_the_api_only() {
     reasonbraid_server::settle_reservation(
         &pool,
         &reservation_id,
-        &reasonbraid_core::BudgetDimensions::attempt_usage(Some(50), Some(100)),
+        &reasonbraid_core::BudgetDimensions::attempt_usage(Some(50), Some(100), None),
         chrono::Utc::now(),
     )
     .await

@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-24 — Time spent on jobs now counts against a conversation's time budget (`SIGNOFF-REPAIR.4.4.6.1`)
+
+`REASONBRAID-REPAIR-0476`.
+
+- 🔴 **Before:** each conversation has a time budget (10 minutes by default) alongside its call and token budgets. Time was never charged once a job finished, so the budget only limited how many jobs could run at the same moment, never the total. However long the jobs took altogether, the time budget never ran out.
+- ✅ **Now:** each machine times every job, rounding up to whole seconds, and reports the time alongside the tokens. The server charges it, so a conversation's time budget runs out like its token budget does.
+- ✅ Tested: two checks (one on the machine, one against the real server) failed on the old code and pass now; 199 core and machine tests and three live suites pass. The deliberately broken versions exposed a gap ("always charge one second" went unnoticed because every test job was quick); a longer job was added, and all are now caught. Strict lint clean.
+- Technical: `BudgetDimensions::attempt_usage(input, output, wall_clock_seconds)`; supervisor `seconds_since(dispatched_at)` (ceil, min 1) at every settlement; `ExecutionReport.wall_clock_seconds`; worker adds `usage.wall_clock_seconds`; `api::settle_work_item_reservation` reads it. Controls: two in `supervisor_bounds`, one live assertion in `node_work`.
+
 ## 2026-09-24 — The web console's inbox panel works (`SIGNOFF-REPAIR.4.4.2.2`)
 
 `REASONBRAID-REPAIR-0475`. A defect found by the previous fix.

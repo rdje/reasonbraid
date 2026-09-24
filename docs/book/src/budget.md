@@ -17,6 +17,29 @@ applicable reservation** — enforced at BOTH boundaries:
   refusal is journaled `failed_before_dispatch` and the adapter is never
   invoked.
 
+## Wall-clock time is spent, like tokens
+
+Every dimension of a ceiling is cumulative: the server holds it against active
+reservations **plus settled usage**. Wall-clock time is charged the same way
+(`SIGNOFF-REPAIR.4.4.6.1`). The node's supervisor times each attempt from its
+dispatch record to its end, rounds **up** to whole seconds (at least one, so an
+attempt never costs less than it took), and charges its local ledger. It
+reports the seconds to the control plane beside the tokens:
+
+```json
+"usage": { "input_tokens": 41, "output_tokens": 17, "wall_clock_seconds": 2 }
+```
+
+The settlement records them on the reservation, and later reservations meet
+them against the ceiling's clock.
+
+Before this repair every settlement recorded `wall_clock_seconds: null`. Each
+attempt handed its reserved time back when it settled, so a ceiling's clock
+limited only the attempts running *at the same moment*. However long the
+thread's attempts took in total, its clock never ran out. The per-attempt
+limit is a separate matter: that is the request's deadline, enforced since
+`SIGNOFF-REPAIR.4.4.6` (the adapter chapter).
+
 ## The hold has a window, and the node reads it
 
 A reservation holds its dimensions until `expires_at` and no longer: the

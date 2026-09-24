@@ -104,17 +104,23 @@ impl BudgetDimensions {
         })
     }
 
-    /// The usage dimensions of one dispatched attempt, derived from a normalized
-    /// receipt (a call always counts as one call).
+    /// The usage dimensions of one dispatched attempt: one call, the receipt's
+    /// tokens, and the wall-clock seconds it took (`SIGNOFF-REPAIR.4.4.6.1`).
+    ///
+    /// Wall-clock time is SPENT like the other dimensions: every ledger holds a
+    /// ceiling against active reservations plus SETTLED usage. It was always
+    /// `None` here, so each settlement handed its reserved time back, and a
+    /// ceiling's clock never ran out however long its attempts took.
     pub fn attempt_usage(
         input_tokens: Option<u64>,
         output_tokens: Option<u64>,
+        wall_clock_seconds: Option<u64>,
     ) -> BudgetDimensions {
         BudgetDimensions {
             calls: Some(1),
             input_tokens,
             output_tokens,
-            wall_clock_seconds: None,
+            wall_clock_seconds,
         }
     }
 }
@@ -356,12 +362,13 @@ mod tests {
         }
     }
 
-    /// One attempt's usage: exactly one call plus the measured tokens.
+    /// One attempt's usage: exactly one call plus the measured tokens and time.
     #[test]
     fn attempt_usage_counts_exactly_one_call() {
-        let usage = BudgetDimensions::attempt_usage(Some(10), Some(20));
+        let usage = BudgetDimensions::attempt_usage(Some(10), Some(20), Some(3));
         assert_eq!(usage.calls, Some(1));
         assert_eq!(usage.input_tokens, Some(10));
         assert_eq!(usage.output_tokens, Some(20));
+        assert_eq!(usage.wall_clock_seconds, Some(3));
     }
 }

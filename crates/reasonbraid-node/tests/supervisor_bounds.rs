@@ -354,3 +354,84 @@ async fn a_provider_that_never_acknowledges_is_abandoned_at_the_deadline() {
         "the evidence says where the deadline passed: {evidence}"
     );
 }
+
+/// `SIGNOFF-REPAIR.4.4.6.1` — an attempt's wall-clock time is CHARGED, not only
+/// bounded. The reservation holds `wall_clock_seconds` like every other
+/// dimension, and the ledgers count settled usage against the ceiling, so an
+/// attempt that settles zero seconds hands its time back and the ceiling's clock
+/// never runs out. The time is rounded UP: an attempt never costs less than it
+/// took.
+#[tokio::test]
+async fn a_completed_attempt_charges_its_wall_clock_time() {
+    let fixture = fixture("wall-clock");
+    let journal = Journal::open(fixture.join("node.db")).await.unwrap();
+    let op = operation(&journal, "wall-clock").await;
+    let ledger = local();
+    let report = execute_attempt(
+        &journal,
+        &adapter(vec![ScriptStep::Complete { usage: None }]),
+        &op,
+        &request(None),
+        &reservation(),
+        &ledger,
+    )
+    .await
+    .expect("completes");
+    assert_eq!(report.final_state, ProviderAttemptState::Completed);
+    let charged = ledger.consumed().await.wall_clock_seconds;
+    assert!(
+        charged.is_some_and(|s| s >= 1),
+        "a dispatched attempt charges at least one second: {charged:?}"
+    );
+}
+
+/// A provider that takes a moment to acknowledge, as a real one does.
+struct SlowInvoke(FakeAdapter, Duration);
+
+impl Adapter for SlowInvoke {
+    fn capabilities(&self) -> AdapterCapabilities {
+        self.0.capabilities()
+    }
+
+    async fn invoke(&self, request: &RunRequest, operation_id: &str) -> InvokeOutcome {
+        tokio::time::sleep(self.1).await;
+        self.0.invoke(request, operation_id).await
+    }
+
+    async fn cancel(&self, operation_id: &str) -> CancellationOutcome {
+        self.0.cancel(operation_id).await
+    }
+
+    async fn query_status(&self, operation_id: &str) -> StatusLookupOutcome {
+        self.0.query_status(operation_id).await
+    }
+
+    fn normalize_usage(&self, raw_receipt: &serde_json::Value) -> NormalizedUsage {
+        self.0.normalize_usage(raw_receipt)
+    }
+}
+
+/// Every STARTED second is charged: an attempt of 1.1 s costs two, not one, and
+/// the report says so, which is what the control plane is told.
+#[tokio::test]
+async fn a_long_attempt_charges_every_started_second() {
+    let fixture = fixture("wall-clock-long");
+    let journal = Journal::open(fixture.join("node.db")).await.unwrap();
+    let op = operation(&journal, "wall-clock-long").await;
+    let ledger = local();
+    let report = execute_attempt(
+        &journal,
+        &SlowInvoke(
+            adapter(vec![ScriptStep::Complete { usage: None }]),
+            Duration::from_millis(1_100),
+        ),
+        &op,
+        &request(None),
+        &reservation(),
+        &ledger,
+    )
+    .await
+    .expect("completes");
+    assert_eq!(report.wall_clock_seconds, Some(2), "1.1 s rounds up to 2");
+    assert_eq!(ledger.consumed().await.wall_clock_seconds, Some(2));
+}

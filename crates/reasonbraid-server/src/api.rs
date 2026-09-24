@@ -9473,8 +9473,14 @@ where
             .and_then(|u| u.get(field))
             .and_then(|v| v.as_u64())
     };
-    let usage =
-        BudgetDimensions::attempt_usage(reported("input_tokens"), reported("output_tokens"));
+    // The node measures the attempt's wall-clock seconds and reports them with
+    // its tokens (`SIGNOFF-REPAIR.4.4.6.1`); settled, they are spent against the
+    // ceiling's clock like the tokens are against its token dimensions.
+    let usage = BudgetDimensions::attempt_usage(
+        reported("input_tokens"),
+        reported("output_tokens"),
+        reported("wall_clock_seconds"),
+    );
     budget::settle_reservation_in_tx(&mut *tx, reservation_id, &usage, Utc::now()).await?;
     Ok(())
 }

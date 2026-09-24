@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-24 — Machine certificates reviewed: one worry cleared, two real gaps owned (`SIGNOFF-REPAIR.4.1`)
+
+`REASONBRAID-DOC-0158`. A check of three open findings against the code; no code changed.
+
+- ✅ **Cleared:** "a machine with only expired certificates never reads as suspended". Revoking a machine revokes all its certificates, expired ones included, so a revoked machine always reads suspended. One whose certificates simply ran out reads offline, which is the truth.
+- 🔴 **Real:** the server's certificate authority is made for one year and nothing renews it. The health check does report it once it has expired, but nothing warns beforehand or stops new certificates being issued from it, so after a year every machine would fail at once (`.4.1.8`).
+- 🔴 **Real:** a machine's certificate can be issued to outlive the authority that signed it (`.4.1.7`, next).
+
 ## 2026-09-24 — An operator's ruling on a lost answer now settles its budget hold, and the budget review is complete (`SIGNOFF-REPAIR.4.5.1.1`)
 
 `REASONBRAID-REPAIR-0490`. The last item of the budget review (`REASONBRAID-DOC-0156`).
@@ -336,136 +344,23 @@
 - ✅ Tested: two new checks failed on the old code exactly where predicted (a give-up note settled the doubt; a "did not happen" ruling was recorded as a bare "settled") and pass now; two deliberately broken versions (any message settles the doubt; the ruling flattened again) were each caught; the machine's own 81 tests and six further suites (127 tests) pass; strict lint clean.
 - Technical: server `NodeChannelState::result_receipt_for_attempt` (`payload->>'kind' = 'work_result' AND payload->>'attempt_id' = $3`) drives the directive loop; the evidence and the `needs_adjudication` reason name the attempt. Node `Node::reconcile` matches `Directive::Adjudicated { terminal, evidence }`: `reconciled` → `Journal::reconcile_with_evidence`, `completed`/`failed_known` → `prove_result` with `{"adjudication": evidence}`; an unknown terminal is logged and left open. Controls: `a_receipt_that_is_not_this_attempts_result_does_not_adjudicate_it` (dead letter, another attempt's result, own result) and the grown operator control (`attempt_history` last `failed_known`; evidence names the admission); three fixtures' receipts now `work_result` naming their attempt. Mutants M2 (lookup accepts any event) and M3 (node flattens `failed_known`) caught.
 
-## 2026-09-23 — The machine-recovery checklist checked against the code: five gaps found, one piece missing, all scheduled (`SIGNOFF-REPAIR.4.4`)
-
-`REASONBRAID-DOC-0153`. A review; no code changed.
-
-- 🔴 **Worst:** when a machine cannot tell whether a paid provider call happened, the server may declare it "settled" on the strength of the machine's own "I gave up on this" report — with no evidence at all. And when an operator rules on such a case, the machine ignores which way the ruling went.
-- 🔴 A finished answer the server refuses (say, after the agent's permission was withdrawn) is silently dropped: its spend is never counted and the machine is never told.
-- 🔴 Three tests meant to guard the hand-off to the provider cannot tell the safety check from a provider outage; they are fixed before the hand-off is touched.
-- 🔴 If the machine dies in the instant between recording "done" and recording the answer, the paid-for answer is lost for good.
-- 🔴 A network blip while sending an answer, or an unresolvable provider outcome, stops the whole machine process; and the machine waits for ever on a server that never replies.
-- ❌ A time limit is computed for every provider call and nothing enforces it; nor is the reply's size bounded.
-- ⚖️ Retrying an unresolvable call is correctly refused by the machine, but nobody can yet authorize one.
-- ✅ All seven are scheduled in order of risk, each to be proven with a failing test first.
-
-## 2026-09-23 — Two jobs sent to one machine at the same instant no longer collide: proven, and the inbox checklist is complete (`SIGNOFF-REPAIR.4.3.4`, closing `SIGNOFF-REPAIR.4.3`)
-
-`REASONBRAID-REPAIR-0458`. The last of the four inbox-identity gaps found by `REASONBRAID-DOC-0152`; with it the whole checklist (`SIGNOFF-REPAIR.4.3`) is met.
-
-- 🔴 **Before:** two jobs handed to one machine at the same moment could be given the same number, and the second was refused.
-- ✅ **Now:** the per-machine counter introduced two fixes ago (`REASONBRAID-REPAIR-0456`) already makes the second job wait its turn and take the next number. This change proves it rather than re-fixing it: a test holds the counter the way a job in flight does, watches the database report the second job waiting, releases it, and sees it land with the next number; then eight jobs at once all land with eight consecutive numbers.
-- ✅ The test was then run against the old numbering to show it refuses: nothing waits, and the test fails.
-- ✅ The inbox checklist is now met in full: receipts and reconnect answers are per machine, the counter survives clearing out old work, answers and the "answered" state are per machine, and simultaneous jobs are serialized.
-- ✅ Tested: the new test passes on the current code (51 tests in the machine-channel suite) and was then run against the old numbering, where it failed as it should because nothing waited; three further suites that hand out job numbers pass unchanged (113 tests); strict lint clean.
-- Technical: no product change. Control `concurrent_enqueues_to_one_node_serialize_on_its_mark` (node_channel, multi-thread flavour): a holder transaction seeds the mark row idempotently and takes it `FOR UPDATE` (seeded so the control refuses the old allocation at the property — nothing blocks — rather than at its precondition — no row); a spawned `enqueue` is observed by `blocked_on(pool, "node_inbox_cursors")` (`pg_stat_activity`, `wait_event_type = 'Lock'`), has written no row, lands with cursor 2 on release; a `JoinSet` of eight lands `3..=10`. Mutant M1 (the pre-0456 `MAX + 1` enqueue on a pooled connection) → nothing blocks, the control refuses. `next_cursor_in_tx`'s docblock now cites the control. `.4.3` closed with every goal-line clause and the attached clause reconciled MET.
-
-## 2026-09-23 — Two machines holding a job with the same name now each get their answer counted (`SIGNOFF-REPAIR.4.3.3`)
-
-`REASONBRAID-REPAIR-0457`. The third of the four inbox-identity gaps found by `REASONBRAID-DOC-0152`.
-
-- 🔴 **Before:** job names are unique per machine, not per organisation, so two machines in one organisation could hold jobs with the same name. The server's "have I already counted this answer?" check looked only at the job name, so the second machine's answer was treated as a clash with the first's and thrown away. And the inbox view marked a job "answered" on one machine when the answer had come from the other.
-- ✅ **Now:** the answer check and the "answered" state both ask *which machine* as well as *which job*. Each machine's answer is counted; a machine re-sending its own answer is still recognised as a repeat.
-- ✅ Checked before choosing the fix: today the server never gives two machines the same job name (each job is named after the one event that created it, and one event goes to one machine), so nothing was lost in practice; the check simply permitted it. Old records were re-labelled where it was unambiguous which machine they belonged to.
-- ✅ Tested: two new checks failed on the old code exactly where predicted (one answer counted where two were owed; a job wrongly marked answered) and pass now; two deliberately broken versions (the answer check back on the job name alone; the answered state ignoring the machine) were each caught; thirteen suites pass (264 tests) after one test that read the stored answer by the old label was updated; strict lint clean.
-- Technical: `api::node_result_fold_key(node_id, command_id)` = `{node}:{command}`; `apply_node_result_in_tx` claims, applies the `Command` and stores its three rejections under it. `migrations/0104`: `CREATE OR REPLACE VIEW node_inbox_state` with `e.node_id = i.node_id` on the `consumed` rung (same columns; `node_presence` untouched) and the stored-row re-key where exactly one node holds the thread-work command id in the tenant. Controls: `two_nodes_holding_one_command_id_each_fold_their_own_result` (node_result_ordering: two roles on one thread, B's row given A's id, both fold, a new-event-id re-emission replays) and `a_foreign_nodes_result_does_not_read_this_nodes_row_consumed` (node_channel); `node_work`'s stored-rejection reader re-keyed. Mutants M2 (claim on the bare id) and M3 (rung without the node) caught.
-
-## 2026-09-23 — Clearing out a machine's old delivered work no longer locks it out or hides later work (`SIGNOFF-REPAIR.4.3.2`)
-
-`REASONBRAID-REPAIR-0456`. The second of the four inbox-identity gaps found by `REASONBRAID-DOC-0152`.
-
-- 🔴 **Before:** the server worked out "how far has this machine got" by looking at the highest-numbered item still in its inbox. When an operator cleared out old delivered items, that number could drop — so a machine that had confirmed up to item 30 was refused on its next check-in as "ahead of the server", and new items handed out afterwards could be numbered 1, 2, 3 again, which the machine had already seen and would skip. Work went silently undelivered and counted against the machine's backlog for ever.
-- ✅ **Now:** the server keeps a durable per-machine counter that only ever goes up. Every new item is numbered above it, so clearing out old items removes items, never numbers. A machine that confirmed up to 30 reconnects fine, and the next item is number 31.
-- ✅ Existing machines' counters were seeded from what they already held, so nothing moved. A machine whose entire inbox had already been cleared before this change cannot have its lost number recovered; the change says so.
-- ✅ Tested: the new prune-everything-then-reconnect check failed on the old code exactly where predicted and passes now (the inbox suite: 12 tests); two deliberately broken versions (the counter overwritten by the inbox's highest number; the reconnect check ignoring the counter) were each caught; ten further suites that hand out or read cursors pass unchanged (223 tests); strict lint clean.
-- Technical: `migrations/0103_node_inbox_cursors.sql` (`node_inbox_cursors(node_id PK, high_water)`, seeded `MAX(cursor)` per node); `node_channel::next_cursor_in_tx` — `INSERT … ON CONFLICT DO UPDATE SET high_water = GREATEST(mark, MAX(cursor)) + 1 RETURNING high_water` — used by `enqueue` (now `pool.begin()`), `enqueue_in_tx` and the quarantine replay in `node_admin.rs`; `CURRENT_CURSOR_SQL` = `GREATEST(mark, MAX(cursor))` for `current_cursor` and `current_cursor_in_tx`. Control `a_nodes_cursor_survives_its_inbox_being_pruned` (node_inbox; three arms: reconnect at N after a full prune, the replay numbered above N, a fresh enqueue above that) with the `handshake_at` helper; mutants M2 (mark overwritten by the maximum) and M3 (reader ignores the mark) caught. 30 cleanup plans gain `node_inbox_cursors`.
-
-## 2026-09-23 — One machine can no longer silence another machine's answer by reusing its message id (`SIGNOFF-REPAIR.4.3.1`)
-
-`REASONBRAID-REPAIR-0455`. The first of the four inbox-identity gaps found by `REASONBRAID-DOC-0152`.
-
-- 🔴 **Before:** every machine chooses its own message ids, but the server treated them as if they were unique across all machines. If machine B had already used a message id, machine A's own message under that id was treated as a repeat: it was dropped, and A's finished answer was never counted. And when a machine reconnected and asked "do you already hold my result for this job?", the server answered from *any* machine's records — so B's receipt could close A's uncertain job as done, and B's message id was shown to A.
-- ✅ **Now:** receipts are kept per machine. A repeat is only a repeat of that same machine's own message; another machine's use of the same id is that machine's own first message. The reconnect questions are answered only from the asking machine's own receipts.
-- ✅ Existing receipts were not rewritten; the database key was widened (an additive change).
-- ✅ Tested: the two new checks failed on the old code exactly where predicted and pass now (the machine-channel suite: 49 tests); a deliberately broken version that answered the reconnect questions from any machine's records was caught; six further suites that touch receipts pass unchanged (121 tests); strict lint clean.
-- Technical: `migrations/0102_node_events_keyed_per_node.sql` re-keys `node_events` to `(node_id, event_id)` and adds `node_events_node_operation_idx (node_id, operation_id)` (the `0003` operation-only index stays for the `consumed` rung until `.4.3.3`); `record_event_in_tx` conflicts on `(node_id, event_id)`; `event_id_for_operation(node_id, operation_id)` binds the node and both handshake callers pass `req.node_id`. Controls: `a_colliding_event_id_from_another_node_does_not_suppress_this_nodes_receipt` (two nodes through the real `POST /v1/nodes/events`) and `a_foreign_receipt_neither_adjudicates_nor_is_disclosed` (handshake directives + `known_events`, then the node's own receipt does both); mutant M2 (node predicate dropped) caught.
-
-## 2026-09-23 — Ending a partnership now also stops work that was already on its way (`SIGNOFF-REPAIR.5.3.6`)
-
-`REASONBRAID-REPAIR-0454`. Completes the federation work (`SIGNOFF-REPAIR.5.3`) and with it the directory, recruitment and federation lane (`SIGNOFF-REPAIR.5`).
-
-- 🔴 **Before:** after a partnership ended, new work for a partner's agent was refused, but work already queued could still be sent to the partner's machine (topic included) and run there.
-- ✅ **Now:** the partner's machine is no longer offered that queued work, and on its next check-in it is told it no longer works for the importing organisation, so anything it already holds for them is refused instead of run.
-- ✅ Tested: the new checks failed on the old code and pass now; two deliberately broken versions (the machine keeping the old organisation; the server listing organisations by inbox contents) were each caught; twelve suites pass, including the end-to-end CLI.
-- Technical: `replay`'s tail gains `(row tenant = node tenant OR role_execution(payload->>'agent_role').node_id = node)`; `epochs_and_server_time` = own tenant ∪ `role_execution.tenant_id WHERE node_id = node`; node `set_revocation_epochs` deletes then inserts (wholesale). Controls: node `a_tenant_left_out_of_the_map_loses_its_reference`; server `the_handshake_and_poll_carry_the_epochs_of_the_tenants_the_node_serves` (re-expressed); the origin profiles control's post-revocation poll arm. Mutants M2 (merge) and M3 (inbox tenants) caught. Fixture fix: `a_revoked_nodes_withheld_work_is_delivered_to_its_replacement` enqueues under its node's tenant.
-
-## 2026-09-23 — Each delivery to a partner's machine now leaves an audit receipt on both sides (`SIGNOFF-REPAIR.5.3.5.3.3`)
-
-`REASONBRAID-REPAIR-0453`. Completes cross-organisation recruitment (`SIGNOFF-REPAIR.5.3.5`).
-
-- 🔴 **Before:** when a partner's machine picked up a job for an imported agent, neither organisation's audit trail recorded that work had crossed between them.
-- ✅ **Now:** the moment the partner's machine confirms it has the job, both sides record a receipt in the same step. The importing side's receipt names the confirmation; the partner's side names the permission record the job runs under. Confirming twice never creates duplicates, and ordinary same-organisation work leaves no such receipt.
-- ✅ With this, the whole "recruit a partner's agent" feature is complete: advertise the call, request to join, import, run on either machine, deliver, answer, audit.
-- ✅ Tested: the new checks failed on the old code and pass now; two deliberately wrong versions (receipts for same-organisation work; receipts for plain traffic) were each caught; eight suites pass.
-- Technical: `migrations/0101` (kind check + `origin_delivery`, `origin_execution`); `ACKNOWLEDGE_SQL … RETURNING cursor, tenant_id, command_id, authz_ref`; `acknowledge_in_tx` writes both receipts per marked cross-tenant admitted row; `acknowledge` runs it on its own transaction. Control grown (ack twice; own-tenant and plain rows beside); mutants M1 (own tenant) and M2 (plain traffic) caught; the first RED was confounded by the wake-gate defect and a clean RED was re-run.
-
-## 2026-09-23 — Agents that set no availability were getting no work; fixed (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.2.3`)
-
-`REASONBRAID-REPAIR-0452`.
-
-- 🔴 **Before:** an agent whose profile didn't mention availability at all (the most common case) was sent **no work**, while the "who is available" listing showed it as available. Its profile stored "no availability" as an empty value, and the delivery code misread that as a broken setting and held everything back. The tests never noticed because they used a slightly different "empty" shape than real profiles do.
-- ✅ **Now:** delivery and the availability listing read the setting through one shared function, so an agent with no availability set gets its work, and the two can't disagree again.
-- ✅ Found while testing the next feature, which it was blocking; that work was set aside safely and resumes next.
-- ✅ Tested: a new test using exactly what a real profile stores failed on the old code (no work delivered) and passes now; recreating the old misreading was caught; all delivery suites pass.
-- Technical: `wake::stored(block)` (None | JSON null → `Ok(None)`, typed → `Ok(Some)`, else `Err(FormatError::Block)`) replaces the replay's inline parse and `presence::hold_from_stored`'s own null test. Control `a_profile_without_availability_holds_nothing_back` (node_channel) + unit `a_stored_null_block_declares_nothing`; mutant (null read as a block) caught at both. Introduced by REPAIR-0419; REPAIR-0439's null-safe reader never reached the replay.
-
-## 2026-09-23 — A partner agent's answer from its home machine is now credited to it (`SIGNOFF-REPAIR.5.3.5.3.1.4`)
-
-`REASONBRAID-REPAIR-0451`. Completes "a partner's agent runs on its home machine" (`SIGNOFF-REPAIR.5.3.5.3.1`).
-
-- 🔴 **Before:** when the partner's machine sent back the agent's answer, the server credited it to the partner machine's *own* agent instead of the imported one. That agent isn't part of the conversation, so the answer was rejected.
-- ✅ **Now:** the answer is credited to the agent the job was for, which the server reads from its own record of the job, not from anything the machine says. So the contribution appears in the conversation under the imported agent, with the importing organisation's permissions. If the partnership ended after the job was sent, the late answer is refused.
-- ✅ The whole path now works end to end: import → listed in the directory → seated on a panel → work delivered to the partner's machine → checked against the right organisation's revocations → answer credited correctly. What remains is an audit receipt on both sides for each delivery (next task).
-- ✅ Tested: the new check failed on the old code (the answer was refused as the wrong agent) and passes now; switching off the "does this machine still run this agent" check was caught; four suites pass.
-- Technical: `apply_node_result_in_tx` reads the acting role from the stored inbox row's `agent_role` (fallback: the node id, the dev rule) and, after the idempotency claim, requires `role_execution(role).node_id = node_id` (else `unauthorized`, stored as the rejection). The `.5.3.5.3.1` census missed this site (it parses the node id rather than joining on it). Control grown with a real node-crate channel for the origin node; mutant M1 (runs-here check off) caught.
-
-## 2026-09-23 — A partner's agent now receives its work on the partner's own machine (`SIGNOFF-REPAIR.5.3.5.3.1.3`)
-
-`REASONBRAID-REPAIR-0450`.
-
-- 🔴 **Before:** a partner agent bound to its home machine could join a conversation, but the work that followed was addressed to a machine that doesn't exist and sat there unread.
-- ✅ **Now:** the work goes to the partner's machine, still as the importing organisation's job, so that machine checks it against the importing organisation's revocations (the previous step made that possible). The "too much unread work" safety limit is counted on the machine that will actually hold it. If the partnership has ended, accepting new work is refused with a clear reason instead of silently queueing it.
-- ⚠️ **Not yet:** the partner machine's *answer* is still credited to the wrong identity and rejected. That's the next task, and the book says so.
-- ✅ Tested: the new checks failed on the old code and pass now; two deliberately broken versions (wrong inbox; limit counted on the wrong machine) were each caught; the profile, work, channel and invitation suites pass.
-- Technical: `dispatch_work_in_tx` resolves `role_execution.node_id` first (none → `409 invalid_transition` *runs on no node*), counts `undelivered_in_tx` and enqueues on the resolved node; the item keeps the dispatching tenant, admission and decision epoch. Control grown: the origin test's work, backlog and lapsed-binding arms; mutants M1 (enqueue on role) and M2 (backlog on role) caught. Opened `.5.3.5.3.1.4` (the result path).
-
-## 2026-09-23 — A machine working for two organisations now checks each job against the right organisation's revocations (`SIGNOFF-REPAIR.5.3.5.3.2`)
-
-`REASONBRAID-REPAIR-0449`.
-
-- 🔴 **Before:** a machine only ever knew one organisation's revocation counter, its own, and checked every job against it before running it. That was harmless while a machine only ever worked for its own organisation. But a partner's agent running on its home machine (the feature being built) would put two organisations' jobs on one machine. Then a revocation in one organisation could wrongly block the other's valid work, or let stale work through.
-- ✅ **Now:** the server tells the machine the current counter of every organisation whose jobs it holds, and the machine checks each job against **its own** organisation's counter. A job from an organisation the machine hasn't been told about yet is refused, never judged by someone else's counter.
-- ✅ This is the safety step that had to come first; sending partner agents their actual work is next.
-- ✅ Tested: new tests on both the machine side and the server side; recreating the old single-counter behaviour on each side made those tests fail; every machine- and channel-related suite passes.
-- Technical: server `node_channel.rs` `epochs_and_server_time` (own tenant ∪ inbox tenants, one statement with `clock_timestamp()`), `revocation_epochs: BTreeMap<String, i64>` replaces `revocation_epoch` in `HandshakeResponse`/`PollResponse` on both sides; node `migrations/0004_tenant_epochs.sql`, `Journal::{revocation_epoch_for, set_revocation_epochs, set_revocation_epoch_for}`, the gate reads `item.tenant_id`'s epoch. Controls `each_command_is_judged_by_its_own_tenants_epoch` (node) and `the_handshake_and_poll_carry_every_held_tenants_epoch` (server); pre-repair mutants on both sides caught.
-
 The entries before those above were rotated into reachable Git history at the
-**twelfth rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
+**thirteenth rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
 stood at the commit named below, which is the object every retired record was
 checked against before this notice was written — is:
 
 ```bash
-git show 75fb20140e3b78a9a821cc36557bba0dcf45023d:DEV_NOTES.md
+git show 91af374d56bc890a274a15a4f6ac5ca22ab9fbe6:DEV_NOTES.md
 ```
 
-That snapshot is 73568 bytes and 430 lines, and contains 41 dated
-entries; its Git blob is `42060e3a6f542727d42da75f4e1e1d4060d65756` and its SHA-256 is
-`d2bc84f3f3df8d7b4fa031b9556fd5d2128a9502544b236dceab71f606816439`. It carries the eleventh rotation's
+That snapshot is 73047 bytes and 473 lines, and contains 47 dated
+entries; its Git blob is `945b49abee1733f493157ffb0e1ffff44dc2cf38` and its SHA-256 is
+`4f812f9eaf61571ece1f5db00ce29c61f8fc5d8482df39d9ac0cbf2e5f5c8ec1`. It carries the twelfth rotation's
 notice in turn, and each earlier notice names the one before it, so the chain
 walks all the way back. `docs/decisions/2026-09-09_changelog-rotation.md` holds
 the first transition's evidence.
 
-⛔ **13 record(s) rotated out, 29 kept, lossless** — every retired heading was retrieved from the
+⛔ **11 record(s) rotated out, 37 kept, lossless** — every retired heading was retrieved from the
 predecessor named above before this notice was written, and every figure in it was re-derived from that object with
 `git rev-parse`, `git cat-file` and SHA-256 rather than typed. ⭐ The cut is DERIVED, not chosen: it retires whole
 records until the ledger has at least 10 commits of runway at the p90 entry size measured over the last

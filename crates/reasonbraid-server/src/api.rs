@@ -1732,9 +1732,18 @@ pub struct InboxRow {
     pub acknowledged_at: Option<DateTime<Utc>>,
     pub quarantined_at: Option<DateTime<Utc>>,
     pub quarantine_reason: Option<String>,
-    /// The derived §10.6 delivery state (`.5.1`): `queued` |
-    /// `acknowledged` | `consumed` | `dead_lettered`.
+    /// The derived §10.6 delivery state (`node_inbox_state`): `queued` |
+    /// `offered` | `transport_received` | `consumed` | `revoked` | `expired` |
+    /// `dead_lettered`.
     pub delivery_state: String,
+    /// The fold's refusal of this row's result, `{code, message}`, when the
+    /// control plane received the result and REFUSED to apply it (the thread
+    /// closed, the authority was withdrawn, …); `null` otherwise
+    /// (`SIGNOFF-REPAIR.4.4.2.1`). The row is still `consumed`: the ladder
+    /// records that the agent's result came back, and this records what the
+    /// domain did with it. Without it, a refused result and an applied one read
+    /// the same.
+    pub result_refusal: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1806,10 +1815,21 @@ pub(crate) async fn inbox_inspection(
         quarantined_at: Option<DateTime<Utc>>,
         quarantine_reason: Option<String>,
         delivery_state: String,
+        result_refusal: Option<Value>,
     }
+    // The refusal is the fold's STORED result for this row: the idempotency row
+    // keyed by `node_result_fold_key` (`<node_id>:<command_id>`, `0104`), when
+    // it records `ok: false`.
     let rows: Vec<InboxRowRow> = sqlx::query_as(
-        "SELECT cursor, command_id, thread_id, payload, acknowledged_at, quarantined_at, quarantine_reason, delivery_state \
-         FROM node_inbox_state WHERE node_id = $1 AND tenant_id = $2 ORDER BY cursor",
+        "SELECT s.cursor, s.command_id, s.thread_id, s.payload, s.acknowledged_at, \
+                s.quarantined_at, s.quarantine_reason, s.delivery_state, \
+                CASE WHEN i.response_result->>'ok' = 'false' \
+                     THEN i.response_result->'error' END AS result_refusal \
+         FROM node_inbox_state s \
+         LEFT JOIN idempotency i \
+           ON i.tenant_id = s.tenant_id \
+          AND i.idempotency_key = s.node_id || ':' || s.command_id \
+         WHERE s.node_id = $1 AND s.tenant_id = $2 ORDER BY s.cursor",
     )
     .bind(node_id)
     .bind(tenant_id.to_string())
@@ -1828,6 +1848,7 @@ pub(crate) async fn inbox_inspection(
                 quarantined_at: r.quarantined_at,
                 quarantine_reason: r.quarantine_reason,
                 delivery_state: r.delivery_state,
+                result_refusal: r.result_refusal,
             })
             .collect(),
     })

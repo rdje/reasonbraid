@@ -2240,6 +2240,24 @@ async fn a_refused_result_is_settled_and_the_node_journals_the_refusal() {
             .any(|e| e["event_type"] == "thread.contribution_submitted"),
         "no contribution entered the closed thread"
     );
+
+    // The OPERATOR sees it too (`SIGNOFF-REPAIR.4.4.2.1`): the row is `consumed`
+    // (the agent's result came back, which is what the ladder records), and the
+    // inspection names the refusal the fold stored, with its code.
+    let (status, inspection) = get(
+        &client,
+        &server.base(),
+        &format!("/v1/nodes/inbox?tenant_id={tenant}&node_id={role}"),
+        &human,
+    )
+    .await;
+    assert_eq!(status, 200, "{inspection}");
+    let row = &inspection["rows"][0];
+    assert_eq!(row["delivery_state"], "consumed", "{row}");
+    assert_eq!(
+        row["result_refusal"]["code"], "invalid_transition",
+        "the inspection names the refusal: {row}"
+    );
 }
 
 /// `SIGNOFF-REPAIR.4.4.8` — a completed, delivered work item is never
@@ -2351,6 +2369,22 @@ async fn a_completed_item_is_never_dead_lettered() {
         "a row whose result was delivered is not quarantined by a later report"
     );
     assert_eq!(delivery_state(&pool, &role).await, "consumed");
+
+    // An APPLIED result carries no refusal on the operator's inspection
+    // (`SIGNOFF-REPAIR.4.4.2.1`): the field is present and null.
+    let (status, inspection) = get(
+        &client,
+        &server.base(),
+        &format!("/v1/nodes/inbox?tenant_id={_tenant}&node_id={role}"),
+        &_human,
+    )
+    .await;
+    assert_eq!(status, 200, "{inspection}");
+    let row = &inspection["rows"][0];
+    assert!(
+        row.get("result_refusal").is_some_and(Value::is_null),
+        "an applied result has no refusal: {row}"
+    );
 }
 
 /// `SIGNOFF-REPAIR.4.4.10` — the largest result a node can produce is one the

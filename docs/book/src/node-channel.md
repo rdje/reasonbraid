@@ -425,6 +425,25 @@ queued → offered → transport_received → consumed
 | `expired` | the command's authority **lapsed**: the grant that admitted it reached its own expiry | the admitting grant's `expires_at` has passed |
 | `dead_lettered` | the row was quarantined; the quarantine **is** the dead letter | `quarantined_at` set |
 
+**A refused result is `consumed`, and the inspection says it was refused**
+(`SIGNOFF-REPAIR.4.4.2.1`). The ladder records delivery: `consumed` means the
+agent's result came back. What the control plane then *did* with that result is
+a second fact, and each inspection row carries it as `result_refusal`. It is
+`null` when the result was applied, or when none has come back yet. When the
+fold refused the result, it holds the code and message the fold stored, for
+example after the thread closed while the node held the work:
+
+```json
+{ "command_id": "work_evt_…", "delivery_state": "consumed",
+  "result_refusal": { "code": "invalid_transition",
+                      "message": "invalid Thread transition: `closed` -(contribute)-> rejected" } }
+```
+
+Before this repair an applied result and a refused one read the same. The
+refusal was stored and reached the node (`SIGNOFF-REPAIR.4.4.2`), but an
+operator had no way to see it. `GET /v1/nodes/inbox` and the MCP `list_inbox`
+tool share the one inspection, so both carry the field.
+
 **A finished item is never dead-lettered** (`SIGNOFF-REPAIR.4.4.8`). A node
 reports a dead letter when its retry gate refuses an item: the retry budget is
 exhausted, the provider failed definitively, the outcome is unknown and

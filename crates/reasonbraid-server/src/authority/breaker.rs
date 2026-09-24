@@ -92,6 +92,10 @@ pub enum BreakerResult {
     NotTripped,
     /// No breaker is armed for this tenant at all.
     NotArmed,
+    /// The threshold names no dimension, so the breaker could never trip
+    /// (`SIGNOFF-REPAIR.4.5.6.1`: since `.4.5.6` a breaker constrains only the
+    /// dimensions its threshold names). Nothing was armed.
+    ThresholdNamesNothing,
     /// The caller was refused by the authority evaluated inside the guard.
     Denied { reason: String },
 }
@@ -221,6 +225,21 @@ async fn arm(
     threshold: BudgetDimensions,
     armed: Option<Armed>,
 ) -> Result<(BreakerResult, AdministrativeOutcome), GuardError> {
+    // Refused inside the admitted transaction, so the refusal is an effect
+    // record like every other breaker outcome (`SIGNOFF-REPAIR.4.5.6.1`). A
+    // dimension set to ZERO still names it (the breaker then trips on the first
+    // unit), so only the all-absent threshold is refused.
+    if threshold == BudgetDimensions::default() {
+        return Ok((
+            BreakerResult::ThresholdNamesNothing,
+            AdministrativeOutcome::Refused {
+                code: AdministrativeRefusal::InvalidCommand,
+                detail: bounded_detail(
+                    "the threshold names no dimension, so the breaker could never trip".to_owned(),
+                ),
+            },
+        ));
+    }
     if armed
         .as_ref()
         .is_some_and(|armed| !armed.tripped && armed.threshold == threshold)

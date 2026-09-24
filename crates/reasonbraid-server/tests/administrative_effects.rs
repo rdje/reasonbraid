@@ -1428,6 +1428,63 @@ async fn arming_a_breaker_commits_its_admission_mutation_and_effect_together() {
     );
 }
 
+/// `SIGNOFF-REPAIR.4.5.6.1` — a threshold that names NO dimension is refused.
+/// Since `.4.5.6` a breaker constrains only the dimensions its threshold names,
+/// so one naming none could never trip: an alarm armed silent. The refusal is
+/// the admitted caller's `400 invalid_command`, no breaker row is written, and
+/// the effect records `refused` with that code.
+#[tokio::test]
+async fn arming_a_threshold_that_names_nothing_is_refused_and_recorded() {
+    let Some(pool) = pool().await else { return };
+    let base = format!("http://{}", serve(&pool).await);
+    let client = reqwest::Client::new();
+    let alice = enrolled(&client, &base, "breaker-empty").await;
+    let tenant: TenantId = alice.tenant.parse().unwrap();
+
+    let (status, receipt, body) = arm(&client, &base, &alice.admin, &alice.tenant, json!({})).await;
+    assert_eq!(
+        (status, body["code"].as_str()),
+        (400, Some("invalid_command")),
+        "a breaker that could never trip is refused: {body}"
+    );
+    assert!(
+        breaker_row(&pool, &alice.tenant).await.is_none(),
+        "nothing was armed"
+    );
+    let effect = effect_of(&pool, tenant, receipt)
+        .await
+        .expect("the refusal is recorded");
+    assert_eq!(effect.operation, AdministrativeOperation::BreakerArm {});
+    assert!(
+        matches!(
+            effect.outcome,
+            AdministrativeOutcome::Refused {
+                code: AdministrativeRefusal::InvalidCommand,
+                ..
+            }
+        ),
+        "refused as the caller's malformed request: {:?}",
+        effect.outcome
+    );
+    assert!(!effect.outcome.changed_protected_state());
+
+    // The line is exactly "names nothing": a threshold naming one dimension,
+    // not `calls`, and at ZERO, names it, and arms (it trips on the first unit).
+    let (status, _receipt, body) = arm(
+        &client,
+        &base,
+        &alice.admin,
+        &alice.tenant,
+        json!({ "output_tokens": 0 }),
+    )
+    .await;
+    assert_eq!(status, 200, "a zero on a named dimension arms: {body}");
+    assert_eq!(
+        breaker_row(&pool, &alice.tenant).await.expect("armed")["threshold"]["output_tokens"],
+        json!(0)
+    );
+}
+
 #[tokio::test]
 async fn re_arming_the_same_threshold_changes_no_column_and_records_a_no_op() {
     let Some(pool) = pool().await else { return };

@@ -213,9 +213,9 @@ calls use. Until `SIGNOFF-REPAIR.4.5.6` it compared with `covers`, which a
 ceiling uses and which refuses any dimension it does not meter, so a partial
 breaker tripped on the first work item, since every work item also asks for
 tokens and time. It now compares the projection restricted to the threshold's
-dimensions (`BudgetDimensions::restricted_to`). ⚠️ The arm verb accepts a
-threshold that names **nothing**, and such a breaker can never trip; refusing
-it is `SIGNOFF-REPAIR.4.5.6.1`.
+dimensions (`BudgetDimensions::restricted_to`). A threshold that names
+**nothing** could therefore never trip, and the arm verb refuses it with
+`400 invalid_command` (`SIGNOFF-REPAIR.4.5.6.1`).
 
 ## Honest limits (Phase 0)
 

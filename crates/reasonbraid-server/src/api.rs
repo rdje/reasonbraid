@@ -8588,6 +8588,11 @@ async fn run_breaker_administration(
         authority::BreakerResult::Reset => {
             Json(json!({ "tenant_id": tenant_id.to_string(), "reset": true })).into_response()
         }
+        authority::BreakerResult::ThresholdNamesNothing => ControlApiError::invalid_command(
+            "the threshold names no dimension, so the breaker could never trip; \
+             name at least one of calls, input_tokens, output_tokens, wall_clock_seconds",
+        )
+        .into_response(),
         authority::BreakerResult::NotTripped | authority::BreakerResult::NotArmed => {
             ControlApiError::invalid_transition(
                 "no tripped breaker to reset (none armed, or none tripped)",

@@ -670,6 +670,7 @@ in-flight reservation in the tenant — the latch never lags the ledger it guard
 | Another tenant operation holds the authority guard when a breaker request arrives | It waits; nothing is armed or reset until it acquires. |
 | The caller's own administration ends while its request queues | The post-wait admission sees it ended: 403, and no breaker changes. |
 | An administrator arms a breaker that does not exist, or changes its threshold, or re-arms a tripped one | 200; the effect records `applied`. |
+| An administrator arms a threshold that names **no** dimension (`{}`) | 400 `invalid_command`, nothing is armed, and the effect records `refused`/`invalid_command`. Since `SIGNOFF-REPAIR.4.5.6` a breaker constrains only the dimensions its threshold names, so this one could never trip (`SIGNOFF-REPAIR.4.5.6.1`). A dimension set to `0` still names it. |
 | An administrator re-arms the **same** threshold on an untripped breaker | 200, and the effect records `no_op` — no column of the row changes, because re-arming only rewrites the threshold and clears a trip. |
 | An administrator resets a tripped breaker | 200; the latch re-opens and the effect records `applied`. |
 | An administrator resets a breaker that is armed but not tripped | 409, with the effect recording `no_op`. |

@@ -56,6 +56,17 @@ EMITTING_CRATES = ("reasonbraid-server",)
 # ⚠️ The alternation is deliberately NOT `"?code"?` — that would also match
 # `code` inside a longer identifier. Each form is spelled out.
 _CODE_LITERAL = re.compile(r'(?:\bcode:|"code"\s*:)\s*"([a-z_]+)"')
+# ⛔ THE THIRD FORM (`SIGNOFF-REPAIR.4.4.7.2.2`): `code: SOME_CONST`, where the
+# constant is a `&str` literal declared in the emitting crate. `api.rs` has
+# emitted `unrepresentable_input` through `UNREPRESENTABLE_INPUT` since
+# `.4.4.10.1`, and this census could not see it: the code was served, asserted
+# by four suites, and documented nowhere, while the gate stayed green. The
+# constant is resolved to its literal, so a constant that names a code is
+# exactly as visible as the literal would be.
+_CODE_CONST_USE = re.compile(r"\bcode:\s*(?:[a-z_]+::)*([A-Z][A-Z0-9_]*)\b")
+_STR_CONST = re.compile(
+    r'\bconst\s+([A-Z][A-Z0-9_]*)\s*:\s*&(?:\'static\s+)?str\s*=\s*"([a-z_]+)"\s*;'
+)
 _REGISTRY = re.compile(r'KnownReasonCode::[A-Za-z]+ => "([a-z_]+)"')
 # The book's table rows: | `code` | … |
 _BOOK_ROW = re.compile(r"^\|\s*`([a-z_]+)`\s*\|")
@@ -99,10 +110,15 @@ def rust_sources(crate_names: tuple[str, ...]) -> list[Path]:
 
 def emitted() -> dict[str, list[str]]:
     """Every wire code the SERVER emits -> the files emitting it."""
+    sources = [(path, path.read_text()) for path in rust_sources(EMITTING_CRATES)]
+    constants: dict[str, str] = {}
+    for _, text in sources:
+        constants.update(dict(_STR_CONST.findall(text)))
     found: dict[str, list[str]] = {}
-    for path in rust_sources(EMITTING_CRATES):
-        text = path.read_text()
-        for code in set(_CODE_LITERAL.findall(text)):
+    for path, text in sources:
+        codes = set(_CODE_LITERAL.findall(text))
+        codes |= {constants[c] for c in _CODE_CONST_USE.findall(text) if c in constants}
+        for code in codes:
             found.setdefault(code, []).append(str(path.relative_to(ROOT)))
     return {k: sorted(v) for k, v in sorted(found.items())}
 
@@ -395,6 +411,25 @@ def self_test() -> int:
     check("literal-tight", _CODE_LITERAL.findall('code:"a_b"'), ["a_b"])
     check("literal-spaced", _CODE_LITERAL.findall('code:   "a_b"'), ["a_b"])
     check("literal-ignores-non-snake", _CODE_LITERAL.findall('code: "A-B"'), [])
+    # The constant form: a use, resolved through its declaration.
+    check("const-use", _CODE_CONST_USE.findall("code: UNREPRESENTABLE_INPUT,"), ["UNREPRESENTABLE_INPUT"])
+    check(
+        "const-use-qualified",
+        _CODE_CONST_USE.findall("code: crate::api::UNREPRESENTABLE_INPUT,"),
+        ["UNREPRESENTABLE_INPUT"],
+    )
+    check("const-use-not-a-literal", _CODE_CONST_USE.findall('code: "a_b"'), [])
+    check(
+        "const-decl",
+        _STR_CONST.findall('pub(crate) const UNREPRESENTABLE_INPUT: &str = "unrepresentable_input";'),
+        [("UNREPRESENTABLE_INPUT", "unrepresentable_input")],
+    )
+    check(
+        "const-decl-static",
+        _STR_CONST.findall("const X_Y: &'static str = \"x_y\";"),
+        [("X_Y", "x_y")],
+    )
+    check("const-code-is-emitted", "unrepresentable_input" in emit, True)
     # ⛔ `SIGNOFF-REPAIR.13.4.6.1` — THE SECOND EMISSION FORM. A wire code
     # reaches a client either as a Rust struct field or as a quoted JSON key,
     # and reading only the first hid `undeclared_region` — emitted, tested,

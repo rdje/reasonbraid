@@ -46,6 +46,7 @@ after §9.8 was published.
 | `dependency_unavailable` | 500 | §9.8 | A dependency this request needs did not answer. |
 | `publication_conflict` | 409 | §9.8 | Stored publication content does not match its record: `GET /v1/policy-bundles/{manifest_digest}` found a manifest or bundle that does not hash to what the record names, and refused to serve it. See [Reading a published bundle](policy-lifecycle.md#reading-a-published-bundle). |
 | `protocol_incompatible` | 400 | §9.8 | The node channel version does not match the server's. |
+| `budget_unavailable` | 409 | §9.8 | The budget ceiling has no room for what the request would reserve. Emitted by the possible-duplicate replay when the thread's ceiling cannot pay for the re-run; the denial is also a row in the budget ledger. |
 | `not_found` | 404 | ext | The named resource does not exist within the caller's scope. |
 | `unknown_node` | 404 | ext | The node id is not enrolled. Distinct from `not_found` so a channel client can tell "re-enrol" from "wrong id". |
 | `quota_exceeded` | 429 | ext | A declared usage quota for this scope is exhausted. The window slides; retry later. Emitted by `thread.invite` (tenant scope), the MCP write gate (principal scope), `POST /v1/resources/{id}/resolve` (resolver and destination scopes), and `POST /v1/threads/auto` (initiator scope — see [how often a role may initiate](recruitment.md#how-often-a-role-may-initiate)). |
@@ -56,6 +57,7 @@ after §9.8 was published.
 | `commit_outcome_unconfirmed` | 500 | ext | The transaction's outcome is genuinely unknown — **not** a failure. Inspect the target before retrying; the write may have committed. |
 | `publication_repository_unconfigured` | 503 | ext | The deployment declares **no** publication repository root, so the publish verb is closed. Like `quota_unconfigured` this is a deployment gap, not a request fault: retrying with another `repo_path` will not help until an operator configures one. |
 | `undeclared_region` | 400 | ext | Both regions must be **declared** before they can be paired. A DOMAIN refusal from the site registry, not an authority one — the caller held the grant and asked for something the registry cannot express. ⚠️ Documented only in `SIGNOFF-REPAIR.13.4.6.1`: it is emitted through a JSON object rather than the error struct, so the census that keeps this table honest could not see it and reported full coverage while this row was missing. |
+| `unrepresentable_input` | 400 | ext | The input holds a character the store cannot represent (U+0000, the NUL character). **Permanent**: the same input is refused again, so a caller must change it rather than retry. A genuine store fault on clean input is `dependency_unavailable`, never this. Emitted by the node channel and the command API alike (`SIGNOFF-REPAIR.4.4.10.1`). |
 
 ⚠️ `commit_outcome_unconfirmed` is the one a client must not treat as a failure.
 It is the honest answer when the server cannot observe whether its own commit

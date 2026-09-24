@@ -9,6 +9,12 @@
 /// forever.
 pub const MAX_DISPATCH_ATTEMPTS: usize = 3;
 
+/// §9.8's code for an `outcome_unknown` the node refuses to retry without the
+/// explicit possible-duplicate authorization. The node reports it as the dead
+/// letter's reason, and the control plane recognizes a row awaiting that
+/// authorization by it (`SIGNOFF-REPAIR.4.4.7.2.2`), so it is one constant.
+pub const RETRY_REQUIRES_AUTHORIZATION: &str = "retry_requires_authorization";
+
 /// The re-dispatch verdict for one work item, from its journal facts and its
 /// delivery payload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,7 +77,7 @@ pub fn retry_decision(
         Some("outcome_unknown") => {
             if !duplicate_authorized {
                 return RetryVerdict::Refuse {
-                    reason: "retry_requires_authorization",
+                    reason: RETRY_REQUIRES_AUTHORIZATION,
                 };
             }
             if attempt_count >= MAX_DISPATCH_ATTEMPTS {

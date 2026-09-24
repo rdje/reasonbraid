@@ -9,9 +9,10 @@
 //!
 //! # The closed sets are census-derived, not invented
 //!
-//! [`AdministrativeOperation`] contains exactly the fifteen administrative
+//! [`AdministrativeOperation`] contains exactly the sixteen administrative
 //! mutations the `SIGNOFF-REPAIR.3.3.4` parent owns through its `.8`–`.12`
-//! integration children. The population was measured before the set was written
+//! integration children, plus `SIGNOFF-REPAIR.4.4.7.2.2`'s possible-duplicate
+//! replay. The population was measured before the set was written
 //! (the census command and its classification are in that leaf); the four
 //! remaining `tenant_admin`-gated mutations are routed to other owners and are
 //! deliberately absent, because this parent cannot certify their gates.
@@ -277,6 +278,14 @@ pub enum AdministrativeOperation {
         node_id: AdministrativeTargetId,
         command_id: AdministrativeTargetId,
     },
+    /// `SIGNOFF-REPAIR.4.4.7.2.2` — a replay that also AUTHORIZES the possible
+    /// duplicate (§11.3's third policy; §14.6's only sanctioned retry of an
+    /// `outcome_unknown`). Its own kind, so the audit never confuses a
+    /// duplicate-risk decision with a plain replay.
+    NodeCommandReplayPossibleDuplicate {
+        node_id: AdministrativeTargetId,
+        command_id: AdministrativeTargetId,
+    },
     NodeCommandQuarantine {
         node_id: AdministrativeTargetId,
         command_id: AdministrativeTargetId,
@@ -325,6 +334,9 @@ impl AdministrativeOperation {
             Self::NodeEnrollTokenIssue { .. } => "node_enroll_token_issue",
             Self::NodeRevoke { .. } => "node_revoke",
             Self::NodeCommandReplay { .. } => "node_command_replay",
+            Self::NodeCommandReplayPossibleDuplicate { .. } => {
+                "node_command_replay_possible_duplicate"
+            }
             Self::NodeCommandQuarantine { .. } => "node_command_quarantine",
             Self::NodeInboxPrune { .. } => "node_inbox_prune",
             Self::NodeAttemptAdjudicate { .. } => "node_attempt_adjudicate",
@@ -339,7 +351,7 @@ impl AdministrativeOperation {
     /// Every discriminant, in declaration order. The migration's CHECK and this
     /// list are the same vocabulary; a control asserts they agree, so a variant
     /// added without its constraint cannot pass silently.
-    pub const KINDS: [&'static str; 15] = [
+    pub const KINDS: [&'static str; 16] = [
         "grant_revoke",
         "boundary_revoke",
         "breaker_arm",
@@ -347,6 +359,7 @@ impl AdministrativeOperation {
         "node_enroll_token_issue",
         "node_revoke",
         "node_command_replay",
+        "node_command_replay_possible_duplicate",
         "node_command_quarantine",
         "node_inbox_prune",
         "node_attempt_adjudicate",
@@ -464,6 +477,14 @@ enum OperationWire {
         node_id: AdministrativeTargetId,
         command_id: AdministrativeTargetId,
     },
+    /// `SIGNOFF-REPAIR.4.4.7.2.2` — a replay that also AUTHORIZES the possible
+    /// duplicate (§11.3's third policy; §14.6's only sanctioned retry of an
+    /// `outcome_unknown`). Its own kind, so the audit never confuses a
+    /// duplicate-risk decision with a plain replay.
+    NodeCommandReplayPossibleDuplicate {
+        node_id: AdministrativeTargetId,
+        command_id: AdministrativeTargetId,
+    },
     NodeCommandQuarantine {
         node_id: AdministrativeTargetId,
         command_id: AdministrativeTargetId,
@@ -508,6 +529,13 @@ impl<'de> Deserialize<'de> for AdministrativeOperation {
                 node_id,
                 command_id,
             } => Self::NodeCommandReplay {
+                node_id,
+                command_id,
+            },
+            OperationWire::NodeCommandReplayPossibleDuplicate {
+                node_id,
+                command_id,
+            } => Self::NodeCommandReplayPossibleDuplicate {
                 node_id,
                 command_id,
             },

@@ -503,6 +503,28 @@ pub enum ReplayResult {
     },
 }
 
+/// What a possible-duplicate replay decided (`SIGNOFF-REPAIR.4.4.7.2.2`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DuplicateReplayResult {
+    /// The row re-delivers with the authorization and the fresh reservation.
+    Replayed {
+        reservation_id: String,
+    },
+    /// The command exists and is not quarantined for want of this authorization:
+    /// the flag attaches to nothing else.
+    NotAwaitingAuthorization,
+    NotInInbox,
+    /// The thread's ceiling has no room for the possible duplicate; the denial
+    /// is recorded in the ledger like any other.
+    BudgetDenied {
+        detail: String,
+    },
+    InvalidReason(String),
+    Denied {
+        reason: String,
+    },
+}
+
 /// What a prune decided. The counts are the operator's receipt and are measured
 /// inside the same transaction as the delete.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -825,6 +847,195 @@ pub(crate) async fn adjudicate_ambiguous_attempt_in_one_transaction(
                         AdjudicationResult::Adjudicated { at },
                         AdministrativeOutcome::Applied {},
                     )
+                }
+            };
+
+            record_inbox_effect(
+                &mut *conn,
+                &record_id,
+                tenant_id,
+                operation,
+                Some(reason),
+                effect,
+                at,
+            )
+            .await?;
+            Ok(InboxAdministration {
+                record_id,
+                effected_at: at,
+                result,
+            })
+        })
+    })
+    .await
+}
+
+/// Replay one dead-lettered command WITH the possible-duplicate authorization,
+/// in ONE shared-guard transaction (`SIGNOFF-REPAIR.4.4.7.2.2`; ROADMAP §11.3's
+/// third policy, §14.6's only sanctioned retry of an `outcome_unknown`).
+///
+/// Only a row the node dead-lettered for want of exactly this authorization
+/// takes it: the node lost a provider response, recorded `outcome_unknown`, and
+/// its retry gate refused `retry_requires_authorization`. The row then carries
+/// `allow_possible_duplicate: true` and a FRESH reservation, reserved here
+/// against the thread's ceiling on the dispatch's own path. The original stays
+/// held, because the lost attempt may have consumed it (§14.6: *cancellation
+/// releases only amounts not potentially consumed*), so the possible duplicate
+/// is paid from its own bounded allowance, and a ceiling with no room refuses
+/// the re-run. Then, as a plain replay: the quarantine cleared, the decision
+/// refreshed, the row re-sequenced. The node takes the two authorization fields
+/// from the re-delivery (`.4.4.7.2.1`). The effect is its own operation kind,
+/// with the operator's reason, so the audit cannot mistake it for a replay.
+pub(crate) async fn replay_command_with_possible_duplicate_in_one_transaction(
+    pool: &sqlx::PgPool,
+    principal: &GrantSubject,
+    tenant_id: TenantId,
+    node_id: &str,
+    command_id: &str,
+    submitted_reason: &str,
+) -> Result<InboxAdministration<DuplicateReplayResult>, AuthorityTransactionError> {
+    let principal = principal.clone();
+    let node_id = node_id.to_owned();
+    let command_id = command_id.to_owned();
+    let submitted_reason = submitted_reason.to_owned();
+    transact(pool, &[(tenant_id, GuardMode::Shared)], move |tx| {
+        Box::pin(async move {
+            let at = tx.database_now().await?;
+            let conn = tx.connection(tenant_id, GuardMode::Shared)?;
+            let record_id = admit_or_return!(conn, &principal, tenant_id, at, |reason| {
+                DuplicateReplayResult::Denied { reason }
+            });
+            let reason = match AdministrativeReason::new(submitted_reason.clone()) {
+                Ok(reason) => reason,
+                Err(error) => {
+                    return Ok(InboxAdministration {
+                        record_id,
+                        effected_at: at,
+                        result: DuplicateReplayResult::InvalidReason(error.to_string()),
+                    })
+                }
+            };
+            let unusable = |error: reasonbraid_core::AdministrativeTextError| {
+                GuardError::Storage(sqlx::Error::Protocol(format!(
+                    "the inbox target id is unusable: {error}"
+                )))
+            };
+            let operation = AdministrativeOperation::NodeCommandReplayPossibleDuplicate {
+                node_id: AdministrativeTargetId::new(node_id.as_str()).map_err(unusable)?,
+                command_id: AdministrativeTargetId::new(command_id.as_str()).map_err(unusable)?,
+            };
+
+            let row: Option<(Option<String>, String)> = sqlx::query_as(
+                "SELECT quarantine_reason, thread_id FROM node_inbox \
+                 WHERE node_id = $1 AND command_id = $2 AND tenant_id = $3 FOR UPDATE",
+            )
+            .bind(&node_id)
+            .bind(&command_id)
+            .bind(tenant_id.to_string())
+            .fetch_optional(&mut *conn)
+            .await?;
+            let awaiting = format!(
+                "dead-lettered: {}",
+                reasonbraid_core::RETRY_REQUIRES_AUTHORIZATION
+            );
+
+            let (result, effect) = match row {
+                None => (
+                    DuplicateReplayResult::NotInInbox,
+                    AdministrativeOutcome::Refused {
+                        code: AdministrativeRefusal::NotFound,
+                        detail: bounded_detail(
+                            "no such command in that node's inbox in this tenant".to_owned(),
+                        ),
+                    },
+                ),
+                Some((quarantine, _)) if quarantine.as_deref() != Some(awaiting.as_str()) => (
+                    DuplicateReplayResult::NotAwaitingAuthorization,
+                    AdministrativeOutcome::Refused {
+                        code: AdministrativeRefusal::InvalidTransition,
+                        detail: bounded_detail(
+                            "the command is not dead-lettered for want of the \
+                             possible-duplicate authorization"
+                                .to_owned(),
+                        ),
+                    },
+                ),
+                Some((_, thread_id)) => {
+                    let ceiling_id: String = sqlx::query_scalar(
+                        "SELECT ceiling_id FROM budget_ceilings \
+                         WHERE thread_id = $1 AND tenant_id = $2",
+                    )
+                    .bind(&thread_id)
+                    .bind(tenant_id.to_string())
+                    .fetch_one(&mut *conn)
+                    .await?;
+                    match crate::budget::create_reservation_in_tx(
+                        &mut *conn,
+                        &ceiling_id,
+                        &tenant_id.to_string(),
+                        &thread_id,
+                        &crate::threads::WORK_RESERVATION,
+                        chrono::Duration::minutes(10),
+                        at,
+                    )
+                    .await
+                    {
+                        Err(error) => {
+                            let detail = error.to_string();
+                            (
+                                DuplicateReplayResult::BudgetDenied {
+                                    detail: detail.clone(),
+                                },
+                                AdministrativeOutcome::Refused {
+                                    code: AdministrativeRefusal::InvalidTransition,
+                                    detail: bounded_detail(format!(
+                                        "the ceiling has no room for the possible duplicate: \
+                                         {detail}"
+                                    )),
+                                },
+                            )
+                        }
+                        Ok(reservation) => {
+                            let epoch: i64 = sqlx::query_scalar(
+                                "SELECT revocation_epoch FROM tenants WHERE tenant_id = $1",
+                            )
+                            .bind(tenant_id.to_string())
+                            .fetch_one(&mut *conn)
+                            .await?;
+                            let cursor =
+                                crate::node_channel::next_cursor_in_tx(&mut *conn, &node_id)
+                                    .await?;
+                            let reference = serde_json::to_value(&reservation.reference)
+                                .expect("a reservation reference serializes");
+                            sqlx::query(
+                                "UPDATE node_inbox SET \
+                                   quarantined_at = NULL, \
+                                   quarantine_reason = NULL, \
+                                   decided_at = $4, \
+                                   revocation_epoch = $5, \
+                                   cursor = $6, \
+                                   payload = jsonb_set(jsonb_set(payload, \
+                                       '{allow_possible_duplicate}', 'true'::jsonb), \
+                                       '{reservation}', $7) \
+                                 WHERE node_id = $1 AND command_id = $2 AND tenant_id = $3",
+                            )
+                            .bind(&node_id)
+                            .bind(&command_id)
+                            .bind(tenant_id.to_string())
+                            .bind(at)
+                            .bind(epoch)
+                            .bind(cursor)
+                            .bind(reference)
+                            .execute(&mut *conn)
+                            .await?;
+                            (
+                                DuplicateReplayResult::Replayed {
+                                    reservation_id: reservation.reference.reservation_id,
+                                },
+                                AdministrativeOutcome::Applied {},
+                            )
+                        }
+                    }
                 }
             };
 

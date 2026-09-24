@@ -47,6 +47,10 @@ fn every_operation() -> Vec<AdministrativeOperation> {
             node_id: target("nod_00000000-0000-7000-8000-000000000025"),
             command_id: target("work_evt_00000000-0000-7000-8000-000000000026"),
         },
+        AdministrativeOperation::NodeCommandReplayPossibleDuplicate {
+            node_id: target("nod_00000000-0000-7000-8000-000000000025"),
+            command_id: target("work_evt_00000000-0000-7000-8000-000000000027"),
+        },
         AdministrativeOperation::NodeCommandQuarantine {
             node_id: target("nod_00000000-0000-7000-8000-000000000027"),
             command_id: target("work_evt_00000000-0000-7000-8000-000000000028"),
@@ -89,6 +93,7 @@ fn every_operation() -> Vec<AdministrativeOperation> {
             | AdministrativeOperation::NodeEnrollTokenIssue { .. }
             | AdministrativeOperation::NodeRevoke { .. }
             | AdministrativeOperation::NodeCommandReplay { .. }
+            | AdministrativeOperation::NodeCommandReplayPossibleDuplicate { .. }
             | AdministrativeOperation::NodeCommandQuarantine { .. }
             | AdministrativeOperation::NodeInboxPrune { .. }
             | AdministrativeOperation::NodeAttemptAdjudicate { .. }

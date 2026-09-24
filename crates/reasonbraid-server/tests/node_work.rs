@@ -2716,3 +2716,163 @@ async fn provider_output_holding_nul_lands_as_a_contribution() {
         "the contribution landed, the NUL visible as U+FFFD"
     );
 }
+
+/// `SIGNOFF-REPAIR.4.4.7.2.2` — an operator authorizes the POSSIBLE-DUPLICATE
+/// re-run of work whose outcome is unknown (§11.3's third policy; §14.6's only
+/// sanctioned retry of `outcome_unknown`).
+///
+/// The node lost the response, recorded `outcome_unknown`, and on its next tick
+/// refused to retry without authorization, dead-lettering the item as
+/// `retry_requires_authorization`. The operator replays THAT row with the
+/// authorization and a reason: the row carries a FRESH reservation (the original
+/// stays held, since the lost attempt may have consumed it) and the flag, and the
+/// node re-runs it to a contribution. Before this leaf no verb could re-run it.
+#[tokio::test]
+async fn a_possible_duplicate_replay_re_runs_an_unknown_outcome() {
+    let _g = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (tenant, human, role, thread, cert_hex, key_hex) =
+        dispatch_one_work_item(&client, &server.base(), "key-dup").await;
+    let key_der = from_hex(&key_hex).expect("key hex");
+    let der = rustls_pki_types::PrivateKeyDer::try_from(key_der).expect("key DER");
+    let key = rcgen::KeyPair::from_der_and_sign_algo(&der, &rcgen::PKCS_ECDSA_P256_SHA256)
+        .expect("key parses");
+    let fixture = journal_fixture("possible-duplicate");
+    let node = reasonbraid_node::Node::open(
+        fixture.join("node.db"),
+        server.base(),
+        role.clone(),
+        from_hex(&cert_hex).expect("cert hex"),
+        key,
+    )
+    .await
+    .expect("open node");
+    node.reconcile().await.expect("reconcile");
+    let worker_with = |script: Vec<reasonbraid_adapter::ScriptStep>| {
+        reasonbraid_node::Worker::new(
+            node.clone(),
+            reasonbraid_adapter::FakeAdapter::new(
+                script,
+                reasonbraid_adapter::StatusLookupSpec::Unsupported,
+                reasonbraid_adapter::AdapterCapabilities {
+                    streaming: false,
+                    cancellation: reasonbraid_adapter::CancellationStrength::BestEffort,
+                    provider_idempotency: false,
+                    status_lookup: false,
+                    tool_support: false,
+                    policy_injection: reasonbraid_adapter::PolicyInjectionMode::None,
+                },
+            ),
+            reasonbraid_node::LocalBudget::new(reasonbraid_core::BudgetDimensions {
+                calls: Some(100),
+                input_tokens: Some(100_000),
+                output_tokens: Some(100_000),
+                wall_clock_seconds: Some(10_000),
+            }),
+            std::time::Duration::from_millis(50),
+        )
+    };
+
+    // The lost response, then the refusal to retry without authorization.
+    let losing = worker_with(vec![reasonbraid_adapter::ScriptStep::LoseResponse]);
+    losing
+        .tick()
+        .await
+        .expect("the unknown outcome is journaled");
+    losing.tick().await.expect("the refusal is reported");
+    let (command_id, original_reservation, reason): (String, String, Option<String>) =
+        sqlx::query_as(
+            "SELECT command_id, payload->'reservation'->>'reservation_id', quarantine_reason \
+             FROM node_inbox WHERE node_id = $1",
+        )
+        .bind(&role)
+        .fetch_one(&pool)
+        .await
+        .expect("the row");
+    assert_eq!(
+        reason.as_deref(),
+        Some("dead-lettered: retry_requires_authorization"),
+        "the node asked for the authorization"
+    );
+
+    // THE authorized replay.
+    let response = client
+        .post(format!("{}/v1/nodes/replay", server.base()))
+        .header(PRINCIPAL_HEADER, &human)
+        .json(&json!({
+            "tenant_id": tenant,
+            "node_id": role,
+            "command_id": command_id,
+            "allow_possible_duplicate": true,
+            "reason": "the provider's own records show no charge for the lost call",
+        }))
+        .send()
+        .await
+        .expect("the replay request");
+    let status = response.status().as_u16();
+    let body: Value = response.json().await.expect("json");
+    assert_eq!(status, 200, "the authorized replay succeeds: {body}");
+    let fresh = body["reservation_id"]
+        .as_str()
+        .expect("a fresh reservation")
+        .to_string();
+    assert_ne!(
+        fresh, original_reservation,
+        "a NEW reservation pays for the possible duplicate"
+    );
+    let (flag, carried): (Option<bool>, String) = sqlx::query_as(
+        "SELECT (payload->>'allow_possible_duplicate')::boolean, \
+                payload->'reservation'->>'reservation_id' \
+         FROM node_inbox WHERE node_id = $1",
+    )
+    .bind(&role)
+    .fetch_one(&pool)
+    .await
+    .expect("the row");
+    assert_eq!((flag, carried.as_str()), (Some(true), fresh.as_str()));
+    let held: String =
+        sqlx::query_scalar("SELECT status FROM budget_reservations WHERE reservation_id = $1")
+            .bind(&original_reservation)
+            .fetch_one(&pool)
+            .await
+            .expect("the original reservation");
+    assert_eq!(held, "active", "the lost attempt's reservation stays held");
+
+    // The node re-runs it.
+    let completing = worker_with(vec![reasonbraid_adapter::ScriptStep::Complete {
+        usage: None,
+    }]);
+    completing.tick().await.expect("the re-run");
+    let events = thread_events(&client, &server.base(), &thread, &tenant, &human).await;
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| e["event_type"] == "thread.contribution_submitted")
+            .count(),
+        1,
+        "the re-run's contribution landed"
+    );
+
+    // The authorization attaches to nothing else: this row is no longer
+    // quarantined for want of it.
+    let response = client
+        .post(format!("{}/v1/nodes/replay", server.base()))
+        .header(PRINCIPAL_HEADER, &human)
+        .json(&json!({
+            "tenant_id": tenant,
+            "node_id": role,
+            "command_id": command_id,
+            "allow_possible_duplicate": true,
+            "reason": "again",
+        }))
+        .send()
+        .await
+        .expect("the second request");
+    assert_eq!(
+        response.status().as_u16(),
+        409,
+        "only a row awaiting the authorization takes it"
+    );
+}

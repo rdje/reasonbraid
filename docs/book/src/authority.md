@@ -976,9 +976,48 @@ check-then-act, so an older snapshot cannot produce an unauthorized effect.
 | Quarantine a command that is already quarantined | 409; the effect records `no_op`. |
 | Replay a dead-lettered command | 200; the quarantine is reversed and the effect records `applied`. |
 | Replay a command that is not dead-lettered | 409; the effect records `refused`/`invalid_transition`. |
+| Replay with `allow_possible_duplicate: true` and a reason, for a command the node dead-lettered as `retry_requires_authorization` | 200 with a fresh `reservation_id`; the effect records `applied` under its own kind, `node_command_replay_possible_duplicate`, with the reason. |
+| The same for any other command | 409; the effect records `refused`/`invalid_transition`. |
+| The same when the thread's ceiling has no room | 409 `budget_unavailable`; the denial is also recorded in the budget ledger. |
 | Prune, with rows old enough | 200 with the measured `before`/`deleted`/`after`; the effect records `applied`. |
 | Prune, with nothing old enough | 200 with the same measured receipt and `deleted: 0`; the effect records `no_op`. |
 | Any verb naming a command or node outside the caller's tenant | The same answer an absent one gets, and nothing changes. |
+
+#### Replaying with the possible-duplicate authorization
+
+A node that loses a provider's response cannot know whether the provider ran,
+so it records `outcome_unknown` and will not run the work again on its own. On
+its next tick it dead-letters the work item with the reason
+`retry_requires_authorization` (§9.8). The tenant's administrator can then
+authorize the re-run, accepting that the provider may be charged twice. This
+is §11.3's *explicit possible-duplicate budget/side-effect authorization*,
+and the only retry of an unknown outcome §14.6 allows (`SIGNOFF-REPAIR.4.4.7.2`):
+
+```text
+POST /v1/nodes/replay
+{ "tenant_id": "ten_…", "node_id": "rol_…", "command_id": "work_evt_…",
+  "allow_possible_duplicate": true,
+  "reason": "the provider's own records show no charge for the lost call" }
+
+200 { "node_id": "rol_…", "command_id": "work_evt_…",
+      "replayed_at": "…", "reservation_id": "res_…" }
+```
+
+What happens in that one transaction:
+
+- It applies only to a command dead-lettered for exactly that reason; the
+  authorization attaches to nothing else. A reason is required, and the audit
+  records the operation under its own kind, so it can never be mistaken for a
+  plain replay.
+- A **fresh reservation** pays for the possible duplicate, on the same path a
+  dispatch uses. The original reservation stays held, because the lost attempt
+  may have consumed it. If the thread's ceiling has no room, the re-run is
+  refused with `budget_unavailable`.
+- The work item carries `allow_possible_duplicate: true` and the new
+  reservation, and is re-sequenced like any replay. The node takes those two
+  fields from the re-delivery and nothing else about the work
+  ([the node channel](node-channel.md)), and its retry gate re-runs the item
+  once more under the new reservation.
 
 **Wire changes.** The quarantine reason was already required; it now also has to
 be at most 1 024 UTF-8 bytes and free of control characters, and it is persisted

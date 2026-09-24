@@ -80,7 +80,9 @@ pub use id::{
     ThreadId,
 };
 pub use paths::repository_root;
-pub use retry::{retry_decision, RetryVerdict, MAX_DISPATCH_ATTEMPTS};
+pub use retry::{
+    retry_decision, RetryVerdict, MAX_DISPATCH_ATTEMPTS, RETRY_REQUIRES_AUTHORIZATION,
+};
 pub use state::{
     ParticipationState, ParticipationTransition, ProviderAttemptState, ProviderAttemptTransition,
     ThreadState, ThreadTransition, TransitionError, UnknownProviderAttemptState,

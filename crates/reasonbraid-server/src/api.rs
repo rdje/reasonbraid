@@ -1595,6 +1595,14 @@ pub struct ReplayRequest {
     pub tenant_id: TenantId,
     pub node_id: String,
     pub command_id: String,
+    /// `SIGNOFF-REPAIR.4.4.7.2.2`: authorize the possible duplicate of an
+    /// `outcome_unknown` attempt, for a row dead-lettered for want of exactly
+    /// that. Absent or false is the plain replay.
+    #[serde(default)]
+    pub allow_possible_duplicate: bool,
+    /// Why the duplicate risk is accepted; required with the authorization.
+    #[serde(default)]
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1602,6 +1610,10 @@ pub struct ReplayResponse {
     pub node_id: String,
     pub command_id: String,
     pub replayed_at: String,
+    /// The fresh reservation a possible-duplicate replay runs under; absent for a
+    /// plain replay.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reservation_id: Option<String>,
 }
 
 /// Replay one dead-lettered inbox command.
@@ -1618,6 +1630,9 @@ async fn replay_command(
     Json(req): Json<ReplayRequest>,
 ) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
+    if req.allow_possible_duplicate {
+        return replay_with_possible_duplicate(&state, &principal, &req).await;
+    }
     let replay = authority::replay_command_in_one_transaction(
         &state.pool,
         &principal,
@@ -1653,6 +1668,64 @@ async fn replay_command(
             // Database time from inside the transaction, so the response and the
             // refreshed decision report the same instant.
             replayed_at: replay.effected_at.to_rfc3339(),
+            reservation_id: None,
+        })
+        .into_response(),
+    };
+    Ok(([("x-reasonbraid-authorization", receipt)], response).into_response())
+}
+
+/// The replay that authorizes a possible duplicate (`SIGNOFF-REPAIR.4.4.7.2.2`).
+async fn replay_with_possible_duplicate(
+    state: &ApiState,
+    principal: &GrantSubject,
+    req: &ReplayRequest,
+) -> Result<Response, ControlApiError> {
+    let replay = authority::replay_command_with_possible_duplicate_in_one_transaction(
+        &state.pool,
+        principal,
+        req.tenant_id,
+        &req.node_id,
+        &req.command_id,
+        req.reason.as_deref().unwrap_or_default(),
+    )
+    .await?;
+    let receipt = replay.record_id;
+    let response = match replay.result {
+        authority::DuplicateReplayResult::Denied { reason } => {
+            crate::telemetry::metrics().incr("authorization_denials");
+            ControlApiError::unauthorized(format!("authorization denied ({receipt}): {reason}"))
+                .into_response()
+        }
+        authority::DuplicateReplayResult::InvalidReason(detail) => {
+            ControlApiError::invalid_command(format!(
+                "a possible-duplicate replay needs a reason: {detail}"
+            ))
+            .into_response()
+        }
+        authority::DuplicateReplayResult::NotInInbox => ControlApiError::not_found(format!(
+            "no command `{}` in node `{}`'s inbox",
+            req.command_id, req.node_id
+        ))
+        .into_response(),
+        authority::DuplicateReplayResult::NotAwaitingAuthorization => {
+            ControlApiError::invalid_transition(
+                "the command is not dead-lettered for want of the possible-duplicate \
+                 authorization: only an outcome_unknown the node refused to retry takes it",
+            )
+            .into_response()
+        }
+        authority::DuplicateReplayResult::BudgetDenied { detail } => ControlApiError {
+            status: StatusCode::CONFLICT,
+            code: "budget_unavailable",
+            message: format!("the ceiling has no room for the possible duplicate: {detail}"),
+        }
+        .into_response(),
+        authority::DuplicateReplayResult::Replayed { reservation_id } => Json(ReplayResponse {
+            node_id: req.node_id.clone(),
+            command_id: req.command_id.clone(),
+            replayed_at: replay.effected_at.to_rfc3339(),
+            reservation_id: Some(reservation_id),
         })
         .into_response(),
     };

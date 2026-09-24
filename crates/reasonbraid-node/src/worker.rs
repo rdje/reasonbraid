@@ -662,11 +662,17 @@ impl<A: Adapter> Worker<A> {
         if self.node.journal().has_dead_letter(&operation_id).await? {
             return Ok(());
         }
-        let payload = json!({
+        let mut payload = json!({
             "kind": "work_dead_lettered",
             "command_id": item.command_id,
             "reason": reason,
         });
+        // The attempt the refusal is about (`SIGNOFF-REPAIR.4.5.1.1`): for an
+        // unknown outcome, the server keys the hold it keeps counted by it, and
+        // an operator's verdict on that attempt settles exactly that hold.
+        if let Some(attempt_id) = &item.latest_attempt_id {
+            payload["attempt_id"] = json!(attempt_id);
+        }
         let event_id = EventId::new().to_string();
         self.node
             .journal()

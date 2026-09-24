@@ -1259,17 +1259,34 @@ impl NodeChannelState {
                     .await?;
                 }
                 Directive::Adjudicated { evidence, .. } => {
-                    sqlx::query(
+                    // The row closes and, when the closure is an OPERATOR's
+                    // verdict, the hold that attempt's unknown outcome kept
+                    // counted settles with it, in this transaction
+                    // (`SIGNOFF-REPAIR.4.5.1.1`). A closure by the server's own
+                    // receipt settles nothing here: that receipt is the result,
+                    // and its fold already settled the reservation.
+                    let verdict: Option<Option<String>> = sqlx::query_scalar(
                         "UPDATE node_ambiguous_attempts \
                          SET closed_at = now(), last_reported_at = now(), \
                              closure = 'adjudicated', closure_evidence = $3 \
-                         WHERE node_id = $1 AND attempt_id = $2 AND closed_at IS NULL",
+                         WHERE node_id = $1 AND attempt_id = $2 AND closed_at IS NULL \
+                         RETURNING operator_verdict",
                     )
                     .bind(node_id)
                     .bind(&attempt.attempt_id)
                     .bind(evidence)
-                    .execute(&mut *tx)
+                    .fetch_optional(&mut *tx)
                     .await?;
+                    if let Some(Some(verdict)) = verdict {
+                        crate::budget::settle_adjudicated_hold_in_tx(
+                            &mut *tx,
+                            node_id,
+                            &attempt.attempt_id,
+                            &verdict,
+                            chrono::Utc::now(),
+                        )
+                        .await?;
+                    }
                 }
             }
         }

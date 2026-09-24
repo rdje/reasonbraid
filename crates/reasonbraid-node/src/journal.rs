@@ -245,6 +245,10 @@ pub struct WorkItem {
     pub operation_id: Option<String>,
     /// The latest attempt status for that operation, if any attempt exists.
     pub latest_attempt_status: Option<String>,
+    /// That latest attempt's id (`SIGNOFF-REPAIR.4.5.1.1`): a dead letter names
+    /// the attempt it refuses, so the server can settle that attempt's hold
+    /// when an operator rules on it.
+    pub latest_attempt_id: Option<String>,
 }
 
 /// The classification produced by [`Journal::recover`].
@@ -1352,12 +1356,18 @@ impl Journal {
                 String,
                 Option<String>,
                 Option<String>,
+                Option<String>,
             ),
         >(
+            // Both subqueries order identically, with the same tiebreak, so the
+            // status and the id always describe ONE attempt.
             "SELECT c.command_id, c.tenant_id, c.thread_id, c.payload, o.operation_id, \
                     (SELECT a.status FROM attempts a \
                      WHERE a.operation_id = o.operation_id \
-                     ORDER BY a.updated_at DESC LIMIT 1) \
+                     ORDER BY a.updated_at DESC, a.rowid DESC LIMIT 1), \
+                    (SELECT a.attempt_id FROM attempts a \
+                     WHERE a.operation_id = o.operation_id \
+                     ORDER BY a.updated_at DESC, a.rowid DESC LIMIT 1) \
              FROM commands c LEFT JOIN operations o ON o.command_id = c.command_id \
              ORDER BY c.received_at",
         )
@@ -1365,7 +1375,15 @@ impl Journal {
         .await?;
 
         let mut items = Vec::new();
-        for (command_id, tenant_id, thread_id, payload, operation_id, latest_attempt_status) in rows
+        for (
+            command_id,
+            tenant_id,
+            thread_id,
+            payload,
+            operation_id,
+            latest_attempt_status,
+            latest_attempt_id,
+        ) in rows
         {
             let value: Value =
                 serde_json::from_str(&payload).map_err(|e| JournalError::CorruptState {
@@ -1383,6 +1401,7 @@ impl Journal {
                 payload,
                 operation_id,
                 latest_attempt_status,
+                latest_attempt_id,
             });
         }
         Ok(items)

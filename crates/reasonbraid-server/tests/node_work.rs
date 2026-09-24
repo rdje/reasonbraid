@@ -3248,3 +3248,91 @@ async fn nul_positions_are_validated_and_carried_for_any_author() {
         "only the valid claim landed, carried as sent; the last U+FFFD is the author's own"
     );
 }
+
+/// `SIGNOFF-REPAIR.4.5.1.1` — an operator's verdict on an unknown outcome
+/// finally settles its hold. Since `.4.5.1` the hold of a lost response is
+/// counted past its window, and nothing ever released it: a verdict closed the
+/// register row and left the allowance counted for good. Now, when the node
+/// applies the verdict, the hold stamped for THAT attempt is released on
+/// `failed_known` (the call provably did not charge) and settled at its full
+/// held dimensions on `completed` (it did, by an amount nobody measured).
+#[tokio::test]
+async fn an_operator_verdict_releases_or_charges_the_unknown_outcomes_hold() {
+    let _g = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+
+    for (verdict, status, usage_calls) in [
+        ("failed_known", "released", None),
+        ("completed", "settled", Some(1)),
+    ] {
+        let lost = lose_one_response(&client, &server, &pool, &format!("verdict-{verdict}")).await;
+        let stamped: Option<DateTime<Utc>> = sqlx::query_scalar(
+            "SELECT outcome_unknown_at FROM budget_reservations WHERE reservation_id = $1",
+        )
+        .bind(&lost.original_reservation)
+        .fetch_one(&pool)
+        .await
+        .expect("the hold");
+        assert!(
+            stamped.is_some(),
+            "the lost call's hold is held past its window"
+        );
+
+        // The node reports the ambiguous attempt; the operator rules on it.
+        lost.node.reconcile().await.expect("the report");
+        let attempt = lost
+            .node
+            .journal()
+            .ambiguous_attempts()
+            .await
+            .expect("attempts");
+        assert_eq!(attempt.len(), 1, "one attempt is ambiguous");
+        let response = client
+            .post(format!(
+                "{}/v1/admin/nodes/ambiguous-attempts/adjudicate",
+                server.base()
+            ))
+            .header(PRINCIPAL_HEADER, &lost.human)
+            .json(&json!({
+                "tenant_id": lost.tenant,
+                "node_id": lost.role,
+                "attempt_id": attempt[0].attempt_id,
+                "verdict": verdict,
+                "reason": "the provider's billing export settles it",
+            }))
+            .send()
+            .await
+            .expect("the verdict");
+        let recorded = response.status().as_u16();
+        let body: Value = response.json().await.expect("json");
+        assert_eq!(recorded, 200, "the verdict is recorded: {body}");
+        let still: String =
+            sqlx::query_scalar("SELECT status FROM budget_reservations WHERE reservation_id = $1")
+                .bind(&lost.original_reservation)
+                .fetch_one(&pool)
+                .await
+                .expect("the hold");
+        assert_eq!(
+            still, "active",
+            "a verdict the node has not applied settles nothing"
+        );
+
+        // The node applies it at its next handshake.
+        lost.node.reconcile().await.expect("the verdict applied");
+        let (after, usage): (String, Option<Value>) = sqlx::query_as(
+            "SELECT status, usage FROM budget_reservations WHERE reservation_id = $1",
+        )
+        .bind(&lost.original_reservation)
+        .fetch_one(&pool)
+        .await
+        .expect("the hold");
+        assert_eq!(after, status, "{verdict} settles the hold as {status}");
+        assert_eq!(
+            usage.as_ref().map(|u| u["calls"].clone()),
+            usage_calls.map(|c: u64| json!(c)),
+            "{verdict}: a charge is the full hold, a release charges nothing: {usage:?}"
+        );
+    }
+}

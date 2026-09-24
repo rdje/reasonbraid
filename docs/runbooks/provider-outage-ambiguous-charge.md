@@ -46,7 +46,8 @@
   window: when the node reports `retry_requires_authorization`, the server
   stamps the reservation's `outcome_unknown_at`, and the ledger counts a stamped
   hold whatever its `expires_at` (`SIGNOFF-REPAIR.4.5.1`). The thread's budget
-  view shows the stamp. ⚠️ Nothing releases it yet, even after an adjudication
+  view shows the stamp. Your adjudication settles it once the node applies it:
+  `failed_known` releases the hold, and `completed` charges it in full
   (`SIGNOFF-REPAIR.4.5.1.1`).
 - No new work on the same attempt id: the idempotency claim serializes.
 

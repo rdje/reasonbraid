@@ -117,11 +117,23 @@ hold whose window had already closed when the report arrived is stamped anyway,
 which can take the ledger over its ceiling. That errs toward counting a
 possible charge, never toward lending it twice.
 
-> ⚠️ **Nothing releases a stamped hold yet.** An operator's adjudication should
-> release it (`failed_known`) or charge it (`completed`). That is
-> `SIGNOFF-REPAIR.4.5.1.1`. Until then it stays counted, which is the safe
-> direction. A node that never reports again gives the server nothing to act on,
-> so its hold lapses at the end of its window, as before.
+An operator's verdict settles a stamped hold (`SIGNOFF-REPAIR.4.5.1.1`). The
+node's dead letter names the attempt it refuses, and the stamp records that
+`(node, attempt)` in `outcome_unknown_node_id` / `outcome_unknown_attempt_id`.
+The attempt is the key, not the operation: a node keeps one operation per
+command, so after a possible-duplicate re-run two attempts share an operation,
+each with its own hold. When the node applies the verdict at its next
+handshake, the server closes the ambiguous-attempt row and, in the same
+transaction, settles exactly that hold:
+
+| Verdict | The hold |
+| --- | --- |
+| `failed_known`: the call provably did not charge | `released`, nothing spent |
+| `completed`: it did, by an amount nobody measured | `settled` at its full held dimensions, the most it was allowed to cost |
+
+A verdict the node has not yet applied settles nothing. A node that never
+reports again gives the server nothing to act on, so its hold lapses at the end
+of its window, as before.
 
 ## Admission is serialized
 

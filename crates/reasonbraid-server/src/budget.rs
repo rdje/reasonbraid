@@ -302,10 +302,17 @@ pub async fn settle_reservation(
 /// ledger over its ceiling: that errs toward counting a possible charge, never
 /// toward lending it again. The first stamp stands; a settled or released row is
 /// terminal and untouched. Returns whether a row was stamped.
+///
+/// `attempt` is the `(node, attempt)` the dead letter names
+/// (`SIGNOFF-REPAIR.4.5.1.1`), recorded so an operator's verdict on that
+/// attempt settles this hold ([`settle_adjudicated_hold_in_tx`]). A dead letter
+/// from before the node named its attempt stamps without one; its hold stays
+/// counted until an operator settles it otherwise.
 pub(crate) async fn hold_for_unknown_outcome_in_tx<'e, E>(
     mut tx: E,
     reservation_id: &str,
     tenant_id: &str,
+    attempt: Option<(&str, &str)>,
     at: DateTime<Utc>,
 ) -> Result<bool, sqlx::Error>
 where
@@ -313,16 +320,71 @@ where
     for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
 {
     let stamped = sqlx::query(
-        "UPDATE budget_reservations SET outcome_unknown_at = $3 \
+        "UPDATE budget_reservations SET outcome_unknown_at = $3, \
+                outcome_unknown_node_id = $4, outcome_unknown_attempt_id = $5 \
          WHERE reservation_id = $1 AND tenant_id = $2 \
            AND status = 'active' AND outcome_unknown_at IS NULL",
     )
     .bind(reservation_id)
     .bind(tenant_id)
     .bind(at)
+    .bind(attempt.map(|(node, _)| node))
+    .bind(attempt.map(|(_, attempt)| attempt))
     .execute(&mut *tx)
     .await?;
     Ok(stamped.rows_affected() == 1)
+}
+
+/// Settle the hold an unknown outcome kept counted, now that an operator has
+/// ruled on that attempt and its node has applied the ruling
+/// (`SIGNOFF-REPAIR.4.5.1.1`, §11.3's fourth option, §14.6). `failed_known`
+/// proves the call did not charge, so the hold is RELEASED. `completed` says
+/// it did, by an amount nobody measured, so the hold is SETTLED at its full
+/// held dimensions, the most it was allowed to cost. Any other verdict settles
+/// nothing. Idempotent: only an `active` hold stamped for this `(node,
+/// attempt)` moves. Returns the reservation settled, if any.
+pub(crate) async fn settle_adjudicated_hold_in_tx<'e, E>(
+    mut tx: E,
+    node_id: &str,
+    attempt_id: &str,
+    verdict: &str,
+    at: DateTime<Utc>,
+) -> Result<Option<String>, sqlx::Error>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
+    let held: Option<(String, serde_json::Value)> = sqlx::query_as(
+        "SELECT reservation_id, dimensions FROM budget_reservations \
+         WHERE outcome_unknown_node_id = $1 AND outcome_unknown_attempt_id = $2 \
+           AND status = 'active' FOR UPDATE",
+    )
+    .bind(node_id)
+    .bind(attempt_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some((reservation_id, dimensions)) = held else {
+        return Ok(None);
+    };
+    match verdict {
+        "failed_known" => {
+            sqlx::query(
+                "UPDATE budget_reservations SET status = 'released', settled_at = $2 \
+                 WHERE reservation_id = $1 AND status = 'active'",
+            )
+            .bind(&reservation_id)
+            .bind(at)
+            .execute(&mut *tx)
+            .await?;
+        }
+        "completed" => {
+            let held: BudgetDimensions = serde_json::from_value(dimensions)
+                .map_err(|e| sqlx::Error::Protocol(format!("the stored hold is malformed: {e}")))?;
+            settle_reservation_in_tx(&mut *tx, &reservation_id, &held, at).await?;
+        }
+        _ => return Ok(None),
+    }
+    Ok(Some(reservation_id))
 }
 
 /// The transactional body of [`settle_reservation`] — shared with the `.6.2`

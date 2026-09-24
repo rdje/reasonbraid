@@ -9400,10 +9400,15 @@ pub(crate) async fn apply_node_result_in_tx(
                     .and_then(|r| r.get("reservation_id"))
                     .and_then(|v| v.as_str())
                 {
+                    let attempt = payload
+                        .get("attempt_id")
+                        .and_then(|v| v.as_str())
+                        .map(|attempt| (node_id, attempt));
                     budget::hold_for_unknown_outcome_in_tx(
                         &mut *tx,
                         reservation_id,
                         &guarded_tenant.to_string(),
+                        attempt,
                         Utc::now(),
                     )
                     .await?;

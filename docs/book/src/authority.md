@@ -1012,7 +1012,9 @@ What happens in that one transaction:
 - A **fresh reservation** pays for the possible duplicate, on the same path a
   dispatch uses. The original reservation stays held, because the lost attempt
   may have consumed it. If the thread's ceiling has no room, the re-run is
-  refused with `budget_unavailable`. ⚠️ Until `SIGNOFF-REPAIR.4.5.1`, "held" lasts only for the hold's ten-minute window: the ledger stops counting an unsettled hold at its `expires_at`, even for an attempt whose outcome is unknown.
+  refused with `budget_unavailable`. The original is held past its ten-minute
+  window, because its attempt's outcome is unknown (`SIGNOFF-REPAIR.4.5.1`, the
+  budget chapter).
 - The work item carries `allow_possible_duplicate: true` and the new
   reservation, and is re-sequenced like any replay. The node takes those two
   fields from the re-delivery and nothing else about the work

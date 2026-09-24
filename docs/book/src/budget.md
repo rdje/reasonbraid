@@ -42,9 +42,10 @@ limit is a separate matter: that is the request's deadline, enforced since
 
 ## The hold has a window, and the node reads it
 
-A reservation holds its dimensions until `expires_at` and no longer: the
-server's held-amount query stops counting an active row the instant that
-passes, and the allowance returns to the ceiling for other work. A work item's
+A reservation holds its dimensions until `expires_at` and no longer (with one
+exception, the next section): the server's held-amount query stops counting an
+active row the instant that passes, and the allowance returns to the ceiling
+for other work. A work item's
 reservation is created with a ten-minute hold at dispatch.
 
 Delivery is not instant. A node that is offline, slow to poll, or replaying a
@@ -87,6 +88,40 @@ the caller's grant.
 > it.** The authority path reached the same conclusion independently — see
 > *Expiry, suspension and revocation*, where windows are normalized to
 > PostgreSQL microseconds before comparison.
+
+## A hold whose outcome is unknown outlives its window
+
+When a provider response is lost, the node records the attempt as
+`outcome_unknown` and refuses to retry it without authorization. No result will
+ever settle its reservation. The call may still have been charged, and §14.6
+releases *only amounts not potentially consumed*.
+
+Until `SIGNOFF-REPAIR.4.5.1` the window alone decided. Ten minutes after
+dispatch the lost call's allowance went back to the ceiling and was lent again,
+so a possible-duplicate re-run could fit under a ceiling that had room for one
+call only.
+
+Now the node's `retry_requires_authorization` dead letter is the server's cue.
+In the same guarded transaction that quarantines the inbox row, the server
+stamps that row's reservation with `outcome_unknown_at`. It uses the
+reservation the server stored on the row, never one the node names. The rule
+for "still held" lives in one place (`budget::holding!`), and admission, the
+spend breaker and `GET /v1/admin/usage` all use it:
+
+```sql
+r.status = 'active' AND (r.expires_at > $2 OR r.outcome_unknown_at IS NOT NULL)
+```
+
+`GET /v1/threads/{thread_id}/budget` shows the stamp on the reservation row. A
+hold whose window had already closed when the report arrived is stamped anyway,
+which can take the ledger over its ceiling. That errs toward counting a
+possible charge, never toward lending it twice.
+
+> ⚠️ **Nothing releases a stamped hold yet.** An operator's adjudication should
+> release it (`failed_known`) or charge it (`completed`). That is
+> `SIGNOFF-REPAIR.4.5.1.1`. Until then it stays counted, which is the safe
+> direction. A node that never reports again gives the server nothing to act on,
+> so its hold lapses at the end of its window, as before.
 
 ## Settle, release, overrun
 

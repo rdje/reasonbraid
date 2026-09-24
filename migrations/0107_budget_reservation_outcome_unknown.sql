@@ -1,0 +1,12 @@
+-- 0107_budget_reservation_outcome_unknown.sql — SIGNOFF-REPAIR.4.5.1: a hold
+-- whose attempt's outcome is UNKNOWN stays counted past its window.
+--
+-- The ledger counted an `active` reservation only while `expires_at` was ahead.
+-- A lost provider response is never settled (no result arrives), so ten minutes
+-- after dispatch its allowance was lent again although the lost call may have
+-- consumed it — §14.6: *cancellation releases only amounts not potentially
+-- consumed*. The server stamps this column when the node dead-letters the work
+-- item as `retry_requires_authorization`, which is its report that the attempt's
+-- outcome is unknown, and `budget::HOLDING` counts a stamped hold whatever its
+-- `expires_at`. NULL is every other reservation, whose window is unchanged.
+ALTER TABLE budget_reservations ADD COLUMN outcome_unknown_at TIMESTAMPTZ;

@@ -21,6 +21,23 @@ use chrono::{DateTime, Duration, Utc};
 use reasonbraid_core::{BudgetDimensions, BudgetError, ReservationReference};
 use sqlx::PgPool;
 
+/// THE rule for whether a reservation row `r` still HOLDS its dimensions at the
+/// instant bound to `$2` (`SIGNOFF-REPAIR.4.5.1`). One copy, read by admission,
+/// by the spend breaker and by the usage inspection, so what the ledger enforces
+/// and what an operator is shown cannot disagree.
+///
+/// An active hold counts while its window is open, and past it once its attempt's
+/// outcome is UNKNOWN ([`hold_for_unknown_outcome_in_tx`]): the lost call may
+/// have consumed it, and §14.6 releases only amounts not potentially consumed.
+/// Before this rule the window alone decided, so ten minutes after a lost
+/// response its allowance was lent again.
+macro_rules! holding {
+    () => {
+        "(r.status = 'active' AND (r.expires_at > $2 OR r.outcome_unknown_at IS NOT NULL))"
+    };
+}
+pub(crate) use holding;
+
 /// The reservation the engine issued (the node verifies it before dispatching).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Reservation {
@@ -148,17 +165,18 @@ where
     // usage + active holds across all its ceilings — crosses the threshold.
     check_spend_breaker_in_tx(&mut *tx, tenant_id, requested, at).await?;
 
-    // held = active (unexpired) reservations + settled usage, summed in Rust over
-    // the stored rows (readable, testable — the single-writer dev profile needs no
-    // locking aggregate).
-    let held_rows: Vec<serde_json::Value> = sqlx::query_scalar(
+    // held = holding reservations ([`holding!`]) + settled usage, summed in Rust
+    // over the stored rows (readable, testable — the single-writer dev profile
+    // needs no locking aggregate).
+    let held_rows: Vec<serde_json::Value> = sqlx::query_scalar(concat!(
         "SELECT COALESCE( \
-             CASE WHEN r.status = 'active' AND r.expires_at > $2 \
-                  THEN r.dimensions ELSE r.usage END, \
+             CASE WHEN ",
+        holding!(),
+        " THEN r.dimensions ELSE r.usage END, \
              '{}'::jsonb) \
          FROM budget_reservations r \
          WHERE r.ceiling_id = $1 AND r.status IN ('active', 'settled')",
-    )
+    ))
     .bind(ceiling_id)
     .bind(at)
     .fetch_all(&mut *tx)
@@ -262,6 +280,39 @@ pub async fn settle_reservation(
 ) -> Result<Option<Settlement>, sqlx::Error> {
     let mut conn = pool.acquire().await?;
     settle_reservation_in_tx(&mut *conn, reservation_id, usage, at).await
+}
+
+/// Keep a hold counted past its window because its attempt's outcome is UNKNOWN
+/// (`SIGNOFF-REPAIR.4.5.1`; see [`holding!`]). Called when the node dead-letters
+/// the work item as `retry_requires_authorization`, which is its report that a
+/// provider response was lost; `reservation_id` is the one the SERVER stored on
+/// that item, and `tenant_id` binds it to the tenant whose guard is held.
+///
+/// A hold whose window has already closed is stamped too, which can take the
+/// ledger over its ceiling: that errs toward counting a possible charge, never
+/// toward lending it again. The first stamp stands; a settled or released row is
+/// terminal and untouched. Returns whether a row was stamped.
+pub(crate) async fn hold_for_unknown_outcome_in_tx<'e, E>(
+    mut tx: E,
+    reservation_id: &str,
+    tenant_id: &str,
+    at: DateTime<Utc>,
+) -> Result<bool, sqlx::Error>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
+    let stamped = sqlx::query(
+        "UPDATE budget_reservations SET outcome_unknown_at = $3 \
+         WHERE reservation_id = $1 AND tenant_id = $2 \
+           AND status = 'active' AND outcome_unknown_at IS NULL",
+    )
+    .bind(reservation_id)
+    .bind(tenant_id)
+    .bind(at)
+    .execute(&mut *tx)
+    .await?;
+    Ok(stamped.rows_affected() == 1)
 }
 
 /// The transactional body of [`settle_reservation`] — shared with the `.6.2`
@@ -392,14 +443,15 @@ where
 
     // The tenant's recorded spend: settled usage + active holds, across every
     // ceiling (the breaker is tenant-scoped, unlike the per-thread ceilings).
-    let spend_rows: Vec<serde_json::Value> = sqlx::query_scalar(
+    let spend_rows: Vec<serde_json::Value> = sqlx::query_scalar(concat!(
         "SELECT COALESCE( \
-             CASE WHEN r.status = 'active' AND r.expires_at > $2 \
-                  THEN r.dimensions ELSE r.usage END, \
+             CASE WHEN ",
+        holding!(),
+        " THEN r.dimensions ELSE r.usage END, \
              '{}'::jsonb) \
          FROM budget_reservations r \
          WHERE r.tenant_id = $1 AND r.status IN ('active', 'settled')",
-    )
+    ))
     .bind(tenant_id)
     .bind(at)
     .fetch_all(&mut *tx)

@@ -9375,6 +9375,36 @@ pub(crate) async fn apply_node_result_in_tx(
         .bind(format!("dead-lettered: {reason}"))
         .execute(&mut *tx)
         .await?;
+        // `retry_requires_authorization` is the node's report that the attempt's
+        // provider response was LOST, so its outcome is unknown and the lost call
+        // may have consumed the hold: keep it counted past its window
+        // (`SIGNOFF-REPAIR.4.5.1`). The reservation is the one the server stored
+        // on the inbox row, read under the guarded tenant, never one the node
+        // names.
+        if reason == reasonbraid_core::RETRY_REQUIRES_AUTHORIZATION {
+            if let Some((_, _, work)) = node_channel::load_command_for_tenant_in_tx(
+                &mut *tx,
+                node_id,
+                command_id,
+                &guarded_tenant.to_string(),
+            )
+            .await?
+            {
+                if let Some(reservation_id) = work
+                    .get("reservation")
+                    .and_then(|r| r.get("reservation_id"))
+                    .and_then(|v| v.as_str())
+                {
+                    budget::hold_for_unknown_outcome_in_tx(
+                        &mut *tx,
+                        reservation_id,
+                        &guarded_tenant.to_string(),
+                        Utc::now(),
+                    )
+                    .await?;
+                }
+            }
+        }
         return Ok(());
     }
 
@@ -10740,19 +10770,17 @@ async fn admin_usage(
         q.tenant_id,
         reasonbraid_core::TenantAdminInspection::Usage {},
         |pool| async move {
-            type Row = (
-                String,
-                Value,
-                Option<Value>,
-                String,
-                Option<String>,
-                Option<DateTime<Utc>>,
-            );
-            let rows: Vec<Row> = sqlx::query_as(
-                "SELECT thread_id, dimensions, usage, status, reason, expires_at \
-         FROM budget_reservations WHERE tenant_id = $1 ORDER BY created_at",
-            )
+            type Row = (String, Value, Option<Value>, String, Option<String>, bool);
+            // Whether a row still holds is the ledger's own rule, asked of the
+            // store, so this view cannot count what admission does not
+            // (`SIGNOFF-REPAIR.4.5.1`).
+            let rows: Vec<Row> = sqlx::query_as(concat!(
+                "SELECT r.thread_id, r.dimensions, r.usage, r.status, r.reason, COALESCE(",
+                budget::holding!(),
+                ", false) FROM budget_reservations r WHERE r.tenant_id = $1 ORDER BY r.created_at",
+            ))
             .bind(q.tenant_id.to_string())
+            .bind(Utc::now())
             .fetch_all(&pool)
             .await?;
 
@@ -10766,7 +10794,7 @@ async fn admin_usage(
                 (BudgetDimensions, BudgetDimensions, BudgetDimensions, usize),
             > = std::collections::BTreeMap::new();
 
-            for (thread_id, dimensions, usage, status, reason, expires_at) in &rows {
+            for (thread_id, dimensions, usage, status, reason, holding) in &rows {
                 let reserved: BudgetDimensions =
                     serde_json::from_value(dimensions.clone()).expect("stored dims parse");
                 let (held, settled, overrun, denied) =
@@ -10779,7 +10807,7 @@ async fn admin_usage(
                         )
                     });
                 match status.as_str() {
-                    "active" if expires_at.is_some_and(|e| e > Utc::now()) => {
+                    "active" if *holding => {
                         *held = held.add(&reserved);
                         tenant_held = tenant_held.add(&reserved);
                     }
@@ -10914,10 +10942,11 @@ async fn get_thread_budget(
                 Option<DateTime<Utc>>,
                 DateTime<Utc>,
                 Option<DateTime<Utc>>,
+                Option<DateTime<Utc>>,
             );
             let rows: Vec<Row> = sqlx::query_as(
                 "SELECT reservation_id, dimensions, usage, status, reason, expires_at, \
-                 created_at, settled_at FROM budget_reservations \
+                 created_at, settled_at, outcome_unknown_at FROM budget_reservations \
                  WHERE ceiling_id = $1 ORDER BY created_at",
             )
             .bind(&ceiling_id)
@@ -10937,6 +10966,7 @@ async fn get_thread_budget(
                         expires_at,
                         created_at,
                         settled_at,
+                        outcome_unknown_at,
                     )| {
                         let mut row = serde_json::Map::new();
                         row.insert("reservation_id".into(), json!(reservation_id));
@@ -10954,6 +10984,11 @@ async fn get_thread_budget(
                         row.insert("created_at".into(), json!(created_at.to_rfc3339()));
                         if let Some(settled_at) = settled_at {
                             row.insert("settled_at".into(), json!(settled_at.to_rfc3339()));
+                        }
+                        // The hold is counted past `expires_at` because its
+                        // attempt's outcome is unknown (`SIGNOFF-REPAIR.4.5.1`).
+                        if let Some(at) = outcome_unknown_at {
+                            row.insert("outcome_unknown_at".into(), json!(at.to_rfc3339()));
                         }
                         Value::Object(row)
                     },

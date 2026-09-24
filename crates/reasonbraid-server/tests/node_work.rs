@@ -2717,6 +2717,107 @@ async fn provider_output_holding_nul_lands_as_a_contribution() {
     );
 }
 
+/// A worker over `node` whose adapter plays `script`, with a local budget that
+/// never binds, so every outcome below is the server's.
+fn fake_worker(
+    node: &reasonbraid_node::Node,
+    script: Vec<reasonbraid_adapter::ScriptStep>,
+) -> reasonbraid_node::Worker<reasonbraid_adapter::FakeAdapter> {
+    reasonbraid_node::Worker::new(
+        node.clone(),
+        reasonbraid_adapter::FakeAdapter::new(
+            script,
+            reasonbraid_adapter::StatusLookupSpec::Unsupported,
+            reasonbraid_adapter::AdapterCapabilities {
+                streaming: false,
+                cancellation: reasonbraid_adapter::CancellationStrength::BestEffort,
+                provider_idempotency: false,
+                status_lookup: false,
+                tool_support: false,
+                policy_injection: reasonbraid_adapter::PolicyInjectionMode::None,
+            },
+        ),
+        reasonbraid_node::LocalBudget::new(reasonbraid_core::BudgetDimensions {
+            calls: Some(100),
+            input_tokens: Some(100_000),
+            output_tokens: Some(100_000),
+            wall_clock_seconds: Some(10_000),
+        }),
+        std::time::Duration::from_millis(50),
+    )
+}
+
+/// One work item whose provider response was LOST: the node journaled
+/// `outcome_unknown`, then on its next tick refused to retry without
+/// authorization and dead-lettered the item as `retry_requires_authorization`.
+struct UnknownOutcome {
+    tenant: String,
+    human: String,
+    role: String,
+    thread: String,
+    command_id: String,
+    /// The reservation the dispatch made, which the lost call may have consumed.
+    original_reservation: String,
+    node: reasonbraid_node::Node,
+    _fixture: Fixture,
+}
+
+async fn lose_one_response(
+    client: &reqwest::Client,
+    server: &TestServer,
+    pool: &PgPool,
+    key: &str,
+) -> UnknownOutcome {
+    let (tenant, human, role, thread, cert_hex, key_hex) =
+        dispatch_one_work_item(client, &server.base(), key).await;
+    let key_der = from_hex(&key_hex).expect("key hex");
+    let der = rustls_pki_types::PrivateKeyDer::try_from(key_der).expect("key DER");
+    let signing = rcgen::KeyPair::from_der_and_sign_algo(&der, &rcgen::PKCS_ECDSA_P256_SHA256)
+        .expect("key parses");
+    let fixture = journal_fixture(key);
+    let node = reasonbraid_node::Node::open(
+        fixture.join("node.db"),
+        server.base(),
+        role.clone(),
+        from_hex(&cert_hex).expect("cert hex"),
+        signing,
+    )
+    .await
+    .expect("open node");
+    node.reconcile().await.expect("reconcile");
+
+    let losing = fake_worker(&node, vec![reasonbraid_adapter::ScriptStep::LoseResponse]);
+    losing
+        .tick()
+        .await
+        .expect("the unknown outcome is journaled");
+    losing.tick().await.expect("the refusal is reported");
+    let (command_id, original_reservation, reason): (String, String, Option<String>) =
+        sqlx::query_as(
+            "SELECT command_id, payload->'reservation'->>'reservation_id', quarantine_reason \
+             FROM node_inbox WHERE node_id = $1",
+        )
+        .bind(&role)
+        .fetch_one(pool)
+        .await
+        .expect("the row");
+    assert_eq!(
+        reason.as_deref(),
+        Some("dead-lettered: retry_requires_authorization"),
+        "the node asked for the authorization"
+    );
+    UnknownOutcome {
+        tenant,
+        human,
+        role,
+        thread,
+        command_id,
+        original_reservation,
+        node,
+        _fixture: fixture,
+    }
+}
+
 /// `SIGNOFF-REPAIR.4.4.7.2.2` — an operator authorizes the POSSIBLE-DUPLICATE
 /// re-run of work whose outcome is unknown (§11.3's third policy; §14.6's only
 /// sanctioned retry of `outcome_unknown`).
@@ -2733,69 +2834,16 @@ async fn a_possible_duplicate_replay_re_runs_an_unknown_outcome() {
     let Some(pool) = pool().await else { return };
     let server = TestServer::start(&pool).await;
     let client = reqwest::Client::new();
-    let (tenant, human, role, thread, cert_hex, key_hex) =
-        dispatch_one_work_item(&client, &server.base(), "key-dup").await;
-    let key_der = from_hex(&key_hex).expect("key hex");
-    let der = rustls_pki_types::PrivateKeyDer::try_from(key_der).expect("key DER");
-    let key = rcgen::KeyPair::from_der_and_sign_algo(&der, &rcgen::PKCS_ECDSA_P256_SHA256)
-        .expect("key parses");
-    let fixture = journal_fixture("possible-duplicate");
-    let node = reasonbraid_node::Node::open(
-        fixture.join("node.db"),
-        server.base(),
-        role.clone(),
-        from_hex(&cert_hex).expect("cert hex"),
-        key,
-    )
-    .await
-    .expect("open node");
-    node.reconcile().await.expect("reconcile");
-    let worker_with = |script: Vec<reasonbraid_adapter::ScriptStep>| {
-        reasonbraid_node::Worker::new(
-            node.clone(),
-            reasonbraid_adapter::FakeAdapter::new(
-                script,
-                reasonbraid_adapter::StatusLookupSpec::Unsupported,
-                reasonbraid_adapter::AdapterCapabilities {
-                    streaming: false,
-                    cancellation: reasonbraid_adapter::CancellationStrength::BestEffort,
-                    provider_idempotency: false,
-                    status_lookup: false,
-                    tool_support: false,
-                    policy_injection: reasonbraid_adapter::PolicyInjectionMode::None,
-                },
-            ),
-            reasonbraid_node::LocalBudget::new(reasonbraid_core::BudgetDimensions {
-                calls: Some(100),
-                input_tokens: Some(100_000),
-                output_tokens: Some(100_000),
-                wall_clock_seconds: Some(10_000),
-            }),
-            std::time::Duration::from_millis(50),
-        )
-    };
-
-    // The lost response, then the refusal to retry without authorization.
-    let losing = worker_with(vec![reasonbraid_adapter::ScriptStep::LoseResponse]);
-    losing
-        .tick()
-        .await
-        .expect("the unknown outcome is journaled");
-    losing.tick().await.expect("the refusal is reported");
-    let (command_id, original_reservation, reason): (String, String, Option<String>) =
-        sqlx::query_as(
-            "SELECT command_id, payload->'reservation'->>'reservation_id', quarantine_reason \
-             FROM node_inbox WHERE node_id = $1",
-        )
-        .bind(&role)
-        .fetch_one(&pool)
-        .await
-        .expect("the row");
-    assert_eq!(
-        reason.as_deref(),
-        Some("dead-lettered: retry_requires_authorization"),
-        "the node asked for the authorization"
-    );
+    let UnknownOutcome {
+        tenant,
+        human,
+        role,
+        thread,
+        command_id,
+        original_reservation,
+        node,
+        _fixture,
+    } = lose_one_response(&client, &server, &pool, "possible-duplicate").await;
 
     // THE authorized replay.
     let response = client
@@ -2841,9 +2889,10 @@ async fn a_possible_duplicate_replay_re_runs_an_unknown_outcome() {
     assert_eq!(held, "active", "the lost attempt's reservation stays held");
 
     // The node re-runs it.
-    let completing = worker_with(vec![reasonbraid_adapter::ScriptStep::Complete {
-        usage: None,
-    }]);
+    let completing = fake_worker(
+        &node,
+        vec![reasonbraid_adapter::ScriptStep::Complete { usage: None }],
+    );
     completing.tick().await.expect("the re-run");
     let events = thread_events(&client, &server.base(), &thread, &tenant, &human).await;
     assert_eq!(
@@ -2874,5 +2923,126 @@ async fn a_possible_duplicate_replay_re_runs_an_unknown_outcome() {
         response.status().as_u16(),
         409,
         "only a row awaiting the authorization takes it"
+    );
+}
+
+/// `SIGNOFF-REPAIR.4.5.1` — the hold of an attempt whose outcome is UNKNOWN
+/// stays counted past its ten-minute window (§14.6: *cancellation releases only
+/// amounts not potentially consumed*).
+///
+/// The lost call may have been charged, and no result will ever settle its
+/// reservation. The ledger counted an `active` hold only while `expires_at` was
+/// ahead, so ten minutes after dispatch the allowance was lent again, and a
+/// possible-duplicate re-run fitted under a ceiling that had room for only one
+/// call. The window is aged in the store rather than waited out.
+#[tokio::test]
+async fn an_unknown_outcome_keeps_its_hold_past_its_window() {
+    let _g = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let lost = lose_one_response(&client, &server, &pool, "uncertain-hold").await;
+
+    // The ceiling has room for exactly ONE call: the lost one.
+    sqlx::query(
+        "UPDATE budget_ceilings SET dimensions = jsonb_set(dimensions, '{calls}', '1') \
+         WHERE thread_id = $1",
+    )
+    .bind(&lost.thread)
+    .execute(&pool)
+    .await
+    .expect("the ceiling narrowed");
+    // Ten minutes pass.
+    sqlx::query(
+        "UPDATE budget_reservations SET expires_at = now() - interval '1 second' \
+         WHERE reservation_id = $1",
+    )
+    .bind(&lost.original_reservation)
+    .execute(&pool)
+    .await
+    .expect("the window aged");
+
+    let (status, usage) = get(
+        &client,
+        &server.base(),
+        &format!("/v1/admin/usage?tenant_id={}", lost.tenant),
+        &lost.human,
+    )
+    .await;
+    assert_eq!(status, 200, "the usage surface answers: {usage}");
+    assert_eq!(
+        usage["aggregate"]["held"]["calls"],
+        json!(1),
+        "the lost call's hold is still counted: {usage}"
+    );
+
+    // The admission that would re-lend it: a possible duplicate needs a call
+    // of its own, and the ceiling's only call is the lost one's.
+    let response = client
+        .post(format!("{}/v1/nodes/replay", server.base()))
+        .header(PRINCIPAL_HEADER, &lost.human)
+        .json(&json!({
+            "tenant_id": lost.tenant,
+            "node_id": lost.role,
+            "command_id": lost.command_id,
+            "allow_possible_duplicate": true,
+            "reason": "the provider's records are silent on the lost call",
+        }))
+        .send()
+        .await
+        .expect("the replay request");
+    let status = response.status().as_u16();
+    let body: Value = response.json().await.expect("json");
+    assert_eq!(
+        (status, body["code"].as_str()),
+        (409, Some("budget_unavailable")),
+        "the ceiling has no room while the lost call may have used it: {body}"
+    );
+
+    // The spend breaker reads the same rule: with the ceiling wide again and
+    // the breaker armed at one call, the possible duplicate's call fits only if
+    // the lost call is NOT counted, so the trip is the lost call's. Every
+    // dimension is metered because an unmetered one refuses by itself
+    // (`BudgetDimensions::covers` fails closed; `SIGNOFF-REPAIR.4.5.6`).
+    sqlx::query(
+        "UPDATE budget_ceilings SET dimensions = jsonb_set(dimensions, '{calls}', '100') \
+         WHERE thread_id = $1",
+    )
+    .bind(&lost.thread)
+    .execute(&pool)
+    .await
+    .expect("the ceiling widened");
+    sqlx::query("INSERT INTO spend_breakers (tenant_id, threshold) VALUES ($1, $2)")
+        .bind(&lost.tenant)
+        .bind(json!({
+            "calls": 1,
+            "input_tokens": 1_000_000,
+            "output_tokens": 1_000_000,
+            "wall_clock_seconds": 1_000_000,
+        }))
+        .execute(&pool)
+        .await
+        .expect("the breaker armed");
+    let response = client
+        .post(format!("{}/v1/nodes/replay", server.base()))
+        .header(PRINCIPAL_HEADER, &lost.human)
+        .json(&json!({
+            "tenant_id": lost.tenant,
+            "node_id": lost.role,
+            "command_id": lost.command_id,
+            "allow_possible_duplicate": true,
+            "reason": "the provider's records are silent on the lost call",
+        }))
+        .send()
+        .await
+        .expect("the second replay request");
+    let status = response.status().as_u16();
+    let body: Value = response.json().await.expect("json");
+    assert_eq!(status, 409, "the breaker refuses: {body}");
+    assert!(
+        body["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("circuit breaker")),
+        "the refusal is the breaker's, which counted the lost call: {body}"
     );
 }

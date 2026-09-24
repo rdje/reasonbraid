@@ -631,8 +631,8 @@ delivery tail:
 A command the node dead-lettered as `retry_requires_authorization` (an
 `outcome_unknown` it will not re-run on its own) can be replayed with the
 possible-duplicate authorization, and its reason (`SIGNOFF-REPAIR.4.4.7.2`). A
-fresh reservation pays for the re-run, and the original stays held (for its
-ten-minute hold window until `SIGNOFF-REPAIR.4.5.1`):
+fresh reservation pays for the re-run, and the original stays held, past its
+window, while its outcome is unknown:
 
 ```text
  node replay --node rol_… --command work_evt_… \

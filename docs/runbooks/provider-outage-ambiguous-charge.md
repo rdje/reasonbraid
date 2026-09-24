@@ -42,11 +42,12 @@
 ## Containment
 
 - The held reservation stays held (the indeterminate attempt keeps its hold,
-  so the budget cannot double-spend it). ⚠️ Measured by `SIGNOFF-REPAIR.4.5`
-  (DOC-0156): this lasts only the hold's ten-minute window. The ledger stops
-  counting an unsettled hold at its `expires_at`, whatever the attempt's
-  outcome. `SIGNOFF-REPAIR.4.5.1` owns keeping it held while the outcome is
-  unknown.
+  so the budget cannot double-spend it). It stays held past its ten-minute
+  window: when the node reports `retry_requires_authorization`, the server
+  stamps the reservation's `outcome_unknown_at`, and the ledger counts a stamped
+  hold whatever its `expires_at` (`SIGNOFF-REPAIR.4.5.1`). The thread's budget
+  view shows the stamp. ⚠️ Nothing releases it yet, even after an adjudication
+  (`SIGNOFF-REPAIR.4.5.1.1`).
 - No new work on the same attempt id: the idempotency claim serializes.
 
 ## Recovery

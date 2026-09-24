@@ -699,14 +699,22 @@ impl From<sqlx::Error> for ApiError {
 #[derive(Debug, Clone)]
 pub struct NodeChannelState {
     pool: PgPool,
-    /// The workload-identity CA (ADR-007): the enrollment path signs the node's
-    /// short-lived leaf with it; the `.1.2.2` handshake chains to it.
-    ca: Arc<crate::ca::ServerCa>,
+    /// The workload-identity CA generations (ADR-007, `SIGNOFF-REPAIR.4.1.8.1`):
+    /// the enrollment and rotation paths sign the node's short-lived leaf with
+    /// the newest; the `.1.2.2` handshake accepts a leaf chaining to any
+    /// generation inside its window.
+    cas: Arc<crate::ca::CaSet>,
 }
 
 impl NodeChannelState {
+    /// One CA, as every caller before `.4.1.8.1` built it.
     pub fn new(pool: PgPool, ca: Arc<crate::ca::ServerCa>) -> Self {
-        Self { pool, ca }
+        Self::with_ca_set(pool, Arc::new(crate::ca::CaSet::single(ca)))
+    }
+
+    /// The deployment's CA generations (`SIGNOFF-REPAIR.4.1.8.1`).
+    pub fn with_ca_set(pool: PgPool, cas: Arc<crate::ca::CaSet>) -> Self {
+        Self { pool, cas }
     }
 
     /// Append a command to a node's inbox ledger; returns its assigned per-node cursor
@@ -1397,7 +1405,7 @@ impl NodeChannelState {
         };
         let cert_der = decode_hex(&req.cert_der).ok_or_else(refused)?;
         let signature = decode_hex(&req.proof_signature).ok_or_else(refused)?;
-        crate::ca::verify_leaf_chain(&self.ca, &cert_der).map_err(|_| refused())?;
+        self.cas.verify_leaf(&cert_der).map_err(|_| refused())?;
         let fingerprint = crate::ca::cert_fingerprint(&cert_der);
         let row: Option<(String, bool)> = sqlx::query_as(
             "SELECT node_id, (revoked_at IS NOT NULL OR expires_at <= now()) \
@@ -1455,7 +1463,9 @@ impl NodeChannelState {
     ) -> Result<(), ApiError> {
         let cert_der = decode_hex(&req.cert_der).ok_or_else(ApiError::proof_refused)?;
         let signature = decode_hex(&req.proof_signature).ok_or_else(ApiError::proof_refused)?;
-        crate::ca::verify_leaf_chain(&self.ca, &cert_der).map_err(|_| ApiError::proof_refused())?;
+        self.cas
+            .verify_leaf(&cert_der)
+            .map_err(|_| ApiError::proof_refused())?;
         let fingerprint = crate::ca::cert_fingerprint(&cert_der);
         let row: Option<(String, bool)> = sqlx::query_as(
             "SELECT node_id, (revoked_at IS NOT NULL OR expires_at <= now()) \
@@ -2067,7 +2077,13 @@ async fn result_tenant_in_tx(
 /// `/v1/nodes/enroll` (the `.1.2.1` one-time-token enrollment — the token IS the
 /// credential there, so that surface carries no principal header).
 pub fn node_router(pool: PgPool, ca: Arc<crate::ca::ServerCa>) -> Router {
-    let state = Arc::new(NodeChannelState::new(pool, ca));
+    node_router_with_ca_set(pool, Arc::new(crate::ca::CaSet::single(ca)))
+}
+
+/// [`node_router`] over the deployment's CA generations (`SIGNOFF-REPAIR.4.1.8.1`),
+/// as `rb-server` serves it.
+pub fn node_router_with_ca_set(pool: PgPool, cas: Arc<crate::ca::CaSet>) -> Router {
+    let state = Arc::new(NodeChannelState::with_ca_set(pool, cas));
     Router::new()
         .route("/v1/nodes/handshake", post(handshake))
         .route("/v1/nodes/events", post(events))
@@ -2252,7 +2268,7 @@ async fn rotate(
     // checks the claim before the token is written, so a stored host name that
     // the library refuses means a row predating that check — the rotation says
     // so instead of dropping the connection.
-    let leaf = crate::ca::issue_node_leaf(&state.ca, &req.node_id, &host_claim)
+    let leaf = crate::ca::issue_node_leaf(&state.cas.issuer(), &req.node_id, &host_claim)
         .map_err(|refusal| ApiError::leaf_refused(&refusal))?;
     let (cert_der, key_der) = (leaf.cert_der, leaf.key_der);
     let cert_fingerprint = crate::ca::cert_fingerprint(&cert_der);
@@ -2904,7 +2920,7 @@ async fn enroll(
     // rolls back with the `?`, exactly as the panic's unwind did — what changes
     // is that the caller receives an answer, and the token is not left
     // outstanding-and-unredeemable for the rest of its lifetime.
-    let leaf = crate::ca::issue_node_leaf(&state.ca, &req.node_id, &req.host_claim)
+    let leaf = crate::ca::issue_node_leaf(&state.cas.issuer(), &req.node_id, &req.host_claim)
         .map_err(|refusal| ApiError::leaf_refused(&refusal))?;
     let (cert_der, key_der) = (leaf.cert_der, leaf.key_der);
     let cert_fingerprint = crate::ca::cert_fingerprint(&cert_der);

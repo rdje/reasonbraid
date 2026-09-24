@@ -17,7 +17,9 @@ mod pg_cleanup;
 use std::net::SocketAddr;
 use std::sync::{Arc, OnceLock};
 
-use reasonbraid_server::{api_router, ca::ensure_server_ca, node_router, PRINCIPAL_HEADER};
+use reasonbraid_server::{
+    api_router, ca::ensure_server_ca, node_router_with_ca_set, PRINCIPAL_HEADER,
+};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 
@@ -120,8 +122,16 @@ impl TestServer {
             .await
             .expect("bind ephemeral loopback port");
         let addr = listener.local_addr().unwrap();
-        let ca = Arc::new(ensure_server_ca(pool).await.expect("server CA"));
-        let router = api_router(pool.clone()).merge(node_router(pool.clone(), ca));
+        // The CA generations exactly as `rb-server` loads them (`SIGNOFF-REPAIR.4.1.8.1`).
+        let cas = Arc::new(
+            reasonbraid_server::ca::load_ca_set(
+                pool,
+                &reasonbraid_server::secret_store::SecretStore::dev(),
+            )
+            .await
+            .expect("server CA generations"),
+        );
+        let router = api_router(pool.clone()).merge(node_router_with_ca_set(pool.clone(), cas));
         let handle = tokio::spawn(async move {
             axum::serve(listener, router).await.expect("serve");
         });
@@ -514,6 +524,139 @@ async fn the_ca_survives_a_server_rebuild() {
     )
     .expect("the fixture host claim is a valid SAN");
     assert!(!leaf.cert_der.is_empty() && !leaf.key_der.is_empty());
+}
+
+/// A second CA generation's material, as the store holds it (`SIGNOFF-REPAIR.4.1.8.1`).
+fn successor_ca_material() -> (Vec<u8>, Vec<u8>) {
+    let key = rcgen::KeyPair::generate().expect("CA key");
+    let mut params = rcgen::CertificateParams::new(vec![]).expect("CA params");
+    params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
+    params
+        .distinguished_name
+        .push(rcgen::DnType::CommonName, "reasonbraid-server-ca");
+    params.key_usages = vec![
+        rcgen::KeyUsagePurpose::KeyCertSign,
+        rcgen::KeyUsagePurpose::DigitalSignature,
+    ];
+    let now =
+        time::OffsetDateTime::from_unix_timestamp(chrono::Utc::now().timestamp()).expect("clock");
+    params.not_before = now;
+    params.not_after = now + time::Duration::days(365);
+    let cert = params.self_signed(&key).expect("CA self-sign");
+    (cert.der().to_vec(), key.serialize_der())
+}
+
+/// Store a successor generation, returning its certificate DER. Every caller
+/// removes it again with [`forget_successor_generations`], because `server_ca`
+/// is shared by every suite on this database.
+async fn store_successor_generation(pool: &PgPool) -> Vec<u8> {
+    let (ca_der, key_der) = successor_ca_material();
+    sqlx::query(
+        "INSERT INTO server_ca (ca_id, ca_der, key_der) \
+         VALUES ((SELECT max(ca_id) + 1 FROM server_ca), $1, $2)",
+    )
+    .bind(&ca_der)
+    .bind(&key_der)
+    .execute(pool)
+    .await
+    .expect("the successor generation");
+    ca_der
+}
+
+async fn forget_successor_generations(pool: &PgPool) {
+    sqlx::query("DELETE FROM server_ca WHERE ca_id > 1")
+        .execute(pool)
+        .await
+        .expect("forget the successors");
+}
+
+/// `SIGNOFF-REPAIR.4.1.8.1` — the NEWEST stored CA generation is the one that
+/// issues. The store held one row, `ca_id = 1`, and the loader read exactly
+/// that row, so a successor could be stored and never used.
+#[tokio::test]
+async fn the_newest_ca_generation_is_the_issuer() {
+    let _guard = enroll_guard().await;
+    let Some(pool) = pool().await else { return };
+    forget_successor_generations(&pool).await;
+    let first = ensure_server_ca(&pool).await.expect("the first generation");
+    let successor = store_successor_generation(&pool).await;
+    let issuing = ensure_server_ca(&pool).await.expect("the issuer");
+    forget_successor_generations(&pool).await;
+    assert_ne!(first.cert_der, successor, "two generations");
+    assert_eq!(issuing.cert_der, successor, "the newest generation issues");
+}
+
+/// `SIGNOFF-REPAIR.4.1.8.1`, live — a node enrolled under the FIRST generation
+/// still handshakes once a successor issues, and a node enrolled after that is
+/// signed by the successor. Both servers are built the way `rb-server` builds
+/// them, from every stored generation.
+#[tokio::test]
+async fn an_older_generations_leaf_still_handshakes_after_a_successor_issues() {
+    let _guard = enroll_guard().await;
+    let Some(pool) = pool().await else { return };
+    forget_successor_generations(&pool).await;
+    let client = reqwest::Client::new();
+
+    let before = TestServer::start(&pool).await;
+    let (tenant, alice) = bootstrap_admin(&client, &before.base()).await;
+    let enroll = |base: String, node_id: &'static str| {
+        let (client, tenant, alice) = (client.clone(), tenant.clone(), alice.clone());
+        async move {
+            let token =
+                issue_token(&client, &base, &alice, &tenant, node_id, "host-gen", None).await;
+            let (status, enrolled) = enroll_node(
+                &client,
+                &base,
+                token["token_id"].as_str().unwrap(),
+                node_id,
+                "host-gen",
+                token["nonce"].as_str().unwrap(),
+                "dev-secret-gen",
+            )
+            .await;
+            assert_eq!(status, 200, "enroll: {enrolled}");
+            let hex = |field: &str| {
+                let text = enrolled[field].as_str().expect("hex field").to_string();
+                (0..text.len())
+                    .step_by(2)
+                    .map(|i| u8::from_str_radix(&text[i..i + 2], 16).expect("hex"))
+                    .collect::<Vec<u8>>()
+            };
+            (hex("cert_der"), hex("key_der"))
+        }
+    };
+    let older_node = "nod_00000000-0000-7000-8000-00000000a181";
+    let (older_cert, older_key) = enroll(before.base(), older_node).await;
+
+    let successor = store_successor_generation(&pool).await;
+    let after = TestServer::start(&pool).await;
+
+    // The older generation's node still authenticates.
+    let fixture = reasonbraid_core::fixture::Fixture::create("ca-generations", "older-node")
+        .expect("the fixture directory is new");
+    let der = rustls_pki_types::PrivateKeyDer::try_from(older_key).expect("key DER");
+    let key = rcgen::KeyPair::from_der_and_sign_algo(&der, &rcgen::PKCS_ECDSA_P256_SHA256)
+        .expect("key parses");
+    let node = reasonbraid_node::Node::open(
+        fixture.join("node.db"),
+        after.base(),
+        older_node.to_string(),
+        older_cert,
+        key,
+    )
+    .await
+    .expect("open node");
+    let reconciled = node.reconcile().await;
+
+    // A node enrolled now is signed by the successor.
+    let (newer_cert, _) = enroll(after.base(), "nod_00000000-0000-7000-8000-00000000a182").await;
+    let issuing = ensure_server_ca(&pool).await.expect("the issuer");
+    forget_successor_generations(&pool).await;
+
+    reconciled.expect("the older generation's leaf still handshakes");
+    assert_eq!(issuing.cert_der, successor, "the successor is the issuer");
+    reasonbraid_server::ca::verify_leaf_chain(&issuing, &newer_cert)
+        .expect("the new node's leaf chains to the successor");
 }
 
 /// Every refusal class is audited and effect-free: unknown token, expired token,

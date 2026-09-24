@@ -93,17 +93,34 @@ impl SecretStore {
         }
     }
 
-    /// The CA material read THROUGH the declared store: the persisted
-    /// (ca_der, key_der) pair, or `None` on a fresh database. The ONLY path
-    /// the CA loader uses — the store is the seam, not an option.
+    /// The ISSUING CA's material read THROUGH the declared store: the newest
+    /// persisted generation's (ca_der, key_der) pair, or `None` on a fresh
+    /// database. The ONLY path the CA loader uses — the store is the seam, not
+    /// an option. Newest, not `ca_id = 1` (`SIGNOFF-REPAIR.4.1.8.1`): a
+    /// successor generation issues once it exists.
     pub async fn load_ca_material(
         &self,
         pool: &PgPool,
     ) -> Result<Option<(Vec<u8>, Vec<u8>)>, sqlx::Error> {
         match self {
             SecretStore::DevDatabase => {
-                sqlx::query_as("SELECT ca_der, key_der FROM server_ca WHERE ca_id = 1")
+                sqlx::query_as("SELECT ca_der, key_der FROM server_ca ORDER BY ca_id DESC LIMIT 1")
                     .fetch_optional(pool)
+                    .await
+            }
+        }
+    }
+
+    /// EVERY stored CA generation, oldest first (`SIGNOFF-REPAIR.4.1.8.1`): the
+    /// trust set a node leaf may chain to while the newest issues.
+    pub async fn load_ca_generations(
+        &self,
+        pool: &PgPool,
+    ) -> Result<Vec<(Vec<u8>, Vec<u8>)>, sqlx::Error> {
+        match self {
+            SecretStore::DevDatabase => {
+                sqlx::query_as("SELECT ca_der, key_der FROM server_ca ORDER BY ca_id")
+                    .fetch_all(pool)
                     .await
             }
         }

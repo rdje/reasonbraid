@@ -15,6 +15,7 @@ use rcgen::{BasicConstraints, CertificateParams, DnType, IsCa, Issuer, KeyPair, 
 use rustls_pki_types::{CertificateDer, PrivateKeyDer};
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
+use std::sync::Arc;
 
 /// How long an issued workload leaf stays valid (ADR-007: 10 minutes).
 pub const LEAF_TTL_SECS: i64 = 600;
@@ -301,11 +302,25 @@ pub fn to_hex(bytes: &[u8]) -> String {
 /// default algorithm). Each refusal is a distinct `Err` reason so the caller
 /// maps it to the typed channel refusal.
 pub fn verify_leaf_chain(ca: &ServerCa, cert_der: &[u8]) -> Result<(), String> {
+    verify_leaf_against(&[ca], cert_der, chrono::Utc::now())
+}
+
+/// Verify a leaf against ANY of `cas` (`SIGNOFF-REPAIR.4.1.8.1`): the trust
+/// set while one generation issues and an older one's leaves are still live.
+fn verify_leaf_against(
+    cas: &[&ServerCa],
+    cert_der: &[u8],
+    at: chrono::DateTime<chrono::Utc>,
+) -> Result<(), String> {
     let cert: CertificateDer<'static> = cert_der.to_vec().into();
-    let ca_cert: CertificateDer<'static> = ca.cert_der.clone().into();
-    let anchor = webpki::anchor_from_trusted_cert(&ca_cert)
-        .map_err(|e| format!("CA anchor invalid: {e}"))?;
-    let anchors = [anchor];
+    let ca_certs: Vec<CertificateDer<'static>> =
+        cas.iter().map(|ca| ca.cert_der.clone().into()).collect();
+    let anchors = ca_certs
+        .iter()
+        .map(|ca_cert| {
+            webpki::anchor_from_trusted_cert(ca_cert).map_err(|e| format!("CA anchor invalid: {e}"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     let end_entity =
         webpki::EndEntityCert::try_from(&cert).map_err(|e| format!("leaf unparsable: {e}"))?;
     end_entity
@@ -313,13 +328,110 @@ pub fn verify_leaf_chain(ca: &ServerCa, cert_der: &[u8]) -> Result<(), String> {
             &[webpki::ring::ECDSA_P256_SHA256],
             &anchors,
             &[],
-            rustls_pki_types::UnixTime::now(),
+            rustls_pki_types::UnixTime::since_unix_epoch(std::time::Duration::from_secs(
+                u64::try_from(at.timestamp()).map_err(|_| "a time before 1970".to_string())?,
+            )),
             webpki::KeyUsage::client_auth(),
             None,
             None,
         )
         .map(|_| ())
         .map_err(|e| format!("chain/validity verification failed: {e}"))
+}
+
+/// The deployment's CA generations (`SIGNOFF-REPAIR.4.1.8.1`, decided by
+/// `docs/decisions/2026-09-24_the-ca-rotates-itself-with-an-overlapping-trust-set.md`):
+/// the NEWEST issues; a leaf is trusted if it chains to ANY generation inside
+/// its own validity window. Held behind a lock so a successor can be adopted
+/// in-process (`.4.1.8.2`) without a restart.
+pub struct CaSet {
+    /// Oldest first; never empty.
+    generations: std::sync::RwLock<Vec<Arc<ServerCa>>>,
+}
+
+impl std::fmt::Debug for CaSet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CaSet")
+            .field("generations", &self.read().len())
+            .finish()
+    }
+}
+
+impl CaSet {
+    /// One generation: every caller that built a single CA keeps its meaning.
+    pub fn single(ca: Arc<ServerCa>) -> Self {
+        Self::from_generations(vec![ca])
+    }
+
+    /// Generations oldest first. Panics on an empty list: a deployment always
+    /// has its first CA (`ensure_server_ca_with_store` creates it).
+    pub fn from_generations(generations: Vec<Arc<ServerCa>>) -> Self {
+        assert!(
+            !generations.is_empty(),
+            "a CA set has at least one generation"
+        );
+        Self {
+            generations: std::sync::RwLock::new(generations),
+        }
+    }
+
+    fn read(&self) -> std::sync::RwLockReadGuard<'_, Vec<Arc<ServerCa>>> {
+        // A poisoned lock means a writer panicked mid-swap; the vector is still
+        // a whole value (the swap is one assignment), so reading it is sound.
+        self.generations
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// The generation that signs new leaves: the newest.
+    pub fn issuer(&self) -> Arc<ServerCa> {
+        self.read().last().expect("never empty").clone()
+    }
+
+    /// Verify a node leaf against every generation inside its own window now.
+    /// The window is checked HERE because a trust anchor's own validity is not
+    /// something webpki checks: an expired generation must stop vouching.
+    pub fn verify_leaf(&self, cert_der: &[u8]) -> Result<(), String> {
+        self.verify_leaf_at(cert_der, chrono::Utc::now())
+    }
+
+    /// [`CaSet::verify_leaf`] at a stated instant, so the window's edges can be
+    /// tested exactly rather than raced against the clock.
+    fn verify_leaf_at(
+        &self,
+        cert_der: &[u8],
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), String> {
+        let generations = self.read();
+        let trusted: Vec<&ServerCa> = generations
+            .iter()
+            .filter(|ca| {
+                validity_window(&ca.cert_der)
+                    .is_ok_and(|(not_before, not_after)| not_before <= now && now < not_after)
+            })
+            .map(|ca| ca.as_ref())
+            .collect();
+        if trusted.is_empty() {
+            return Err("no CA generation is inside its validity window".to_string());
+        }
+        verify_leaf_against(&trusted, cert_der, now)
+    }
+}
+
+/// Load every stored CA generation through the declared store, creating the
+/// first on a fresh database (`SIGNOFF-REPAIR.4.1.8.1`).
+pub async fn load_ca_set(
+    pool: &PgPool,
+    store: &crate::secret_store::SecretStore,
+) -> Result<CaSet, sqlx::Error> {
+    ensure_server_ca_with_store(pool, store).await?;
+    let generations = store
+        .load_ca_generations(pool)
+        .await?
+        .into_iter()
+        .map(|(ca_der, key_der)| Arc::new(load_ca(ca_der, key_der)))
+        .collect();
+    Ok(CaSet::from_generations(generations))
 }
 
 /// Extract the leaf.s SPKI DER (the public key the proof signature binds to).
@@ -415,6 +527,91 @@ mod issued_leaf_binding {
         params.not_after = now + time::Duration::seconds(secs);
         let cert = params.self_signed(&key).expect("CA self-sign");
         load_ca(cert.der().to_vec(), key.serialize_der())
+    }
+
+    /// A leaf valid for ten minutes from now, signed by `ca` whatever the CA's
+    /// own window: the shape `issue_node_leaf` refuses to produce, built here so
+    /// the trust set's own filter is what is tested.
+    fn leaf_signed_by(ca: &ServerCa) -> Vec<u8> {
+        let key = KeyPair::generate().expect("leaf key");
+        let mut params = CertificateParams::new(vec!["host-a".to_string()]).expect("params");
+        params.distinguished_name.push(
+            DnType::CommonName,
+            "node:nod_00000000-0000-7000-8000-000000000001",
+        );
+        params.key_usages = vec![KeyUsagePurpose::DigitalSignature];
+        let now = now_offset();
+        params.not_before = now - time::Duration::seconds(5);
+        params.not_after = now + time::Duration::seconds(600);
+        params
+            .signed_by(&key, &ca.issuer)
+            .expect("sign")
+            .der()
+            .to_vec()
+    }
+
+    /// `SIGNOFF-REPAIR.4.1.8.1` — the set issues from its NEWEST generation,
+    /// trusts a leaf of ANY generation inside its window, and stops trusting a
+    /// generation whose own window has closed, even for a leaf still in date.
+    #[test]
+    fn the_ca_set_issues_from_the_newest_and_trusts_every_live_generation() {
+        let older = Arc::new(ca_valid_for(30 * 86_400));
+        let newer = Arc::new(ca_valid_for(365 * 86_400));
+        let set = CaSet::from_generations(vec![older.clone(), newer.clone()]);
+        assert_eq!(set.issuer().cert_der, newer.cert_der, "the newest issues");
+        set.verify_leaf(&leaf_signed_by(&older))
+            .expect("an older generation's leaf is still trusted");
+        set.verify_leaf(&leaf_signed_by(&newer))
+            .expect("the issuer's own leaf is trusted");
+        assert!(
+            verify_leaf_chain(&newer, &leaf_signed_by(&older)).is_err(),
+            "one CA alone trusts only its own leaves: the set is what adds the older one"
+        );
+
+        let expired = Arc::new(ca_valid_for(-60));
+        let set = CaSet::from_generations(vec![expired.clone(), newer]);
+        assert!(
+            set.verify_leaf(&leaf_signed_by(&expired)).is_err(),
+            "an expired generation vouches for nothing"
+        );
+        let only_expired = CaSet::single(expired.clone());
+        assert!(only_expired
+            .verify_leaf(&leaf_signed_by(&expired))
+            .is_err_and(|e| e.contains("no CA generation")));
+        assert_eq!(format!("{set:?}"), "CaSet { generations: 2 }");
+    }
+
+    /// The window's edges, exactly (`SIGNOFF-REPAIR.4.1.8.1`): a generation
+    /// vouches through the second BEFORE its `not_after` and not at it, which
+    /// is the instant the chain verifier itself treats as expired.
+    #[test]
+    fn a_generation_stops_vouching_at_its_not_after_exactly() {
+        let ca = Arc::new(ca_valid_for(3_600));
+        let leaf = leaf_signed_by(&ca);
+        let set = CaSet::single(ca.clone());
+        let (_, leaf_not_after) = validity_window(&leaf).expect("leaf parses");
+        // Keep the instant inside the leaf's own window, so only the CA's edge
+        // is being tested.
+        assert!(ca.not_after > leaf_not_after);
+        let inside = leaf_not_after - chrono::Duration::seconds(1);
+        set.verify_leaf_at(&leaf, inside)
+            .expect("inside both windows");
+        let early = CaSet::single(Arc::new(ca_valid_for(-1)));
+        assert!(early.verify_leaf_at(&leaf, inside).is_err());
+        // The CA's own edge: a set whose only generation ends at `edge`.
+        let edge_ca = Arc::new(ca_valid_for(400));
+        let edge_leaf = leaf_signed_by(&edge_ca);
+        let edge_set = CaSet::single(edge_ca.clone());
+        let edge = edge_ca.not_after;
+        assert!(
+            edge_set
+                .verify_leaf_at(&edge_leaf, edge)
+                .is_err_and(|e| e.contains("no CA generation")),
+            "at not_after the generation no longer vouches"
+        );
+        edge_set
+            .verify_leaf_at(&edge_leaf, edge - chrono::Duration::seconds(1))
+            .expect("one second before, it does");
     }
 
     /// `SIGNOFF-REPAIR.4.1.7` — a leaf never outlives its issuer. With 400 s

@@ -69,7 +69,9 @@ async fn every_mapped_operator_surface_is_served_by_the_composed_app() {
         .run(&pool)
         .await
         .expect("apply migrations");
-    let ca = Arc::new(ensure_server_ca(&pool).await.expect("server CA"));
+    let ca = Arc::new(reasonbraid_server::ca::CaSet::single(Arc::new(
+        ensure_server_ca(&pool).await.expect("server CA"),
+    )));
     let dependencies = vec![Dependency::Postgres(pool.clone())];
     let app = control_plane_app(ControlPlane {
         pool: pool.clone(),

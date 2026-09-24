@@ -141,6 +141,16 @@ secret, but the CHANNEL identity is the certificate:
    and says the authority must be renewed (`SIGNOFF-REPAIR.4.1.8` owns the
    renewal). The readiness read already reports an expired CA as unready.
 
+   **The CA is a set of generations** (`SIGNOFF-REPAIR.4.1.8.1`, decided in
+   `docs/decisions/2026-09-24_the-ca-rotates-itself-with-an-overlapping-trust-set.md`).
+   `server_ca` holds one row per generation. The **newest** signs every new
+   leaf, and the handshake accepts a leaf chaining to **any** generation inside
+   its own validity window. The window is checked by the server, since a trust
+   anchor's validity is not something the chain verifier checks. So a successor
+   can start issuing while the older generation's leaves keep working until they
+   expire. `rb-server` loads every generation at boot; minting the successor
+   automatically is `SIGNOFF-REPAIR.4.1.8.2`.
+
    **A rotated identity is written to disk before it is used** (`.4.2.9`): the
    node persists the fresh certificate and key beside its journal, in the same
    two files it loads at start, so a rotation survives a restart. Until it did,

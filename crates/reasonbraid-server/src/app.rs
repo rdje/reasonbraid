@@ -21,7 +21,8 @@ use sqlx::PgPool;
 /// Everything the composed surface needs, as `rb-server` resolves it at boot.
 pub struct ControlPlane {
     pub pool: PgPool,
-    pub ca: Arc<crate::ca::ServerCa>,
+    /// The CA generations (`SIGNOFF-REPAIR.4.1.8.1`).
+    pub ca: Arc<crate::ca::CaSet>,
     /// The declared publication root (`--publication-repo-root`); `None`
     /// closes the publish verb.
     pub publication_repo_root: Option<PathBuf>,
@@ -36,7 +37,7 @@ pub struct ControlPlane {
 /// channel, the console, the health read and the backup status.
 pub fn control_plane_app(plane: ControlPlane) -> Router {
     crate::api_router_with_publication_root(plane.pool.clone(), plane.publication_repo_root)
-        .merge(crate::node_router(plane.pool.clone(), plane.ca))
+        .merge(crate::node_router_with_ca_set(plane.pool.clone(), plane.ca))
         .merge(crate::ui_router())
         .merge(crate::health::health_router(plane.health))
         .merge(crate::backup_router(plane.pool, plane.backup_dir))

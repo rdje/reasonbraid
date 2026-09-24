@@ -21,7 +21,8 @@ population, and nothing in the repository could re-derive it.
     the only way to find the error was to re-count by hand — which is the
     `a-restated-number-needs-a-producer` lesson, one layer down.
   - And `api.rs` is not the surface. The served app merges FIVE routers —
-    `api_router_with_publication_root`, `node_router`, `ui_router`,
+    `api_router_with_publication_root`, `node_router_with_ca_set` (the CA-set
+    form of `node_router`, since `SIGNOFF-REPAIR.4.1.8.1`), `ui_router`,
     `health_router` and `backup_router` — composed in ONE place since
     `SIGNOFF-REPAIR.4.6.1.7` (`src/app.rs`, which `rb-server`'s `main` calls).
     A census of one file cannot see the others.
@@ -70,7 +71,10 @@ ROUTER_FILES = ("api.rs", "node_channel.rs", "ui.rs", "health.rs")
 # `app::control_plane_app` (`SIGNOFF-REPAIR.4.6.1.7`), and this instrument
 # first caught that move by failing its own self-test on the old path.
 COMPOSITION = SERVER_SRC / "app.rs"
-MOUNTED = ("api_router_with_publication_root", "node_router", "ui_router",
+# `node_router_with_ca_set`, not `node_router`, since `SIGNOFF-REPAIR.4.1.8.1`:
+# the served app mounts the node channel over the CA generations; both live in
+# `node_channel.rs`, which ROUTER_FILES already scans.
+MOUNTED = ("api_router_with_publication_root", "node_router_with_ca_set", "ui_router",
            "health_router", "backup_router")
 
 # What a handler can take FROM THE CALLER. `State` is server-side and `HeaderMap`

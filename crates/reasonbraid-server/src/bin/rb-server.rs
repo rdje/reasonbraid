@@ -9,8 +9,7 @@ use std::sync::Arc;
 
 use clap::Parser;
 use reasonbraid_server::{
-    app, ca::ensure_server_ca_with_store, health, publisher, r5r3rx_enabled, secret_store,
-    sync_gated_entries,
+    app, ca::load_ca_set, health, publisher, r5r3rx_enabled, secret_store, sync_gated_entries,
 };
 
 #[derive(Debug, Parser)]
@@ -99,7 +98,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The workload-identity CA (`.1.2.1`, ADR-007): loaded from `server_ca` or
     // generated on first boot — it must survive restarts so issued leaves chain.
     // The material reads THROUGH the resolved store (the registry is the seam).
-    let ca = Arc::new(ensure_server_ca_with_store(&pool, &store).await?);
+    // Every stored generation is loaded: the newest issues, any unexpired one
+    // is trusted (`SIGNOFF-REPAIR.4.1.8.1`).
+    let ca = Arc::new(load_ca_set(&pool, &store).await?);
 
     // The `.5.3` OPT-IN gate's startup sync: the R3/R5/RX registry rows
     // exist ONLY while the gate is open (the resolve never returns a
@@ -117,7 +118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             pool: pool.clone(),
         },
         health::Dependency::ServerCa {
-            cert_der: Arc::new(ca.cert_der.clone()),
+            cert_der: Arc::new(ca.issuer().cert_der.clone()),
         },
     ];
     if let Some(root) = &publication_repo_root {

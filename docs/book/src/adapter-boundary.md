@@ -97,7 +97,8 @@ journaled attempt.
 `execute_attempt` (`crates/reasonbraid-node/src/supervisor.rs`) is the boundary
 discipline from the journal chapter made executable: the attempt is journaled
 `prepared`, the dispatch boundary is recorded **before** `invoke` runs, the
-stream's chunks pass through verbatim, and the attempt lands on
+stream's chunks pass through verbatim (with one exception, below), and the
+attempt lands on
 
 ```text
 failed_before_dispatch · completed · failed_known · outcome_unknown
@@ -106,6 +107,24 @@ failed_before_dispatch · completed · failed_known · outcome_unknown
 A stream that ends without a result is a lost response: `outcome_unknown` in
 the journal, moved only by a proven lookup (`completed`/`failed_known`) or an
 authorized adjudication (`reconciled`).
+
+### The one exception to *verbatim*: U+0000
+
+No store in the platform can hold the NUL character, so a result carrying one
+could never be accepted, and the whole paid answer would be lost over a single
+character. When the node builds a result, each U+0000 becomes U+FFFD (the
+Unicode replacement character, visible where the NUL stood), and the result
+says how many were replaced (`SIGNOFF-REPAIR.4.4.10.3`):
+
+```text
+provider output   "before\0after"
+delivered content "before\u{FFFD}after"   and   "nul_replaced": 1
+```
+
+Nothing else changes, control characters included. Output without NUL is
+delivered exactly as it came, with no `nul_replaced` field. The decision and
+its alternative, failing the attempt instead, are recorded in
+`docs/decisions/2026-09-24_nul-in-provider-output-is-replaced-visibly.md`.
 
 ### Two bounds on every attempt
 

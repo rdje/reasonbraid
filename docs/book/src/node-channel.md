@@ -79,8 +79,9 @@ node: nod_… — the control plane REFUSED event evt_… for good: unrepresenta
 Only a refusal of the event's own bytes counts as permanent. Authentication
 and fencing, an unknown node, a cursor disagreement, a store fault and a
 protocol mismatch are all cured by a reconcile, so they stay what they were.
-What the node does with NUL output in the first place is
-`SIGNOFF-REPAIR.4.4.10.3`.
+A node's own results never meet the NUL refusal: it replaces each U+0000 with
+U+FFFD before delivery and says so (`SIGNOFF-REPAIR.4.4.10.3`; the adapter
+chapter has the detail).
 
 ## Authentication (`.1.2.2`, certificate-proofed)
 

@@ -85,6 +85,26 @@ impl WorkerError {
     }
 }
 
+/// A result's content as the platform can store it, and how many characters
+/// had to change (`SIGNOFF-REPAIR.4.4.10.3`).
+///
+/// Provider output passes through verbatim with ONE exception: U+0000. No store
+/// in the platform can hold it (PostgreSQL refuses it in `jsonb` and in `text`),
+/// so the verbatim bytes could only ever be refused, and the whole paid result
+/// lost for one character. Each NUL becomes U+FFFD, the Unicode replacement
+/// character, which is visible where the NUL stood, and the result states how
+/// many were replaced (`nul_replaced`), so nothing about the change is hidden.
+/// Every other character, control characters included, is untouched.
+fn storable_content(chunks: &[String]) -> (String, usize) {
+    let content = chunks.concat();
+    let nul_replaced = content.matches('\0').count();
+    if nul_replaced == 0 {
+        (content, 0)
+    } else {
+        (content.replace('\0', "\u{FFFD}"), nul_replaced)
+    }
+}
+
 /// How long the node waits before its next reconcile attempt, after
 /// `consecutive_failures` failed ones in a row (`SIGNOFF-REPAIR.4.4.5.3`): one
 /// second, doubling, capped at a minute. The count restarts with each recovery,
@@ -482,17 +502,24 @@ impl<A: Adapter> Worker<A> {
         // there is no instant at which the attempt is complete and its result
         // is not pending, so neither a crash nor an unschedulable node can lose it.
         let event_id = EventId::new().to_string();
-        let build_result = |report: &ExecutionReport| ResultEvent {
-            event_id: event_id.clone(),
-            payload: json!({
+        let build_result = |report: &ExecutionReport| {
+            let (content, nul_replaced) = storable_content(&report.chunks);
+            let mut payload = json!({
                 "kind": "work_result",
                 "work_kind": work_kind,
                 "command_id": item.command_id,
                 "reservation_id": report.reservation_id,
                 "attempt_id": report.attempt_id,
-                "content": report.chunks.join(""),
+                "content": content,
                 "usage": report.usage,
-            }),
+            });
+            if nul_replaced > 0 {
+                payload["nul_replaced"] = json!(nul_replaced);
+            }
+            ResultEvent {
+                event_id: event_id.clone(),
+                payload,
+            }
         };
         let report = match execute_attempt_emitting(
             self.node.journal(),
@@ -652,6 +679,22 @@ impl<A: Adapter> Worker<A> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Only U+0000 changes, each one to U+FFFD, and the count is exact
+    /// (`SIGNOFF-REPAIR.4.4.10.3`); content without NUL is returned as it came.
+    #[test]
+    fn storable_content_replaces_only_nul_and_counts_it() {
+        let chunks = ["a\0b".to_string(), "\0\u{1f}c\0".to_string()];
+        assert_eq!(
+            storable_content(&chunks),
+            ("a\u{FFFD}b\u{FFFD}\u{1f}c\u{FFFD}".to_string(), 3)
+        );
+        let clean = ["plain \u{1} text".to_string()];
+        assert_eq!(
+            storable_content(&clean),
+            ("plain \u{1} text".to_string(), 0)
+        );
+    }
 
     /// The reconcile backoff (`SIGNOFF-REPAIR.4.4.5.3`): doubling from one
     /// second, never past a minute, and never overflowing however long the

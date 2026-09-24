@@ -2589,3 +2589,80 @@ async fn input_the_store_cannot_hold_is_refused_as_the_callers() {
         "the command API refuses it the same way: {body}"
     );
 }
+
+/// `SIGNOFF-REPAIR.4.4.10.3`, end to end: a provider whose output holds U+0000
+/// still gets its work into the thread. The node replaces each NUL with U+FFFD
+/// and says how many; the control plane, which could never store the NUL,
+/// stores the contribution.
+#[tokio::test]
+async fn provider_output_holding_nul_lands_as_a_contribution() {
+    let _g = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (tenant, human, role, thread, cert_hex, key_hex) =
+        dispatch_one_work_item(&client, &server.base(), "key-nul-output").await;
+    let key_der = from_hex(&key_hex).expect("key hex");
+    let der = rustls_pki_types::PrivateKeyDer::try_from(key_der).expect("key DER");
+    let key = rcgen::KeyPair::from_der_and_sign_algo(&der, &rcgen::PKCS_ECDSA_P256_SHA256)
+        .expect("key parses");
+    let fixture = journal_fixture("nul-output");
+    let node = reasonbraid_node::Node::open(
+        fixture.join("node.db"),
+        server.base(),
+        role.clone(),
+        from_hex(&cert_hex).expect("cert hex"),
+        key,
+    )
+    .await
+    .expect("open node");
+    node.reconcile().await.expect("reconcile");
+    let worker = reasonbraid_node::Worker::new(
+        node.clone(),
+        reasonbraid_adapter::FakeAdapter::new(
+            vec![
+                reasonbraid_adapter::ScriptStep::EmitChunk {
+                    chunk: "before\u{0}after".to_string(),
+                },
+                reasonbraid_adapter::ScriptStep::Complete { usage: None },
+            ],
+            reasonbraid_adapter::StatusLookupSpec::Unsupported,
+            reasonbraid_adapter::AdapterCapabilities {
+                streaming: false,
+                cancellation: reasonbraid_adapter::CancellationStrength::BestEffort,
+                provider_idempotency: false,
+                status_lookup: false,
+                tool_support: false,
+                policy_injection: reasonbraid_adapter::PolicyInjectionMode::None,
+            },
+        ),
+        reasonbraid_node::LocalBudget::new(reasonbraid_core::BudgetDimensions {
+            calls: Some(100),
+            input_tokens: Some(100_000),
+            output_tokens: Some(100_000),
+            wall_clock_seconds: Some(10_000),
+        }),
+        std::time::Duration::from_millis(50),
+    );
+    worker.tick().await.expect("the tick");
+
+    assert!(
+        node.journal()
+            .event_refusals()
+            .await
+            .expect("refusals")
+            .is_empty(),
+        "nothing was refused"
+    );
+    let events = thread_events(&client, &server.base(), &thread, &tenant, &human).await;
+    let contents: Vec<&str> = events
+        .iter()
+        .filter(|e| e["event_type"] == "thread.contribution_submitted")
+        .filter_map(|e| e["body"]["content"].as_str())
+        .collect();
+    assert_eq!(
+        contents,
+        ["before\u{FFFD}after"],
+        "the contribution landed, the NUL visible as U+FFFD"
+    );
+}

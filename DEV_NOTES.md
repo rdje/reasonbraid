@@ -1,5 +1,15 @@
 # DEV_NOTES.md
 
+## 2026-09-24 — An answer containing the null character now gets through, marked (`SIGNOFF-REPAIR.4.4.10.3`)
+
+`REASONBRAID-REPAIR-0473`. The last of the three fixes for the lock-out measured by `REASONBRAID-DOC-0154`.
+
+- 🔴 **Before:** an answer containing the invisible "null" character could never be stored, so the whole paid answer was lost over one character.
+- ✅ **Now:** the machine swaps each null character for the standard "unreadable character" symbol (�), which shows exactly where it was, and the answer records how many were swapped. Nothing else in the answer changes, and answers without the character are untouched.
+- ⚖️ **A decision taken for you to review:** the alternative was to reject such an answer outright, keeping the principle that answers pass through unchanged but losing the work. The reasoning is recorded, and switching is a one-line change.
+- ✅ Tested: a new check failed on the old code (the answer was lost) and passes now; the real server stores such an answer as a contribution; 108 machine tests pass; all eight deliberately broken versions were caught; strict lint clean.
+- Technical: `worker.rs` `storable_content(&chunks) -> (String, usize)`: U+0000 → U+FFFD, count in the result's `nul_replaced` (absent when 0). Decision `docs/decisions/2026-09-24_nul-in-provider-output-is-replaced-visibly.md`. Controls: unit, two `worker_refusals`, live `provider_output_holding_nul_lands_as_a_contribution`. Mutants 8/8.
+
 ## 2026-09-24 — A machine no longer locks itself out on an answer the server can never accept (`SIGNOFF-REPAIR.4.4.10.2`)
 
 `REASONBRAID-REPAIR-0472`. The second of the three fixes for the lock-out measured by `REASONBRAID-DOC-0154`.

@@ -203,3 +203,67 @@ async fn a_reconcile_that_meets_a_permanent_refusal_completes() {
         1
     );
 }
+
+/// `SIGNOFF-REPAIR.4.4.10.3` — provider output holding U+0000 is DELIVERED, with
+/// each NUL replaced by U+FFFD (the Unicode replacement character) and the count
+/// stated in the result. No store in the platform can hold NUL, so the verbatim
+/// bytes could only ever be refused, losing the whole paid result for one
+/// character. The stub refuses NUL exactly as the control plane does since
+/// `.4.4.10.1`. The chunk is the fixture corpus's own `malformed_output`.
+#[tokio::test]
+async fn output_holding_nul_is_delivered_with_the_nul_replaced_and_counted() {
+    let stub =
+        StubControlPlane::start_refusing(BTreeMap::from([(TENANT.to_string(), 7)]), "\u{0}").await;
+    let fixture = fixture("nul-output");
+    let node = reconciled_node(&stub, &fixture.join("node.db")).await;
+    seed(node.journal(), "nul-output").await;
+
+    worker(&node, "\u{1f}\u{0} garbage {{{ not-json")
+        .tick()
+        .await
+        .expect("the tick");
+    assert!(
+        node.journal()
+            .event_refusals()
+            .await
+            .expect("refusals")
+            .is_empty(),
+        "nothing was refused"
+    );
+    let delivered = stub.events();
+    assert_eq!(delivered.len(), 1, "the result was delivered");
+    assert_eq!(
+        delivered[0].payload["content"], "\u{1f}\u{FFFD} garbage {{{ not-json",
+        "each NUL is U+FFFD, and everything else is verbatim"
+    );
+    assert_eq!(
+        delivered[0].payload["nul_replaced"], 1,
+        "the result says how many were replaced"
+    );
+}
+
+/// Output without NUL is untouched, and says nothing about replacement.
+#[tokio::test]
+async fn output_without_nul_is_verbatim_and_unannotated() {
+    let stub =
+        StubControlPlane::start_refusing(BTreeMap::from([(TENANT.to_string(), 7)]), "\u{0}").await;
+    let fixture = fixture("clean-output");
+    let node = reconciled_node(&stub, &fixture.join("node.db")).await;
+    seed(node.journal(), "clean-output").await;
+
+    worker(&node, "\u{1f} garbage {{{ not-json")
+        .tick()
+        .await
+        .expect("the tick");
+    let delivered = stub.events();
+    assert_eq!(delivered.len(), 1);
+    assert_eq!(
+        delivered[0].payload["content"],
+        "\u{1f} garbage {{{ not-json"
+    );
+    assert!(
+        delivered[0].payload.get("nul_replaced").is_none(),
+        "no annotation when nothing was replaced: {}",
+        delivered[0].payload
+    );
+}

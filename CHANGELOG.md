@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-24 — More places now say clearly when input can never be stored (`SIGNOFF-REPAIR.4.4.10.1.1`)
+
+`REASONBRAID-REPAIR-0477`.
+
+- 🔴 **Before:** in seven places (agent profiles, snapshots, derivations, assessments, references, quotas and evaluations), input holding the null character was still answered "internal server error" rather than the clear "cannot be stored" reply.
+- ✅ **Now:** all seven give the clear, permanent reply through one shared rule; genuine server faults still report as server faults.
+- ⚠️ Tracked next: two remaining places (publications and charters) that lose the information needed to tell the two apart.
+- ✅ Tested: a new check failed on the old code (a profile with that character) and passes now; the shared rule is checked against every kind of database error; six live suites pass; strict lint clean.
+
 ## 2026-09-24 — Time spent on jobs now counts against a conversation's time budget (`SIGNOFF-REPAIR.4.4.6.1`)
 
 `REASONBRAID-REPAIR-0476`.

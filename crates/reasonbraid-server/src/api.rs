@@ -216,12 +216,8 @@ impl From<crate::evaluation::EvaluationError> for ControlApiError {
     /// decision is how one of them ends up disagreeing with the other six.
     fn from(error: crate::evaluation::EvaluationError) -> Self {
         match error {
-            // Input the store cannot hold is the caller's (`SIGNOFF-REPAIR.4.4.10.1`).
-            crate::evaluation::EvaluationError::Storage(cause) if unrepresentable_input(&cause) => {
-                cause.into()
-            }
             crate::evaluation::EvaluationError::Storage(cause) => {
-                Self::internal_with_log(format!("the evaluation store failed: {cause}"))
+                storage_failure(cause, "the evaluation store failed")
             }
             refusal => Self::invalid_command(refusal.to_string()),
         }
@@ -302,6 +298,19 @@ pub(crate) fn unrepresentable_input(e: &sqlx::Error) -> bool {
     e.as_database_error()
         .and_then(|d| d.code())
         .is_some_and(|code| code == "22P05" || code == "22021")
+}
+
+/// A domain store's failure as the caller hears it (`SIGNOFF-REPAIR.4.4.10.1.1`):
+/// input the store cannot hold is the caller's `400 unrepresentable_input`, and
+/// anything else is the server's `500`, with `context` and the cause logged.
+/// The one decision for every storage error that reaches a handler as a
+/// `sqlx::Error` inside a domain error, so no handler builds its own `500` and
+/// loses the distinction again.
+pub(crate) fn storage_failure(cause: sqlx::Error, context: &str) -> ControlApiError {
+    if unrepresentable_input(&cause) {
+        return cause.into();
+    }
+    ControlApiError::internal_with_log(format!("{context}: {cause}"))
 }
 
 /// The caller's answer when [`unrepresentable_input`] holds.
@@ -410,9 +419,8 @@ impl From<threads::ThreadError> for ControlApiError {
                 crate::quota::QuotaError::Exceeded { .. } => {
                     ControlApiError::quota_exceeded(q.to_string())
                 }
-                crate::quota::QuotaError::Storage(detail) => {
-                    eprintln!("control api: quota storage failure: {detail}");
-                    ControlApiError::internal()
+                crate::quota::QuotaError::Storage(cause) => {
+                    storage_failure(cause, "quota storage failure")
                 }
             },
         }
@@ -2789,9 +2797,9 @@ async fn resolve_resource(
                 crate::quota::QuotaError::Unconfigured { .. } => {
                     ControlApiError::quota_unconfigured(error.to_string())
                 }
-                crate::quota::QuotaError::Storage(cause) => ControlApiError::internal_with_log(
-                    format!("the acquisition quota check failed: {cause}"),
-                ),
+                crate::quota::QuotaError::Storage(cause) => {
+                    storage_failure(cause, "the acquisition quota check failed")
+                }
             });
         }
     }
@@ -5426,9 +5434,9 @@ async fn submit_assessment(
         // A store fault is the server's problem and must not be reported as
         // though the caller's input were wrong (`.7.4.2`). The cause is logged
         // server-side; the wire keeps the safe generic message.
-        Err(crate::claims::AssessmentError::Storage(cause)) => Err(
-            ControlApiError::internal_with_log(format!("claim assessment storage failed: {cause}")),
-        ),
+        Err(crate::claims::AssessmentError::Storage(cause)) => {
+            Err(storage_failure(cause, "claim assessment storage failed"))
+        }
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }
 }
@@ -5510,9 +5518,9 @@ async fn submit_derivation(
         // A store fault is the server's problem and must not be reported as
         // though the caller's input were wrong (`.7.4.2`). The cause is logged
         // server-side; the wire keeps the safe generic message.
-        Err(crate::derivations::DerivationError::Storage(cause)) => Err(
-            ControlApiError::internal_with_log(format!("derivation storage failed: {cause}")),
-        ),
+        Err(crate::derivations::DerivationError::Storage(cause)) => {
+            Err(storage_failure(cause, "derivation storage failed"))
+        }
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }
 }
@@ -5654,9 +5662,9 @@ async fn submit_snapshot(
         // A store fault is the server's problem and must not be reported as
         // though the caller's input were wrong (`.7.4.2`). The cause is logged
         // server-side; the wire keeps the safe generic message.
-        Err(crate::snapshots::SnapshotError::Storage(cause)) => Err(
-            ControlApiError::internal_with_log(format!("snapshot storage failed: {cause}")),
-        ),
+        Err(crate::snapshots::SnapshotError::Storage(cause)) => {
+            Err(storage_failure(cause, "snapshot storage failed"))
+        }
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }
 }
@@ -5808,9 +5816,9 @@ async fn submit_resource(
         Ok(outcome) => Ok(Json(outcome)),
         // A store fault is the server's problem and must not be reported as
         // though the caller's input were wrong (`.7.4.2`).
-        Err(crate::resources::ReferenceError::Storage(cause)) => Err(
-            ControlApiError::internal_with_log(format!("the reference submit failed: {cause}")),
-        ),
+        Err(crate::resources::ReferenceError::Storage(cause)) => {
+            Err(storage_failure(cause, "the reference submit failed"))
+        }
         // Every other variant IS about the input, and it lives in the store so
         // both writers — this route and a contribution's citation — apply one
         // rule: the ADR-011 digest (`.11.14.3.2`). ⛔ The declared `scheme` is
@@ -7492,7 +7500,7 @@ fn profile_error(e: sqlx::Error, role_id: &str) -> ControlApiError {
     {
         ControlApiError::not_found(format!("no role `{role_id}`"))
     } else {
-        ControlApiError::internal_with_log(format!("profile write failed: {e}"))
+        storage_failure(e, "profile write failed")
     }
 }
 
@@ -10952,4 +10960,73 @@ async fn list_threads(
         },
     )
     .await
+}
+
+#[cfg(test)]
+mod storage_failures {
+    use super::{storage_failure, UNREPRESENTABLE_INPUT};
+    use std::borrow::Cow;
+
+    /// A database error carrying exactly one SQLSTATE, for the classifier.
+    #[derive(Debug)]
+    struct Coded(&'static str);
+
+    impl std::fmt::Display for Coded {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "sqlstate {}", self.0)
+        }
+    }
+
+    impl std::error::Error for Coded {}
+
+    impl sqlx::error::DatabaseError for Coded {
+        fn message(&self) -> &str {
+            self.0
+        }
+        fn code(&self) -> Option<Cow<'_, str>> {
+            Some(Cow::Borrowed(self.0))
+        }
+        fn as_error(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
+            self
+        }
+        fn as_error_mut(&mut self) -> &mut (dyn std::error::Error + Send + Sync + 'static) {
+            self
+        }
+        fn into_error(self: Box<Self>) -> Box<dyn std::error::Error + Send + Sync + 'static> {
+            self
+        }
+        fn kind(&self) -> sqlx::error::ErrorKind {
+            sqlx::error::ErrorKind::Other
+        }
+    }
+
+    fn failure(code: &'static str) -> super::ControlApiError {
+        storage_failure(sqlx::Error::Database(Box::new(Coded(code))), "a store")
+    }
+
+    /// The one decision every domain storage error takes
+    /// (`SIGNOFF-REPAIR.4.4.10.1.1`): U+0000 in `jsonb` (22P05) or `text` (22021)
+    /// is the caller's permanent `400`; any other failure, a unique violation or
+    /// a lost connection alike, is the server's `500`.
+    #[test]
+    fn only_unrepresentable_input_is_the_callers() {
+        for code in ["22P05", "22021"] {
+            let answer = failure(code);
+            assert_eq!(
+                (answer.status.as_u16(), answer.code),
+                (400, UNREPRESENTABLE_INPUT),
+                "{code}"
+            );
+        }
+        for code in ["23505", "08006", "40001", "XX000"] {
+            let answer = failure(code);
+            assert_eq!(
+                (answer.status.as_u16(), answer.code),
+                (500, "dependency_unavailable"),
+                "{code}"
+            );
+        }
+        let lost = storage_failure(sqlx::Error::PoolTimedOut, "a store");
+        assert_eq!(lost.status.as_u16(), 500);
+    }
 }

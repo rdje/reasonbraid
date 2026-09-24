@@ -17765,3 +17765,50 @@ async fn an_expired_claim_satisfies_no_eligibility_surface() {
         "a claim that lapsed between the join and the close seats nobody"
     );
 }
+
+/// `SIGNOFF-REPAIR.4.4.10.1.1` — a profile holding U+0000 is the CALLER's input
+/// the store cannot hold: `400 unrepresentable_input`, as every other write
+/// answers it since `.4.4.10.1`, not the hand-built `500` this path kept.
+#[tokio::test]
+async fn a_profile_holding_nul_is_refused_as_the_callers() {
+    let _g = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "nul-profile-owner" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{human}");
+    let tenant = human["tenant_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "nul-agent", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "role enrolls: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+
+    let mut body = profile(json!([{
+        "taxonomy_id": "code_review",
+        "confidence": "self_asserted",
+    }]));
+    body["display_label"] = json!("directory\u{0}probe");
+    let (status, refused) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &role_id,
+        &body,
+    )
+    .await;
+    assert_eq!(
+        (status, refused["code"].as_str()),
+        (400, Some("unrepresentable_input")),
+        "the caller's input, refused permanently: {refused}"
+    );
+}

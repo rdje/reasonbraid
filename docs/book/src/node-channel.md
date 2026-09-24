@@ -60,7 +60,10 @@ that holds one is refused as the caller's, and nothing of it is kept
 400 {"code":"unrepresentable_input","message":"the input holds a character the store cannot represent (U+0000); the same input will be refused again"}
 ```
 
-This applies on the node channel and on the command API alike. A store that
+This applies on the node channel, on the command API, and to the domain
+stores behind it: profiles, snapshots, derivations, assessments, references,
+quotas and evaluations (`SIGNOFF-REPAIR.4.4.10.1.1`). Publications and charters
+still answer `500`, tracked as `.4.4.10.1.2`. A store that
 genuinely fails a clean write still answers `500 dependency_unavailable`: the
 first is permanent and the caller's, the second transient and the server's,
 and a node treats the two in opposite ways. Before this repair the NUL case

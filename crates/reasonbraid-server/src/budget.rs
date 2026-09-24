@@ -489,7 +489,10 @@ where
 
     // A dimension the threshold does not meter is NOT constrained by it (the
     // breaker is an addition to the ceiling, not a second ceiling).
-    if threshold.covers(&projected) {
+    // `covers` fails closed on an unmetered dimension, which is right for a
+    // ceiling and made a partial breaker trip on any work item at all
+    // (`SIGNOFF-REPAIR.4.5.6`): compare only what the threshold meters.
+    if threshold.covers(&projected.restricted_to(&threshold)) {
         return Ok(());
     }
 

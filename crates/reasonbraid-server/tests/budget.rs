@@ -942,3 +942,47 @@ async fn a_second_admission_waits_for_the_breaker_and_sees_the_first_spend() {
         other => panic!("the second admission must see the first spend, got {other:?}"),
     }
 }
+
+/// `SIGNOFF-REPAIR.4.5.6` — a breaker constrains only the dimensions its
+/// threshold meters. Armed at one CALL, it lets a first request through even
+/// though that request also asks for tokens the threshold does not name, and
+/// trips on the second call. Before this leaf it refused the first request:
+/// `covers` fails closed on an unmetered dimension, which is right for a
+/// ceiling and made a partial breaker trip on any work item at all.
+#[tokio::test]
+async fn a_breaker_constrains_only_the_dimensions_it_meters() {
+    let _guard = budget_guard().await;
+    let Some(pool) = pool().await else { return };
+    let tenant = "ten_00000000-0000-7000-8000-000000000000";
+    let thread = "thr_00000000-0000-7000-8000-000000000212";
+    let ceiling_id = ceiling(&pool, tenant, thread, 10, 1_000).await;
+    sqlx::query("INSERT INTO spend_breakers (tenant_id, threshold) VALUES ($1, $2)")
+        .bind(tenant)
+        .bind(serde_json::json!({ "calls": 1 }))
+        .execute(&pool)
+        .await
+        .expect("arm on calls alone");
+
+    let one_call = dims(Some(1), Some(10));
+    let reserve = || {
+        create_reservation(
+            &pool,
+            &ceiling_id,
+            tenant,
+            thread,
+            &one_call,
+            Duration::minutes(10),
+            Utc::now(),
+        )
+    };
+    reserve()
+        .await
+        .expect("one call is within a one-call threshold, whatever its tokens");
+    match reserve().await {
+        Err(BudgetError::Unavailable { detail }) => assert!(
+            detail.contains("circuit breaker"),
+            "the second call crosses the threshold: {detail}"
+        ),
+        other => panic!("the second call must trip the breaker, got {other:?}"),
+    }
+}

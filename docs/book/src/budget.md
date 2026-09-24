@@ -207,6 +207,16 @@ The **trip** is a different thing and keeps its own path: it flips inside the
 caller's reservation transaction the moment recorded spend plus the request
 crosses the threshold, so the latch never lags the ledger it guards.
 
+A breaker constrains **only the dimensions its threshold names**. Armed at
+`{"calls": 100}`, it trips at the hundred-and-first call, whatever tokens those
+calls use. Until `SIGNOFF-REPAIR.4.5.6` it compared with `covers`, which a
+ceiling uses and which refuses any dimension it does not meter, so a partial
+breaker tripped on the first work item, since every work item also asks for
+tokens and time. It now compares the projection restricted to the threshold's
+dimensions (`BudgetDimensions::restricted_to`). ⚠️ The arm verb accepts a
+threshold that names **nothing**, and such a breaker can never trip; refusing
+it is `SIGNOFF-REPAIR.4.5.6.1`.
+
 ## Honest limits (Phase 0)
 
 - Reservation references are unsigned (dev profile); workload-identity

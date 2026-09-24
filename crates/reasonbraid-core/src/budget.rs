@@ -54,6 +54,20 @@ impl BudgetDimensions {
             && dim(self.wall_clock_seconds, requested.wall_clock_seconds)
     }
 
+    /// `self` with every dimension `meter` does not meter dropped
+    /// (`SIGNOFF-REPAIR.4.5.6`). A spend breaker compares the projection
+    /// RESTRICTED to its threshold: it is an alarm over the dimensions it names,
+    /// while [`BudgetDimensions::covers`] stays fail-closed for a ceiling, which
+    /// vouches for every dimension it is asked about.
+    pub fn restricted_to(&self, meter: &BudgetDimensions) -> BudgetDimensions {
+        BudgetDimensions {
+            calls: meter.calls.and(self.calls),
+            input_tokens: meter.input_tokens.and(self.input_tokens),
+            output_tokens: meter.output_tokens.and(self.output_tokens),
+            wall_clock_seconds: meter.wall_clock_seconds.and(self.wall_clock_seconds),
+        }
+    }
+
     /// The held-sum of two dimension sets (ledger arithmetic). A dimension whose
     /// sum exceeds `u64` is a typed error, never a wrap and never saturation
     /// (`SIGNOFF-REPAIR.4.5.2`): settled usage is what a node REPORTED, recorded
@@ -288,6 +302,50 @@ mod tests {
 
     /// Ledger arithmetic: unknown + measured stays measured (a held unknown is not
     /// zero), and underflow is an error, never saturation.
+    /// A breaker's projection keeps exactly the dimensions its threshold meters
+    /// (`SIGNOFF-REPAIR.4.5.6`), each one independently.
+    #[test]
+    fn restricted_to_keeps_only_the_metered_dimensions() {
+        let all = BudgetDimensions {
+            calls: Some(1),
+            input_tokens: Some(2),
+            output_tokens: Some(3),
+            wall_clock_seconds: Some(4),
+        };
+        let only = |calls, input, output, wall| BudgetDimensions {
+            calls,
+            input_tokens: input,
+            output_tokens: output,
+            wall_clock_seconds: wall,
+        };
+        assert_eq!(all.restricted_to(&all), all);
+        assert_eq!(
+            all.restricted_to(&BudgetDimensions::default()),
+            BudgetDimensions::default()
+        );
+        assert_eq!(
+            all.restricted_to(&only(Some(9), None, None, None)),
+            only(Some(1), None, None, None)
+        );
+        assert_eq!(
+            all.restricted_to(&only(None, Some(9), None, None)),
+            only(None, Some(2), None, None)
+        );
+        assert_eq!(
+            all.restricted_to(&only(None, None, Some(9), None)),
+            only(None, None, Some(3), None)
+        );
+        assert_eq!(
+            all.restricted_to(&only(None, None, None, Some(9))),
+            only(None, None, None, Some(4))
+        );
+        // A metered dimension the projection lacks stays absent.
+        assert_eq!(
+            BudgetDimensions::default().restricted_to(&all),
+            BudgetDimensions::default()
+        );
+    }
+
     #[test]
     fn add_and_subtract_are_total_and_fallible() {
         let a = dims(Some(2), Some(100), None);

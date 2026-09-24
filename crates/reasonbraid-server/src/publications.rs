@@ -214,6 +214,9 @@ pub enum PublicationError {
     /// The publication store itself failed — the server's fault, never the
     /// caller's (`.7.4.2`'s rule).
     Storage(String),
+    /// The caller's input holds a character the store cannot represent
+    /// (U+0000): the caller's, and permanent (`SIGNOFF-REPAIR.4.4.10.1.2`).
+    UnrepresentableInput,
     /// No effective publication of the caller's tenant carries this manifest
     /// digest. A foreign one answers exactly as an absent one does.
     NotPublished(String),
@@ -228,6 +231,18 @@ pub enum PublicationError {
         expected: String,
         found: String,
     },
+}
+
+impl PublicationError {
+    /// A store error, classified while its SQLSTATE is still readable
+    /// (`SIGNOFF-REPAIR.4.4.10.1.2`).
+    fn storage(e: sqlx::Error) -> Self {
+        if crate::api::unrepresentable_input(&e) {
+            Self::UnrepresentableInput
+        } else {
+            Self::Storage(e.to_string())
+        }
+    }
 }
 
 impl std::fmt::Display for PublicationError {
@@ -323,6 +338,9 @@ impl std::fmt::Display for PublicationError {
                 expected_effective.as_deref().unwrap_or("none")
             ),
             PublicationError::Storage(e) => write!(f, "the publication store failed: {e}"),
+            PublicationError::UnrepresentableInput => {
+                write!(f, "the input holds a character the store cannot represent")
+            }
             PublicationError::NotPublished(d) => write!(
                 f,
                 "no effective publication in this tenant carries manifest digest `{d}`"
@@ -690,7 +708,7 @@ pub async fn record_git_operation(
     .bind(publication_id)
     .fetch_optional(pool)
     .await
-    .map_err(|e| PublicationError::Storage(e.to_string()))?;
+    .map_err(PublicationError::storage)?;
     let Some((state, prior_repository, prior_expected)) = recorded else {
         return Err(PublicationError::UnknownProposal(
             publication_id.to_string(),
@@ -721,7 +739,7 @@ pub async fn record_git_operation(
     .bind(expected_effective)
     .execute(pool)
     .await
-    .map_err(|e| PublicationError::Storage(e.to_string()))?;
+    .map_err(PublicationError::storage)?;
     Ok(())
 }
 
@@ -902,7 +920,7 @@ pub async fn serve_bundle(
     .bind(tenant_id)
     .fetch_optional(pool)
     .await
-    .map_err(|e| PublicationError::Storage(e.to_string()))?;
+    .map_err(PublicationError::storage)?;
     let Some((publication_id, repository)) = row else {
         return Err(PublicationError::NotPublished(manifest_digest.to_string()));
     };

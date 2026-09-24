@@ -62,8 +62,11 @@ that holds one is refused as the caller's, and nothing of it is kept
 
 This applies on the node channel, on the command API, and to the domain
 stores behind it: profiles, snapshots, derivations, assessments, references,
-quotas and evaluations (`SIGNOFF-REPAIR.4.4.10.1.1`). Publications and charters
-still answer `500`, tracked as `.4.4.10.1.2`. A store that
+quotas, evaluations, publications and charters (`SIGNOFF-REPAIR.4.4.10.1.1`,
+`.4.4.10.1.2`). The charter read also used to answer a genuine store fault as
+the caller's `400 invalid_command`, with the store's error text in the
+message; that fault is now the server's `500`, and its detail stays in the
+server log. A store that
 genuinely fails a clean write still answers `500 dependency_unavailable`: the
 first is permanent and the caller's, the second transient and the server's,
 and a node treats the two in opposite ways. Before this repair the NUL case

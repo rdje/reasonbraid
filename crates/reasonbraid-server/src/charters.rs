@@ -145,10 +145,7 @@ pub enum CharterError {
     /// A threshold outside `(0.5, 1.0]`.
     ThresholdOutOfRange(String, f64),
     /// The caller asserted a digest that is not the one registration derives.
-    DigestMismatch {
-        asserted: String,
-        derived: String,
-    },
+    DigestMismatch { asserted: String, derived: String },
     /// No charter is stored under this digest.
     Unknown(String),
     /// The tenant has no active enrollment boundary, so no charter to resolve.
@@ -158,17 +155,20 @@ pub enum CharterError {
     /// ⛔ This FAILS CLOSED and says so: every boundary shipped before
     /// `0084` carries a label digest, so the honest answer for one of those is
     /// *this tenant's charter is not readable*, never *the rule is allowed*.
-    BoundaryCharterUnknown {
-        tenant_id: String,
-        digest: String,
-    },
+    BoundaryCharterUnknown { tenant_id: String, digest: String },
     /// The rule is a real §13.3 family and this tenant's charter does not
     /// allow it.
     ///
     /// ⛔ It names the RULE and never the tenant's set — a refusal that
     /// enumerated the charter would answer a question the caller did not ask.
     NotAllowed(String),
+    /// The store failed: the server's fault, never the caller's.
     Storage(String),
+    /// The caller's input holds a character the store cannot represent
+    /// (U+0000): the caller's, and permanent (`SIGNOFF-REPAIR.4.4.10.1.2`).
+    /// Classified where the `sqlx::Error` still carries its SQLSTATE, because
+    /// `Storage` keeps only the text.
+    UnrepresentableInput,
 }
 
 impl std::fmt::Display for CharterError {
@@ -228,6 +228,9 @@ impl std::fmt::Display for CharterError {
             ),
             Self::NotAllowed(r) => write!(f, "this tenant's charter does not allow `{r}`"),
             Self::Storage(e) => write!(f, "the charter store failed: {e}"),
+            Self::UnrepresentableInput => {
+                write!(f, "the input holds a character the store cannot represent")
+            }
         }
     }
 }
@@ -331,7 +334,7 @@ pub async fn register(
     .bind(serde_json::to_value(&thresholds).expect("the thresholds serialize"))
     .execute(conn)
     .await
-    .map_err(|e| CharterError::Storage(e.to_string()))?;
+    .map_err(storage)?;
     Ok(StoredCharter {
         charter_digest: derived,
         tenant_id: input.tenant_id.clone(),
@@ -365,8 +368,14 @@ pub async fn load(pool: &PgPool, charter_digest: &str) -> Result<StoredCharter, 
     load_on(&mut conn, charter_digest).await
 }
 
+/// A store error, classified while its SQLSTATE is still readable
+/// (`SIGNOFF-REPAIR.4.4.10.1.2`).
 fn storage(e: sqlx::Error) -> CharterError {
-    CharterError::Storage(e.to_string())
+    if crate::api::unrepresentable_input(&e) {
+        CharterError::UnrepresentableInput
+    } else {
+        CharterError::Storage(e.to_string())
+    }
 }
 
 async fn acquire(

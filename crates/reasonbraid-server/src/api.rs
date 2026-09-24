@@ -313,6 +313,16 @@ pub(crate) fn storage_failure(cause: sqlx::Error, context: &str) -> ControlApiEr
     ControlApiError::internal_with_log(format!("{context}: {cause}"))
 }
 
+/// The caller's `400 unrepresentable_input`, for an error type that classified
+/// its store error where the SQLSTATE was still readable.
+fn unrepresentable() -> ControlApiError {
+    ControlApiError {
+        status: StatusCode::BAD_REQUEST,
+        code: UNREPRESENTABLE_INPUT,
+        message: UNREPRESENTABLE_INPUT_MESSAGE.to_string(),
+    }
+}
+
 /// The caller's answer when [`unrepresentable_input`] holds.
 pub(crate) const UNREPRESENTABLE_INPUT: &str = "unrepresentable_input";
 
@@ -324,11 +334,7 @@ pub(crate) const UNREPRESENTABLE_INPUT_MESSAGE: &str =
 impl From<sqlx::Error> for ControlApiError {
     fn from(e: sqlx::Error) -> Self {
         if unrepresentable_input(&e) {
-            return ControlApiError {
-                status: StatusCode::BAD_REQUEST,
-                code: UNREPRESENTABLE_INPUT,
-                message: UNREPRESENTABLE_INPUT_MESSAGE.to_string(),
-            };
+            return unrepresentable();
         }
         eprintln!("control api: database error: {e}");
         ControlApiError::internal()
@@ -3889,6 +3895,14 @@ async fn read_governance_charter(
                 crate::charters::CharterError::Unknown(charter_digest).to_string(),
             ))
         }
+        // The caller's input, or the store's fault, told apart and never
+        // blurred into `invalid_command` (`SIGNOFF-REPAIR.4.4.10.1.2`): a store
+        // fault was answered as the caller's 400, with the store's own error
+        // text in the message.
+        Err(crate::charters::CharterError::UnrepresentableInput) => Err(unrepresentable()),
+        Err(crate::charters::CharterError::Storage(detail)) => Err(
+            ControlApiError::internal_with_log(format!("the charter store failed: {detail}")),
+        ),
         Err(other) => Err(ControlApiError::invalid_command(other.to_string())),
     }
 }
@@ -5047,6 +5061,7 @@ async fn publish_publication(
             eprintln!("control api: the publication store failed: {detail}");
             ControlApiError::internal()
         }
+        crate::publications::PublicationError::UnrepresentableInput => unrepresentable(),
         refusal => ControlApiError::invalid_command(refusal.to_string()),
     })?;
     let refs = crate::publisher::publish(
@@ -8780,6 +8795,9 @@ pub(crate) async fn run_thread_command(
                             crate::charters::CharterError::Storage(detail) => {
                                 eprintln!("control api: charter read failed: {detail}");
                                 ControlApiError::internal()
+                            }
+                            crate::charters::CharterError::UnrepresentableInput => {
+                                unrepresentable()
                             }
                             refusal => ControlApiError::invalid_command(refusal.to_string()),
                         })?;

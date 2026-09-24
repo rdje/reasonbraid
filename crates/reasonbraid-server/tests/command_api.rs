@@ -58,6 +58,12 @@ async fn pool() -> Option<PgPool> {
             "authority_grants",
             "enrollments",
             "enrollment_boundaries",
+            // `the_charter_read_tells_the_callers_input_from_the_stores_fault`
+            // only READS charters, but FIXTURE-WRITE-REACH matches the path text
+            // `/v1/governance-charters` to the registration route. Purging is
+            // safe either way: no migration seeds charters, nothing references
+            // them by key, and every suite that needs one registers its own.
+            "governance_charters",
             "node_enroll_audit",
             "node_keys",
             "node_certificates",
@@ -4861,5 +4867,71 @@ async fn revoking_a_boundary_closes_the_metrics_surface() {
         403,
         "the surface must refuse a holder whose boundary was revoked, even \
          though her grant row is untouched"
+    );
+}
+
+/// `SIGNOFF-REPAIR.4.4.10.1.2` — the charter read tells the caller's input from
+/// the store's fault, in both directions.
+///
+/// It answered EVERY store error as the caller's `400 invalid_command`, with
+/// the store's own error text in the message: a digest holding U+0000 got the
+/// wrong code, and a genuine store fault was blamed on the caller and described
+/// to them. Now the NUL is `400 unrepresentable_input`, and a store fault is the
+/// server's `500`, with its detail kept in the server log.
+#[tokio::test]
+async fn the_charter_read_tells_the_callers_input_from_the_stores_fault() {
+    let _g = api_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (status, human) = enroll(
+        &client,
+        &server.base(),
+        json!({ "kind": "human", "name": "charter-reader" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{human}");
+    let reader = human["principal_id"].as_str().unwrap().to_string();
+
+    let (status, nul) = get(
+        &client,
+        &server.base(),
+        "/v1/governance-charters/digest%00with-nul",
+        &reader,
+    )
+    .await;
+    assert_eq!(
+        (status, nul["code"].as_str()),
+        (400, Some("unrepresentable_input")),
+        "a digest holding U+0000 is the caller's unstorable input: {nul}"
+    );
+
+    // A genuine store fault on a clean digest: the table is briefly absent.
+    sqlx::raw_sql("ALTER TABLE governance_charters RENAME TO governance_charters_away")
+        .execute(&pool)
+        .await
+        .expect("take the table away");
+    let (status, fault) = get(
+        &client,
+        &server.base(),
+        "/v1/governance-charters/dev-charter-000",
+        &reader,
+    )
+    .await;
+    sqlx::raw_sql("ALTER TABLE governance_charters_away RENAME TO governance_charters")
+        .execute(&pool)
+        .await
+        .expect("put the table back");
+    assert_eq!(
+        (status, fault["code"].as_str()),
+        (500, Some("dependency_unavailable")),
+        "a store fault is the server's: {fault}"
+    );
+    assert!(
+        !fault["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("governance_charters"),
+        "and the store's detail stays in the server log: {fault}"
     );
 }

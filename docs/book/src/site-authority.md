@@ -573,7 +573,7 @@ stated something false and counted them as an authorization denial.
 own terms. The ordering that closes the oracle is unchanged.
 
 The seven rules that ask only about the *document* — the digest shape, that a
-declared digest is the document's own, the version shape, the lifecycle
+declared digest is the document's own, a SemVer 2.0.0 version, the lifecycle
 vocabulary, a non-empty clause list, clause identifiers that do not repeat, and
 selectors that are exactly `{"layer": …, "target": …}` —
 still answer `400` to anyone, because each is a rule over the submission itself
@@ -630,6 +630,13 @@ Every read of the library (`GET /v1/policies` and the MCP policy bundle) carries
 `digest_verified`, which says whether the stored document still hashes to the stored
 digest. A version registered before this rule keeps the digest its registrar
 declared, which nothing derived, so it reads `false`.
+
+**A version is a SemVer 2.0.0 version** (`SIGNOFF-REPAIR.9.1.7`): `MAJOR.MINOR.PATCH`
+with no leading zeros, an optional `-` pre-release and an optional `+` build, so
+`1.2.3`, `1.2.3-rc.1` and `1.2.3+build.5` register, and `1`, `1.0` and `01.2.3` are
+refused. The rule used to accept one to three digit groups under the name of
+semantic versioning, so `1` and `007.8` passed and `1.2.3-rc.1` was refused.
+Versions already stored are unchanged.
 
 **Appending a version is still possible for a capability holder**, exactly as it
 is for a workflow profile. The registry is versioned by design; the defect was

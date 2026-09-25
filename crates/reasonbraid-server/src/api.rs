@@ -4600,9 +4600,12 @@ async fn resolve_policies(
             "an unenrolled principal resolves no policy set",
         ));
     }
+    // `SIGNOFF-REPAIR.9.1.7`: a refusal is the request's `400`; a store that
+    // could not answer is the server's, never reported as a refusal.
     match crate::policy::resolve(&state.pool, &request).await {
-        Ok(resolution) => Ok(Json(resolution)),
-        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+        Ok(Ok(resolution)) => Ok(Json(resolution)),
+        Ok(Err(refusal)) => Err(ControlApiError::invalid_command(refusal.to_string())),
+        Err(cause) => Err(storage_failure(cause, "the policy resolution")),
     }
 }
 
@@ -4622,8 +4625,9 @@ async fn policy_impact(
         ));
     }
     match crate::policy::impact(&state.pool, &policy_id, &version).await {
-        Ok(map) => Ok(Json(map)),
-        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+        Ok(Ok(map)) => Ok(Json(map)),
+        Ok(Err(refusal)) => Err(ControlApiError::invalid_command(refusal.to_string())),
+        Err(cause) => Err(storage_failure(cause, "the policy impact map")),
     }
 }
 
@@ -4770,7 +4774,7 @@ async fn project_policies(
         // `SIGNOFF-REPAIR.9.1.4`: the lock's registry read can fail, and a store
         // that did not answer is not a refusal.
         Err(crate::projections::ProjectionError::Storage(cause)) => {
-            Err(storage_failure(cause, "the projection's lock rows"))
+            Err(storage_failure(cause, "the policy projection"))
         }
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }

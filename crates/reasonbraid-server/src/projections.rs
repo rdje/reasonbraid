@@ -54,8 +54,10 @@ pub enum ProjectionError {
         policy_id: String,
         version: String,
     },
-    /// The store failed to answer. Not a refusal, so it reaches the caller as
-    /// `api::storage_failure` decides, never as a `400`.
+    /// The store failed to answer: the lock's registry read, the resolution's
+    /// reads, or an insert that failed for any reason but a taken id. Not a
+    /// refusal, so it reaches the caller as `api::storage_failure` decides,
+    /// never as a `400`.
     Storage(sqlx::Error),
 }
 
@@ -99,6 +101,7 @@ pub async fn project(
 ) -> Result<StoredProjection, ProjectionError> {
     let resolution = crate::policy::resolve(pool, &request.resolution)
         .await
+        .map_err(ProjectionError::Storage)?
         .map_err(ProjectionError::Resolution)?;
     let clauses: Vec<reasonbraid_policy_compiler::InputClause> = resolution
         .resolved
@@ -176,11 +179,16 @@ pub async fn project(
     .bind(&resolved_policies_json)
     .execute(pool)
     .await;
-    if inserted.is_err() {
-        return Err(ProjectionError::Duplicate(format!(
-            "projection `{}`",
-            request.projection_id
-        )));
+    // ⛔ `SIGNOFF-REPAIR.9.1.7`: only a UNIQUE violation is a taken id. Any
+    // other failure used to be reported as *"already exists"*, so an outage read
+    // as a refusal about the caller's identifier.
+    if let Err(error) = inserted {
+        return Err(match &error {
+            sqlx::Error::Database(db) if db.is_unique_violation() => {
+                ProjectionError::Duplicate(format!("projection `{}`", request.projection_id))
+            }
+            _ => ProjectionError::Storage(error),
+        });
     }
     Ok(StoredProjection {
         projection_id: request.projection_id.clone(),

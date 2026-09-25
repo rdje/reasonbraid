@@ -266,6 +266,25 @@ pub enum PolicyError {
     },
     RepeatedPolicy(String),
     PrecedenceCycle(Vec<String>),
+    EmptyRequest,
+    UnknownReference {
+        policy_id: String,
+        version: String,
+    },
+    OwnerNotLive {
+        policy_id: String,
+        grant: String,
+    },
+    MissingDependency {
+        policy_id: String,
+        dependency: String,
+    },
+    ExplicitConflict {
+        policy_id: String,
+        conflict: String,
+    },
+    UnknownWaiver(String),
+    BindingConflict(String),
     MalformedVersion(String),
     UnknownLifecycle(String),
     DuplicateClause(String),
@@ -325,12 +344,48 @@ impl std::fmt::Display for PolicyError {
                 "the declared digest `{declared}` is not the document's digest `{derived}`: \
                  the server derives it from the canonical document"
             ),
-            PolicyError::MalformedVersion(v) => {
+            PolicyError::MalformedVersion(v) => write!(
+                f,
+                "version `{v}` is not a semantic version (SemVer 2.0.0: MAJOR.MINOR.PATCH with no \
+                 leading zeros, an optional -pre-release and an optional +build)"
+            ),
+            PolicyError::EmptyRequest => {
+                write!(f, "the resolution request names no policy")
+            }
+            PolicyError::UnknownReference { policy_id, version } => {
                 write!(
                     f,
-                    "version `{v}` is not a semantic version (digits and dots, 1–3 parts)"
+                    "policy `{policy_id}` version {version} is not registered"
                 )
             }
+            PolicyError::OwnerNotLive { policy_id, grant } => write!(
+                f,
+                "the owning authority `{grant}` of `{policy_id}` is not an active, unexpired grant"
+            ),
+            PolicyError::MissingDependency {
+                policy_id,
+                dependency,
+            } => write!(
+                f,
+                "`{policy_id}` depends on `{dependency}`, which is not an applicable member of \
+                 the resolved set"
+            ),
+            PolicyError::ExplicitConflict {
+                policy_id,
+                conflict,
+            } => write!(
+                f,
+                "the explicit conflict: {policy_id} conflicts with {conflict}, and both apply here"
+            ),
+            PolicyError::UnknownWaiver(waiver) => write!(
+                f,
+                "the requested exception `{waiver}` is not allowed by any policy's exception schema"
+            ),
+            PolicyError::BindingConflict(clauses) => write!(
+                f,
+                "the unresolved binding conflict: clause `{clauses}` is carried by multiple \
+                 applicable policies and no precedence settles it (fail-closed)"
+            ),
             PolicyError::UnknownLifecycle(l) => {
                 write!(
                     f,
@@ -344,9 +399,11 @@ impl std::fmt::Display for PolicyError {
                     "clause id `{id}` repeats — the ids are STABLE anchors, never duplicated"
                 )
             }
-            PolicyError::GhostAuthority(grant) => {
-                write!(f, "the owning authority `{grant}` is not an active grant — the label grants nothing")
-            }
+            PolicyError::GhostAuthority(grant) => write!(
+                f,
+                "the owning authority `{grant}` is not a live grant the registrar holds that \
+                 covers policy_version_register"
+            ),
             PolicyError::Duplicate(what) => {
                 write!(f, "{what} already exists — the record's identity is its content, register a new version")
             }
@@ -489,12 +546,36 @@ pub fn document_digest(input: &PolicyVersionInput) -> String {
     .digest()
 }
 
+/// SemVer 2.0.0 (<https://semver.org>, `SIGNOFF-REPAIR.9.1.7`): `MAJOR.MINOR.PATCH`
+/// with no leading zeros, an optional `-` pre-release of dot-separated
+/// identifiers (a numeric one without leading zeros), and optional `+` build
+/// metadata. §15.1 says *semantic version*, and §15.4's ranges will need its
+/// ordering. The function used to accept one to three digit groups, so `1` and
+/// `007.8` passed while `1.2.3-rc.1` was refused: the name promised a standard
+/// the body did not implement.
 fn is_semver(version: &str) -> bool {
-    let parts: Vec<&str> = version.split('.').collect();
-    (1..=3).contains(&parts.len())
-        && parts
-            .iter()
-            .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+    let (rest, build) = match version.split_once('+') {
+        Some((rest, build)) => (rest, Some(build)),
+        None => (version, None),
+    };
+    let (core, pre) = match rest.split_once('-') {
+        Some((core, pre)) => (core, Some(pre)),
+        None => (rest, None),
+    };
+    let numeric = |s: &str| {
+        !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()) && (s == "0" || !s.starts_with('0'))
+    };
+    let identifier =
+        |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-');
+    let parts: Vec<&str> = core.split('.').collect();
+    parts.len() == 3
+        && parts.iter().all(|p| numeric(p))
+        && pre.is_none_or(|pre| {
+            pre.split('.').all(|id| {
+                identifier(id) && (!id.bytes().all(|b| b.is_ascii_digit()) || numeric(id))
+            })
+        })
+        && build.is_none_or(|build| build.split('.').all(identifier))
 }
 
 /// Validate the SUBMISSION — every rule that asks only about the document.
@@ -877,36 +958,6 @@ pub struct Resolution {
     pub conflicts: Vec<String>,
 }
 
-impl PolicyError {
-    fn unknown_ref(policy_id: &str, version: &str) -> Self {
-        PolicyError::Duplicate(format!(
-            "policy `{policy_id}` version {version} is not registered"
-        ))
-    }
-    fn expired_authority(policy_id: &str, grant: &str) -> Self {
-        PolicyError::GhostAuthority(format!(
-            "the owning authority `{grant}` of `{policy_id}` is not an active, unexpired grant"
-        ))
-    }
-    fn missing_dependency(policy_id: &str, dependency: &str) -> Self {
-        PolicyError::Duplicate(format!(
-            "`{policy_id}` depends on `{dependency}`, which is not an applicable member of \
-             the resolved set"
-        ))
-    }
-    fn unknown_waiver(waiver: &str) -> Self {
-        PolicyError::Duplicate(format!(
-            "the requested exception `{waiver}` is not allowed by any policy's exception schema"
-        ))
-    }
-    fn binding_conflict(clause_id: &str) -> Self {
-        PolicyError::Duplicate(format!(
-            "the unresolved binding conflict: clause `{clause_id}` is carried by multiple \
-             applicable policies and no precedence settles it (fail-closed)"
-        ))
-    }
-}
-
 /// The stored resolution row (the id, the version, the lifecycle, the digest,
 /// the owning authority, the clauses, the applicability, the
 /// non-applicability, the dependencies, the conflicts, the precedence hints,
@@ -930,12 +981,18 @@ struct ResolutionRow {
 }
 
 /// The seven-step resolution (ADR-019's §15.3 pipeline, fail-closed).
+///
+/// ⛔ The TWO-LEVEL result `register` already returns (`SIGNOFF-REPAIR.9.1.7`):
+/// the inner `Err` is a refusal the request earned, and the outer one is the
+/// store failing to answer. Every database error here used to be mapped to
+/// *"not registered"* or *"not an active grant"*, so an outage answered `400`
+/// with a statement about the registry that nothing had established.
 pub async fn resolve(
     pool: &PgPool,
     request: &ResolutionRequest,
-) -> Result<Resolution, PolicyError> {
+) -> Result<Result<Resolution, PolicyError>, sqlx::Error> {
     if request.policies.is_empty() {
-        return Err(PolicyError::EmptyClauses);
+        return Ok(Err(PolicyError::EmptyRequest));
     }
     let mut explanation = Vec::new();
 
@@ -947,7 +1004,9 @@ pub async fn resolve(
             .iter()
             .any(|earlier| earlier.policy_id == reference.policy_id)
         {
-            return Err(PolicyError::RepeatedPolicy(reference.policy_id.clone()));
+            return Ok(Err(PolicyError::RepeatedPolicy(
+                reference.policy_id.clone(),
+            )));
         }
     }
 
@@ -963,10 +1022,13 @@ pub async fn resolve(
         .bind(&reference.policy_id)
         .bind(&reference.version)
         .fetch_optional(pool)
-        .await
-        .map_err(|_| PolicyError::unknown_ref(&reference.policy_id, &reference.version))?;
-        let row =
-            row.ok_or_else(|| PolicyError::unknown_ref(&reference.policy_id, &reference.version))?;
+        .await?;
+        let Some(row) = row else {
+            return Ok(Err(PolicyError::UnknownReference {
+                policy_id: reference.policy_id.clone(),
+                version: reference.version.clone(),
+            }));
+        };
         loaded.push(row);
     }
     let ids: Vec<&str> = loaded.iter().map(|r| r.policy_id.as_str()).collect();
@@ -984,18 +1046,23 @@ pub async fn resolve(
         // every LOADED policy's owner whether that authority still stands, so
         // there is no verb being attempted and no verb to cover. Passing an
         // action here would refuse a policy whose owner is perfectly valid.
-        let valid = crate::authority::grant_is_live(pool, &row.owning_authority, None)
-            .await
-            .map_err(|_| PolicyError::expired_authority(&row.policy_id, &row.owning_authority))?;
-        if !valid {
-            return Err(PolicyError::expired_authority(
-                &row.policy_id,
-                &row.owning_authority,
-            ));
+        if !crate::authority::grant_is_live(pool, &row.owning_authority, None).await? {
+            return Ok(Err(PolicyError::OwnerNotLive {
+                policy_id: row.policy_id.clone(),
+                grant: row.owning_authority.clone(),
+            }));
         }
     }
     explanation.push("step 1: every owning authority is an active, unexpired grant".to_string());
+    Ok(resolve_loaded(request, &loaded, explanation))
+}
 
+/// Steps 2 to 7 over the loaded rows: pure, so every `Err` is a refusal.
+fn resolve_loaded(
+    request: &ResolutionRequest,
+    loaded: &[ResolutionRow],
+    mut explanation: Vec<String>,
+) -> Result<Resolution, PolicyError> {
     // Step 2: the applicability filter — a policy applies when SOME
     // applicability selector matches the target AND NO non-applicability
     // selector matches. The empty applicability matches everything (the
@@ -1006,7 +1073,7 @@ pub async fn resolve(
     // applicability it applied a policy to every target, and in the
     // non-applicability it removed it from every target.
     let mut selectors: Vec<(Vec<Selector>, Vec<Selector>)> = Vec::with_capacity(loaded.len());
-    for row in &loaded {
+    for row in loaded {
         let parse = |stored: &Value| {
             serde_json::from_value::<Vec<Value>>(stored.clone())
                 .map_err(|e| format!("the list does not parse: {e}"))
@@ -1042,7 +1109,7 @@ pub async fn resolve(
     // not parse fails the resolution closed.
     let mut steps: Vec<(Vec<Dependency>, Vec<Conflict>, Vec<PrecedenceHint>)> =
         Vec::with_capacity(loaded.len());
-    for row in &loaded {
+    for row in loaded {
         let malformed = |field: &'static str| {
             move |detail: String| PolicyError::MalformedStoredEntry {
                 policy_id: row.policy_id.clone(),
@@ -1088,18 +1155,18 @@ pub async fn resolve(
         }
         for dependency in dependencies {
             if !applies_at(&dependency.policy, &dependency.version) {
-                return Err(PolicyError::missing_dependency(
-                    &row.policy_id,
-                    &format!("{} {}", dependency.policy, dependency.version),
-                ));
+                return Err(PolicyError::MissingDependency {
+                    policy_id: row.policy_id.clone(),
+                    dependency: format!("{} {}", dependency.policy, dependency.version),
+                });
             }
         }
         for conflict in conflicts {
             if applies(&conflict.policy) {
-                return Err(PolicyError::binding_conflict(&format!(
-                    "{} conflicts with {}",
-                    row.policy_id, conflict.policy
-                )));
+                return Err(PolicyError::ExplicitConflict {
+                    policy_id: row.policy_id.clone(),
+                    conflict: conflict.policy.clone(),
+                });
             }
         }
     }
@@ -1168,7 +1235,7 @@ pub async fn resolve(
                 .any(|e| e.get("waiver").and_then(|v| v.as_str()) == Some(waiver.as_str()))
         });
         if !allowed {
-            return Err(PolicyError::unknown_waiver(waiver));
+            return Err(PolicyError::UnknownWaiver(waiver.clone()));
         }
     }
     explanation
@@ -1234,7 +1301,7 @@ pub async fn resolve(
         });
     }
     if !conflicts.is_empty() {
-        return Err(PolicyError::binding_conflict(&conflicts.join(", ")));
+        return Err(PolicyError::BindingConflict(conflicts.join(", ")));
     }
     explanation.push(format!(
         "step 6: {} clauses resolved with no unresolved binding conflict",
@@ -1255,11 +1322,14 @@ pub async fn resolve(
 
 /// The impact map (`.1.3`): the derivable coverage — the clauses × the
 /// applicability selectors the policy DECLARES (never an achievement claim).
+///
+/// ⛔ Two-level, as [`resolve`] is (`SIGNOFF-REPAIR.9.1.7`): a store that could
+/// not answer is the outer error, never *"not registered"*.
 pub async fn impact(
     pool: &PgPool,
     policy_id: &str,
     version: &str,
-) -> Result<Vec<Value>, PolicyError> {
+) -> Result<Result<Vec<Value>, PolicyError>, sqlx::Error> {
     let row: Option<ResolutionRow> = sqlx::query_as(
         "SELECT policy_id, version, lifecycle, digest, owning_authority, clauses, \
          applicability, non_applicability, dependencies, conflicts, precedence_hints, \
@@ -1269,12 +1339,16 @@ pub async fn impact(
     .bind(policy_id)
     .bind(version)
     .fetch_optional(pool)
-    .await
-    .map_err(|_| PolicyError::unknown_ref(policy_id, version))?;
-    let row = row.ok_or_else(|| PolicyError::unknown_ref(policy_id, version))?;
+    .await?;
+    let Some(row) = row else {
+        return Ok(Err(PolicyError::UnknownReference {
+            policy_id: policy_id.to_string(),
+            version: version.to_string(),
+        }));
+    };
     let clauses: Vec<ClauseStatement> =
         serde_json::from_value(row.clauses).expect("the clauses parse");
-    Ok(clauses
+    Ok(Ok(clauses
         .into_iter()
         .map(|clause| {
             serde_json::json!({
@@ -1284,7 +1358,7 @@ pub async fn impact(
                 "non_applicability": row.non_applicability,
             })
         })
-        .collect())
+        .collect()))
 }
 
 #[cfg(test)]
@@ -1454,6 +1528,64 @@ mod tests {
             find_cycle(&graph(&[("a", "b"), ("b", "c"), ("c", "b")])),
             Some(vec!["b".into(), "c".into(), "b".into()])
         );
+    }
+
+    /// `SIGNOFF-REPAIR.9.1.7`: `is_semver` is SemVer 2.0.0. The cases are
+    /// semver.org's own lists of valid and invalid versions.
+    #[test]
+    fn is_semver_is_semver_two() {
+        for valid in [
+            "0.0.4",
+            "1.2.3",
+            "10.20.30",
+            "1.1.2-prerelease+meta",
+            "1.1.2+meta",
+            "1.1.2+meta-valid",
+            "1.0.0-alpha",
+            "1.0.0-alpha.beta.1",
+            "1.0.0-alpha0.valid",
+            "1.0.0-alpha.0valid",
+            "1.0.0-alpha-a.b-c-somethinglong+build.1-aef.1-its-okay",
+            "1.0.0-rc.1+build.1",
+            "10.2.3-DEV-SNAPSHOT",
+            "1.2.3-SNAPSHOT-123",
+            "2.0.0+build.1848",
+            "1.2.3----RC-SNAPSHOT.12.9.1--.12+788",
+            "1.2.3----R-S.12.9.1--.12+meta",
+            "1.0.0+0.build.1-rc.10000aaa-kk-0.1",
+            "1.0.0-0A.is.legal",
+        ] {
+            assert!(is_semver(valid), "{valid} is valid SemVer");
+        }
+        for invalid in [
+            "1",
+            "1.2",
+            "007.8",
+            "1.2.3-0123",
+            "1.2.3-0123.0123",
+            "1.1.2+.123",
+            "+invalid",
+            "-invalid",
+            "-invalid+invalid",
+            "alpha",
+            "alpha.beta.1",
+            "1.0.0-alpha_beta",
+            "1.0.0-alpha..",
+            "1.0.0-alpha..1",
+            "01.1.1",
+            "1.01.1",
+            "1.1.01",
+            "1.2.3.DEV",
+            "1.2-SNAPSHOT",
+            "1.2.31.2.3----RC-SNAPSHOT.12.09.1--..12+788",
+            "-1.0.3-gamma+b7718",
+            "+justmeta",
+            "9.8.7+meta+meta",
+            "9.8.7-whatever+meta+meta",
+            "",
+        ] {
+            assert!(!is_semver(invalid), "{invalid:?} is not valid SemVer");
+        }
     }
 
     /// `"*"` is the only wildcard, per field.

@@ -8674,6 +8674,287 @@ async fn the_resolution_steps_refuse_what_the_design_refuses() {
         .expect("drop the fixture rows");
 }
 
+/// `SIGNOFF-REPAIR.9.1.7`: the policy registry's refusals say what happened.
+///
+/// Measured before this leaf: five resolution refusals were built on
+/// `PolicyError::Duplicate`, whose text appends *"already exists — … register a
+/// new version"*, so an unregistered reference answered that it *already
+/// exists*; the owner refusal nested its own sentence inside itself; an empty
+/// request answered about *normative statements*; a database that could not
+/// answer was reported as a domain refusal (`400`) by `resolve`, `impact` and
+/// the projection insert; and `is_semver` was not SemVer. Every leg is
+/// RECORDED and judged at the end. The three outage legs break a column or a
+/// constraint for exactly one request and restore it BEFORE judging anything,
+/// so a failing leg cannot leave the schema broken for the next test.
+#[tokio::test]
+async fn the_policy_refusals_say_what_happened() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "texts-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrols: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
+    let grant_id = format!("grt_{human_id}");
+    let policy = |policy_id: &str, version: &str, clause: &str, extra: Value| {
+        let mut body = json!({
+            "policy_id": policy_id,
+            "version": version,
+            "lifecycle": "active",
+            "title": policy_id,
+            "owning_authority": grant_id,
+            "clauses": [ { "id": clause, "statement": "a clause" } ],
+        });
+        for (key, value) in extra.as_object().unwrap() {
+            body[key] = value.clone();
+        }
+        body
+    };
+    for body in [
+        policy(
+            "tx-a",
+            "1.0.0",
+            "shared",
+            json!({ "exceptions": [ { "waiver": "wv-ok" } ] }),
+        ),
+        policy("tx-b", "1.0.0", "shared", json!({})),
+        policy(
+            "tx-needs",
+            "1.0.0",
+            "own",
+            json!({ "dependencies": [ { "policy": "tx-absent", "version": "1.0.0" } ] }),
+        ),
+    ] {
+        let (status, registered) = register_policy(&client, &base, &human_id, &body).await;
+        assert_eq!(status, 200, "the fixture registers: {registered}");
+    }
+    let resolve = |refs: &[(&str, &str)], extra: Value| {
+        let mut body = json!({
+            "policies": refs.iter().map(|(p, v)| json!({ "policy_id": p, "version": v })).collect::<Vec<_>>(),
+            "target": { "layer": "organization", "target": "org-acme" },
+        });
+        for (key, value) in extra.as_object().unwrap() {
+            body[key] = value.clone();
+        }
+        body
+    };
+    let mut breaches: Vec<String> = Vec::new();
+    let message = |body: &Value| body["message"].as_str().unwrap_or_default().to_string();
+
+    // Legs 1–4: each resolution refusal says what it is, and none says a
+    // missing thing *already exists*.
+    for (label, request, needle) in [
+        (
+            "an unregistered reference",
+            resolve(&[("tx-ghost", "1.0.0")], json!({})),
+            "not registered",
+        ),
+        (
+            "a missing dependency",
+            resolve(&[("tx-needs", "1.0.0")], json!({})),
+            "tx-absent 1.0.0",
+        ),
+        (
+            "an unknown waiver",
+            resolve(
+                &[("tx-a", "1.0.0")],
+                json!({ "exception_grants": ["wv-nope"] }),
+            ),
+            "exception schema",
+        ),
+        (
+            "a binding conflict",
+            resolve(&[("tx-a", "1.0.0"), ("tx-b", "1.0.0")], json!({})),
+            "binding conflict",
+        ),
+    ] {
+        let (status, body) =
+            post(&client, &base, "/v1/policies/resolve", &human_id, &request).await;
+        let text = message(&body);
+        if status != 400 || !text.contains(needle) || text.contains("already exists") {
+            breaches.push(format!("{label}: ({status}) {text}"));
+        }
+    }
+
+    // Leg 5: an empty request says so.
+    let (status, body) = post(
+        &client,
+        &base,
+        "/v1/policies/resolve",
+        &human_id,
+        &resolve(&[], json!({})),
+    )
+    .await;
+    let text = message(&body);
+    if status != 400 || !text.contains("names no policy") {
+        breaches.push(format!("an empty request: ({status}) {text}"));
+    }
+
+    // Leg 6: the version rule is SemVer 2.0.0, in both directions.
+    for (version, admitted) in [
+        ("1", false),
+        ("1.0", false),
+        ("01.2.3", false),
+        ("1.2.3-rc.1+build.5", true),
+        ("1.2.3-alpha", true),
+    ] {
+        let (status, body) = register_policy(
+            &client,
+            &base,
+            &human_id,
+            &policy("tx-version", version, "own", json!({})),
+        )
+        .await;
+        let ok = if admitted {
+            status == 200
+        } else {
+            status == 400 && message(&body).contains("semantic version")
+        };
+        if !ok {
+            breaches.push(format!(
+                "version `{version}` (admitted {admitted}): ({status}) {body}"
+            ));
+        }
+    }
+
+    // Leg 7: an owner whose grant is no longer live is named once, plainly.
+    let (status, body) = register_policy(
+        &client,
+        &base,
+        &human_id,
+        &policy("tx-owned", "1.0.0", "owned", json!({})),
+    )
+    .await;
+    assert_eq!(status, 200, "the owned policy registers: {body}");
+
+    // Legs 8–10, THE OUTAGES: a store that cannot answer is a 500, never a
+    // refusal. Each fault is undone before anything is judged.
+    sqlx::query("ALTER TABLE policy_versions RENAME COLUMN clauses TO clauses_elsewhere")
+        .execute(&pool)
+        .await
+        .expect("the column moves");
+    let resolved = post(
+        &client,
+        &base,
+        "/v1/policies/resolve",
+        &human_id,
+        &resolve(&[("tx-a", "1.0.0")], json!({})),
+    )
+    .await;
+    let impact = get(&client, &base, "/v1/policies/tx-a/1.0.0/impact", &human_id).await;
+    sqlx::query("ALTER TABLE policy_versions RENAME COLUMN clauses_elsewhere TO clauses")
+        .execute(&pool)
+        .await
+        .expect("the column returns");
+    if resolved.0 != 500 {
+        breaches.push(format!(
+            "resolve under an outage: ({}) {}",
+            resolved.0, resolved.1
+        ));
+    }
+    if impact.0 != 500 {
+        breaches.push(format!(
+            "impact under an outage: ({}) {}",
+            impact.0, impact.1
+        ));
+    }
+    // The owner-liveness read (step 1) failing, with the load succeeding.
+    sqlx::query("ALTER TABLE authority_grants RENAME COLUMN actions TO actions_elsewhere")
+        .execute(&pool)
+        .await
+        .expect("the column moves");
+    let liveness = post(
+        &client,
+        &base,
+        "/v1/policies/resolve",
+        &human_id,
+        &resolve(&[("tx-a", "1.0.0")], json!({})),
+    )
+    .await;
+    sqlx::query("ALTER TABLE authority_grants RENAME COLUMN actions_elsewhere TO actions")
+        .execute(&pool)
+        .await
+        .expect("the column returns");
+    if liveness.0 != 500 {
+        breaches.push(format!(
+            "resolve when the owner-liveness read fails: ({}) {}",
+            liveness.0, liveness.1
+        ));
+    }
+    sqlx::query(
+        "ALTER TABLE policy_projections ADD CONSTRAINT tx_refuse_all CHECK (false) NOT VALID",
+    )
+    .execute(&pool)
+    .await
+    .expect("the constraint is added");
+    let projected = post(
+        &client,
+        &base,
+        "/v1/policy-projections",
+        &human_id,
+        &json!({ "projection_id": "tx-projection", "target": "generic",
+                 "resolution": resolve(&[("tx-a", "1.0.0")], json!({})) }),
+    )
+    .await;
+    sqlx::query("ALTER TABLE policy_projections DROP CONSTRAINT tx_refuse_all")
+        .execute(&pool)
+        .await
+        .expect("the constraint is dropped");
+    if projected.0 != 500 {
+        breaches.push(format!(
+            "a projection whose insert fails for a reason other than a taken id: ({}) {}",
+            projected.0, projected.1
+        ));
+    }
+
+    // Leg 7, judged after the outages (it retires the grant): the owner's
+    // refusal names the grant once and does not nest its own sentence.
+    sqlx::query("UPDATE authority_grants SET status = 'revoked' WHERE grant_id = $1")
+        .bind(&grant_id)
+        .execute(&pool)
+        .await
+        .expect("the grant is revoked");
+    let (status, body) = post(
+        &client,
+        &base,
+        "/v1/policies/resolve",
+        &human_id,
+        &resolve(&[("tx-owned", "1.0.0")], json!({})),
+    )
+    .await;
+    let text = message(&body);
+    if status != 400
+        || text.matches(&grant_id).count() != 1
+        || text.contains("`the owning authority")
+    {
+        breaches.push(format!("an owner that is not live: ({status}) {text}"));
+    }
+
+    sqlx::query("DELETE FROM policy_versions WHERE policy_id LIKE 'tx-%'")
+        .execute(&pool)
+        .await
+        .expect("drop the fixture rows");
+    assert!(
+        breaches.is_empty(),
+        "{} breach(es):\n{}",
+        breaches.len(),
+        breaches.join("\n")
+    );
+}
+
 /// The POSITIVE arm, without which the repair above is indistinguishable from
 /// deleting the route: a `policy_register` holder still registers, the receipt
 /// is audited, the document is REACHABLE through every read, and the same grant

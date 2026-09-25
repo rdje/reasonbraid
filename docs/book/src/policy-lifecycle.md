@@ -129,7 +129,12 @@ and adds an explanation with one line per step:
 }
 ```
 
-The steps run in this order, and anything they refuse answers `400`, naming why:
+The steps run in this order, and anything they refuse answers `400`, naming why.
+Each refusal says what happened: a reference that is not registered says so, and a
+store that could not answer is the server's `500`, never a refusal
+(`SIGNOFF-REPAIR.9.1.7`). Both used to be reported as *"… already exists"*, the
+second even during an outage.
+
 
 1. **One version of each policy.** Naming a policy twice, or two of its versions,
    is refused.

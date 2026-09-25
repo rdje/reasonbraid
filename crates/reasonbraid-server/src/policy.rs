@@ -55,20 +55,107 @@ impl Selector {
     }
 }
 
-/// Parse one selector list, or say which entry fails and why.
-fn parse_selectors(values: &[Value]) -> Result<Vec<Selector>, String> {
+/// A dependency (`SIGNOFF-REPAIR.9.1.6`): the policy and the exact VERSION the
+/// dependent needs. It is satisfied only by that version, applicable to the
+/// resolution's target.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Dependency {
+    pub policy: String,
+    pub version: String,
+}
+
+/// An explicit conflict (`SIGNOFF-REPAIR.9.1.6`): a policy, any version of which
+/// may not apply beside this one.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Conflict {
+    pub policy: String,
+}
+
+/// A precedence hint (`SIGNOFF-REPAIR.9.1.6`): where this policy's clauses
+/// collide with `over`'s, this policy's win.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PrecedenceHint {
+    pub over: String,
+}
+
+/// Parse one of the document's typed lists, or say which entry fails and why.
+/// `filled` refuses an entry whose string fields are empty.
+fn parse_list<T: serde::de::DeserializeOwned>(
+    values: &[Value],
+    what: &str,
+    filled: impl Fn(&T) -> bool,
+) -> Result<Vec<T>, String> {
     values
         .iter()
         .enumerate()
         .map(|(index, value)| {
-            let selector: Selector = serde_json::from_value(value.clone())
-                .map_err(|e| format!("entry {index} (`{value}`) is not a selector: {e}"))?;
-            if selector.layer.is_empty() || selector.target.is_empty() {
+            let entry: T = serde_json::from_value(value.clone())
+                .map_err(|e| format!("entry {index} (`{value}`) is not a {what}: {e}"))?;
+            if !filled(&entry) {
                 return Err(format!("entry {index} (`{value}`) has an empty field"));
             }
-            Ok(selector)
+            Ok(entry)
         })
         .collect()
+}
+
+fn parse_selectors(values: &[Value]) -> Result<Vec<Selector>, String> {
+    parse_list(values, "selector", |s: &Selector| {
+        !s.layer.is_empty() && !s.target.is_empty()
+    })
+}
+
+fn parse_dependencies(values: &[Value]) -> Result<Vec<Dependency>, String> {
+    parse_list(values, "dependency", |d: &Dependency| {
+        !d.policy.is_empty() && !d.version.is_empty()
+    })
+}
+
+fn parse_conflicts(values: &[Value]) -> Result<Vec<Conflict>, String> {
+    parse_list(values, "conflict", |c: &Conflict| !c.policy.is_empty())
+}
+
+fn parse_precedence(values: &[Value]) -> Result<Vec<PrecedenceHint>, String> {
+    parse_list(values, "precedence hint", |h: &PrecedenceHint| {
+        !h.over.is_empty()
+    })
+}
+
+/// The first cycle in a precedence graph, as the path that closes it
+/// (`SIGNOFF-REPAIR.9.1.6`). A depth-first walk that keeps the current path,
+/// so a cycle of ANY length is found, not only two policies naming each other.
+fn find_cycle(graph: &std::collections::BTreeMap<String, Vec<String>>) -> Option<Vec<String>> {
+    fn visit<'a>(
+        node: &'a str,
+        graph: &'a std::collections::BTreeMap<String, Vec<String>>,
+        on_path: &mut Vec<&'a str>,
+        done: &mut std::collections::BTreeSet<&'a str>,
+    ) -> Option<Vec<String>> {
+        if let Some(at) = on_path.iter().position(|n| *n == node) {
+            let mut cycle: Vec<String> = on_path[at..].iter().map(|n| n.to_string()).collect();
+            cycle.push(node.to_string());
+            return Some(cycle);
+        }
+        if done.contains(node) {
+            return None;
+        }
+        on_path.push(node);
+        for next in graph.get(node).into_iter().flatten() {
+            if let Some(cycle) = visit(next, graph, on_path, done) {
+                return Some(cycle);
+            }
+        }
+        on_path.pop();
+        done.insert(node);
+        None
+    }
+    let mut done = std::collections::BTreeSet::new();
+    graph
+        .keys()
+        .find_map(|start| visit(start, graph, &mut Vec::new(), &mut done))
 }
 
 /// The policy-version submission (`.1.2`, ADR-019): the §15.1 fields. The
@@ -166,6 +253,19 @@ pub enum PolicyError {
         version: String,
         detail: String,
     },
+    MalformedEntry {
+        field: &'static str,
+        detail: String,
+        shape: &'static str,
+    },
+    MalformedStoredEntry {
+        policy_id: String,
+        version: String,
+        field: &'static str,
+        detail: String,
+    },
+    RepeatedPolicy(String),
+    PrecedenceCycle(Vec<String>),
     MalformedVersion(String),
     UnknownLifecycle(String),
     DuplicateClause(String),
@@ -193,6 +293,32 @@ impl std::fmt::Display for PolicyError {
                 f,
                 "policy `{policy_id}` version {version} stores a selector that does not parse \
                  ({detail}), so the resolution fails closed rather than read it as a wildcard"
+            ),
+            PolicyError::MalformedEntry {
+                field,
+                detail,
+                shape,
+            } => write!(f, "`{field}` {detail}: an entry is exactly {shape}"),
+            PolicyError::MalformedStoredEntry {
+                policy_id,
+                version,
+                field,
+                detail,
+            } => write!(
+                f,
+                "policy `{policy_id}` version {version} stores a `{field}` entry that does not \
+                 parse ({detail}), so the resolution fails closed"
+            ),
+            PolicyError::RepeatedPolicy(policy_id) => write!(
+                f,
+                "policy `{policy_id}` is named more than once: a resolved set holds one version \
+                 of each policy"
+            ),
+            PolicyError::PrecedenceCycle(cycle) => write!(
+                f,
+                "the precedence hints form a cycle ({}): a cycle is a conflict no precedence can \
+                 settle",
+                cycle.join(" over ")
             ),
             PolicyError::DigestMismatch { declared, derived } => write!(
                 f,
@@ -421,6 +547,22 @@ pub fn validate(input: &PolicyVersionInput) -> Result<(), PolicyError> {
         parse_selectors(selectors)
             .map_err(|detail| PolicyError::MalformedSelector { field, detail })?;
     }
+    // `SIGNOFF-REPAIR.9.1.6`: the lists steps 3 and 4 read are typed too.
+    parse_dependencies(&input.dependencies).map_err(|detail| PolicyError::MalformedEntry {
+        field: "dependencies",
+        detail,
+        shape: "{\"policy\": …, \"version\": …}, both non-empty strings",
+    })?;
+    parse_conflicts(&input.conflicts).map_err(|detail| PolicyError::MalformedEntry {
+        field: "conflicts",
+        detail,
+        shape: "{\"policy\": …}, a non-empty string",
+    })?;
+    parse_precedence(&input.precedence_hints).map_err(|detail| PolicyError::MalformedEntry {
+        field: "precedence_hints",
+        detail,
+        shape: "{\"over\": …}, a non-empty string",
+    })?;
     let mut seen = std::collections::BTreeSet::new();
     for clause in &input.clauses {
         if !seen.insert(clause.id.as_str()) {
@@ -748,12 +890,8 @@ impl PolicyError {
     }
     fn missing_dependency(policy_id: &str, dependency: &str) -> Self {
         PolicyError::Duplicate(format!(
-            "`{policy_id}` depends on `{dependency}`, which is not in the resolved set"
-        ))
-    }
-    fn conflicting_pair(a: &str, b: &str) -> Self {
-        PolicyError::Duplicate(format!(
-            "the precedence hints conflict: `{a}` over `{b}` AND `{b}` over `{a}`"
+            "`{policy_id}` depends on `{dependency}`, which is not an applicable member of \
+             the resolved set"
         ))
     }
     fn unknown_waiver(waiver: &str) -> Self {
@@ -800,6 +938,18 @@ pub async fn resolve(
         return Err(PolicyError::EmptyClauses);
     }
     let mut explanation = Vec::new();
+
+    // ⛔ `SIGNOFF-REPAIR.9.1.6`: one version of each policy. Naming a policy
+    // twice read as a BINDING CONFLICT with itself, and naming two of its
+    // versions resolved both side by side.
+    for (i, reference) in request.policies.iter().enumerate() {
+        if request.policies[..i]
+            .iter()
+            .any(|earlier| earlier.policy_id == reference.policy_id)
+        {
+            return Err(PolicyError::RepeatedPolicy(reference.policy_id.clone()));
+        }
+    }
 
     // Load the named policies; a ghost reference is the typed refusal.
     let mut loaded = Vec::new();
@@ -885,67 +1035,104 @@ pub async fn resolve(
         loaded.len()
     ));
 
-    // Step 3: the dependencies + the explicit conflicts — every dependency
-    // must be IN the set; every explicit conflict must be OUT.
-    for (i, row) in loaded.iter().enumerate() {
-        let dependencies: Vec<Value> =
-            serde_json::from_value(row.dependencies.clone()).expect("the dependencies parse");
-        for dependency in &dependencies {
-            let policy = dependency
-                .get("policy")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default();
-            if !ids.contains(&policy) {
-                return Err(PolicyError::missing_dependency(&row.policy_id, policy));
+    // Steps 3 and 4 run over the APPLICABLE policies, in §15.3's order
+    // (`SIGNOFF-REPAIR.9.1.6`): a policy that does not apply here contributes
+    // nothing, so it neither needs its dependencies nor satisfies another's.
+    // Every named policy's lists are parsed first, and a stored entry that does
+    // not parse fails the resolution closed.
+    let mut steps: Vec<(Vec<Dependency>, Vec<Conflict>, Vec<PrecedenceHint>)> =
+        Vec::with_capacity(loaded.len());
+    for row in &loaded {
+        let malformed = |field: &'static str| {
+            move |detail: String| PolicyError::MalformedStoredEntry {
+                policy_id: row.policy_id.clone(),
+                version: row.version.clone(),
+                field,
+                detail,
+            }
+        };
+        let stored = |field: &'static str, value: &Value| {
+            serde_json::from_value::<Vec<Value>>(value.clone())
+                .map_err(|e| format!("the list does not parse: {e}"))
+                .map_err(malformed(field))
+        };
+        steps.push((
+            parse_dependencies(&stored("dependencies", &row.dependencies)?)
+                .map_err(malformed("dependencies"))?,
+            parse_conflicts(&stored("conflicts", &row.conflicts)?)
+                .map_err(malformed("conflicts"))?,
+            parse_precedence(&stored("precedence_hints", &row.precedence_hints)?)
+                .map_err(malformed("precedence_hints"))?,
+        ));
+    }
+    let applies_at = |policy: &str, version: &str| {
+        loaded
+            .iter()
+            .zip(&applicable)
+            .any(|(row, applies)| *applies && row.policy_id == policy && row.version == version)
+    };
+    let applies = |policy: &str| {
+        loaded
+            .iter()
+            .zip(&applicable)
+            .any(|(row, applies)| *applies && row.policy_id == policy)
+    };
+
+    // Step 3: every dependency applies at the version it names; no explicit
+    // conflict applies.
+    for ((row, applies_here), (dependencies, conflicts, _)) in
+        loaded.iter().zip(&applicable).zip(&steps)
+    {
+        if !applies_here {
+            continue;
+        }
+        for dependency in dependencies {
+            if !applies_at(&dependency.policy, &dependency.version) {
+                return Err(PolicyError::missing_dependency(
+                    &row.policy_id,
+                    &format!("{} {}", dependency.policy, dependency.version),
+                ));
             }
         }
-        let conflicts: Vec<Value> =
-            serde_json::from_value(row.conflicts.clone()).expect("the conflicts parse");
-        for conflict in &conflicts {
-            let policy = conflict
-                .get("policy")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default();
-            if ids.contains(&policy) {
+        for conflict in conflicts {
+            if applies(&conflict.policy) {
                 return Err(PolicyError::binding_conflict(&format!(
                     "{} conflicts with {}",
-                    row.policy_id, policy
+                    row.policy_id, conflict.policy
                 )));
             }
         }
-        let _ = i;
     }
     explanation.push(
-        "step 3: every dependency is in the set; no explicit conflict is present".to_string(),
+        "step 3: every applicable policy's dependencies apply at the versions they name; no \
+         explicit conflict applies"
+            .to_string(),
     );
 
-    // Step 4: the precedence hints — the `over` edges; a cycle is the
-    // refusal (the charter precedence must be a DAG).
+    // Step 4: the precedence edges among the applicable policies must form a
+    // DAG. ⛔ Only a TWO-policy cycle used to be refused, while this step's
+    // explanation said the edges formed a DAG; a cycle of any length is now
+    // refused, naming it.
     let mut precedence: std::collections::BTreeMap<String, Vec<String>> =
         std::collections::BTreeMap::new();
-    for row in &loaded {
-        let hints: Vec<Value> =
-            serde_json::from_value(row.precedence_hints.clone()).expect("the hints parse");
-        for hint in &hints {
-            let over = hint
-                .get("over")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default();
-            if over == row.policy_id {
-                continue; // a self-hint is a no-op, not a conflict
+    for ((row, applies_here), (_, _, hints)) in loaded.iter().zip(&applicable).zip(&steps) {
+        if !applies_here {
+            continue;
+        }
+        for hint in hints {
+            // A self-hint is a no-op, and an edge to a policy not in force here
+            // cannot settle any collision.
+            if hint.over == row.policy_id || !applies(&hint.over) {
+                continue;
             }
             precedence
                 .entry(row.policy_id.clone())
                 .or_default()
-                .push(over.to_string());
-            if precedence
-                .get(over)
-                .map(|list| list.contains(&row.policy_id))
-                .unwrap_or(false)
-            {
-                return Err(PolicyError::conflicting_pair(&row.policy_id, over));
-            }
+                .push(hint.over.clone());
         }
+    }
+    if let Some(cycle) = find_cycle(&precedence) {
+        return Err(PolicyError::PrecedenceCycle(cycle));
     }
     // The transitive winner for a pair: A wins over B when A can reach B
     // through the `over` edges.
@@ -966,7 +1153,7 @@ pub async fn resolve(
         false
     };
     explanation.push(format!(
-        "step 4: the precedence edges form a DAG ({} edges)",
+        "step 4: the precedence edges among the applicable policies form a DAG ({} edges)",
         precedence.values().map(|v| v.len()).sum::<usize>()
     ));
 
@@ -1037,6 +1224,10 @@ pub async fn resolve(
             statement: clause.statement.clone(),
             path: vec![
                 "authority: active grant".to_string(),
+                // `SIGNOFF-REPAIR.9.1.6`: the registrar's declared label, shown
+                // rather than acted on. Force comes from approval and
+                // publication (ADR-032), and the label never transitions.
+                format!("lifecycle: {}", loaded[winner].lifecycle),
                 "applicability: matched".to_string(),
                 "precedence: the winner over the carriers".to_string(),
             ],
@@ -1192,6 +1383,76 @@ mod tests {
                 json!({ "applicability": good.clone(), "non_applicability": good })
             )),
             Ok(())
+        );
+    }
+
+    /// `SIGNOFF-REPAIR.9.1.6`: the lists steps 3 and 4 read are typed, and
+    /// `validate` refuses a malformed entry in each, naming the list.
+    #[test]
+    fn the_step_lists_are_typed_and_validated() {
+        assert_eq!(
+            parse_dependencies(&[json!({ "policy": "p", "version": "1.0.0" })]),
+            Ok(vec![Dependency {
+                policy: "p".into(),
+                version: "1.0.0".into()
+            }])
+        );
+        assert!(parse_dependencies(&[json!({ "policy": "p" })]).is_err());
+        assert!(parse_dependencies(&[json!({ "policy": "p", "version": "" })]).is_err());
+        assert!(parse_dependencies(&[json!({ "policy": "", "version": "1" })]).is_err());
+        assert!(parse_dependencies(&[json!("p")]).is_err());
+        assert_eq!(
+            parse_conflicts(&[json!({ "policy": "p" })]),
+            Ok(vec![Conflict { policy: "p".into() }])
+        );
+        assert!(parse_conflicts(&[json!({ "polic": "p" })]).is_err());
+        assert!(parse_conflicts(&[json!({ "policy": "" })]).is_err());
+        assert_eq!(
+            parse_precedence(&[json!({ "over": "p" })]),
+            Ok(vec![PrecedenceHint { over: "p".into() }])
+        );
+        assert!(parse_precedence(&[json!({ "over": "" })]).is_err());
+        assert!(parse_precedence(&[json!({ "under": "p" })]).is_err());
+        for (field, entry) in [
+            ("dependencies", json!([ { "policy": "p" } ])),
+            ("conflicts", json!([ { "polic": "p" } ])),
+            ("precedence_hints", json!([ { "over": "" } ])),
+        ] {
+            let refused = validate(&submission(json!({ field: entry })));
+            assert!(
+                matches!(&refused, Err(PolicyError::MalformedEntry { field: named, .. }) if *named == field),
+                "{field}: {refused:?}"
+            );
+        }
+    }
+
+    /// A cycle of any length is found; a DAG has none.
+    #[test]
+    fn find_cycle_finds_a_cycle_of_any_length() {
+        let graph = |edges: &[(&str, &str)]| {
+            let mut g: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+            for (a, b) in edges {
+                g.entry(a.to_string()).or_default().push(b.to_string());
+            }
+            g
+        };
+        assert_eq!(find_cycle(&graph(&[])), None);
+        assert_eq!(
+            find_cycle(&graph(&[("a", "b"), ("b", "c"), ("a", "c")])),
+            None
+        );
+        assert_eq!(
+            find_cycle(&graph(&[("a", "b"), ("b", "a")])),
+            Some(vec!["a".into(), "b".into(), "a".into()])
+        );
+        assert_eq!(
+            find_cycle(&graph(&[("x", "y"), ("y", "z"), ("z", "x")])),
+            Some(vec!["x".into(), "y".into(), "z".into(), "x".into()])
+        );
+        // A cycle reached only through an acyclic prefix is still found.
+        assert_eq!(
+            find_cycle(&graph(&[("a", "b"), ("b", "c"), ("c", "b")])),
+            Some(vec!["b".into(), "c".into(), "b".into()])
         );
     }
 

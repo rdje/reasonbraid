@@ -8359,6 +8359,321 @@ async fn a_malformed_selector_is_refused_not_widened() {
         .expect("drop the fixture rows");
 }
 
+/// `SIGNOFF-REPAIR.9.1.6`: the resolution's dependency, precedence and
+/// set-shape steps refuse the sets the design refuses.
+///
+/// Measured before this leaf: a dependency was satisfied by ANY loaded policy
+/// with its id (its version never read, its applicability never consulted);
+/// precedence refused only a two-policy cycle while the explanation asserted
+/// *"the precedence edges form a DAG"*; and a policy named twice was reported
+/// as a binding conflict with itself. Steps 3 and 4 now run over the
+/// APPLICABLE policies, in §15.3's order, and the shapes those steps read are
+/// validated at registration.
+#[tokio::test]
+async fn the_resolution_steps_refuse_what_the_design_refuses() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "steps-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrols: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
+    let grant_id = format!("grt_{human_id}");
+    let policy = |policy_id: &str, version: &str, extra: Value| {
+        let mut body = json!({
+            "policy_id": policy_id,
+            "version": version,
+            "lifecycle": "draft",
+            "title": policy_id,
+            "owning_authority": grant_id,
+            "clauses": [ { "id": format!("{policy_id}-{version}"), "statement": "a clause of its own" } ],
+        });
+        for (key, value) in extra.as_object().unwrap() {
+            body[key] = value.clone();
+        }
+        body
+    };
+    for (policy_id, version, extra) in [
+        ("st-dep", "1.0.0", json!({})),
+        ("st-dep", "2.0.0", json!({})),
+        (
+            "st-needs-v2",
+            "1.0.0",
+            json!({ "dependencies": [ { "policy": "st-dep", "version": "2.0.0" } ] }),
+        ),
+        (
+            "st-elsewhere",
+            "1.0.0",
+            json!({ "applicability": [ { "layer": "project", "target": "prj-other" } ] }),
+        ),
+        (
+            "st-needs-elsewhere",
+            "1.0.0",
+            json!({ "dependencies": [ { "policy": "st-elsewhere", "version": "1.0.0" } ] }),
+        ),
+        (
+            "st-x",
+            "1.0.0",
+            json!({ "precedence_hints": [ { "over": "st-y" } ] }),
+        ),
+        (
+            "st-y",
+            "1.0.0",
+            json!({ "precedence_hints": [ { "over": "st-z" } ] }),
+        ),
+        (
+            "st-z",
+            "1.0.0",
+            json!({ "precedence_hints": [ { "over": "st-x" } ] }),
+        ),
+        (
+            "st-conf-a",
+            "1.0.0",
+            json!({ "conflicts": [ { "policy": "st-conf-b" } ] }),
+        ),
+        ("st-conf-b", "1.0.0", json!({})),
+        (
+            "st-conf-moot",
+            "1.0.0",
+            json!({ "conflicts": [ { "policy": "st-elsewhere" } ] }),
+        ),
+        (
+            "st-self",
+            "1.0.0",
+            json!({ "precedence_hints": [ { "over": "st-self" } ] }),
+        ),
+        (
+            "st-p",
+            "1.0.0",
+            json!({ "precedence_hints": [ { "over": "st-q" } ] }),
+        ),
+        (
+            "st-q",
+            "1.0.0",
+            json!({
+                "applicability": [ { "layer": "project", "target": "prj-other" } ],
+                "precedence_hints": [ { "over": "st-p" } ],
+            }),
+        ),
+    ] {
+        let (status, registered) = register_policy(
+            &client,
+            &base,
+            &human_id,
+            &policy(policy_id, version, extra),
+        )
+        .await;
+        assert_eq!(status, 200, "{policy_id} {version} registers: {registered}");
+    }
+    // Every leg is RECORDED and judged at the end, so one run against the
+    // unrepaired code shows each defect, not only the first.
+    let mut breaches: Vec<String> = Vec::new();
+    let resolve = |refs: &[(&str, &str)]| {
+        json!({
+            "policies": refs.iter().map(|(p, v)| json!({ "policy_id": p, "version": v })).collect::<Vec<_>>(),
+            "target": { "layer": "organization", "target": "org-acme" },
+        })
+    };
+    let refused_with = |status: u16, body: &Value, needles: &[&str]| {
+        status == 400
+            && body["message"]
+                .as_str()
+                .is_some_and(|m| needles.iter().all(|n| m.contains(n)))
+    };
+
+    // Leg 1: a dependency on version 2.0.0 is not satisfied by version 1.0.0.
+    let (status, body) = post(
+        &client,
+        &base,
+        "/v1/policies/resolve",
+        &human_id,
+        &resolve(&[("st-needs-v2", "1.0.0"), ("st-dep", "1.0.0")]),
+    )
+    .await;
+    if !refused_with(status, &body, &["st-dep", "2.0.0"]) {
+        breaches.push(format!(
+            "leg 1: version 1.0.0 satisfied a dependency on 2.0.0 ({status}): {body}"
+        ));
+    }
+
+    // Leg 2: a dependency that does not apply to this target does not satisfy.
+    let (status, body) = post(
+        &client,
+        &base,
+        "/v1/policies/resolve",
+        &human_id,
+        &resolve(&[("st-needs-elsewhere", "1.0.0"), ("st-elsewhere", "1.0.0")]),
+    )
+    .await;
+    if !refused_with(status, &body, &["st-elsewhere"]) {
+        breaches.push(format!(
+            "leg 2: a dependency that does not apply here satisfied ({status}): {body}"
+        ));
+    }
+
+    // Leg 3, the positive: the named version, applicable, satisfies.
+    let (status, body) = post(
+        &client,
+        &base,
+        "/v1/policies/resolve",
+        &human_id,
+        &resolve(&[("st-needs-v2", "1.0.0"), ("st-dep", "2.0.0")]),
+    )
+    .await;
+    if status != 200 {
+        breaches.push(format!(
+            "leg 3: the named, applicable version did not satisfy ({status}): {body}"
+        ));
+    }
+
+    // Leg 4: a three-policy precedence cycle is refused, although no clause id
+    // collides (each policy's clause is its own).
+    let (status, body) = post(
+        &client,
+        &base,
+        "/v1/policies/resolve",
+        &human_id,
+        &resolve(&[("st-x", "1.0.0"), ("st-y", "1.0.0"), ("st-z", "1.0.0")]),
+    )
+    .await;
+    if !refused_with(status, &body, &["cycle"]) {
+        breaches.push(format!(
+            "leg 4: a three-policy precedence cycle was accepted ({status}): {body}"
+        ));
+    }
+
+    // Leg 5: the same policy named twice, and two versions of one policy, are
+    // refused as such rather than as a binding conflict with itself.
+    for refs in [
+        vec![("st-dep", "1.0.0"), ("st-dep", "1.0.0")],
+        vec![("st-dep", "1.0.0"), ("st-dep", "2.0.0")],
+    ] {
+        let (status, body) = post(
+            &client,
+            &base,
+            "/v1/policies/resolve",
+            &human_id,
+            &resolve(&refs),
+        )
+        .await;
+        if !refused_with(status, &body, &["more than once"]) {
+            breaches.push(format!(
+                "leg 5: {refs:?} was not refused as a repeated policy ({status}): {body}"
+            ));
+        }
+    }
+
+    // Leg 6: the shapes steps 3 and 4 read are validated at registration.
+    // Each case takes its own version, so a case the unrepaired code ADMITS
+    // cannot make the next fail for the unrelated reason of a taken coordinate.
+    for (case, (field, entry)) in [
+        ("dependencies", json!([ { "policy": "st-dep" } ])),
+        ("dependencies", json!(["st-dep"])),
+        ("conflicts", json!([ { "polic": "st-dep" } ])),
+        ("precedence_hints", json!([ { "over": "" } ])),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let version = format!("1.0.{case}");
+        let (status, body) = register_policy(
+            &client,
+            &base,
+            &human_id,
+            &policy("st-malformed", &version, json!({ field: entry.clone() })),
+        )
+        .await;
+        if !refused_with(status, &body, &[field]) {
+            breaches.push(format!(
+                "leg 6: {field} {entry} was not refused at registration ({status}): {body}"
+            ));
+        }
+    }
+
+    // Leg 7: an explicit conflict with a policy that applies here is refused;
+    // one with a policy that does not apply here is moot (§15.3: step 2
+    // filters before step 3 checks). ⚠️ The second half LOOSENS the old
+    // behaviour, which refused a conflict with any loaded policy.
+    let (status, body) = post(
+        &client,
+        &base,
+        "/v1/policies/resolve",
+        &human_id,
+        &resolve(&[("st-conf-a", "1.0.0"), ("st-conf-b", "1.0.0")]),
+    )
+    .await;
+    if !refused_with(status, &body, &["st-conf-a conflicts with st-conf-b"]) {
+        breaches.push(format!(
+            "leg 7: an applicable conflict was not refused ({status}): {body}"
+        ));
+    }
+    let (status, body) = post(
+        &client,
+        &base,
+        "/v1/policies/resolve",
+        &human_id,
+        &resolve(&[("st-conf-moot", "1.0.0"), ("st-elsewhere", "1.0.0")]),
+    )
+    .await;
+    if status != 200 {
+        breaches.push(format!(
+            "leg 7: a conflict with a policy that does not apply here refused ({status}): {body}"
+        ));
+    }
+
+    // Leg 8: a self-hint is a no-op, and a cycle that runs through a policy
+    // that does not apply here is moot, for the same reason as leg 7.
+    let (status, body) = post(
+        &client,
+        &base,
+        "/v1/policies/resolve",
+        &human_id,
+        &resolve(&[("st-self", "1.0.0")]),
+    )
+    .await;
+    if status != 200 {
+        breaches.push(format!("leg 8: a self-hint refused ({status}): {body}"));
+    }
+    let (status, body) = post(
+        &client,
+        &base,
+        "/v1/policies/resolve",
+        &human_id,
+        &resolve(&[("st-p", "1.0.0"), ("st-q", "1.0.0")]),
+    )
+    .await;
+    if status != 200 {
+        breaches.push(format!(
+            "leg 8: a cycle through a policy that does not apply here refused ({status}): {body}"
+        ));
+    }
+
+    assert!(
+        breaches.is_empty(),
+        "{} breach(es):\n{}",
+        breaches.len(),
+        breaches.join("\n")
+    );
+
+    sqlx::query("DELETE FROM policy_versions WHERE policy_id LIKE 'st-%'")
+        .execute(&pool)
+        .await
+        .expect("drop the fixture rows");
+}
+
 /// The POSITIVE arm, without which the repair above is indistinguishable from
 /// deleting the route: a `policy_register` holder still registers, the receipt
 /// is audited, the document is REACHABLE through every read, and the same grant

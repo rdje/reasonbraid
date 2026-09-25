@@ -38,6 +38,7 @@ the due reviews from the drift and outcome rows that already exist.
 ## The routes
 
 ```text
+POST   /v1/policies/resolve                        resolve a policy set for one target
 GET    /v1/policies/{policy_id}/{version}/impact   the impact map for one version
 POST   /v1/policy-proposals                        register a proposal (draft)
 GET    /v1/policy-proposals                        the proposals, newest first
@@ -91,6 +92,84 @@ Send the principal as a header, as everywhere else in the dev profile:
 curl -s localhost:4310/v1/policy-proposals \
   -H 'x-reasonbraid-principal: hpr_0192…'
 ```
+
+## Resolving a policy set
+
+`POST /v1/policies/resolve` answers which clauses bind one target, given the policy
+versions you name. It is a read: it records nothing, and any enrolled principal may
+call it, because the library is shared.
+
+```bash
+curl -s -X POST localhost:4310/v1/policies/resolve \
+  -H 'x-reasonbraid-principal: hpr_0192…' \
+  -H 'content-type: application/json' \
+  -d '{
+        "policies": [
+          {"policy_id": "org-baseline", "version": "1.0.0"},
+          {"policy_id": "project-x", "version": "1.0.0"}
+        ],
+        "target": {"layer": "project", "target": "prj-x"}
+      }'
+```
+
+The answer names, for each clause, the policy that won it and the path it took,
+and adds an explanation with one line per step:
+
+```json
+{
+  "target": {"layer": "project", "target": "prj-x"},
+  "resolved": [
+    {"policy_id": "project-x", "version": "1.0.0", "clause_id": "c1",
+     "statement": "the project requires the evidence gate",
+     "path": ["authority: active grant", "lifecycle: draft",
+              "applicability: matched", "precedence: the winner over the carriers"]}
+  ],
+  "explanation": ["loaded 2 policies: org-baseline, project-x", "step 1: …", "…"],
+  "conflicts": []
+}
+```
+
+The steps run in this order, and anything they refuse answers `400`, naming why:
+
+1. **One version of each policy.** Naming a policy twice, or two of its versions,
+   is refused.
+2. **Registered and owned.** Every named version must be registered, and its
+   owning grant must be live.
+3. **Applicability.** A policy applies when one of its applicability selectors
+   matches the target, or it has none, and none of its non-applicability selectors
+   does. A `suspended` or `retracted` version never applies. The other lifecycle
+   labels (`draft`, `active`, `superseded`, `deprecated`) are shown in each
+   clause's path and not acted on: the label is the registrar's declaration, set
+   once and never changed, and a policy is put into force by approval and
+   publication, not by its label.
+4. **Dependencies and conflicts, among the policies that apply.** Every dependency
+   must apply here at the exact version it names, and no explicit conflict may
+   apply here. A policy that does not apply needs nothing and satisfies nothing, so
+   a conflict with it is moot.
+5. **Precedence, among the policies that apply.** The `over` hints must not form a
+   cycle of any length; the refusal names the cycle. A hint naming the policy itself
+   does nothing.
+6. **Waivers.** Each requested waiver must appear in some named policy's exception
+   schema. A waiver does not yet change the result; see
+   [the qualification review](qualification-review.md).
+7. **Collisions.** Where applying policies carry the same clause id, the one that
+   wins over all the others by precedence takes it; with no single winner, the
+   resolution fails closed.
+
+Each list in a policy has one entry shape, checked at registration (`400`, naming
+the list and the entry). A stored entry that does not parse fails the resolution
+closed, naming its policy:
+
+| List | Each entry is exactly |
+| --- | --- |
+| `applicability`, `non_applicability` | `{"layer": …, "target": …}` |
+| `dependencies` | `{"policy": …, "version": …}` |
+| `conflicts` | `{"policy": …}` |
+| `precedence_hints` | `{"over": …}` |
+
+The example above is the resolution the control `the_seven_step_resolution_fails_closed`
+sends, and `the_resolution_steps_refuse_what_the_design_refuses` covers each refusal
+in the list (`SIGNOFF-REPAIR.9.1.6`).
 
 ## The impact map
 

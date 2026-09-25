@@ -18,32 +18,53 @@
 #
 # Recorded by `SIGNOFF-REPAIR.7.1.2`. Refresh only with a re-adjudication:
 #     python3 -B scripts/census_registry_read_reach.py --check
-agent_profiles	agent_profiles→agent_roles	list_node_presence,create_thread_auto!,open_recruitment_call,respondent_candidate!,directory_match!,directory_presence,replay,presence,write_profile_in_tx!,current_profile!,lock_existing_profile_anchor_in_tx!,current_profile_in_tx!
+#
+# ⭐ RE-ADJUDICATED at `SIGNOFF-REPAIR.7.1.6` (2026-09-25), 29 → 31 tables. The
+# census had drifted unguarded because its `--check` ran in no gate. Two tables
+# entered (`node_ambiguous_attempts`, `node_inbox_cursors`) and nine readers
+# without a tenant predicate appeared; each was judged, none is a defect:
+#   - keyed by the CALLER's own node or role id (the node channel authenticates
+#     the node; under the dev rule its id is its role id): `replay!` on
+#     agent_profiles/profile_versions, `operator_verdict!`,
+#     `result_receipt_for_attempt!`, `undelivered_in_tx!`, `offers_pending!`,
+#     and `respond_to_call_core!` (an offer to the caller's own role);
+#   - site-wide BY DECISION: `record_gate!` on evaluation_corpora (DOC-0029, a
+#     site act), `load_ca_generations!` and `renew_if_due!` on server_ca
+#     (the CA is the site's, DOC-0159);
+#   - `external_identity!` on evidence_snapshots: the submission is produced by
+#     the server's own git acquisition after THIS tenant's registration gate,
+#     and replays the commit the server just re-acquired — the byte snapshot's
+#     verdict (docs/decisions/2026-09-16_evidence-is-shared-the-read-is-tenant-bound.md).
+# One reader LEFT for a reason: `register_resolver!` on resolver_capabilities,
+# which `.7.1.3.1` moved into the `resolver_register` site act.
+agent_profiles	agent_profiles→agent_roles	list_node_presence,create_thread_auto!,respondent_candidate!,inspect_call,replay!,presence,write_profile_in_tx!,current_profile!,lock_existing_profile_anchor_in_tx!,current_profile_in_tx!,offer_to_subscribers
 deployment_assignments	-	record_drift!,record_receipt,load_assignment!,list_assignments
 deployment_targets	-	list_deployment_targets!,assign!
 derivations	-	submit!,children_of!
 evaluation_calibrations	-	list_calibrations!
-evaluation_corpora	-	record_run!,list_corpora!,create_trial!
+evaluation_corpora	-	record_run!,list_corpora!,create_trial!,record_gate!
 evaluation_gate_results	-	list_gate_results!
 evaluation_gates	-	evaluate_gate!,list_gates!,record_recommendation!
 evaluation_runs	-	list_runs!,record_calibration!
 evaluation_trial_results	-	list_trial_results!
 evaluation_trials	-	record_trial_results!,list_trials!,record_recommendation!
-evidence_snapshots	-	submit!,submit,submit!,get_for_tenant!,stale_for_tenant!
+evidence_snapshots	-	submit!,submit,submit!,external_identity!,get_for_tenant!,stale_for_tenant!
+node_ambiguous_attempts	node_ambiguous_attempts→nodes	list_ambiguous_attempts,adjudicate_ambiguous_attempt_in_one_transaction,operator_verdict!
 node_certificates	node_certificates→nodes	revoke_node_in_one_transaction!,replay,verify_cert_proof!,verify_rotate_proof_in_tx!,renew_lease!,classify_renewal_refusal!,enroll
-node_events	-	event_id_for_operation!
+node_events	-	apply_node_result_in_tx,event_id_for_operation!,result_receipt_for_attempt!
+node_inbox_cursors	-	undelivered_in_tx!
 node_keys	node_keys→nodes	-
 node_leases	node_leases→nodes	verify_fencing!,verify_fencing_in_tx!,classify_renewal_refusal!
 node_proof_nonces	-	consume_proof_nonce!
 policy_versions	-	register_proposal!,list!,resolve!,impact!
-profile_versions	profile_versions→agent_roles	list_node_presence,create_thread_auto!,open_recruitment_call,respondent_candidate!,directory_match!,directory_presence,replay,presence,current_profile!,version_at!,version_list!,current_profile_in_tx!
+profile_versions	profile_versions→agent_roles	list_node_presence,create_thread_auto!,respondent_candidate!,inspect_call,replay!,presence,current_profile!,version_at!,version_list!,current_profile_in_tx!,offer_to_subscribers
 quota_events	quota_events→usage_quotas	check_in_tx!
-recruitment_offers	recruitment_offers→recruitment_calls	inspect_call!
+recruitment_offers	recruitment_offers→recruitment_calls	respond_to_call_core!,list_offered_calls,inspect_call!,offers_pending!
 recruitment_panels	recruitment_panels→recruitment_calls	inspect_call!
-recruitment_responses	recruitment_responses→recruitment_calls	responses!
-resolver_capabilities	-	register_resolver!,resolve!,advertised_media_types!,sync_gated_entries!
-resource_references	-	submit!,get!,submit
-server_ca	-	load_ca_material!
+recruitment_responses	recruitment_responses→recruitment_calls	list_offered_calls,offers_pending!,responses!
+resolver_capabilities	-	resolve!,advertised_media_types!,sync_gated_entries!
+resource_references	-	submit!,get_for_tenant,submit,submit_external
+server_ca	-	renew_if_due!,load_ca_material!,load_ca_generations!
 site_audit	-	-
 snapshot_objects	-	submit!
 workflow_profiles	-	resolve!,record_recommendation!,resolve!,register!,list!

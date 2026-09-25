@@ -209,6 +209,23 @@ if ! python3 -B scripts/census_fixture_write_reach.py >/dev/null 2>&1; then
     exit 1
 fi
 
+# The shared-registry censuses hold their baselines as SETS
+# (`SIGNOFF-REPAIR.7.1.6`): who writes a table with no tenant dimension, and by
+# what admission; who reads one, and how the tenant is recovered. Both had a
+# `--check` and nothing ran it, so the read census drifted from 29 tables to 31
+# unguarded, readers without a tenant predicate appeared unjudged, and two book
+# figures went stale; the write census held only because leaves ran it by hand.
+# A drift is a design question, so the refusal names the adjudicating record
+# rather than offering a refresh.
+if ! python3 -B scripts/census_shared_registry_writes.py --check >/dev/null 2>&1; then
+    python3 -B scripts/census_shared_registry_writes.py --check >&2
+    exit 1
+fi
+if ! python3 -B scripts/census_registry_read_reach.py --check >/dev/null 2>&1; then
+    python3 -B scripts/census_registry_read_reach.py --check >&2
+    exit 1
+fi
+
 # A positional source reference must name a file a reader can find
 # (`SIGNOFF-REPAIR.11.17`). `CLAIM_VERIFICATION.md` §4.1 grades a NAMED INSTANCE
 # as exact with no tolerance band, and a BARE BASENAME is exact only when it

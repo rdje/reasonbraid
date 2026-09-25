@@ -379,9 +379,11 @@ RB_DEMO=0 bash scripts/run_pg_tests.sh site_operator_cli site_authority
 
 The site actions above are each explicitly issued and audited. They are not,
 however, the complete set of site-global surfaces. A census derived from the
-producers rather than from a family name finds that **thirty tables carry no
-tenant dimension and are written by routes admitted on tenant enrolment
-alone**:
+producers rather than from a family name found that **thirty tables carried no
+tenant dimension and were written by routes admitted on tenant enrolment
+alone**. The repairs since then leave **9 routes across 10 tables** admitted on
+enrolment alone, every one of them adjudicated (measured 2026-09-25; both
+censuses now run on every commit, `SIGNOFF-REPAIR.7.1.6`):
 
 ```bash
 python3 -B scripts/census_shared_registry_writes.py   # the writers, by admission

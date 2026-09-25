@@ -94,6 +94,50 @@ const CODEX_SCRIPT: &str = r#"#!/bin/sh
 # The adapter invokes: <binary> exec --json ... <prompt> — the prompt is the LAST arg.
 for last in "$@"; do :; done
 case "$last" in
+  *stderr-utf8*)
+    # `SIGNOFF-REPAIR.10.1.2`: 700 two-byte characters on stderr (1,401 bytes),
+    # then a failing exit, so the old 1,024-byte tail cut a character in half.
+    echo '{"type":"thread.started","thread_id":"stub_utf8"}'
+    i=0; while [ $i -lt 700 ]; do printf '\303\251' >&2; i=$((i+1)); done; printf '\n' >&2
+    exit 2
+    ;;
+  *long-line*)
+    # One 3 MiB stdout line with no newline, then a clean exit.
+    echo '{"type":"thread.started","thread_id":"stub_long"}'
+    head -c 3145728 /dev/zero | tr '\0' 'a'
+    exit 0
+    ;;
+  *stderr-tail*)
+    # A 3 MiB stderr line, then the line that says what went wrong, then a failure.
+    echo '{"type":"thread.started","thread_id":"stub_tail"}'
+    head -c 3145728 /dev/zero | tr '\0' 'a' >&2; printf '\n' >&2
+    echo "TAILMARK: the error the operator needs" >&2
+    exit 2
+    ;;
+  *stdout-invalid*)
+    # A stdout line that is not UTF-8 between real events. It cannot be an
+    # event, so it is skipped; the old reader treated it as an I/O error and
+    # ended the stream, losing the completion after it.
+    echo '{"type":"thread.started","thread_id":"stub_stdout_invalid"}'
+    printf '\377\376\n'
+    echo '{"type":"item.completed","item":{"type":"agent_message","text":"after the invalid line"}}'
+    echo '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}'
+    exit 0
+    ;;
+  *stderr-invalid*)
+    # A line that is not UTF-8, a pause long enough for the adapter's drain to
+    # read it, then one more stderr line written by THIS shell, then a normal
+    # completion. A drain that stops at the invalid line drops its reader and
+    # CLOSES the pipe, so that later write raises SIGPIPE and kills this
+    # process before its completion is printed.
+    echo '{"type":"thread.started","thread_id":"stub_invalid"}'
+    printf '\377\376\n' >&2
+    sleep 1
+    printf 'after the invalid line\n' >&2
+    echo '{"type":"item.completed","item":{"type":"agent_message","text":"after the stall"}}'
+    echo '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}'
+    exit 0
+    ;;
   *argv-probe*)
     # `SIGNOFF-REPAIR.10.1.1`: reply with the argv this stub RECEIVED, joined by
     # `|`, so a test can see where the prompt sits relative to `--`.
@@ -133,6 +177,12 @@ const CLAUDE_SCRIPT: &str = r#"#!/bin/sh
 # The adapter invokes: <binary> -p ... -- <prompt> — the prompt is the LAST arg.
 for last in "$@"; do :; done
 case "$last" in
+  *stderr-utf8*)
+    # `SIGNOFF-REPAIR.10.1.2`: the Claude mirror of the codex branch.
+    echo '{"type":"system","subtype":"init","session_id":"stub_utf8","model":"stub"}'
+    i=0; while [ $i -lt 700 ]; do printf '\303\251' >&2; i=$((i+1)); done; printf '\n' >&2
+    exit 2
+    ;;
   *argv-probe*)
     # `SIGNOFF-REPAIR.10.1.1`: reply with the argv this stub RECEIVED, joined by `|`.
     IFS='|'

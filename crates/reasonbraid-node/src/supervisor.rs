@@ -55,6 +55,16 @@ use crate::journal::{Journal, JournalError, ProvenStatus, ResultEvent};
 /// event the control plane refuses for as long as it runs.
 pub const MAX_OUTPUT_BYTES: usize = 256 * 1024;
 
+// `SIGNOFF-REPAIR.10.1.2`: an adapter's line bound admits the largest chunk this
+// supervisor accepts. One event line carries at most one chunk, JSON-escaped,
+// and the worst escape (`\uXXXX`) is six bytes per byte; the 64 KiB is the
+// envelope's allowance. Checked at COMPILE time, so no build can ship with the
+// two bounds out of step: raising either alone stops the build here.
+const _: () = assert!(
+    reasonbraid_adapter::MAX_LINE_BYTES >= 6 * MAX_OUTPUT_BYTES + 64 * 1024,
+    "an adapter's line bound must admit the largest chunk the supervisor accepts"
+);
+
 /// How long a cancellation may take before the supervisor stops waiting for its
 /// answer. The attempt is already being ended; this only bounds the courtesy.
 const CANCEL_GRACE: Duration = Duration::from_secs(5);

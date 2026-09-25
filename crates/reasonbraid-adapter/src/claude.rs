@@ -62,7 +62,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use serde_json::Value;
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::BufReader;
 use tokio::process::{Child, ChildStdout, Command};
 use tokio::sync::Mutex;
 
@@ -170,7 +170,7 @@ impl Adapter for ClaudeCliAdapter {
             .await
             .insert(operation_id.to_string(), Arc::clone(&child));
 
-        let (stderr_buffer, stderr_drain) = drain_stderr(stderr);
+        let (stderr_buffer, stderr_drain) = crate::subprocess::drain_stderr(stderr);
 
         InvokeOutcome::Accepted(
             DispatchAck {
@@ -237,35 +237,13 @@ impl Adapter for ClaudeCliAdapter {
     }
 }
 
-/// Drain the child's stderr into a bounded buffer so a chatty child can never
-/// deadlock on a full pipe; the tail feeds `FailedKnown` reasons. The returned
-/// handle MUST be awaited before the buffer is snapshotted — the drain task may
-/// not have consumed the pipe's tail yet when stdout hits EOF (`PHASE-1-MAINT-2`:
-/// the race, reproduced on the Codex adapter and fixed in both mirrors).
-fn drain_stderr(
-    stderr: tokio::process::ChildStderr,
-) -> (Arc<Mutex<String>>, tokio::task::JoinHandle<()>) {
-    let buffer = Arc::new(Mutex::new(String::new()));
-    let out = Arc::clone(&buffer);
-    let handle = tokio::spawn(async move {
-        let mut lines = BufReader::new(stderr).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            let mut buf = out.lock().await;
-            if buf.len() < 8192 {
-                buf.push_str(&line);
-                buf.push('\n');
-            }
-        }
-    });
-    (buffer, handle)
-}
-
 /// The stream over one Claude child: JSONL events mapped to the contract, then the
 /// exit status as the terminal verdict.
 struct ClaudeHandle {
     lines: BufReader<ChildStdout>,
     child: Arc<Mutex<Child>>,
-    stderr: Arc<Mutex<String>>,
+    /// The LAST bytes of the child's stderr (`crate::subprocess::drain_stderr`).
+    stderr: Arc<Mutex<Vec<u8>>>,
     stderr_drain: tokio::task::JoinHandle<()>,
     /// Text blocks of an `assistant` message not yet streamed (one chunk per block;
     /// thinking blocks never enter here — the reply is the text).
@@ -288,9 +266,15 @@ impl ClaudeHandle {
             return Some(AttemptEvent::OutputChunk { chunk });
         }
         loop {
-            let mut line = String::new();
-            match self.lines.read_line(&mut line).await {
-                Ok(0) => {
+            // `SIGNOFF-REPAIR.10.1.2`: at most `MAX_LINE_BYTES` of a line is ever
+            // held; `read_line` held the whole line before anything was checked.
+            match crate::subprocess::read_line_bounded(
+                &mut self.lines,
+                crate::subprocess::MAX_LINE_BYTES,
+            )
+            .await
+            {
+                Ok(crate::subprocess::Line::Eof) => {
                     // EOF: the child is done — the exit status is the terminal verdict.
                     // AWAIT the stderr drain first (bounded): the task may not have
                     // consumed the pipe's tail yet, and racing it leaves the reason
@@ -302,14 +286,9 @@ impl ClaudeHandle {
                         &mut self.stderr_drain,
                     )
                     .await;
-                    let stderr_tail = {
-                        let buf = self.stderr.lock().await;
-                        if buf.len() > 1024 {
-                            buf[buf.len() - 1024..].to_string()
-                        } else {
-                            buf.clone()
-                        }
-                    };
+                    // `SIGNOFF-REPAIR.10.1.2`: cut on a character boundary; the
+                    // byte slice this replaced panicked inside a multi-byte one.
+                    let stderr_tail = crate::subprocess::stderr_tail(&self.stderr.lock().await);
                     let status = {
                         let mut child = self.child.lock().await;
                         child.wait().await.ok()
@@ -328,7 +307,23 @@ impl ClaudeHandle {
                         }),
                     };
                 }
-                Ok(_) => {
+                // A line that is not UTF-8 cannot be a JSONL event, and is
+                // skipped as a human or status line is.
+                Ok(crate::subprocess::Line::NotUtf8) => continue,
+                Ok(crate::subprocess::Line::TooLong) => {
+                    // ⛔ A definitive failure naming the bound, as the supervisor
+                    // treats output over ITS bound: never a silently shortened
+                    // result, and never a line held whole to find out.
+                    let _ = self.child.lock().await.start_kill();
+                    self.finished = true;
+                    return Some(AttemptEvent::FailedKnown {
+                        reason: format!(
+                            "a claude event line exceeded the {}-byte bound; the child was stopped",
+                            crate::subprocess::MAX_LINE_BYTES
+                        ),
+                    });
+                }
+                Ok(crate::subprocess::Line::Text(line)) => {
                     let trimmed = line.trim();
                     if trimmed.is_empty() {
                         continue;

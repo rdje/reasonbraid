@@ -152,6 +152,111 @@ async fn a_prompt_is_never_read_as_an_option() {
     assert_eq!(args[sandbox + 1], "read-only", "{args:?}");
 }
 
+/// Run one stubbed attempt to its end within `bound`, collecting its events.
+/// `None` means the stream did not END in time: the stall this leaf's third
+/// control exists to catch.
+async fn run_to_end(prompt: &str, bound: std::time::Duration) -> Option<Vec<AttemptEvent>> {
+    let adapter = adapter_with_stub("bounds");
+    let InvokeOutcome::Accepted(_, mut handle) = adapter
+        .invoke(&request_with(prompt), &format!("op_{prompt}"))
+        .await
+    else {
+        panic!("expected an accepted dispatch");
+    };
+    tokio::time::timeout(bound, async {
+        let mut events = Vec::new();
+        while let Some(event) = handle.next().await {
+            events.push(event);
+        }
+        events
+    })
+    .await
+    .ok()
+}
+
+/// `SIGNOFF-REPAIR.10.1.2`: a stderr tail that ends mid-character is not a
+/// panic. The old tail was `buf[buf.len() - 1024..]`, a BYTE slice.
+#[tokio::test]
+async fn a_multibyte_stderr_tail_is_a_failure_not_a_panic() {
+    let events = run_to_end("stderr-utf8", std::time::Duration::from_secs(20))
+        .await
+        .expect("the attempt ends");
+    let Some(AttemptEvent::FailedKnown { reason }) = events.last() else {
+        panic!("a failing exit is a known failure: {events:?}");
+    };
+    assert!(
+        reason.contains('é'),
+        "the tail is carried, whole characters only: {reason}"
+    );
+}
+
+/// `SIGNOFF-REPAIR.10.1.2`: an event line longer than the adapter's bound is a
+/// known failure naming the bound, as the supervisor treats output over ITS
+/// bound. The old reader allocated the whole line and then skipped it.
+#[tokio::test]
+async fn an_over_long_stdout_line_is_refused_by_name() {
+    let events = run_to_end("long-line", std::time::Duration::from_secs(30))
+        .await
+        .expect("the attempt ends");
+    let Some(AttemptEvent::FailedKnown { reason }) = events.last() else {
+        panic!("an over-long line is a known failure: {events:?}");
+    };
+    assert!(
+        reason.contains("byte bound"),
+        "the refusal names the bound: {reason}"
+    );
+}
+
+/// `SIGNOFF-REPAIR.10.1.2`: the stderr kept is the END of the stream, where the
+/// error is. The old buffer kept the first 8 KiB, so after one long line the
+/// line that said what went wrong was never stored.
+#[tokio::test]
+async fn the_stderr_tail_is_the_end_of_the_stream() {
+    let events = run_to_end("stderr-tail", std::time::Duration::from_secs(30))
+        .await
+        .expect("the attempt ends");
+    let Some(AttemptEvent::FailedKnown { reason }) = events.last() else {
+        panic!("a failing exit is a known failure: {events:?}");
+    };
+    assert!(
+        reason.contains("TAILMARK"),
+        "the last stderr line is in the reason: {reason}"
+    );
+}
+
+/// `SIGNOFF-REPAIR.10.1.2`: stderr that is not UTF-8 does not stop the drain.
+/// The old drain was `while let Ok(Some(line)) = lines.next_line()`, which ENDS
+/// at the first invalid line and drops its reader, CLOSING the pipe. ⚠️ The
+/// census first called that a stall; a first version of this control passed
+/// on the old code and refuted it. The real consequence is that the child's
+/// next stderr write fails, and a process that does not ignore SIGPIPE is
+/// killed by it, so the provider's answer never arrives.
+#[tokio::test]
+async fn stderr_that_is_not_utf8_does_not_cut_the_child_off() {
+    let events = run_to_end("stderr-invalid", std::time::Duration::from_secs(20))
+        .await
+        .expect("the attempt ends");
+    assert!(
+        matches!(events.last(), Some(AttemptEvent::Completed { .. })),
+        "the provider's completion arrives: {events:?}"
+    );
+}
+
+/// `SIGNOFF-REPAIR.10.1.2`: a stdout line that is not UTF-8 is not an event,
+/// and is skipped like any other non-event line. The old `read_line` returned
+/// an I/O error for it and the stream ended, so the completion after it was
+/// lost.
+#[tokio::test]
+async fn a_stdout_line_that_is_not_utf8_is_skipped() {
+    let events = run_to_end("stdout-invalid", std::time::Duration::from_secs(20))
+        .await
+        .expect("the attempt ends");
+    assert!(
+        matches!(events.last(), Some(AttemptEvent::Completed { .. })),
+        "the completion after the invalid line arrives: {events:?}"
+    );
+}
+
 /// A non-zero exit is a definitive, PROVEN failure — never a guess.
 #[tokio::test]
 async fn nonzero_exit_produces_failed_known_with_the_stderr_tail() {

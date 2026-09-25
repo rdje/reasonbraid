@@ -48,8 +48,10 @@ mod claude;
 mod codex;
 mod contract;
 mod fake;
+// `SIGNOFF-REPAIR.10.1.2`: the bounded stream readers both provider-CLI adapters share.
 pub mod fixtures;
 pub mod resolver;
+mod subprocess;
 
 mod allowlist;
 pub mod bench;
@@ -62,6 +64,8 @@ pub use certification::{
 };
 pub use claude::ClaudeCliAdapter;
 pub use codex::CodexCliAdapter;
+// `SIGNOFF-REPAIR.10.1.2`: exported so the node's supervisor can pin its own
+// output bound against it.
 pub use contract::{
     Adapter, AdapterCapabilities, AttemptEvent, AttemptHandle, AttemptResult, AttemptStream,
     CancellationOutcome, CancellationStrength, DispatchAck, InvokeOutcome, NormalizedUsage,
@@ -69,3 +73,4 @@ pub use contract::{
 };
 pub use fake::{FakeAdapter, FixtureSpec, ScriptStep, StatusLookupSpec};
 pub use resolver::{ResolverAdvertise, EGRESS_CLASSES, SANDBOX_LEVELS};
+pub use subprocess::MAX_LINE_BYTES;

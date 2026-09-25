@@ -204,6 +204,25 @@ proves what the adapter passes. How the real Codex CLI treats a prompt after `--
 is the standard command-line convention, and only an `RB_LIVE_CODEX` run observes
 it directly.
 
+**What the adapters read, and how much** (`SIGNOFF-REPAIR.10.1.2`). Both CLI
+adapters read the child's two streams as bytes, through one shared module:
+
+- **An event line holds at most 2 MiB.** The supervisor accepts at most 256 KiB of
+  output per attempt, and the worst JSON escape is six bytes per byte, so 2 MiB
+  never cuts a line the supervisor could take. A longer line is not kept while it is
+  read: the child is stopped, and the attempt ends as a known failure naming the
+  bound, the way the supervisor treats output over its own. A build in which the two
+  bounds fall out of step fails to compile.
+- **A line that is not UTF-8 is skipped.** It cannot be an event, just as a human
+  status line cannot. It used to end the stream, losing the answer after it.
+- **stderr is drained to its end, whatever it contains, and its last 8 KiB are kept.**
+  A failure reason carries the last 1 KiB of that, cut on a character boundary. The
+  old drain read text lines and STOPPED at the first one that was not UTF-8. That
+  closed the pipe, and the provider was then killed by its next write to stderr
+  (`SIGPIPE`). It also kept the first 8 KiB rather than the last, so after one long
+  line the line that said what went wrong was never stored, and its 1 KiB tail was a
+  byte slice that crashed the adapter when it fell inside a multi-byte character.
+
 The live qualification test is deliberately not run by default — it dispatches
 to the real harness and spends a few tokens:
 

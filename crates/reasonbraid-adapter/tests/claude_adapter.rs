@@ -86,6 +86,30 @@ async fn complete_path_streams_events_and_normalizes_usage() {
 }
 
 /// The run payload's `prompt` travels as the USER prompt (an argument), verbatim.
+/// `SIGNOFF-REPAIR.10.1.2`: the Claude mirror of the codex control. A stderr
+/// tail that ends mid-character is a failure, not a panic.
+#[tokio::test]
+async fn a_multibyte_stderr_tail_is_a_failure_not_a_panic() {
+    let adapter = adapter_with_stub("utf8");
+    let InvokeOutcome::Accepted(_, mut handle) = adapter
+        .invoke(&request_with("stderr-utf8"), "op_utf8")
+        .await
+    else {
+        panic!("expected an accepted dispatch");
+    };
+    let mut last = None;
+    while let Some(event) = handle.next().await {
+        last = Some(event);
+    }
+    let Some(AttemptEvent::FailedKnown { reason }) = last else {
+        panic!("a failing exit is a known failure");
+    };
+    assert!(
+        reason.contains('é'),
+        "the tail is carried, whole characters only: {reason}"
+    );
+}
+
 /// `SIGNOFF-REPAIR.10.1.1`: a prompt is never read as a command-line option.
 /// Claude's `EXEC_ARGS` already ended with `--` (because `--tools` is variadic);
 /// this pins that, so the separator cannot go without a test failing, and it

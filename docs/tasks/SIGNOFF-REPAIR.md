@@ -13283,7 +13283,7 @@ done
 #### SIGNOFF-REPAIR.12.1 — The exit bar, the triage, and the verification policy
 
 - Status: `done` — `REASONBRAID-DOC-0162` (2026-09-25).
-- Decided under the director's delegation (*"all are yours to decide, but better be sota and signoff"*): `docs/decisions/2026-09-25_the-corrective-tree-ends-at-a-bug-bar.md` (the bar, the exit, and the triage of all 65 open leaves, each annotated with a `⚖️ Bar` line). The verification policy, the third delegated decision, is recorded by the next commit with its measurement: ⚠️ the first attempt to scope mutation testing, `--cargo-test-arg=--lib`, measured SLOWER (10 mutants in 2 h against 77 min), because cargo-mutants 27 applies that flag only to the test RUN and still builds every integration binary; `--cargo-arg=--lib` is being measured.
+- Decided under the director's delegation (*"all are yours to decide, but better be sota and signoff"*): `docs/decisions/2026-09-25_the-corrective-tree-ends-at-a-bug-bar.md` (the bar, the exit, and the triage of all 65 open leaves, each annotated with a `⚖️ Bar` line). The verification policy, the third delegated decision, is `docs/decisions/2026-09-25_verification-is-scoped-to-the-change-and-broad-at-batch-boundaries.md` (`REASONBRAID-DOC-0164`), recorded with its measurement: the same ten mutants took **77 min** unscoped, **2 h** with `--cargo-test-arg=--lib` (cargo-mutants 27 applies it to the test RUN only and still builds every integration binary), and **14 min** with `--cargo-arg=--lib`, all ten caught every time.
 - Closes `.11.2.7` as a duplicate of `.11.26`.
 
 #### SIGNOFF-REPAIR.12.2 — The open-leaf count has no instrument, and two state forms hid 16 leaves

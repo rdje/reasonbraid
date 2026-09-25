@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-25 — Checking each fix is now about five times faster, with the same rigour (`SIGNOFF-REPAIR.12.1`)
+
+`REASONBRAID-DOC-0164`. A measured decision; no product code changed.
+
+- ✅ **Measured:** the slowest check deliberately breaks the new code in several ways and confirms a test catches each one. The same ten breaks took **77 minutes** before, and now take **14 minutes**, with all ten still caught. The saving comes from rebuilding only the tests that cover the code, instead of about 50 unrelated test programs each time.
+- ⚠️ **A wrong turn, kept on record:** the obvious setting made it slower, 2 hours, because the tool ignored it at the build step. The logs showed why.
+- ✅ **The rule:** the full live test run happens on any change to shared foundations, otherwise at least every three fixes, and always before publishing.
+
 ## 2026-09-25 — Evidence checked: four real problems found (`SIGNOFF-REPAIR.7.4`)
 
 `REASONBRAID-DOC-0163`. A closing check; no code changed.

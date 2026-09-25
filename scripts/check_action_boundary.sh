@@ -27,6 +27,11 @@
 #   1. `claude.rs::EXEC_ARGS` passes `--restricted` (removes the code-running
 #      tools and WebFetch) and `--tools ''` (empties the tool set).
 #   2. `codex.rs::EXEC_ARGS` passes `--sandbox read-only`.
+#   2a. BOTH `EXEC_ARGS` arrays END with `--` (`SIGNOFF-REPAIR.10.1.1`). The
+#      prompt follows them as an argument and is untrusted participant
+#      content; without the separator, a prompt beginning with `-` is read by
+#      the CLI's option parser AFTER the flags in 1 and 2, and could
+#      countermand them. Codex lacked it until that leaf.
 #   3. `threads::work_payload` dispatches only `kind`, `agent_role`, `subject`,
 #      `objective`, `reservation`, `reservation_reason`,
 #      `allow_possible_duplicate` and an optional `target_event_id` — no
@@ -170,6 +175,21 @@ def audit(claude_args, codex_args, keys, impls, decls=None):
         if got != "read-only":
             b.append(f"{CODEX}: --sandbox is {got!r}, not read-only {DUE}")
 
+    # `SIGNOFF-REPAIR.10.1.1`: the prompt follows `--`, for BOTH adapters, and
+    # `--` appears EXACTLY ONCE. ⛔ "Ends with `--`" alone was measured too weak
+    # by a hand mutant: a SECOND `--` inserted after `exec` keeps the prompt
+    # safe but turns `--sandbox read-only` into positional text, so the sandbox
+    # flag stops applying while every presence check above still passes.
+    for path, args in ((CLAUDE, claude_args), (CODEX, codex_args)):
+        if args is None:
+            continue
+        if not args or args[-1] != "--":
+            b.append(f"{path}: EXEC_ARGS does not end with `--`, so a prompt "
+                     f"beginning with `-` reaches the CLI's option parser {DUE}")
+        if args.count("--") > 1:
+            b.append(f"{path}: EXEC_ARGS carries `--` more than once, so every "
+                     f"flag after the first is positional text, not a flag {DUE}")
+
     if keys is None:
         b.append(f"{THREADS}: work_payload not found {DUE}")
     else:
@@ -207,7 +227,7 @@ if SELF_TEST:
     OK_CLAUDE = ["-p", "--output-format", "stream-json", "--restricted",
                  "--tools", "", "--verbose", "--"]
     OK_CODEX = ["exec", "--json", "--skip-git-repo-check", "--ephemeral",
-                "--sandbox", "read-only"]
+                "--sandbox", "read-only", "--"]
     OK_KEYS = set(PINNED_PAYLOAD_KEYS)
 
     OK_DECLS = {"crates/x.rs": ["false"], "crates/y.rs": ["false", "false"]}
@@ -230,6 +250,16 @@ if SELF_TEST:
         ("codex sandbox widened to workspace-write",
          OK_CLAUDE, ["exec", "--sandbox", "workspace-write"], OK_KEYS, 4, True),
         ("codex drops --sandbox", OK_CLAUDE, ["exec", "--json"], OK_KEYS, 4, True),
+        ("codex drops the `--` before the prompt",
+         OK_CLAUDE, OK_CODEX[:-1], OK_KEYS, 4, True),
+        ("claude drops the `--` before the prompt",
+         OK_CLAUDE[:-1], OK_CODEX, OK_KEYS, 4, True),
+        ("codex puts a flag after `--`",
+         OK_CLAUDE, OK_CODEX + ["--json"], OK_KEYS, 4, True),
+        ("codex gains a second `--` before its flags",
+         OK_CLAUDE, ["exec", "--"] + OK_CODEX[1:], OK_KEYS, 4, True),
+        ("claude gains a second `--` before its flags",
+         ["-p", "--"] + OK_CLAUDE[1:], OK_CODEX, OK_KEYS, 4, True),
         ("EXEC_ARGS const removed", None, OK_CODEX, OK_KEYS, 4, True),
         ("work_payload gains an evidence field",
          OK_CLAUDE, OK_CODEX, OK_KEYS | {"acquired_evidence"}, 4, True),
@@ -313,7 +343,7 @@ if breaches:
     sys.exit(1)
 
 print(f"ACTION-BOUNDARY: OK — claude --restricted --tools ''; codex --sandbox "
-      f"read-only; work_payload carries no acquired bytes; "
+      f"read-only; both end their flags with --; work_payload carries no acquired bytes; "
       f"{sum(len(v) for v in decls.values())} tool_support declarations, all "
       f"false; {impls} Adapter implementers. B3 remains correctly deferred.")
 PY

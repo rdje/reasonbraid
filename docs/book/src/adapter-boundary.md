@@ -172,7 +172,7 @@ node's worker for ever, and the collected output had no limit.
 ## The first real adapter: the Codex-family CLI
 
 `CodexCliAdapter` (`crates/reasonbraid-adapter/src/codex.rs`) supervises
-`codex exec --json --skip-git-repo-check --ephemeral --sandbox read-only <prompt>`
+`codex exec --json --skip-git-repo-check --ephemeral --sandbox read-only -- <prompt>`
 as a child process — the narrowest supported machine interface (qualified
 against codex-cli 0.153.4). The JSONL stream maps onto the contract:
 
@@ -189,6 +189,20 @@ response lands `outcome_unknown` — with the thread id attached as the handle
 an operator would adjudicate with. Cancellation is `BestEffort` (kill the
 child). The run payload travels as the **user prompt only**, and the adapter
 holds no credentials (ambient Codex login).
+
+**The prompt follows `--`, and that separator is a security boundary**
+(`SIGNOFF-REPAIR.10.1.1`). The prompt is untrusted participant content, and it
+reaches the CLI as an argument. Without `--`, a prompt beginning with `-` would be
+read by the CLI's option parser, after `--sandbox read-only`, so it could
+countermand the sandbox. The Codex adapter lacked the separator until that leaf;
+the Claude adapter always had it, because `--tools` takes a variable number of
+values. The `ACTION-BOUNDARY` doctrine now refuses a commit in which either
+adapter's flags stop ending with `--`, or carry it more than once (a second `--`
+earlier would turn the flags after it, the sandbox included, into plain text), and each adapter's tests send an
+option-shaped prompt to a stub that reports the arguments it received. ⚠️ The stub
+proves what the adapter passes. How the real Codex CLI treats a prompt after `--`
+is the standard command-line convention, and only an `RB_LIVE_CODEX` run observes
+it directly.
 
 The live qualification test is deliberately not run by default — it dispatches
 to the real harness and spends a few tokens:

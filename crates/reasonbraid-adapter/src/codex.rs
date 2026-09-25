@@ -5,7 +5,7 @@
 //!
 //! # The machine interface (verified 2026-09-06, codex-cli 0.153.4)
 //!
-//! `codex exec --json --skip-git-repo-check --ephemeral --sandbox read-only <prompt>`
+//! `codex exec --json --skip-git-repo-check --ephemeral --sandbox read-only -- <prompt>`
 //! prints a JSONL event stream on stdout:
 //!
 //! ```text
@@ -51,7 +51,14 @@ use crate::contract::{
 };
 
 /// The `codex exec` flags this adapter always passes (machine interface, no session
-/// persistence, no repo requirements, read-only sandbox).
+/// persistence, no repo requirements, read-only sandbox), ended by `--`.
+///
+/// ⛔ The `--` is the SECURITY boundary of the prompt (`SIGNOFF-REPAIR.10.1.1`).
+/// The prompt is untrusted participant content (`§16.6`) and follows these
+/// flags as an argument. Without `--`, a prompt beginning with `-` is read by
+/// the CLI's option parser, AFTER `--sandbox read-only`, so it could countermand
+/// the sandbox the action boundary rests on. `claude.rs` already ended its flags
+/// this way, and `ACTION-BOUNDARY` now pins the separator for both.
 const EXEC_ARGS: &[&str] = &[
     "exec",
     "--json",
@@ -59,6 +66,7 @@ const EXEC_ARGS: &[&str] = &[
     "--ephemeral",
     "--sandbox",
     "read-only",
+    "--",
 ];
 
 /// The first real harness adapter: supervises `codex exec --json` as a child process.

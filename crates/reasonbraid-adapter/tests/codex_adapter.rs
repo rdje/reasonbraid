@@ -103,6 +103,55 @@ async fn prompt_travels_as_user_content() {
     assert!(saw_chunk);
 }
 
+/// `SIGNOFF-REPAIR.10.1.1`: a prompt is never read as a command-line option.
+///
+/// The prompt is untrusted participant content (`§16.6`). Passed as a bare
+/// argument, a prompt beginning with `-` lands in the provider CLI's option
+/// parser AFTER `--sandbox read-only`, the flag `ACTION-BOUNDARY` pins as what
+/// keeps model output from reaching an action. The stub replies with the argv
+/// it RECEIVED, so this asserts the argv itself: `--` immediately before the
+/// prompt, the prompt last and whole.
+#[tokio::test]
+async fn a_prompt_is_never_read_as_an_option() {
+    let adapter = adapter_with_stub("argv");
+    let prompt = "--argv-probe=--sandbox=danger-full-access";
+    let InvokeOutcome::Accepted(_, mut handle) =
+        adapter.invoke(&request_with(prompt), "op_argv").await
+    else {
+        panic!("expected an accepted dispatch");
+    };
+    let mut argv = None;
+    while let Some(event) = handle.next().await {
+        if let AttemptEvent::OutputChunk { chunk } = event {
+            argv = Some(chunk);
+        }
+    }
+    let argv = argv.expect("the stub replies with its argv");
+    let args: Vec<&str> = argv.split('|').collect();
+    assert_eq!(
+        args.last(),
+        Some(&prompt),
+        "the prompt is the last argument, whole: {args:?}"
+    );
+    assert_eq!(
+        args.get(args.len() - 2),
+        Some(&"--"),
+        "`--` ends the options before the prompt: {args:?}"
+    );
+    // Exactly ONE `--`: a second one earlier would turn every flag after it
+    // into positional text, the sandbox included, while the prompt stayed safe.
+    assert_eq!(
+        args.iter().filter(|a| **a == "--").count(),
+        1,
+        "`--` appears once, just before the prompt: {args:?}"
+    );
+    let sandbox = args
+        .iter()
+        .position(|a| *a == "--sandbox")
+        .expect("the sandbox flag");
+    assert_eq!(args[sandbox + 1], "read-only", "{args:?}");
+}
+
 /// A non-zero exit is a definitive, PROVEN failure — never a guess.
 #[tokio::test]
 async fn nonzero_exit_produces_failed_known_with_the_stderr_tail() {

@@ -86,6 +86,47 @@ async fn complete_path_streams_events_and_normalizes_usage() {
 }
 
 /// The run payload's `prompt` travels as the USER prompt (an argument), verbatim.
+/// `SIGNOFF-REPAIR.10.1.1`: a prompt is never read as a command-line option.
+/// Claude's `EXEC_ARGS` already ended with `--` (because `--tools` is variadic);
+/// this pins that, so the separator cannot go without a test failing, and it
+/// asserts the argv the stub RECEIVED rather than the source.
+#[tokio::test]
+async fn a_prompt_is_never_read_as_an_option() {
+    let adapter = adapter_with_stub("argv");
+    let prompt = "--argv-probe=--dangerously-skip-permissions";
+    let InvokeOutcome::Accepted(_, mut handle) =
+        adapter.invoke(&request_with(prompt), "op_argv").await
+    else {
+        panic!("expected an accepted dispatch");
+    };
+    let mut argv = None;
+    while let Some(event) = handle.next().await {
+        if let AttemptEvent::OutputChunk { chunk } = event {
+            argv = Some(chunk);
+        }
+    }
+    let argv = argv.expect("the stub replies with its argv");
+    let args: Vec<&str> = argv.split('|').collect();
+    assert_eq!(
+        args.last(),
+        Some(&prompt),
+        "the prompt is the last argument, whole: {args:?}"
+    );
+    assert_eq!(
+        args.get(args.len() - 2),
+        Some(&"--"),
+        "`--` ends the options before the prompt: {args:?}"
+    );
+    // Exactly ONE `--`: a second one earlier would turn every flag after it
+    // into positional text, the sandbox included, while the prompt stayed safe.
+    assert_eq!(
+        args.iter().filter(|a| **a == "--").count(),
+        1,
+        "`--` appears once, just before the prompt: {args:?}"
+    );
+    assert!(args.contains(&"--restricted"), "{args:?}");
+}
+
 #[tokio::test]
 async fn prompt_travels_as_user_content() {
     let adapter = adapter_with_stub("prompt");

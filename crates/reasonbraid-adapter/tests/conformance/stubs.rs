@@ -94,6 +94,15 @@ const CODEX_SCRIPT: &str = r#"#!/bin/sh
 # The adapter invokes: <binary> exec --json ... <prompt> — the prompt is the LAST arg.
 for last in "$@"; do :; done
 case "$last" in
+  *argv-probe*)
+    # `SIGNOFF-REPAIR.10.1.1`: reply with the argv this stub RECEIVED, joined by
+    # `|`, so a test can see where the prompt sits relative to `--`.
+    IFS='|'
+    echo '{"type":"thread.started","thread_id":"stub_argv"}'
+    echo '{"type":"item.completed","item":{"type":"agent_message","text":"'"$*"'"}}'
+    echo '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}'
+    exit 0
+    ;;
   *fail*)
     echo '{"type":"thread.started","thread_id":"stub_fail"}'
     echo "boom: simulated provider error" >&2
@@ -124,6 +133,14 @@ const CLAUDE_SCRIPT: &str = r#"#!/bin/sh
 # The adapter invokes: <binary> -p ... -- <prompt> — the prompt is the LAST arg.
 for last in "$@"; do :; done
 case "$last" in
+  *argv-probe*)
+    # `SIGNOFF-REPAIR.10.1.1`: reply with the argv this stub RECEIVED, joined by `|`.
+    IFS='|'
+    echo '{"type":"system","subtype":"init","session_id":"stub_argv","model":"stub"}'
+    echo '{"type":"assistant","session_id":"stub_argv","message":{"content":[{"type":"text","text":"'"$*"'"}]}}'
+    echo '{"type":"result","subtype":"success","is_error":false,"result":"argv","session_id":"stub_argv","usage":{"input_tokens":1,"output_tokens":1}}'
+    exit 0
+    ;;
   *fail*)
     echo '{"type":"system","subtype":"init","session_id":"stub_fail","model":"stub"}'
     echo "boom: simulated provider error" >&2

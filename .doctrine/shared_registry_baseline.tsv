@@ -31,6 +31,14 @@
 # boundary. The published figures move 26/17 → 25/16 — one movement, one cause,
 # and a defect population going DOWN because the defect was fixed.
 #
+# ⭐ `POST /v1/resolvers` took the same step at `SIGNOFF-REPAIR.7.1.3.1`: it
+# admitted on TENANT administration and wrote `resolver_capabilities`, a table
+# every tenant's resolution ranks, and is now the `resolver_register` site act.
+# Its row moves `pool tenant-admin`/`walk` → `site authority`/`module-reach`
+# (the insert now runs inside the act, across a module boundary). It was never
+# `identity only`, so the identity-alone figures do not move; the precise-walk
+# writer count drops by this one route, for this one reason.
+#
 # ⭐ TWO MORE PUBLISHED FIGURES COME OUT OF THESE ROWS since
 # `SIGNOFF-REPAIR.7.1.2.2.3`, and neither had a producer before it. `N tables`
 # is the DISTINCT site-global tables over the rows that are both `identity only`
@@ -72,7 +80,7 @@ POST /v1/nodes/poll	not-censused	node_ambiguous_attempts,node_certificates,node_
 POST /v1/nodes/rotate	not-censused	node_certificates	walk
 POST /v1/policies	site authority	policy_versions,site_audit	module-reach
 POST /v1/policies/resolve	identity only	policy_versions	module-reach
-POST /v1/resolvers	pool tenant-admin	resolver_capabilities	walk
+POST /v1/resolvers	site authority	resolver_capabilities	module-reach
 POST /v1/resources	identity only	resource_references	walk
 POST /v1/resources/{resource_id}/resolve	identity only	derivations,evidence_snapshots,quota_events,snapshot_objects	walk
 POST /v1/snapshots	identity only	evidence_snapshots,snapshot_objects	walk

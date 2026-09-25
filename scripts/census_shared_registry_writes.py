@@ -835,7 +835,9 @@ def self_test() -> int:
                  != []))
     # 🔴 THE ONE A COUNT CANNOT CATCH: same route, changed admission. One row in,
     #    one row out — the number is identical and the population is not.
-    changed = [r.replace("pool tenant-admin", "identity only") if "/v1/resolvers" in r else r
+    # The probe is the regression `.7.1.3.1` removed: the resolver row's site
+    # authority relabelled as the weakest admission.
+    changed = [r.replace("site authority", "identity only") if "/v1/resolvers" in r else r
                for r in recorded]
     app, van = baseline_drift(live_rows, changed)
     arms.append(("a CHANGED row is refused, though the count is unmoved",
@@ -889,8 +891,15 @@ def self_test() -> int:
     # still site-global and are meant to be, because DOC-0029 rules the harness
     # site-wide by design. What left this population is the routes' unguarded
     # ADMISSION, never the tables' reach.
-    arms.append(("the published 25/9 are derived from the rows, not stored",
-                 len(precise) == 25
+    # ⛔ 25/9 → 24/9 at `SIGNOFF-REPAIR.7.1.3.1`, one cause: `POST
+    # /v1/resolvers` admitted on TENANT administration and became the
+    # `resolver_register` site act, so it left the precise walk (the insert now
+    # runs inside the act, across a module boundary). It was never `identity
+    # only`, so the second number does not move. `resolver_capabilities` is
+    # still site-global and is meant to be: a resolver describes what this
+    # SERVER can acquire through.
+    arms.append(("the published 24/9 are derived from the rows, not stored",
+                 len(precise) == 24
                  and sum(1 for r in precise if r["admission"] == "identity only") == 9))
 
     # ── The OTHER two published figures (`SIGNOFF-REPAIR.7.1.2.2.3`) ─────────

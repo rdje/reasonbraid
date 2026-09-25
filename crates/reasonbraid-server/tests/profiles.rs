@@ -6664,7 +6664,14 @@ async fn the_resolver_registry_resolves_and_fails_explicitly() {
     assert_eq!(status, 200, "the human enrolls: {human}");
     let human_id = human["principal_id"].as_str().unwrap().to_string();
 
-    // The operator registers two resolvers.
+    // The operator registers two resolvers. Registering is a SITE act
+    // (`.7.1.3.1`), so the registrar holds `resolver_register`.
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::ResolverRegister],
+    )
+    .await;
     let register = |body: Value| {
         let client = client.clone();
         let base = base.clone();
@@ -6673,7 +6680,7 @@ async fn the_resolver_registry_resolves_and_fails_explicitly() {
             let response = client
                 .post(format!("{base}/v1/resolvers"))
                 .header(PRINCIPAL_HEADER, &human_id)
-                .json(&body)
+                .json(&json!({ "advertise": body, "reason": "a resolver registration control" }))
                 .send()
                 .await
                 .expect("register request");
@@ -7068,16 +7075,27 @@ async fn an_unexecutable_resolver_never_silences_another_tenants_resolution() {
     let tenant_a = principal("hijack-a").await;
     let tenant_b = principal("hijack-b").await;
 
+    // Since `.7.1.3.1` only a site operator may add a row; the scenario stands,
+    // because an operator can still register a resolver this server cannot run.
+    site_fixture::provision(
+        &pool,
+        &tenant_a,
+        &[reasonbraid_server::site_authority::Action::ResolverRegister],
+    )
+    .await;
     let response = client
         .post(format!("{base}/v1/resolvers"))
         .header(PRINCIPAL_HEADER, &tenant_a)
         .json(&json!({
-            "resolver_id": "hijack-https-fast",
-            "schemes": ["https"],
-            "egress_class": "listed",
-            "sandbox_level": "none",
-            "latency_range_ms": { "min": 1, "max": 1 },
-            "version": "0.1.0",
+            "advertise": {
+                "resolver_id": "hijack-https-fast",
+                "schemes": ["https"],
+                "egress_class": "listed",
+                "sandbox_level": "none",
+                "latency_range_ms": { "min": 1, "max": 1 },
+                "version": "0.1.0",
+            },
+            "reason": "an operator registers a resolver this server cannot run",
         }))
         .send()
         .await
@@ -7085,7 +7103,7 @@ async fn an_unexecutable_resolver_never_silences_another_tenants_resolution() {
     assert_eq!(
         response.status().as_u16(),
         200,
-        "tenant A may add a resolver today"
+        "the operator registers a row this server cannot run"
     );
 
     let submitted: Value = client
@@ -7139,6 +7157,118 @@ async fn an_unexecutable_resolver_never_silences_another_tenants_resolution() {
     );
 }
 
+/// `SIGNOFF-REPAIR.7.1.3.1` — a tenant ADMINISTRATOR registers no resolver.
+/// `resolver_capabilities` is site-global and every tenant's resolution ranks
+/// it, so registering one is a site act. Both body shapes are tried, the old
+/// bare advertisement and the site act's `{advertise, reason}`, and neither may
+/// leave a row: before this leaf the bare one was admitted on tenant
+/// administration alone.
+#[tokio::test]
+async fn a_tenant_administrator_registers_no_resolver() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let forget = || {
+        sqlx::query("DELETE FROM resolver_capabilities WHERE resolver_id = 'tenant-admin-https'")
+            .execute(&pool)
+    };
+    forget().await.expect("a clean registry");
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "resolver-tenant-admin" }),
+    )
+    .await;
+    assert_eq!(status, 200, "enrolls: {human}");
+    let admin = human["principal_id"].as_str().unwrap().to_string();
+    let advertise = json!({
+        "resolver_id": "tenant-admin-https",
+        "schemes": ["https"],
+        "egress_class": "listed",
+        "sandbox_level": "none",
+        "latency_range_ms": { "min": 5000, "max": 6000 },
+        "version": "0.1.0",
+    });
+    let post = |body: Value| {
+        let (client, base, admin) = (client.clone(), base.clone(), admin.clone());
+        async move {
+            client
+                .post(format!("{base}/v1/resolvers"))
+                .header(PRINCIPAL_HEADER, &admin)
+                .json(&body)
+                .send()
+                .await
+                .expect("register request")
+                .status()
+                .as_u16()
+        }
+    };
+    let bare = post(advertise.clone()).await;
+    let wrapped = post(json!({ "advertise": advertise, "reason": "a tenant tries" })).await;
+    let registered = || {
+        sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS (SELECT 1 FROM resolver_capabilities WHERE resolver_id = 'tenant-admin-https')",
+        )
+        .fetch_one(&pool)
+    };
+    let by_tenant = registered().await.expect("the registry");
+    if by_tenant {
+        forget().await.expect("clean up");
+    }
+    assert!(
+        !by_tenant,
+        "a tenant administrator added a site-global resolver (bare body: {bare}, wrapped: {wrapped})"
+    );
+    // Every site route answers a body it cannot read `400` (`site_request`).
+    assert_eq!(
+        bare, 400,
+        "the bare advertisement is no longer this verb's body"
+    );
+    assert_eq!(
+        wrapped, 403,
+        "tenant administration is not the site authority"
+    );
+
+    // The control: the same principal, once it holds `resolver_register`,
+    // registers, and the act is audited. Without this leg the refusal above
+    // could be a route that refuses everyone.
+    site_fixture::provision(
+        &pool,
+        &admin,
+        &[reasonbraid_server::site_authority::Action::ResolverRegister],
+    )
+    .await;
+    let response = client
+        .post(format!("{base}/v1/resolvers"))
+        .header(PRINCIPAL_HEADER, &admin)
+        .json(&json!({ "advertise": advertise, "reason": "the site operator registers" }))
+        .send()
+        .await
+        .expect("register request");
+    let status = response.status().as_u16();
+    let audit = response
+        .headers()
+        .get("x-reasonbraid-site-audit")
+        .map(|value| value.to_str().expect("an ascii audit id").to_string());
+    let by_operator = registered().await.expect("the registry");
+    forget().await.expect("clean up");
+    assert_eq!(status, 200, "the site operator registers");
+    assert!(by_operator, "the operator's registration wrote the row");
+    let audit = audit.expect("the act names its audit record");
+    let (action, outcome): (String, String) =
+        sqlx::query_as("SELECT action, outcome FROM public.site_audit WHERE audit_id = $1")
+            .bind(&audit)
+            .fetch_one(&pool)
+            .await
+            .expect("the audit record");
+    assert_eq!(
+        (action.as_str(), outcome.as_str()),
+        ("resolver_register", "applied")
+    );
+}
+
 #[tokio::test]
 async fn the_resolver_verb_refuses_to_replace_an_existing_advertise() {
     let _guard = guard().await;
@@ -7155,6 +7285,12 @@ async fn the_resolver_verb_refuses_to_replace_an_existing_advertise() {
     .await;
     assert_eq!(status, 200, "the human enrolls: {human}");
     let human_id = human["principal_id"].as_str().unwrap().to_string();
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::ResolverRegister],
+    )
+    .await;
 
     let register = |body: Value| {
         let client = client.clone();
@@ -7164,7 +7300,7 @@ async fn the_resolver_verb_refuses_to_replace_an_existing_advertise() {
             let response = client
                 .post(format!("{base}/v1/resolvers"))
                 .header(PRINCIPAL_HEADER, &human_id)
-                .json(&body)
+                .json(&json!({ "advertise": body, "reason": "a resolver registration control" }))
                 .send()
                 .await
                 .expect("register request");
@@ -7190,18 +7326,35 @@ async fn the_resolver_verb_refuses_to_replace_an_existing_advertise() {
     assert_eq!(status, 200, "a new resolver registers: {first}");
 
     let (status, refused) = register(advertise(json!(["text/html"]), "deny")).await;
+    // Since `.7.1.3.1` registering is a site act, so the refusal is the act's
+    // own DOMAIN refusal (`400`, the caller held the grant), audited `denied`,
+    // and the audit record names the row the caller tried to replace.
     assert_eq!(
-        status, 409,
+        status, 400,
         "the narrowing re-registration is REFUSED, not silently ignored: {refused}",
     );
-    assert_eq!(refused["code"], json!("invalid_transition"));
     assert!(
         refused["message"]
             .as_str()
             .unwrap_or_default()
-            .contains("rsv-replace-probe"),
-        "the refusal names the row so the caller knows nothing happened: {refused}",
+            .contains("does not replace an existing advertise"),
+        "the refusal says nothing happened: {refused}",
     );
+    let audit_id = refused["audit_id"]
+        .as_str()
+        .expect("the refusal is audited");
+    let (target, outcome): (Value, String) =
+        sqlx::query_as("SELECT target, outcome FROM public.site_audit WHERE audit_id = $1")
+            .bind(audit_id)
+            .fetch_one(&pool)
+            .await
+            .expect("the refusal's audit record");
+    assert_eq!(
+        target["resolver_id"],
+        json!("rsv-replace-probe"),
+        "the audit names the row"
+    );
+    assert_eq!(outcome, "denied", "a refused act did not take effect");
 
     // And the row is untouched — a refusal that half-applied would be worse
     // than the no-op it replaces.
@@ -7369,6 +7522,12 @@ async fn an_egress_bound_excludes_a_pack_that_declares_a_wider_one() {
     assert_eq!(status, 200, "the human enrolls: {human}");
     let human_id = human["principal_id"].as_str().unwrap().to_string();
 
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::ResolverRegister],
+    )
+    .await;
     // Two resolvers on one scheme, differing ONLY in the egress they declare.
     // That is the discriminator: anything else that changed the outcome would
     // be a different finding.
@@ -7377,12 +7536,15 @@ async fn an_egress_bound_excludes_a_pack_that_declares_a_wider_one() {
             .post(format!("{base}/v1/resolvers"))
             .header(PRINCIPAL_HEADER, &human_id)
             .json(&json!({
-                "resolver_id": id,
-                "schemes": ["egress-probe"],
-                "egress_class": egress,
-                "sandbox_level": "none",
-                "latency_range_ms": { "min": 100, "max": 200 },
-                "version": "0.1.0",
+                "advertise": {
+                    "resolver_id": id,
+                    "schemes": ["egress-probe"],
+                    "egress_class": egress,
+                    "sandbox_level": "none",
+                    "latency_range_ms": { "min": 100, "max": 200 },
+                    "version": "0.1.0",
+                },
+                "reason": "an egress-direction control",
             }))
             .send()
             .await

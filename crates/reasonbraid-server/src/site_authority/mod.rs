@@ -10,6 +10,7 @@ pub mod evaluation;
 mod operator;
 mod policies;
 mod registry;
+pub mod resolvers;
 mod retention;
 mod workflows;
 
@@ -193,6 +194,14 @@ pub enum Action {
     /// evaluates gates continuously. A party that measures against a standard
     /// must not be able to move the standard.
     GateEvaluate,
+    /// Registering a resolver (`SIGNOFF-REPAIR.7.1.3.1`). `resolver_capabilities`
+    /// has no tenant column and every tenant's resolution ranks every row, so a
+    /// registration shapes what the whole site acquires through. Since
+    /// `.7.1.3` a row this server cannot execute is skipped and named, so a
+    /// tenant's own row could never DO anything; what it could do was confuse
+    /// every other tenant's answer. The same shape [`Self::WorkflowRegister`]
+    /// took for the other site-wide registry.
+    ResolverRegister,
 }
 
 impl Action {
@@ -210,6 +219,7 @@ impl Action {
             Self::PolicyRegister => "policy_register",
             Self::EvaluationRecord => "evaluation_record",
             Self::GateEvaluate => "gate_evaluate",
+            Self::ResolverRegister => "resolver_register",
         }
     }
 }

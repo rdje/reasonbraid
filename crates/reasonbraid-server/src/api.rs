@@ -2692,46 +2692,32 @@ async fn list_ambiguous_attempts(
 async fn register_resolver(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(advertise): Json<crate::resolvers::ResolverAdvertise>,
-) -> Result<Json<Value>, ControlApiError> {
+    request: Result<Json<RegisterResolverRequest>, axum::extract::rejection::JsonRejection>,
+) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
-    let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
-        return Err(ControlApiError::unauthorized(
-            "an unenrolled principal registers no resolver",
-        ));
-    };
-    authorize_tenant_admin(
-        &state.pool,
-        &principal,
-        tenant.parse().map_err(|_| ControlApiError::internal())?,
-    )
-    .await?;
-    if let Some(error) = advertise.isolation_error() {
+    let req = site_request(request)?;
+    // Before the gate, as every site route bounds its input on extraction: the
+    // ADR-018 vocabulary is a published constant, so naming the rule that
+    // failed is an oracle over nothing.
+    if let Some(error) = req.advertise.isolation_error() {
         return Err(ControlApiError::invalid_command(error));
     }
-    // The refusal is BEFORE the write and names the row, so a caller who meant
-    // to narrow an advertisement learns that nothing happened. Checked rather
-    // than inferred from the upsert's result: `ON CONFLICT DO UPDATE` reports
-    // the same success for an insert and a replace, which is how the silent
-    // no-op survived.
-    let exists: bool = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM resolver_capabilities WHERE resolver_id = $1)",
+    site_receipt_response(
+        site::resolvers::register_resolver(&state.pool, &principal, &req.advertise, &req.reason)
+            .await,
+        "a current site grant for this action and its actual boundary are required",
     )
-    .bind(&advertise.resolver_id)
-    .fetch_one(&state.pool)
-    .await?;
-    if exists {
-        return Err(ControlApiError::invalid_transition(format!(
-            "the resolver `{}` is already registered; this verb registers a new \
-             resolver and does not replace an existing advertise",
-            advertise.resolver_id
-        )));
-    }
-    crate::resolvers::register(&state.pool, &advertise).await?;
-    Ok(Json(json!({
-        "resolver_id": advertise.resolver_id,
-        "registered": true,
-    })))
+}
+
+/// `POST /v1/resolvers`'s body (`SIGNOFF-REPAIR.7.1.3.1`): the advertisement
+/// and the site act's reason. The advertisement refuses unknown fields, so the
+/// reason cannot ride inside it; it is NESTED rather than flattened, because
+/// serde does not combine `flatten` with `deny_unknown_fields`.
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RegisterResolverRequest {
+    advertise: crate::resolvers::ResolverAdvertise,
+    reason: site::Reason,
 }
 
 /// The resolution request: the caller's required ADR-018 classes.

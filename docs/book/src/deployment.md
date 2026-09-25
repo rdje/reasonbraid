@@ -1004,14 +1004,15 @@ discarded the store's answer and set the receipt regardless.
 The ranked resolver that acts is the first one this server can execute
 (`SIGNOFF-REPAIR.7.1.3`). The built-in packs always can, and the gated packs
 (R3, R5, RX) can while their gate is open. Any other row cannot, including one a
-tenant administrator registered through `POST /v1/resolvers`. Such a row may
+site operator registered through `POST /v1/resolvers`. Such a row may
 still rank; it is skipped, named in `unexecutable`, and the next executable
 resolver acquires. Before this, one foreign row advertised as fast ranked first
 and made every tenant's resolution an empty success, with neither an
 acquisition nor an error, because the registry is site-global. When nothing
 ranked can act, the answer is the named
-`acquisition_error.kind: no_executable_resolver`. Who may add a row at all is
-`SIGNOFF-REPAIR.7.1.3.1`.
+`acquisition_error.kind: no_executable_resolver`. Adding a row at all takes the
+`resolver_register` site capability (`SIGNOFF-REPAIR.7.1.3.1`); a tenant
+administrator can no longer add one.
 
 #### Every refused resolution is recorded, and an operator can list them
 
@@ -2511,8 +2512,13 @@ outlive the word that earned it.
 
 ### Registering a resolver, and why the verb does not replace one
 
-`POST /v1/resolvers` registers a resolver's advertise. It **refuses an
-already-registered `resolver_id`**, by name, with `invalid_transition` (409).
+`POST /v1/resolvers` registers a resolver's advertise. It is a site act
+(`resolver_register`, see [site authority](site-authority.md#the-resolver-registry-the-same-template-again)),
+and its body is `{"advertise": {...}, "reason": "..."}`. It **refuses an
+already-registered `resolver_id`**: `400` with an `audit_id`, whose audit record
+names the resolver. Until `SIGNOFF-REPAIR.7.1.3.1` that refusal was `409
+invalid_transition` naming the id in the message, answered before any authority
+was checked.
 
 It used to describe itself as *registers (or replaces)*, over an upsert that
 wrote six of the eighteen columns it inserts. The other twelve — `media_types`,
@@ -2525,18 +2531,22 @@ available answers**, because the operator has no way to find out.
 
 Completing the replace was the rejected option, and the reason is worth stating
 because it is not about this verb. `resolver_capabilities` has no tenant column
-and a single-column primary key, while the route admits on the caller's own
-`tenant_admin` grant — so any tenant's administrator can address any row,
-including the built-in packs'. Binding that authority is still open work on the
-[Blockers](blockers.md) page's `.7.1` line. Widening the upsert would have
-handed that unbound principal eleven more columns on a site-global row,
-`media_types` and every advertised policy among them.
+and a single-column primary key, while the route then admitted on the caller's
+own `tenant_admin` grant, so any tenant's administrator could address any row,
+including the built-in packs'. Widening the upsert would have handed that unbound
+principal eleven more columns on a site-global row, `media_types` and every
+advertised policy among them. The table below is the decision as it was taken,
+when the route still admitted tenant administrators:
 
 | answer | fixes the silent no-op | site-global columns a tenant admin can rewrite |
 | --- | --- | --- |
 | leave it | no | 6 |
 | complete the replace at the route | yes | **17** |
 | **refuse at the route** | yes | **0 on an existing row** |
+
+`SIGNOFF-REPAIR.7.1.3.1` then bound the authority itself: registering is the
+`resolver_register` site act, so a tenant administrator can write no row at all,
+new or existing.
 
 To change a registered advertise, remove the row and register it again — a
 deliberate two-step rather than an accidental one.

@@ -115,6 +115,49 @@ pub struct AcquisitionError {
     pub message: String,
 }
 
+/// Register a NEW resolver on the caller's connection, insert-only
+/// (`SIGNOFF-REPAIR.7.1.3.1`): `false` when the id already exists, so the site
+/// act refuses it by name and a concurrent registration of the same new id can
+/// never replace the one that won. Replacing is [`register`]'s, the product's
+/// boot-time verb, and only its.
+pub async fn insert_new(
+    conn: &mut sqlx::PgConnection,
+    advertise: &ResolverAdvertise,
+) -> Result<bool, sqlx::Error> {
+    let inserted = sqlx::query(
+        "INSERT INTO resolver_capabilities \
+         (resolver_id, schemes, locator_patterns, media_types, max_bytes, abilities, \
+          authentication_classes, egress_class, sandbox_level, redirect_policy, \
+          archive_policy, subresource_policy, javascript_policy, snapshot_formats, \
+          derivation_formats, latency_range_ms, version, security_evidence) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) \
+         ON CONFLICT (resolver_id) DO NOTHING",
+    )
+    .bind(&advertise.resolver_id)
+    .bind(serde_json::to_value(&advertise.schemes).expect("schemes serialize"))
+    .bind(serde_json::to_value(&advertise.locator_patterns).expect("patterns serialize"))
+    .bind(serde_json::to_value(&advertise.media_types).expect("media types serialize"))
+    .bind(advertise.max_bytes)
+    .bind(serde_json::to_value(&advertise.abilities).expect("abilities serialize"))
+    .bind(serde_json::to_value(&advertise.authentication_classes).expect("auth classes serialize"))
+    .bind(&advertise.egress_class)
+    .bind(&advertise.sandbox_level)
+    .bind(&advertise.redirect_policy)
+    .bind(&advertise.archive_policy)
+    .bind(&advertise.subresource_policy)
+    .bind(&advertise.javascript_policy)
+    .bind(serde_json::to_value(&advertise.snapshot_formats).expect("snapshot formats serialize"))
+    .bind(
+        serde_json::to_value(&advertise.derivation_formats).expect("derivation formats serialize"),
+    )
+    .bind(&advertise.latency_range_ms)
+    .bind(&advertise.version)
+    .bind(&advertise.security_evidence)
+    .execute(&mut *conn)
+    .await?;
+    Ok(inserted.rows_affected() == 1)
+}
+
 /// The resolution outcome: the ranked eligible resolvers, or the explicit
 /// unresolvable-now (the reference stays submitted — never fabricated).
 /// When the built-in R0 resolver ranks FIRST, the resolution path executes

@@ -45,13 +45,17 @@ and the development HTTP principal header remains a development assumption.
 | `evaluation_record` | Set the evaluation standard: register a corpus, record a run, create a trial, record its results, record a calibration, record a gate. |
 | `gate_evaluate` | Measure against that standard: run a gate. Separate from `evaluation_record` because a party that measures must not be able to move the standard. |
 | `charter_register` | Register a [governance charter](governance-charter.md) version for a tenant. |
+| `resolver_register` | Register a new resolver in the site-wide resolver registry that every tenant's acquisition ranks. |
 
 Every action in this table can be held by a boundary and a grant. That was not
 always true. `charter_register` was added to the code without the migration that
 lets the database store it, so no grant could carry it and the charter verb
 refused every caller until `SIGNOFF-REPAIR.9.1.1` (migration `0109`). A live
 control now lists the actions from the code itself and issues a boundary for
-each one, so a new action that the database cannot store fails a test.
+each one, so a new action that the database cannot store fails a test. The next
+action to arrive, `resolver_register` (`SIGNOFF-REPAIR.7.1.3.1`, migration
+`0110`), came with its migration in the same change, and that control passed on
+it.
 
 For example, Alice may administer tenant A but have no site grant. Her tenant
 grant does not authorize any of these service operations. A deployment operator
@@ -95,6 +99,7 @@ operator CLI below to issue the grant. There is no HTTP site-issuance endpoint.
 | `POST /v1/admin/regions/{from}/unpair/{to}` | `region_unpair` | `{"reason":"retire route"}` |
 | `POST /v1/workflow-profiles` | `workflow_register` | `{"profile_id":"reviewed","steps":["solicit","critique","decide"],"reason":"the review lane needs a critique step"}` |
 | `POST /v1/policies` | `policy_register` | The §15.1 policy document, plus `"reason":"the organization baseline is amended"` |
+| `POST /v1/resolvers` | `resolver_register` | `{"advertise":{"resolver_id":"r1-git-mirror","schemes":["git"],"egress_class":"listed","sandbox_level":"process","version":"0.1.0"},"reason":"the mirror serves the air-gapped site"}` |
 
 The JSON schemas reject unknown fields. Use `Content-Type: application/json` for
 mutations. Path names are percent-encoded URL components; the decoded names obey
@@ -588,6 +593,38 @@ tenant column whose write was admitted on enrolment alone. The decision record
 that settled the policy library required it and the workflow registry to be
 decided consistently or for the difference to be stated; they are consistent, and
 this paragraph is the record of it.
+
+### The resolver registry: the same template again
+
+`POST /v1/resolvers` used to admit on the caller's own **tenant administrator**
+grant and write a row into `resolver_capabilities`, which has no tenant column
+and which every tenant's resolution ranks. Before `SIGNOFF-REPAIR.7.1.3`, one
+such row advertised as fast outranked the built-in packs and made every
+tenant's acquisition an empty success. Since that repair a row this server
+cannot execute is skipped and named, so a tenant's row could no longer acquire
+anything; what it could still do was appear in every other tenant's resolution
+answer. The failing control was a tenant administrator registering a row, answered
+`200`, before anything changed.
+
+A resolver describes what this **server** can acquire through, which is site
+configuration, so registering one now takes the `resolver_register` site
+capability (`SIGNOFF-REPAIR.7.1.3.1`). The body nests the advertisement beside
+the reason, `{"advertise": {...}, "reason": "..."}`, because the advertisement
+refuses unknown fields and so cannot carry the reason itself. A tenant
+administrator without the capability receives `403`; the old bare advertisement
+is a malformed site request (`400`).
+
+**An id that already exists is refused behind the gate, as the policy library
+refuses a taken coordinate.** The answer is `400` with an `audit_id`, and the
+audit record names the resolver the caller tried to replace. The insert inside
+the act is insert-only, so two concurrent registrations of one new id cannot
+replace each other either. The ADR-018 vocabulary check (a sandbox level on the
+ladder, an egress class in the vocabulary) still answers `400` to anyone before
+the gate, because it asks only about the submitted document, against a constant
+this book publishes.
+
+Reading the resolution answer did not change: every tenant still sees which
+resolvers rank, because it has to know which one acquired its evidence.
 
 ### The rule table and the deterministic resolution
 

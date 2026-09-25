@@ -1911,7 +1911,7 @@ never took:
 
 | step | what it checks | what it writes |
 | --- | --- | --- |
-| `backup.sh` | `pg_dump` succeeded; it refuses to overwrite an existing dump | `<dump>.backup.json`: size, SHA-256, time taken, database name |
+| `backup.sh` | `pg_dump` succeeded, into a temporary name moved into place only then; it refuses to overwrite an existing dump, including one that appears while it is dumping | `<dump>.backup.json`: size, SHA-256, time taken, database name |
 | `restore.sh` | **before restoring**, the dump matches its receipt byte for byte (a truncated or altered dump is refused), the target is not the live database, and the target is **empty**; **after**, the restored database carries the applied migrations | `<dump>.restore.json`: time restored, target database, migrations present |
 
 `BACKUP_DIR` chooses the directory (default `target/backups/`). ⛔ Neither a
@@ -1930,10 +1930,20 @@ data is not a restore test. Create the target with `createdb` first, as above.
 The comparison with `DATABASE_URL` is literal, so `localhost` and `127.0.0.1`
 count as different hosts; the emptiness check is what catches that case.
 
-The restore script also keeps the target's URL off every command line, where
-any local user could read the password in the process list: it passes the
-connection to `pg_restore` and `psql` through libpq's own environment
-variables, after clearing any that were already set.
+Both scripts keep the database URL off every command line, where any local
+user could read the password in the process list: they pass the connection to
+`pg_dump`, `pg_restore` and `psql` through libpq's own environment variables,
+after clearing any that were already set. A URL that libpq cannot carry
+faithfully this way (several hosts, a parameter it has no variable for) is
+refused rather than partly applied.
+
+⛔ **A backup is owner-only and never half-written** (`SIGNOFF-REPAIR.11.3.1`).
+The dump is the whole control-plane database in plaintext, so `backup.sh`
+creates it, its receipt, and a backup directory it makes, readable by its
+owner only. It dumps to a temporary name beside the destination and moves the
+file into place only after `pg_dump` succeeds, so an interrupted dump leaves no
+file that looks like a backup. An existing directory's own permissions are left
+as they are.
 
 Start the server with the same directory, `rb-server --backup-dir <dir>`, and a
 tenant administrator can read the status:

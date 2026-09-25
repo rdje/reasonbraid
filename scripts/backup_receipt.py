@@ -8,7 +8,7 @@ the dump. `rb-server --backup-dir` reads the receipts, re-checks every dump's
 size, and reports §18.5's backup/restore status
 (`docs/decisions/2026-09-22_an-incident-is-an-open-incident-review-thread-and-a-backup-is-reported-by-its-receipts.md`).
 
-    backup_receipt.py write-backup  DUMP DATABASE_URL
+    backup_receipt.py write-backup  DUMP URL_VARIABLE
     backup_receipt.py check         DUMP
     backup_receipt.py write-restore DUMP URL_VARIABLE MIGRATIONS
     backup_receipt.py redact        URL
@@ -254,7 +254,7 @@ def main(argv: list[str]) -> int:
     command, args = (argv[1], argv[2:]) if len(argv) > 1 else ("", [])
     try:
         if command == "write-backup" and len(args) == 2:
-            body = write_backup(Path(args[0]), args[1])
+            body = write_backup(Path(args[0]), url_from(args[1]))
             print(f"backup: receipt {body['dump']}{BACKUP_SUFFIX} "
                   f"({body['bytes']} bytes, sha256 {body['sha256'][:12]}…)")
         elif command == "check" and len(args) == 1:

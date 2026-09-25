@@ -126,7 +126,7 @@ class ConnectionTests(unittest.TestCase):
         import re
         root = Path(__file__).resolve().parents[2]
         url_variable = re.compile(r"\$\{?(RESTORE_DATABASE_URL|DATABASE_URL)\b")
-        for script in ["scripts/restore.sh"]:
+        for script in ["scripts/restore.sh", "scripts/backup.sh"]:
             for number, line in enumerate((root / script).read_text().splitlines(), 1):
                 code = line.split("#", 1)[0] if not line.lstrip().startswith(":") else ""
                 self.assertIsNone(url_variable.search(code), f"{script}:{number}: {line.strip()}")

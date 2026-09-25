@@ -4,3 +4,4 @@
 # describes what is there, not what is forgiven in general.
 crates/reasonbraid-server/src/authority/transaction.rs	subsec_nanos() measures a Duration's sub-second remainder to reject sub-millisecond limits; it names nothing and reaches no path
 scripts/tests/test_ci_env.py	the probe program this test BUILDS AS A STRING calls tempfile with no dir= on purpose: test_exec_uses_relocated_root_and_local_temporary_file exists to observe where the launcher makes a child's temporary file land, and pinning dir= would assert the answer instead of measuring it
+scripts/backup.sh	the partial dump is created INSIDE the backup destination ($DEST: BACKUP_DIR, default $ROOT/target/backups), beside the final name, because the no-replace hard link that moves it into place must stay on one filesystem (SIGNOFF-REPAIR.11.3.1); the template carries its directory, so TMPDIR is not consulted, and BACKUP_DIR is the operator's declared destination for the dump itself

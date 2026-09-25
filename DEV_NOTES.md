@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — A backup is never half-written and never readable by others (`SIGNOFF-REPAIR.11.3.1`)
+
+`REASONBRAID-REPAIR-0533`.
+
+- 🔴 **Root cause:** `pg_dump --file "$FILE"` wrote the final name directly, under the caller's umask, with the URL as its connection argument.
+- ✅ **Fix:** `umask 077`; dump to a `mktemp` name, trap-removed on failure, `ln` into place (refuses an existing name); libpq environment via `pg-env`; `write-backup` by variable name.
+- ⭐ Controls use a stand-in `pg_dump` on PATH that records argv and environment; the permission test was blind until the child got a permissive umask. 7 of 7 mutants caught.
+
 ## 2026-09-26 — The restore test can no longer overwrite the live database (`SIGNOFF-REPAIR.11.3.2`)
 
 `REASONBRAID-REPAIR-0532`.

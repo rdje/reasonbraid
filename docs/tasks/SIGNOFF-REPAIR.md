@@ -11568,6 +11568,21 @@ done
 - promotion: declined — the procedure is this leaf plus the record file, and the instrument's own header states its refusals.
 - Commit: `REASONBRAID-REPAIR-0502 (leaf SIGNOFF-REPAIR.11.4.3.1.10): the cleanup gets a dated record, and 210 retained test clusters are retired through the guard`.
 
+###### SIGNOFF-REPAIR.11.4.3.1.11 — The debug build tree is retired again, on the director's word
+
+- Opened: `pending` 2026-09-25 by the director's answer to `.11.4.3.1.10`'s surfaced question: *"If you can delete it please do. I mean if it is not useful anymore and can be regenerated easily."* `target/debug` measured **173,541,696 KiB** that morning, back to the scale DOC-0060 retired on 2026-09-19.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): not a finding. This is maintenance the director authorized explicitly, which is the confirmation `.11.4.3.1.10` held the act for.
+- Owns: removing `target/debug` and nothing else, in `.11.4.3.1.8`'s shape (DOC-0060). ⛔ `cargo clean` stays prohibited: it would take `target/pg-tests`, `target/ci-browser` and `target/browser-lifetime-controls`, which are cited evidence.
+- Acceptance: no process runs from `target/debug` and no cargo or rustc is alive at the moment of removal; no tracked file cites a path under `target/debug` as evidence; size, file count and `df` are recorded before and after; the three evidence directories keep their byte and file counts; `target/debug` is absent afterwards. The rebuild cost (a cold build) is accepted by the director and is not claimed as measured here.
+- Status: `done`; DOC-0178.
+- [x] **BEFORE** (`target/r9_1_2/debug_before.txt`): `target/debug` **174,599,784 KiB / 2,916,612 files**; `target/pg-tests` 346,680 KiB / 12,877 files; `target/ci-browser` 554,756 KiB / 403 files; `target/browser-lifetime-controls` 588 KiB / 156 files; volume used 761,112,676 KiB.
+- [x] **SAFETY, checked before the act** — `pgrep -x cargo` and `pgrep -x rustc` returned nothing, and the removal command re-checked both immediately before `rm`; `lsof +D target/debug` listed no open file. `git grep -nE "target/debug/"` over the tracked tree finds only build OUTPUTS: binaries the book tells a reader to run after building (`rb`, `rb-site`, `rb-bench`, `reasonbraid-browse`), CI's post-build `test -x` checks, and one source comment. Nothing tracked cites stored evidence there, as DOC-0060 found. ⚠️ The same-volume line in the removal command printed nothing, because this host's `stat -f` reads file-system statistics rather than a device id. It did not gate the removal; the same-volume fact rests on this session's earlier filesystem-id check (`100001c0000001a` for `target/pg-tests` and the root, `.11.4.3.1.10`).
+- [x] **THE ACT** — `rm -rf -- target/debug`, rc=0, 9m 59s.
+- [x] **AFTER** (`target/r9_1_2/debug_after.txt`): `find target -maxdepth 1 -name 'debug*'` → 0. The three evidence directories report exactly their before counts. Volume used 579,401,972 KiB: `df` shows **181,710,704 KiB (≈173 GiB) freed**, more than the tree's own 174,599,784 KiB logical, so other activity on the volume moved in the same interval. Per `docs/CLAIM_VERIFICATION.md`, the `du` figure is the manifest and the `df` figure the recovery, and neither is claimed as exactly this deletion's physical effect.
+- [x] **LOCKSTEP** — `docs/ARTIFACT_CLEANUP.md` (the latest cleanup, overwritten), `MEMORY.md`, `CHANGELOG.md`, `DEV_NOTES.md`, `LIVE_STATUS.md` and this tree, in this commit. No product, test or script file changed.
+- promotion: declined — the shape is `.11.4.3.1.8`'s (DOC-0060) and this leaf is its second instance.
+- Commit: `REASONBRAID-DOC-0178`.
+
 ###### SIGNOFF-REPAIR.11.4.3.1.8 — Decide the disposition of the debug build tree
 
 - Opened: `pending`; raised by `.11.4.3.1.7`'s measurement, which measured where the bytes are instead of assuming it.

@@ -9,4 +9,4 @@ How a cleanup runs, and what it must never touch: `SIGNOFF-REPAIR.11.4.3.1.10`. 
 clusters are retired only through `scripts/census_pg_test_clusters.py --retire --confirm`, never
 by hand, and `cargo clean` is prohibited because it would take cited evidence under `target/`.
 
-Last cleanup: 2026-09-25 — retired 210 retained PostgreSQL test clusters through the guarded instrument (11,249,710,924 bytes; `df` shows ≈10.7 GiB freed); kept 259 clusters (256 reduced to receipts, 3 cited), the 3 cited stray clusters, 527 uncited top-level logs (5.6 MB) and the 165 GiB `target/debug` build cache.
+Last cleanup: 2026-09-25 — on the director's instruction, removed the `target/debug` build cache (174,599,784 KiB, 2,916,612 files; the next build is cold); earlier the same day, retired 210 retained PostgreSQL test clusters through the guarded instrument (11,249,710,924 bytes). Kept: the cited evidence under `target/`, the 3 cited stray clusters and 527 uncited top-level logs (5.6 MB).

@@ -153,6 +153,30 @@ curl -s -X POST localhost:4310/v1/evaluations/trials \
 The response carries the computed `assignment`, a `case_id → arm` map. A cohort's
 `kind` is `case` (the case ids it covers) or `subject` (the subject ids).
 
+**Each arm and each case id is listed once** (`SIGNOFF-REPAIR.8.2.6`). The draw
+picks a position in `arms`, so a repeated arm is a second share of the cases:
+`"arms": ["a", "a", "b"]` used to be accepted and give `a` two thirds of them. A
+repeated case id used to be stored twice while the assignment kept one entry.
+Both are refused before anything is looked up, with `400 invalid_command`:
+
+```json
+{
+  "code": "invalid_command",
+  "message": "the arm `a` is listed twice; each listing is one share of the seeded assignment, so a repeat would bias it"
+}
+```
+
+The case-id form reads *"the case id `c1` is listed twice; a case is assigned one
+arm"*.
+
+⚠️ **Until the same repair, most of this harness's refusals were worded as a
+digest error.** They shared the error variant for a malformed digest, whose
+message wraps its text, so a trial with no arms was refused with *"digest `the
+arms are empty` is not a 64-hex string"*, and a gate measurement that was not a
+number read the same way. Each refusal now says only what is wrong; the two real
+digest checks (a corpus's `cases_digest` and `prompts_digest`) keep the digest
+sentence.
+
 `POST /v1/evaluations/trials/{trial_id}/results` appends one per-arm results row.
 It is **append-only**: the record's identity is its content, and nothing rewrites
 an earlier row.

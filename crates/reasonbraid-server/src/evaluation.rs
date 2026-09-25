@@ -87,6 +87,12 @@ pub struct StoredRun {
 pub enum EvaluationError {
     /// The digest is not a 64-hex string (the harness's shape).
     MalformedDigest(String),
+    /// A request the harness's own rules refuse; the message is the whole
+    /// account (`SIGNOFF-REPAIR.8.2.6`). ⛔ These refusals used to ride
+    /// `MalformedDigest`, whose message wraps its text as a digest sentence, so
+    /// a caller whose arms were empty read *"digest `the arms are empty` is not
+    /// a 64-hex string"*.
+    Invalid(String),
     /// The (corpus, version) or the run id already exists — never an
     /// overwrite.
     Duplicate(String),
@@ -137,6 +143,7 @@ impl std::fmt::Display for EvaluationError {
             EvaluationError::MalformedDigest(d) => {
                 write!(f, "digest `{d}` is not a 64-hex string")
             }
+            EvaluationError::Invalid(message) => f.write_str(message),
             EvaluationError::Duplicate(what) => {
                 write!(
                     f,
@@ -444,16 +451,36 @@ pub struct StoredTrial {
 
 impl EvaluationError {
     fn empty_arms() -> Self {
-        EvaluationError::MalformedDigest("the arms are empty".to_string())
+        EvaluationError::Invalid("the arms are empty".to_string())
     }
     fn empty_cases() -> Self {
-        EvaluationError::MalformedDigest("the case ids are empty".to_string())
+        EvaluationError::Invalid("the case ids are empty".to_string())
     }
     fn bad_cohort(label: &str) -> Self {
-        EvaluationError::MalformedDigest(format!(
+        EvaluationError::Invalid(format!(
             "cohort `{label}` has an unknown kind (expected `case` or `subject`)"
         ))
     }
+    fn repeated_arm(arm: &str) -> Self {
+        EvaluationError::Invalid(format!(
+            "the arm `{arm}` is listed twice; each listing is one share of the seeded \
+             assignment, so a repeat would bias it"
+        ))
+    }
+    fn repeated_case(case_id: &str) -> Self {
+        EvaluationError::Invalid(format!(
+            "the case id `{case_id}` is listed twice; a case is assigned one arm"
+        ))
+    }
+}
+
+/// The first value listed twice, in submission order.
+fn first_repeat(values: &[String]) -> Option<&str> {
+    let mut seen = std::collections::HashSet::new();
+    values
+        .iter()
+        .map(String::as_str)
+        .find(|value| !seen.insert(*value))
 }
 
 /// Choose an arm index from a `u64` draw.
@@ -496,6 +523,15 @@ pub fn validate_trial(submission: &TrialSubmission) -> Result<(), EvaluationErro
     }
     if submission.case_ids.is_empty() {
         return Err(EvaluationError::empty_cases());
+    }
+    // ⛔ `SIGNOFF-REPAIR.8.2.6`: the draw indexes into `arms`, so a repeated arm
+    // took a double share of the cases, and a repeated case id was stored twice
+    // while the assignment map kept one entry. Both were accepted silently.
+    if let Some(arm) = first_repeat(&submission.arms) {
+        return Err(EvaluationError::repeated_arm(arm));
+    }
+    if let Some(case_id) = first_repeat(&submission.case_ids) {
+        return Err(EvaluationError::repeated_case(case_id));
     }
     for cohort in &submission.cohorts {
         if cohort.kind != "case" && cohort.kind != "subject" {
@@ -704,7 +740,7 @@ impl EvaluationError {
         ))
     }
     fn out_of_range(field: &str, value: f64) -> Self {
-        EvaluationError::MalformedDigest(format!("{field} {value} is outside [0, 1]"))
+        EvaluationError::Invalid(format!("{field} {value} is outside [0, 1]"))
     }
     fn ghost_gate(gate_id: &str) -> Self {
         EvaluationError::NotRegistered(format!(
@@ -718,7 +754,7 @@ impl EvaluationError {
 /// calls it itself regardless, so an invalid row cannot be stored.
 pub fn validate_calibration(submission: &CalibrationSubmission) -> Result<(), EvaluationError> {
     if submission.run_ids.is_empty() {
-        return Err(EvaluationError::MalformedDigest(
+        return Err(EvaluationError::Invalid(
             "the calibration names at least one run".to_string(),
         ));
     }
@@ -820,16 +856,16 @@ pub fn validate_gate(submission: &GateSubmission) -> Result<(), EvaluationError>
         ));
     }
     let baseline = submission.baseline.as_object().ok_or_else(|| {
-        EvaluationError::MalformedDigest("the baseline is a case→score object".to_string())
+        EvaluationError::Invalid("the baseline is a case→score object".to_string())
     })?;
     if baseline.is_empty() {
-        return Err(EvaluationError::MalformedDigest(
+        return Err(EvaluationError::Invalid(
             "the baseline names at least one case".to_string(),
         ));
     }
     for (case_id, score) in baseline {
         let score = score.as_f64().ok_or_else(|| {
-            EvaluationError::MalformedDigest(format!(
+            EvaluationError::Invalid(format!(
                 "the baseline score for `{case_id}` is not a number"
             ))
         })?;
@@ -914,7 +950,7 @@ pub async fn record_gate(
 /// scores, so it is not decidable without the stored row.
 pub fn validate_gate_scores(scores: &Value) -> Result<(), EvaluationError> {
     let scores = scores.as_object().ok_or_else(|| {
-        EvaluationError::MalformedDigest("the scores are a case→score object".to_string())
+        EvaluationError::Invalid("the scores are a case→score object".to_string())
     })?;
     // ⛔ A MEASUREMENT IS HELD TO THE SAME SHAPE AS A BASELINE SCORE
     // (`SIGNOFF-REPAIR.8.2.1`). `record_gate`, twenty lines up in this file,
@@ -925,7 +961,7 @@ pub fn validate_gate_scores(scores: &Value) -> Result<(), EvaluationError> {
     // side's rule is the read side's rule.
     for (case_id, measured) in scores.iter() {
         let value = measured.as_f64().ok_or_else(|| {
-            EvaluationError::MalformedDigest(format!(
+            EvaluationError::Invalid(format!(
                 "the measured score for `{case_id}` is not a number"
             ))
         })?;
@@ -957,11 +993,11 @@ pub async fn evaluate_gate(
     let Some((baseline, threshold)) = row else {
         return Err(EvaluationError::ghost_gate(gate_id));
     };
-    let baseline = baseline.as_object().ok_or_else(|| {
-        EvaluationError::MalformedDigest("the stored baseline is corrupt".to_string())
-    })?;
+    let baseline = baseline
+        .as_object()
+        .ok_or_else(|| EvaluationError::Invalid("the stored baseline is corrupt".to_string()))?;
     let scores = scores.as_object().ok_or_else(|| {
-        EvaluationError::MalformedDigest("the scores are a case→score object".to_string())
+        EvaluationError::Invalid("the scores are a case→score object".to_string())
     })?;
     let mut failures = Vec::new();
     let mut compared = 0_u64;
@@ -992,7 +1028,7 @@ pub async fn evaluate_gate(
     // declared contract rather than an oversight. Only the empty intersection
     // is refused, and the counts below are what make a partial result readable.
     if compared == 0 {
-        return Err(EvaluationError::MalformedDigest(format!(
+        return Err(EvaluationError::Invalid(format!(
             "the evaluation of gate `{gate_id}` compared no case —              the scores name at least one case the baseline carries"
         )));
     }
@@ -1061,6 +1097,105 @@ pub async fn list_gate_results(pool: &PgPool, gate_id: &str) -> Result<Vec<Value
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn trial(arms: &[&str], case_ids: &[&str]) -> TrialSubmission {
+        TrialSubmission {
+            trial_id: "tri".to_owned(),
+            corpus_id: "corpus".to_owned(),
+            corpus_version: 1,
+            seed: 7,
+            arms: arms.iter().map(|arm| (*arm).to_owned()).collect(),
+            cohorts: Vec::new(),
+            case_ids: case_ids.iter().map(|case| (*case).to_owned()).collect(),
+            reason: crate::site_authority::Reason::new("a unit control").expect("a reason"),
+        }
+    }
+
+    /// `SIGNOFF-REPAIR.8.2.6`: each arm is one share of the seeded assignment,
+    /// so `["a", "a", "b"]` gave `a` two thirds of the cases, silently.
+    #[test]
+    fn a_repeated_arm_is_refused_by_name() {
+        let refused = validate_trial(&trial(&["a", "b", "a"], &["c1"])).unwrap_err();
+        assert_eq!(
+            refused.to_string(),
+            "the arm `a` is listed twice; each listing is one share of the seeded \
+             assignment, so a repeat would bias it"
+        );
+    }
+
+    /// A repeated case id was stored twice while the assignment kept one entry.
+    #[test]
+    fn a_repeated_case_id_is_refused_by_name() {
+        let refused = validate_trial(&trial(&["a", "b"], &["c1", "c2", "c1"])).unwrap_err();
+        assert_eq!(
+            refused.to_string(),
+            "the case id `c1` is listed twice; a case is assigned one arm"
+        );
+    }
+
+    /// Both cohort kinds are valid and anything else is refused by label. Only
+    /// the live suite covered this, so a library-scoped mutation run could not
+    /// see it (three mutants MISSED at `SIGNOFF-REPAIR.8.2.6`).
+    #[test]
+    fn a_cohort_is_a_case_or_a_subject_cohort() {
+        for kind in ["case", "subject"] {
+            let mut valid = trial(&["a"], &["c1"]);
+            valid.cohorts.push(CohortRecord {
+                label: format!("{kind} cohort"),
+                kind: kind.to_owned(),
+                members: Vec::new(),
+            });
+            validate_trial(&valid).expect("a known cohort kind");
+        }
+        let mut unknown = trial(&["a"], &["c1"]);
+        unknown.cohorts.push(CohortRecord {
+            label: "x".to_owned(),
+            kind: "nope".to_owned(),
+            members: Vec::new(),
+        });
+        let refused = validate_trial(&unknown).unwrap_err();
+        assert!(refused.to_string().contains("cohort `x`"), "{refused}");
+    }
+
+    /// A validation refusal says what is wrong and nothing else. They used to be
+    /// wrapped as a digest sentence (`SIGNOFF-REPAIR.8.2.6`), so the caller read
+    /// *"digest `the arms are empty` is not a 64-hex string"*.
+    #[test]
+    fn a_validation_refusal_is_not_worded_as_a_digest() {
+        assert_eq!(
+            validate_trial(&trial(&[], &["c1"]))
+                .unwrap_err()
+                .to_string(),
+            "the arms are empty"
+        );
+        assert_eq!(
+            validate_gate_scores(&serde_json::json!(["not", "an", "object"]))
+                .unwrap_err()
+                .to_string(),
+            "the scores are a case→score object"
+        );
+        assert_eq!(
+            validate_gate_scores(&serde_json::json!({ "c1": "oops" }))
+                .unwrap_err()
+                .to_string(),
+            "the measured score for `c1` is not a number"
+        );
+        assert_eq!(
+            validate_gate_scores(&serde_json::json!({ "c1": 5.0 }))
+                .unwrap_err()
+                .to_string(),
+            "the measured score for `c1` 5 is outside [0, 1]"
+        );
+        validate_gate_scores(&serde_json::json!({ "c1": 0.0, "c2": 1.0 }))
+            .expect("scores inside [0, 1], bounds included, are valid");
+    }
+
+    /// The positive control: distinct arms and cases, even sharing a spelling
+    /// across the two lists, are a valid trial.
+    #[test]
+    fn distinct_arms_and_cases_are_valid() {
+        validate_trial(&trial(&["a", "b"], &["a", "b", "c"])).expect("a valid trial");
+    }
 
     /// ⛔ A DRAW ABOVE `u32::MAX`, chosen so the truncated and untruncated
     /// answers DISAGREE — otherwise the control passes under the defect.

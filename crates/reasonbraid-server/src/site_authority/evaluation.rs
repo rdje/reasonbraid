@@ -58,7 +58,7 @@ fn refused(
         // empty score intersection, or a corrupt stored baseline. Every other
         // malformed input is refused by the pre-gate validator
         // (`SIGNOFF-REPAIR.8.2.5.2`) and never reaches a site act.
-        MalformedDigest(_) | UndeclaredSeed | InvalidTrialCount(_) => {
+        MalformedDigest(_) | Invalid(_) | UndeclaredSeed | InvalidTrialCount(_) => {
             "the request cannot be answered against the stored record"
         }
     }))

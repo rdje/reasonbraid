@@ -615,11 +615,41 @@ async fn the_shadow_trials_record_the_seeded_assignment_and_the_cohorts() {
             }),
             "unknown kind",
         ),
+        // `SIGNOFF-REPAIR.8.2.6`: a repeated arm is a double share of the seeded
+        // assignment, and was accepted. Named against an UNREGISTERED corpus, so
+        // the answer shows the refusal comes before the corpus lookup.
+        (
+            "tri-repeated-arm",
+            json!({
+                "trial_id": "tri-repeated-arm",
+                "reason": "the suite records an evaluation site act",
+                "corpus_id": "ghost",
+                "corpus_version": 1,
+                "seed": 7,
+                "arms": ["a", "a", "b"],
+                "case_ids": ["c1", "c2", "c3"],
+            }),
+            "the arm `a` is listed twice",
+        ),
+        // And a repeated case id was stored twice while the assignment kept one.
+        (
+            "tri-repeated-case",
+            json!({
+                "trial_id": "tri-repeated-case",
+                "reason": "the suite records an evaluation site act",
+                "corpus_id": "tri-corpus",
+                "corpus_version": 1,
+                "seed": 7,
+                "arms": ["a", "b"],
+                "case_ids": ["c1", "c2", "c1"],
+            }),
+            "the case id `c1` is listed twice",
+        ),
     ] {
-        // ⭐ These three stay **400** and that is `SIGNOFF-REPAIR.8.2.5.2`'s whole
-        // value: empty arms, empty cases and an unknown cohort kind need no
-        // database, so the pre-gate validator refuses them with their own
-        // message before the site act is ever attempted.
+        // ⭐ These stay **400** and that is `SIGNOFF-REPAIR.8.2.5.2`'s whole
+        // value: empty arms, empty cases, an unknown cohort kind and a repeated
+        // arm or case id need no database, so the pre-gate validator refuses
+        // them with their own message before the site act is ever attempted.
         let (status, refused) =
             post(&client, &base, "/v1/evaluations/trials", &human_id, &body).await;
         assert_eq!(status, 400, "{key}: {refused}");

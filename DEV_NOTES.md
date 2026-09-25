@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-25 — An experiment can no longer list the same option twice, and its errors say what is wrong (`SIGNOFF-REPAIR.8.2.6`)
+
+`REASONBRAID-REPAIR-0519`.
+
+- 🔴 **Root cause:** `validate_trial` checked emptiness and cohort kinds only; the draw indexes into `arms`, so each listing is a share, and the assignment map keeps one entry per case id.
+- ✅ **Fix:** `first_repeat` + two named refusals before any lookup. 🔎 On the way: 15 of 17 `EvaluationError::MalformedDigest` uses were not digests and read as *"digest `…` is not a 64-hex string"*; a new `Invalid(String)` carries them (site classifier unchanged in effect).
+- ⭐ 13 mutants lib-scoped: 11 caught, 2 unviable, 0 missed after closing four pre-existing lib-scope gaps with unit tests. `.8.2.8` deferred (a corrupt stored baseline classified as the caller's refusal).
+
 ## 2026-09-25 — Changing an assessment is refused instead of silently ignored (`SIGNOFF-REPAIR.7.4.8`)
 
 `REASONBRAID-REPAIR-0518`.

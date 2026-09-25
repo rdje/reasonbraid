@@ -572,10 +572,11 @@ stated something false and counted them as an authorization denial.
 `400` with an `audit_id` means the caller held it and the act was refused on its
 own terms. The ordering that closes the oracle is unchanged.
 
-The five rules that ask only about the *document* — the digest shape, the version
-shape, the lifecycle vocabulary, a non-empty clause list and clause identifiers
-that do not repeat — are unchanged and still answer `400` to anyone, because each
-is a rule over a constant this book publishes.
+The six rules that ask only about the *document* — the digest shape, that a
+declared digest is the document's own, the version shape, the lifecycle
+vocabulary, a non-empty clause list and clause identifiers that do not repeat —
+still answer `400` to anyone, because each is a rule over the submission itself
+or a constant this book publishes.
 
 **Reading the library did not change and deliberately will not.** `GET
 /v1/policies`, `POST /v1/policies/resolve`, the impact map and the MCP policy
@@ -603,6 +604,31 @@ holds `policy_register`. Delegating the registration is not possible yet, becaus
 nothing issues a grant from another grant (see *What `delegable` and
 `max_delegation_depth` do not do* in [Authority](authority.md)). The decision is
 `docs/decisions/2026-09-25_a-policy-registrar-holds-the-authority-it-names.md`.
+
+**The server derives a policy's digest** (`SIGNOFF-REPAIR.9.1.3`). §15.1 gives every
+policy version an immutable digest, and the registry used to store whatever
+`sha256:<64 hex>` the caller typed: two versions with different clauses could share
+one, and a digest could hash nothing. The server now computes it as `sha256` over
+the canonical document:
+
+- every field of the request except `reason`, `digest` and `lifecycle`; an omitted
+  text field counts as `""` and an omitted list as `[]`;
+- written as compact JSON, with object keys sorted by byte order at every depth and
+  arrays kept in the order submitted.
+
+`lifecycle` is left out because it is a status, not content. `digest` is optional in
+the request. Send it to pin the content you mean. If it is not the document's own
+digest, the request is refused before the site gate, naming both:
+
+```json
+{"code": "invalid_command",
+ "message": "the declared digest `sha256:aaaa…` is not the document's digest `sha256:3f1c…`: the server derives it from the canonical document"}
+```
+
+Every read of the library (`GET /v1/policies` and the MCP policy bundle) carries
+`digest_verified`, which says whether the stored document still hashes to the stored
+digest. A version registered before this rule keeps the digest its registrar
+declared, which nothing derived, so it reads `false`.
 
 **Appending a version is still possible for a capability holder**, exactly as it
 is for a workflow profile. The registry is versioned by design; the defect was

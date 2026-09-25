@@ -8,6 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest as _, Sha256};
 use sqlx::PgPool;
 
 /// The lifecycle vocabulary (the closed set).
@@ -31,9 +32,10 @@ pub struct ClauseStatement {
 }
 
 /// The policy-version submission (`.1.2`, ADR-019): the §15.1 fields. The
-/// digest is the DECLARED ADR-011 digest over the canonical document bytes
-/// (the `.4.2` corpus precedent — the consumer re-derives at use time); the
-/// owning authority is a grant id the REGISTRAR must hold (`SIGNOFF-REPAIR.9.1.2`).
+/// server DERIVES the ADR-011 digest from the canonical document
+/// ([`document_digest`], `SIGNOFF-REPAIR.9.1.3`); a declared `digest` is
+/// optional and, when present, must be that one. The owning authority is a
+/// grant id the REGISTRAR must hold (`SIGNOFF-REPAIR.9.1.2`).
 ///
 /// ⚠️ `reason` is a WIRE field of the submission and not a column of the
 /// document (`SIGNOFF-REPAIR.6.1.5.4`). Registering a policy is a site act, and
@@ -48,7 +50,8 @@ pub struct PolicyVersionInput {
     pub reason: crate::site_authority::Reason,
     pub policy_id: String,
     pub version: String,
-    pub digest: String,
+    #[serde(default)]
+    pub digest: Option<String>,
     pub lifecycle: String,
     pub title: String,
     #[serde(default)]
@@ -78,6 +81,11 @@ pub struct PolicyVersionInput {
 }
 
 /// The registered row, as stored.
+///
+/// ⭐ `digest_verified` is DERIVED on every read (`SIGNOFF-REPAIR.9.1.3`): does
+/// the stored document still hash to the stored digest? A version registered
+/// before the server derived digests carries whatever its registrar declared,
+/// which nothing derived, so it reads `false` rather than being trusted.
 #[derive(Debug, Clone, Serialize)]
 pub struct RegisteredPolicy {
     pub policy_id: String,
@@ -98,12 +106,14 @@ pub struct RegisteredPolicy {
     pub precedence_hints: Vec<Value>,
     pub exceptions: Vec<Value>,
     pub provenance: Vec<Value>,
+    pub digest_verified: bool,
 }
 
 /// The typed refusal reasons — the caller maps them to an HTTP error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PolicyError {
     MalformedDigest(String),
+    DigestMismatch { declared: String, derived: String },
     MalformedVersion(String),
     UnknownLifecycle(String),
     DuplicateClause(String),
@@ -118,6 +128,11 @@ impl std::fmt::Display for PolicyError {
             PolicyError::MalformedDigest(d) => {
                 write!(f, "digest `{d}` is not the ADR-011 `sha256:<64 hex>` shape")
             }
+            PolicyError::DigestMismatch { declared, derived } => write!(
+                f,
+                "the declared digest `{declared}` is not the document's digest `{derived}`: \
+                 the server derives it from the canonical document"
+            ),
             PolicyError::MalformedVersion(v) => {
                 write!(
                     f,
@@ -157,6 +172,131 @@ fn is_sha256_hex(digest: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// The content a policy digest is taken over (`SIGNOFF-REPAIR.9.1.3`): every
+/// field of the document except `lifecycle`, which is a STATUS rather than
+/// content, and the wire-only `reason` and `digest`.
+///
+/// One borrowed view serves both the submission and a stored row, so the digest
+/// registration stores and the digest a later read re-derives are one function's
+/// output — the `charters::canonical` precedent.
+struct DocumentContent<'a> {
+    policy_id: &'a str,
+    version: &'a str,
+    title: &'a str,
+    intent: &'a str,
+    rationale: &'a str,
+    domain: &'a str,
+    risk_class: &'a str,
+    owning_authority: &'a str,
+    clauses: &'a [ClauseStatement],
+    applicability: &'a [Value],
+    non_applicability: &'a [Value],
+    dependencies: &'a [Value],
+    conflicts: &'a [Value],
+    precedence_hints: &'a [Value],
+    exceptions: &'a [Value],
+    provenance: &'a [Value],
+}
+
+impl DocumentContent<'_> {
+    fn digest(&self) -> String {
+        let text = |value: &str| Value::String(value.to_string());
+        let list = |values: &[Value]| Value::Array(values.to_vec());
+        let mut document = serde_json::Map::new();
+        document.insert("policy_id".into(), text(self.policy_id));
+        document.insert("version".into(), text(self.version));
+        document.insert("title".into(), text(self.title));
+        document.insert("intent".into(), text(self.intent));
+        document.insert("rationale".into(), text(self.rationale));
+        document.insert("domain".into(), text(self.domain));
+        document.insert("risk_class".into(), text(self.risk_class));
+        document.insert("owning_authority".into(), text(self.owning_authority));
+        document.insert(
+            "clauses".into(),
+            serde_json::to_value(self.clauses).expect("the clauses serialize"),
+        );
+        document.insert("applicability".into(), list(self.applicability));
+        document.insert("non_applicability".into(), list(self.non_applicability));
+        document.insert("dependencies".into(), list(self.dependencies));
+        document.insert("conflicts".into(), list(self.conflicts));
+        document.insert("precedence_hints".into(), list(self.precedence_hints));
+        document.insert("exceptions".into(), list(self.exceptions));
+        document.insert("provenance".into(), list(self.provenance));
+        let mut canonical = String::new();
+        write_canonical(&Value::Object(document), &mut canonical);
+        format!("sha256:{:x}", Sha256::digest(canonical.as_bytes()))
+    }
+}
+
+/// Compact JSON with object keys sorted by byte order at EVERY depth and arrays
+/// in the order given — the canonical form the book states.
+///
+/// ⛔ The keys are sorted HERE rather than left to `serde_json::Map`. The map
+/// iterates in key order only while serde_json's `preserve_order` feature is
+/// off; it is off today (`cargo tree -e features -i serde_json`), but a feature
+/// any dependency enables would reach this crate through unification and would
+/// silently change every digest. Sorting explicitly makes the digest a property
+/// of this function alone.
+///
+/// ⭐ A stored row re-derives the digest registration computed: `sqlx` binds a
+/// `Value` by serializing it with serde_json, `jsonb` keeps each number's text,
+/// and a read parses that text back, so every leaf serializes identically on
+/// both sides. The live control registers unsorted keys, nested objects, `1e2`,
+/// `0.1` and an integer above 2^53 and requires the read to verify.
+fn write_canonical(value: &Value, out: &mut String) {
+    match value {
+        Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            out.push('{');
+            for (i, key) in keys.into_iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                out.push_str(&Value::String(key.clone()).to_string());
+                out.push(':');
+                write_canonical(&map[key], out);
+            }
+            out.push('}');
+        }
+        Value::Array(items) => {
+            out.push('[');
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                write_canonical(item, out);
+            }
+            out.push(']');
+        }
+        leaf => out.push_str(&leaf.to_string()),
+    }
+}
+
+/// The digest the server derives for a submission (`SIGNOFF-REPAIR.9.1.3`):
+/// `sha256` over the canonical document.
+pub fn document_digest(input: &PolicyVersionInput) -> String {
+    DocumentContent {
+        policy_id: &input.policy_id,
+        version: &input.version,
+        title: &input.title,
+        intent: &input.intent,
+        rationale: &input.rationale,
+        domain: &input.domain,
+        risk_class: &input.risk_class,
+        owning_authority: &input.owning_authority,
+        clauses: &input.clauses,
+        applicability: &input.applicability,
+        non_applicability: &input.non_applicability,
+        dependencies: &input.dependencies,
+        conflicts: &input.conflicts,
+        precedence_hints: &input.precedence_hints,
+        exceptions: &input.exceptions,
+        provenance: &input.provenance,
+    }
+    .digest()
+}
+
 fn is_semver(version: &str) -> bool {
     let parts: Vec<&str> = version.split('.').collect();
     (1..=3).contains(&parts.len())
@@ -183,8 +323,20 @@ fn is_semver(version: &str) -> bool {
 ///
 /// [`register`] calls this regardless of who called it first.
 pub fn validate(input: &PolicyVersionInput) -> Result<(), PolicyError> {
-    if !is_sha256_hex(&input.digest) {
-        return Err(PolicyError::MalformedDigest(input.digest.clone()));
+    // `SIGNOFF-REPAIR.9.1.3`: a declared digest is optional, and when present
+    // it must be the document's own. Both rules are over the submission alone,
+    // so they sit with the others before the site gate.
+    if let Some(declared) = &input.digest {
+        if !is_sha256_hex(declared) {
+            return Err(PolicyError::MalformedDigest(declared.clone()));
+        }
+        let derived = document_digest(input);
+        if *declared != derived {
+            return Err(PolicyError::DigestMismatch {
+                declared: declared.clone(),
+                derived,
+            });
+        }
     }
     if !is_semver(&input.version) {
         return Err(PolicyError::MalformedVersion(input.version.clone()));
@@ -273,6 +425,9 @@ pub async fn register(
     // caught exactly that before this line existed. The constraint still
     // arbitrates: `rows_affected() == 0` is the coordinate already being taken,
     // and it is the only thing that produces zero.
+    // `SIGNOFF-REPAIR.9.1.3`: the stored digest is the DERIVED one, whatever was
+    // declared (`validate` above already refused a declaration that disagrees).
+    let digest = document_digest(input);
     let inserted = sqlx::query(
         "INSERT INTO policy_versions \
          (policy_id, version, digest, lifecycle, title, intent, rationale, domain, risk_class, \
@@ -283,7 +438,7 @@ pub async fn register(
     )
     .bind(&input.policy_id)
     .bind(&input.version)
-    .bind(&input.digest)
+    .bind(&digest)
     .bind(&input.lifecycle)
     .bind(&input.title)
     .bind(&input.intent)
@@ -310,7 +465,7 @@ pub async fn register(
     Ok(Ok(RegisteredPolicy {
         policy_id: input.policy_id.clone(),
         version: input.version.clone(),
-        digest: input.digest.clone(),
+        digest,
         lifecycle: input.lifecycle.clone(),
         title: input.title.clone(),
         intent: input.intent.clone(),
@@ -326,6 +481,7 @@ pub async fn register(
         precedence_hints: input.precedence_hints.clone(),
         exceptions: input.exceptions.clone(),
         provenance: input.provenance.clone(),
+        digest_verified: true,
     }))
 }
 
@@ -365,30 +521,63 @@ pub async fn list(pool: &PgPool) -> Result<Vec<RegisteredPolicy>, sqlx::Error> {
     .await?;
     Ok(rows
         .into_iter()
-        .map(|row| RegisteredPolicy {
-            policy_id: row.policy_id,
-            version: row.version,
-            digest: row.digest,
-            lifecycle: row.lifecycle,
-            title: row.title,
-            intent: row.intent,
-            rationale: row.rationale,
-            domain: row.domain,
-            risk_class: row.risk_class,
-            owning_authority: row.owning_authority,
-            clauses: serde_json::from_value(row.clauses).expect("the clauses parse"),
-            applicability: serde_json::from_value(row.applicability)
-                .expect("the applicability parses"),
-            non_applicability: serde_json::from_value(row.non_applicability)
-                .expect("the non-applicability parses"),
-            dependencies: serde_json::from_value(row.dependencies).expect("the dependencies parse"),
-            conflicts: serde_json::from_value(row.conflicts).expect("the conflicts parse"),
-            precedence_hints: serde_json::from_value(row.precedence_hints)
-                .expect("the precedence parses"),
-            exceptions: serde_json::from_value(row.exceptions).expect("the exceptions parse"),
-            provenance: serde_json::from_value(row.provenance).expect("the provenance parses"),
+        .map(|row| {
+            let mut policy = RegisteredPolicy {
+                policy_id: row.policy_id,
+                version: row.version,
+                digest: row.digest,
+                lifecycle: row.lifecycle,
+                title: row.title,
+                intent: row.intent,
+                rationale: row.rationale,
+                domain: row.domain,
+                risk_class: row.risk_class,
+                owning_authority: row.owning_authority,
+                clauses: serde_json::from_value(row.clauses).expect("the clauses parse"),
+                applicability: serde_json::from_value(row.applicability)
+                    .expect("the applicability parses"),
+                non_applicability: serde_json::from_value(row.non_applicability)
+                    .expect("the non-applicability parses"),
+                dependencies: serde_json::from_value(row.dependencies)
+                    .expect("the dependencies parse"),
+                conflicts: serde_json::from_value(row.conflicts).expect("the conflicts parse"),
+                precedence_hints: serde_json::from_value(row.precedence_hints)
+                    .expect("the precedence parses"),
+                exceptions: serde_json::from_value(row.exceptions).expect("the exceptions parse"),
+                provenance: serde_json::from_value(row.provenance).expect("the provenance parses"),
+                digest_verified: false,
+            };
+            // `SIGNOFF-REPAIR.9.1.3`: re-derived from what is STORED, on every
+            // read, so a row whose digest was declared rather than derived says
+            // so instead of being trusted.
+            policy.digest_verified = policy.content().digest() == policy.digest;
+            policy
         })
         .collect())
+}
+
+impl RegisteredPolicy {
+    /// The stored document as the digest sees it (`SIGNOFF-REPAIR.9.1.3`).
+    fn content(&self) -> DocumentContent<'_> {
+        DocumentContent {
+            policy_id: &self.policy_id,
+            version: &self.version,
+            title: &self.title,
+            intent: &self.intent,
+            rationale: &self.rationale,
+            domain: &self.domain,
+            risk_class: &self.risk_class,
+            owning_authority: &self.owning_authority,
+            clauses: &self.clauses,
+            applicability: &self.applicability,
+            non_applicability: &self.non_applicability,
+            dependencies: &self.dependencies,
+            conflicts: &self.conflicts,
+            precedence_hints: &self.precedence_hints,
+            exceptions: &self.exceptions,
+            provenance: &self.provenance,
+        }
+    }
 }
 
 // ── The layering + the precedence (`.1.3`, ADR-019) ────────────────────────────────
@@ -812,4 +1001,77 @@ pub async fn impact(
             })
         })
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn submission(extra: Value) -> PolicyVersionInput {
+        let mut body = json!({
+            "reason": "the unit control registers a policy version",
+            "policy_id": "unit-policy",
+            "version": "1.0.0",
+            "lifecycle": "active",
+            "title": "the unit policy",
+            "owning_authority": "grt_unit",
+            "clauses": [ { "id": "c1", "statement": "every thread declares its objective" } ],
+        });
+        for (key, value) in extra.as_object().expect("an object").iter() {
+            body[key] = value.clone();
+        }
+        serde_json::from_value(body).expect("the submission parses")
+    }
+
+    /// `SIGNOFF-REPAIR.9.1.3`: keys sorted at every depth, arrays in order,
+    /// compact. The expected text is written out by hand.
+    #[test]
+    fn the_canonical_form_sorts_keys_at_every_depth_and_keeps_array_order() {
+        let value = json!({ "b": [ { "z": 1, "a": 2 }, 3 ], "a": { "d": "x", "c": null } });
+        let mut out = String::new();
+        write_canonical(&value, &mut out);
+        assert_eq!(out, r#"{"a":{"c":null,"d":"x"},"b":[{"a":2,"z":1},3]}"#);
+    }
+
+    /// The digest covers content and nothing else: `lifecycle` is a status, and
+    /// the wire-only `reason` and `digest` are not the document.
+    #[test]
+    fn the_digest_covers_the_content_and_not_the_status() {
+        let base = document_digest(&submission(json!({})));
+        assert!(base.starts_with("sha256:") && base.len() == 71, "{base}");
+        let draft = document_digest(&submission(json!({ "lifecycle": "draft" })));
+        assert_eq!(base, draft, "the lifecycle is a status, not content");
+        let reasoned = document_digest(&submission(json!({ "reason": "another reason" })));
+        assert_eq!(base, reasoned, "the reason is not content");
+        let changed = document_digest(&submission(json!({
+            "clauses": [ { "id": "c1", "statement": "a different statement" } ],
+        })));
+        assert_ne!(base, changed, "a changed clause changes the digest");
+        let versioned = document_digest(&submission(json!({ "version": "1.0.1" })));
+        assert_ne!(base, versioned, "the coordinate is content");
+    }
+
+    /// A declared digest is optional; when present it must be the derived one.
+    #[test]
+    fn a_declared_digest_must_be_the_documents_own() {
+        assert_eq!(validate(&submission(json!({}))), Ok(()));
+        let derived = document_digest(&submission(json!({})));
+        assert_eq!(
+            validate(&submission(json!({ "digest": derived.clone() }))),
+            Ok(())
+        );
+        let forged = format!("sha256:{}", "a".repeat(64));
+        assert_eq!(
+            validate(&submission(json!({ "digest": forged.clone() }))),
+            Err(PolicyError::DigestMismatch {
+                declared: forged,
+                derived
+            })
+        );
+        assert_eq!(
+            validate(&submission(json!({ "digest": "sha256:nothex" }))),
+            Err(PolicyError::MalformedDigest("sha256:nothex".into()))
+        );
+    }
 }

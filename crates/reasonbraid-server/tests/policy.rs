@@ -308,7 +308,6 @@ async fn the_policy_registry_validates_the_digest_pinned_document() {
         json!({
             "policy_id": policy_id,
             "version": version,
-            "digest": DIGEST,
             "lifecycle": "draft",
             "title": "the baseline",
             "intent": "the org baseline policy",
@@ -330,7 +329,13 @@ async fn the_policy_registry_validates_the_digest_pinned_document() {
     assert_eq!(status, 200, "the policy registers: {registered}");
     assert_eq!(registered["policy_id"], json!("org-baseline"));
     assert_eq!(registered["version"], json!("1.0.0"));
-    assert_eq!(registered["digest"], json!(DIGEST));
+    // `SIGNOFF-REPAIR.9.1.3`: the digest is the server's, derived from the
+    // document; `expected_policy_digest` re-derives it by a second route.
+    assert_eq!(
+        registered["digest"],
+        json!(expected_policy_digest(&policy("org-baseline", "1.0.0"))),
+        "{registered}"
+    );
     assert_eq!(registered["owning_authority"], json!(grant_id));
     assert_eq!(registered["clauses"].as_array().unwrap().len(), 2);
 
@@ -398,7 +403,6 @@ async fn the_policy_registry_validates_the_digest_pinned_document() {
         &json!({
             "policy_id": "bad-version",
             "version": "not.a.version",
-            "digest": DIGEST,
             "lifecycle": "draft",
             "title": "x",
             "owning_authority": grant_id,
@@ -422,7 +426,6 @@ async fn the_policy_registry_validates_the_digest_pinned_document() {
         &json!({
             "policy_id": "bad-lifecycle",
             "version": "1.0.0",
-            "digest": DIGEST,
             "lifecycle": "vibes",
             "title": "x",
             "owning_authority": grant_id,
@@ -443,7 +446,6 @@ async fn the_policy_registry_validates_the_digest_pinned_document() {
         &json!({
             "policy_id": "dup-clauses",
             "version": "1.0.0",
-            "digest": DIGEST,
             "lifecycle": "draft",
             "title": "x",
             "owning_authority": grant_id,
@@ -467,7 +469,6 @@ async fn the_policy_registry_validates_the_digest_pinned_document() {
         &json!({
             "policy_id": "no-clauses",
             "version": "1.0.0",
-            "digest": DIGEST,
             "lifecycle": "draft",
             "title": "x",
             "owning_authority": grant_id,
@@ -484,7 +485,6 @@ async fn the_policy_registry_validates_the_digest_pinned_document() {
         &json!({
             "policy_id": "ghost-authority",
             "version": "1.0.0",
-            "digest": DIGEST,
             "lifecycle": "draft",
             "title": "x",
             "owning_authority": "grt_ghost",
@@ -567,7 +567,6 @@ async fn the_seven_step_resolution_fails_closed() {
         json!({
             "policy_id": policy_id,
             "version": version,
-            "digest": DIGEST,
             "lifecycle": "draft",
             "title": policy_id,
             "owning_authority": grant_id,
@@ -732,7 +731,6 @@ async fn the_seven_step_resolution_fails_closed() {
     let (status, _) = register(json!({
         "policy_id": "suspended-p",
         "version": "1.0.0",
-        "digest": DIGEST,
         "lifecycle": "suspended",
         "title": "suspended-p",
         "owning_authority": grant_id,
@@ -841,7 +839,6 @@ async fn the_proposal_and_the_decision_stay_separate_records() {
         &json!({
             "policy_id": "lc-policy",
             "version": "1.0.0",
-            "digest": DIGEST,
             "lifecycle": "draft",
             "title": "lc",
             "owning_authority": grant_id,
@@ -1201,7 +1198,6 @@ async fn the_approval_carries_its_authority_proof() {
         &json!({
             "policy_id": "ap-policy",
             "version": "1.0.0",
-            "digest": DIGEST,
             "lifecycle": "draft",
             "title": "ap",
             "owning_authority": grant_id,
@@ -1531,7 +1527,6 @@ async fn the_projection_compiles_the_resolved_set_byte_identical() {
             &json!({
                 "policy_id": policy_id,
                 "version": "1.0.0",
-                "digest": DIGEST,
                 "lifecycle": "draft",
                 "title": policy_id,
                 "owning_authority": grant_id,
@@ -1723,7 +1718,6 @@ async fn the_codex_and_claude_projections_ride_the_verb() {
         &json!({
             "policy_id": "cc-policy",
             "version": "1.0.0",
-            "digest": DIGEST,
             "lifecycle": "draft",
             "title": "cc",
             "owning_authority": grant_id,
@@ -1803,7 +1797,6 @@ async fn the_publication_stages_and_marks_its_typed_state() {
         &json!({
             "policy_id": "pb-policy",
             "version": "1.0.0",
-            "digest": DIGEST,
             "lifecycle": "draft",
             "title": "pb",
             "owning_authority": grant_id,
@@ -2355,7 +2348,6 @@ async fn the_publish_verb_drives_the_git_half() {
         &json!({
             "policy_id": "pu-policy",
             "version": "1.0.0",
-            "digest": DIGEST,
             "lifecycle": "draft",
             "title": "pu",
             "owning_authority": grant_id,
@@ -3482,7 +3474,7 @@ async fn a_held_grant_must_cover_the_administrative_verb_it_is_cited_for() {
                 "policy version",
                 "/v1/policies".to_string(),
                 json!({ "policy_id": format!("cv-reg-{arm}"), "version": "1.0.0",
-                        "digest": DIGEST, "lifecycle": "draft", "title": "cv",
+                        "lifecycle": "draft", "title": "cv",
                         "owning_authority": grant_id,
                         "clauses": [ { "id": "cv-c1", "statement": "a rule" } ],
                         "reason": "the control registers a policy version" }),
@@ -3709,7 +3701,6 @@ async fn a_publication_carries_the_policy_its_proposal_was_approved_for() {
             &json!({
                 "policy_id": policy_id,
                 "version": "1.0.0",
-                "digest": DIGEST,
                 "lifecycle": "draft",
                 "title": policy_id,
                 "owning_authority": grant_id,
@@ -4102,7 +4093,6 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
         &json!({
             "policy_id": "dp-policy",
             "version": "1.0.0",
-            "digest": DIGEST,
             "lifecycle": "draft",
             "title": "dp",
             "owning_authority": grant_id,
@@ -4475,7 +4465,6 @@ async fn the_drift_corrections_and_outcomes_ride_the_records() {
         &json!({
             "policy_id": "cr-policy",
             "version": "1.0.0",
-            "digest": DIGEST,
             "lifecycle": "draft",
             "title": "cr",
             "owning_authority": grant_id,
@@ -4914,7 +4903,6 @@ async fn the_scheduled_reviews_evaluate_the_triggers() {
         &json!({
             "policy_id": "rv-policy",
             "version": "1.0.0",
-            "digest": DIGEST,
             "lifecycle": "draft",
             "title": "rv",
             "owning_authority": grant_id,
@@ -5249,7 +5237,6 @@ async fn citing_an_authority_requires_holding_it() {
         &json!({
             "policy_id": "cite-pol",
             "version": "1.0.0",
-            "digest": DIGEST,
             "lifecycle": "active",
             "title": "the cited-authority control",
             "intent": "the grant binding",
@@ -5664,7 +5651,6 @@ async fn an_approval_is_bound_to_the_proposals_own_tenant() {
         &json!({
             "policy_id": "apt-policy",
             "version": "1.0.0",
-            "digest": DIGEST,
             "lifecycle": "draft",
             "title": "apt",
             "owning_authority": alice_grant,
@@ -5884,7 +5870,7 @@ async fn the_lifecycle_verbs_refuse_a_foreign_tenants_thread() {
         &base,
         &alice_id,
         &json!({
-            "policy_id": "lft-policy", "version": "1.0.0", "digest": DIGEST,
+            "policy_id": "lft-policy", "version": "1.0.0",
             "lifecycle": "draft", "title": "lft", "owning_authority": alice_grant,
             "clauses": [ { "id": "c1", "statement": "the lifecycle clause" } ],
         }),
@@ -6107,7 +6093,7 @@ async fn the_lifecycle_row_carries_the_tenant_that_owns_it() {
         &base,
         &alice_id,
         &json!({
-            "policy_id": "lto-policy", "version": "1.0.0", "digest": DIGEST,
+            "policy_id": "lto-policy", "version": "1.0.0",
             "lifecycle": "draft", "title": "lto", "owning_authority": alice_grant,
             "clauses": [ { "id": "c1", "statement": "the owned clause" } ],
         }),
@@ -6516,7 +6502,7 @@ async fn the_lifecycle_verbs_refuse_another_tenants_publication() {
         &base,
         &alice_id,
         &json!({
-            "policy_id": "gtn-policy", "version": "1.0.0", "digest": DIGEST,
+            "policy_id": "gtn-policy", "version": "1.0.0",
             "lifecycle": "draft", "title": "gtn", "owning_authority": alice_grant,
             "clauses": [ { "id": "c1", "statement": "the gated clause" } ],
         }),
@@ -7082,7 +7068,7 @@ async fn every_lifecycle_read_is_bound_to_its_own_tenant() {
         &base,
         &alice_id,
         &json!({
-            "policy_id": "rdb-policy", "version": "1.0.0", "digest": DIGEST,
+            "policy_id": "rdb-policy", "version": "1.0.0",
             "lifecycle": "draft", "title": "rdb",
             "owning_authority": format!("grt_{alice_id}"),
             "clauses": [ { "id": "c1", "statement": "the shared clause" } ],
@@ -7445,7 +7431,6 @@ async fn the_policy_library_takes_site_operator_authority() {
         json!({
             "policy_id": "lib-org-baseline",
             "version": version,
-            "digest": DIGEST,
             "lifecycle": "active",
             "title": "the organization baseline",
             "owning_authority": format!("grt_{who}"),
@@ -7623,7 +7608,6 @@ async fn the_owning_authority_is_a_grant_the_registrar_holds() {
         json!({
             "policy_id": "held-owner-baseline",
             "version": version,
-            "digest": DIGEST,
             "lifecycle": "active",
             "title": "a baseline its owner never wrote",
             "owning_authority": authority,
@@ -7701,6 +7685,203 @@ async fn the_owning_authority_is_a_grant_the_registrar_holds() {
         .expect("drop the fixture rows");
 }
 
+/// The canonical form the book states for a policy digest, written out here by
+/// a second route rather than imported from the server: compact JSON, object
+/// keys sorted by byte order at every depth, arrays in submitted order.
+fn canonical_policy_json(value: &Value, out: &mut String) {
+    match value {
+        Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            out.push('{');
+            for (i, key) in keys.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                out.push_str(&serde_json::to_string(key).unwrap());
+                out.push(':');
+                canonical_policy_json(&map[key.as_str()], out);
+            }
+            out.push('}');
+        }
+        Value::Array(items) => {
+            out.push('[');
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                canonical_policy_json(item, out);
+            }
+            out.push(']');
+        }
+        leaf => out.push_str(&serde_json::to_string(leaf).unwrap()),
+    }
+}
+
+/// The digest the book says the server derives for a submitted document: every
+/// field except `reason`, `digest` and `lifecycle`, with an omitted text field
+/// read as `""` and an omitted list as `[]`, hashed over the canonical form.
+fn expected_policy_digest(document: &Value) -> String {
+    use sha2::Digest as _;
+    let mut content = serde_json::Map::new();
+    for field in [
+        "policy_id",
+        "version",
+        "title",
+        "intent",
+        "rationale",
+        "domain",
+        "risk_class",
+        "owning_authority",
+    ] {
+        let value = document.get(field).cloned().unwrap_or(json!(""));
+        content.insert(field.to_string(), value);
+    }
+    for field in [
+        "clauses",
+        "applicability",
+        "non_applicability",
+        "dependencies",
+        "conflicts",
+        "precedence_hints",
+        "exceptions",
+        "provenance",
+    ] {
+        let value = document.get(field).cloned().unwrap_or(json!([]));
+        content.insert(field.to_string(), value);
+    }
+    let mut canonical = String::new();
+    canonical_policy_json(&Value::Object(content), &mut canonical);
+    format!("sha256:{:x}", sha2::Sha256::digest(canonical.as_bytes()))
+}
+
+/// `SIGNOFF-REPAIR.9.1.3`: a policy's digest is DERIVED from its document.
+///
+/// §15.1 gives every policy version an *immutable digest*, and until this leaf
+/// the registry stored whatever `sha256:<64 hex>` the caller typed: two versions
+/// with different clauses could carry one digest, and a digest could hash
+/// nothing at all. The server now derives it. A declared digest is optional,
+/// and when present it must be the document's own.
+///
+/// ⭐ The expected digests here are computed by `expected_policy_digest`, which
+/// implements the rule the book states without calling the server's code. A
+/// server that hashed some other form would disagree with it.
+#[tokio::test]
+async fn the_policy_digest_is_derived_from_the_document() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "digest-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrolls: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
+    let grant_id = format!("grt_{human_id}");
+
+    let document = |version: &str, statement: &str| {
+        json!({
+            "policy_id": "derived-digest",
+            "version": version,
+            "lifecycle": "active",
+            "title": "the derived digest",
+            "owning_authority": grant_id,
+            "clauses": [ { "id": "c1", "statement": statement } ],
+            // Unsorted keys, nesting and number forms, so a server hashing the
+            // bytes as sent, or re-ordering differently, disagrees here.
+            "provenance": [ { "z": 1, "a": { "y": 0.1, "b": 1e2, "big": 9007199254740993u64 } } ],
+        })
+    };
+
+    // Leg 1, THE REFUSAL: a declared digest that is not the document's.
+    let mut forged = document("1.0.0", "every thread declares its objective");
+    forged["digest"] = json!(DIGEST);
+    let (status, refused) = register_policy(&client, &base, &human_id, &forged).await;
+    assert_eq!(
+        status, 400,
+        "a digest that is not the document's refuses: {refused}"
+    );
+    let first = document("1.0.0", "every thread declares its objective");
+    let first_digest = expected_policy_digest(&first);
+    assert!(
+        refused["message"]
+            .as_str()
+            .is_some_and(|m| m.contains(DIGEST) && m.contains(&first_digest)),
+        "the refusal names the declared and the derived digest: {refused}"
+    );
+
+    // Leg 2: with no digest declared, the server derives it.
+    let (status, registered) = register_policy(&client, &base, &human_id, &first).await;
+    assert_eq!(status, 200, "an undeclared digest is derived: {registered}");
+    assert_eq!(registered["digest"], json!(first_digest), "{registered}");
+
+    // Leg 3: different clauses under a new version get a different digest.
+    let second = document("1.1.0", "every publication names its authority");
+    let (status, registered) = register_policy(&client, &base, &human_id, &second).await;
+    assert_eq!(status, 200, "the second version registers: {registered}");
+    let second_digest = expected_policy_digest(&second);
+    assert_ne!(first_digest, second_digest);
+    assert_eq!(registered["digest"], json!(second_digest), "{registered}");
+
+    // Leg 4: declaring the document's own digest is accepted.
+    let mut pinned = document("1.2.0", "every publication names its authority");
+    let pinned_digest = expected_policy_digest(&pinned);
+    pinned["digest"] = json!(pinned_digest);
+    let (status, registered) = register_policy(&client, &base, &human_id, &pinned).await;
+    assert_eq!(
+        status, 200,
+        "a correct declaration is accepted: {registered}"
+    );
+    assert_eq!(registered["digest"], json!(pinned_digest), "{registered}");
+
+    // Leg 5: a row stored before this leaf, with a declared digest nobody
+    // derived, reads as unverified; every derived row reads as verified.
+    sqlx::query(
+        "INSERT INTO policy_versions (policy_id, version, digest, lifecycle, title, \
+         owning_authority, clauses) \
+         VALUES ('derived-digest', '0.9.0', $1, 'active', 'a legacy row', $2, \
+         '[{\"id\": \"c1\", \"statement\": \"stored with a declared digest\"}]'::jsonb)",
+    )
+    .bind(DIGEST)
+    .bind(&grant_id)
+    .execute(&pool)
+    .await
+    .expect("the legacy row inserts");
+    let (status, library) = get(&client, &base, "/v1/policies", &human_id).await;
+    assert_eq!(status, 200, "the library answers: {library}");
+    let rows: Vec<&Value> = library
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|p| p["policy_id"] == json!("derived-digest"))
+        .collect();
+    assert_eq!(rows.len(), 4, "{rows:?}");
+    for row in rows {
+        let expected = row["version"] != json!("0.9.0");
+        assert_eq!(
+            row["digest_verified"],
+            json!(expected),
+            "only a digest the stored document hashes to is verified: {row}"
+        );
+    }
+
+    sqlx::query("DELETE FROM policy_versions WHERE policy_id = 'derived-digest'")
+        .execute(&pool)
+        .await
+        .expect("drop the fixture rows");
+}
+
 /// The POSITIVE arm, without which the repair above is indistinguishable from
 /// deleting the route: a `policy_register` holder still registers, the receipt
 /// is audited, the document is REACHABLE through every read, and the same grant
@@ -7733,7 +7914,6 @@ async fn the_policy_register_capability_still_registers_and_resolves() {
         "reason": "the review lane needs a published baseline",
         "policy_id": "prc-baseline",
         "version": "1.0.0",
-        "digest": DIGEST,
         "lifecycle": "active",
         "title": "the review baseline",
         "owning_authority": format!("grt_{operator_id}"),
@@ -7775,7 +7955,6 @@ async fn the_policy_register_capability_still_registers_and_resolves() {
         &json!({
             "policy_id": "prc-baseline",
             "version": "1.1.0",
-            "digest": DIGEST,
             "lifecycle": "active",
             "title": "the review baseline",
             "owning_authority": format!("grt_{operator_id}"),
@@ -7943,7 +8122,6 @@ async fn a_policy_decision_is_its_threads_counted_close() {
         &json!({
             "policy_id": "pdc-policy",
             "version": "1.0.0",
-            "digest": DIGEST,
             "lifecycle": "draft",
             "title": "pdc",
             "owning_authority": format!("grt_{human_id}"),
@@ -8264,7 +8442,7 @@ async fn the_reconciler_recovers_what_it_may_and_reports_the_rest() {
         &base,
         &human_id,
         &json!({
-            "policy_id": "rc-policy", "version": "1.0.0", "digest": DIGEST,
+            "policy_id": "rc-policy", "version": "1.0.0",
             "lifecycle": "draft", "title": "rc", "owning_authority": grant_id,
             "clauses": [ { "id": "c1", "statement": "the reconciled clause" } ],
         }),

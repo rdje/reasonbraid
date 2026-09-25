@@ -658,7 +658,6 @@ async fn the_join_call_decline_and_the_proposal_ride_the_same_handlers() {
             "reason": "the MCP write fixture seeds the governance library",
             "policy_id": "mcp-pol",
             "version": "1.0.0",
-            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "lifecycle": "draft",
             "title": "the mcp write policy",
             "intent": "the proposal surface",

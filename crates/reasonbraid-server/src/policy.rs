@@ -33,7 +33,7 @@ pub struct ClauseStatement {
 /// The policy-version submission (`.1.2`, ADR-019): the §15.1 fields. The
 /// digest is the DECLARED ADR-011 digest over the canonical document bytes
 /// (the `.4.2` corpus precedent — the consumer re-derives at use time); the
-/// owning authority is a grant id that must EXIST.
+/// owning authority is a grant id the REGISTRAR must hold (`SIGNOFF-REPAIR.9.1.2`).
 ///
 /// ⚠️ `reason` is a WIRE field of the submission and not a column of the
 /// document (`SIGNOFF-REPAIR.6.1.5.4`). Registering a policy is a site act, and
@@ -225,6 +225,7 @@ pub fn validate(input: &PolicyVersionInput) -> Result<(), PolicyError> {
 pub async fn register(
     conn: &mut sqlx::PgConnection,
     input: &PolicyVersionInput,
+    registrar: &reasonbraid_core::GrantSubject,
 ) -> Result<Result<RegisteredPolicy, PolicyError>, sqlx::Error> {
     if let Err(refusal) = validate(input) {
         return Ok(Err(refusal));
@@ -236,23 +237,26 @@ pub async fn register(
     // this site admitted on `status = 'active'` alone while `resolve` below,
     // in the same module, also required the grant to be unexpired — so a
     // lapsed grant registered a policy version the resolver would then refuse.
-    // Both now ask `authority::grant_is_live`, which is also the first time
-    // either consulted `valid_from`.
+    // Both then asked `authority::grant_is_live`, which is also the first time
+    // either consulted `valid_from`; `grant_held_by` below carries the same
+    // liveness predicate.
     //
-    // ⛔ What this does NOT decide: whether the owning authority must be a
-    // grant the REGISTRAR holds. A policy may legitimately be owned by an
-    // authority other than the caller's, so that binding is a semantic
-    // question and stays `SIGNOFF-REPAIR.9.1`'s.
-    // `.9.3.4.2`: LIVE **and COVERING** `policy_version_register`. ⛔ This does
-    // NOT add held-ness — whether the owning authority must be a grant the
-    // REGISTRAR holds is a semantic question and stays `SIGNOFF-REPAIR.9.1`'s,
-    // exactly as the note below already says. Coverage is a question about the
-    // GRANT, answerable without knowing the caller, so asking it here widens
-    // nothing.
-    if !crate::authority::grant_is_live(
+    // `.9.3.4.2` added COVERING `policy_version_register`.
+    //
+    // ⭐ `SIGNOFF-REPAIR.9.1.2` adds HELD BY THE REGISTRAR, the question both
+    // earlier leaves routed here. Holding `policy_register` lets a principal
+    // write the library; it never let them attach somebody else's authority to
+    // what they wrote, and the publication verbs treat this grant as the
+    // policy's owner. So the grant must be one the registrar holds, which is
+    // the rule every other site that cites an authority already follows
+    // (`authority::grant_held_by`, `.9.3.1`). A policy owned by someone else is
+    // registered by that owner
+    // (`docs/decisions/2026-09-25_a-policy-registrar-holds-the-authority-it-names.md`).
+    if !crate::authority::grant_held_by(
         &mut *conn,
         &input.owning_authority,
-        Some(reasonbraid_core::GrantAction::PolicyVersionRegister),
+        registrar,
+        reasonbraid_core::GrantAction::PolicyVersionRegister,
     )
     .await?
     {

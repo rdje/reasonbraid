@@ -490,12 +490,20 @@ fn covers(actions: Option<Value>, wanted: Option<GrantAction>) -> bool {
 /// administrative verbs existed (`.9.3.4.1`) there was nothing to ask it of —
 /// every administrative grant carried the single `tenant_admin` action, so a
 /// grant minted to record a correction equally authorized publishing.
-pub(crate) async fn grant_held_by(
-    pool: &PgPool,
+///
+/// ⚠️ Executor-generic since `SIGNOFF-REPAIR.9.1.2`, for the reason
+/// [`grant_is_live`] became so: `policy::register` asks it inside the site act's
+/// transaction, and asking on a second connection would read the grants from
+/// outside the transaction that is about to commit the write it gates.
+pub(crate) async fn grant_held_by<'e, E>(
+    executor: E,
     grant_id: &str,
     principal: &GrantSubject,
     wanted: GrantAction,
-) -> Result<bool, sqlx::Error> {
+) -> Result<bool, sqlx::Error>
+where
+    E: sqlx::PgExecutor<'e>,
+{
     let (kind, id) = subject_parts(principal);
     let actions: Option<Value> = sqlx::query_scalar(
         "SELECT actions FROM authority_grants \
@@ -506,7 +514,7 @@ pub(crate) async fn grant_held_by(
     .bind(grant_id)
     .bind(kind)
     .bind(id)
-    .fetch_optional(pool)
+    .fetch_optional(executor)
     .await?;
     Ok(covers(actions, Some(wanted)))
 }

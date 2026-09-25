@@ -44,7 +44,8 @@ use super::*;
 /// over nothing, and a caller that passes it still meets the gate.
 ///
 /// ⛔ The two STATEFUL refusals deliberately do NOT move out with it, and the
-/// difference is the point: whether `owning_authority` is a live grant and
+/// difference is the point: whether `owning_authority` is a live grant the
+/// caller holds (`SIGNOFF-REPAIR.9.1.2`) and
 /// whether `(policy_id, version)` is already taken are questions about the
 /// DATABASE, and answering either one before the gate would hand a principal
 /// with no site authority an existence oracle over the site's grants and over a
@@ -63,6 +64,9 @@ pub async fn register_policy(
     reason: &Reason,
 ) -> Result<Receipt, Error> {
     let input = input.clone();
+    // `SIGNOFF-REPAIR.9.1.2`: the registrar is the subject the gate admits, and
+    // the owning authority must be a grant THEY hold.
+    let registrar = subject.clone();
     authorized(
         pool,
         subject,
@@ -75,13 +79,15 @@ pub async fn register_policy(
         reason.as_str(),
         move |conn, _at| {
             let input = input.clone();
+            let registrar = registrar.clone();
             Box::pin(async move {
                 use crate::policy::PolicyError;
                 // ⛔ The `?` is the OUTER result: a database that could not
                 // answer is not a refusal and must not be audited as one — the
                 // act rolls back with nothing recorded, because nothing was
                 // decided. Only the inner `Err` is a refusal.
-                Ok(match crate::policy::register(conn, &input).await? {
+                let outcome = crate::policy::register(conn, &input, &registrar).await?;
+                Ok(match outcome {
                     Ok(registered) => Ok(Effect::write(
                         serde_json::to_value(&registered).expect("the policy serializes"),
                         1,
@@ -90,9 +96,13 @@ pub async fn register_policy(
                     // record. "the version exists" and "the named authority is
                     // not live" are different operator errors, and one opaque
                     // reason would leave the trail unable to say which happened.
-                    Err(PolicyError::GhostAuthority(_)) => {
-                        Err("the named owning authority is not an active, unexpired grant")
-                    }
+                    // ⛔ One text for a grant that does not exist and for a
+                    // grant someone else holds (`SIGNOFF-REPAIR.9.1.2`), so a
+                    // registrar learns nothing about grants it does not hold.
+                    Err(PolicyError::GhostAuthority(_)) => Err(
+                        "the named owning authority is not a live grant the caller holds \
+                         that covers policy_version_register",
+                    ),
                     Err(PolicyError::Duplicate(_)) => {
                         Err("that policy version is already registered")
                     }

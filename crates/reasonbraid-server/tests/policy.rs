@@ -237,6 +237,13 @@ async fn get(client: &reqwest::Client, base: &str, path: &str, principal: &str) 
 
 const DIGEST: &str = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
+/// The audited reason a registration is refused with when its owning authority
+/// is not a live, covering grant the registrar holds (`SIGNOFF-REPAIR.9.1.2`).
+/// One text for a ghost grant and for another principal's grant, so a registrar
+/// learns nothing about grants it does not hold.
+const OWNING_AUTHORITY_REFUSAL: &str =
+    "the named owning authority is not a live grant the caller holds that covers policy_version_register";
+
 /// `SIGNOFF-REPAIR.9.2.1.3`: a publication repository under a configured root,
 /// and object ids READ BACK from it.
 ///
@@ -496,7 +503,7 @@ async fn the_policy_registry_validates_the_digest_pinned_document() {
     assert!(refused["audit_id"].is_string(), "{refused}");
     assert_eq!(
         refused["code"],
-        json!("the named owning authority is not an active, unexpired grant"),
+        json!(OWNING_AUTHORITY_REFUSAL),
         "the audit trail tells the two domain refusals apart: {refused}"
     );
 
@@ -7558,6 +7565,137 @@ async fn the_policy_library_takes_site_operator_authority() {
     }
 
     sqlx::query("DELETE FROM policy_versions WHERE policy_id = 'lib-org-baseline'")
+        .execute(&pool)
+        .await
+        .expect("drop the fixture rows");
+}
+
+/// `SIGNOFF-REPAIR.9.1.2`: the owning authority a registrar names is a grant the
+/// REGISTRAR HOLDS.
+///
+/// Holding `policy_register` lets a principal write the site's library. It
+/// never let them attach somebody else's authority to what they wrote, yet
+/// until this leaf `policy::register` asked only whether the named grant was
+/// live and covering, never whose it was. A site operator could therefore name
+/// another tenant's grant as the owner of a document that tenant never wrote,
+/// and the publication verbs then treat that grant as the policy's owner.
+/// Every other site that cites an authority already asks
+/// `authority::grant_held_by` (`SIGNOFF-REPAIR.9.3.1`); this was the last one
+/// that did not.
+///
+/// ⭐ The refusal and the admission are a matched pair: the same registrar, the
+/// same document, the same coordinate, and only the grant's holder differs.
+/// The last leg is the path the old comment worried the rule would close, a
+/// policy owned by someone other than the operator. It stays open by the owner
+/// acting for themselves.
+#[tokio::test]
+async fn the_owning_authority_is_a_grant_the_registrar_holds() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, operator) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "held-operator" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the operator enrols: {operator}");
+    let operator_id = operator["principal_id"].as_str().unwrap().to_string();
+    let (status, owner) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "held-owner" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the owner enrols: {owner}");
+    let owner_id = owner["principal_id"].as_str().unwrap().to_string();
+    site_fixture::provision(
+        &pool,
+        &operator_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
+
+    let document = |authority: &str, version: &str| {
+        json!({
+            "policy_id": "held-owner-baseline",
+            "version": version,
+            "digest": DIGEST,
+            "lifecycle": "active",
+            "title": "a baseline its owner never wrote",
+            "owning_authority": authority,
+            "clauses": [ { "id": "c1", "statement": "every publication names its authority" } ],
+        })
+    };
+    let owner_grant = format!("grt_{owner_id}");
+    let operator_grant = format!("grt_{operator_id}");
+
+    // Leg 1, THE REFUSAL: the operator names the other principal's live grant,
+    // which covers `policy_version_register`, and is refused on the act's own
+    // terms: 400 with an audit id, since the caller did pass the site gate.
+    let (status, refused) = register_policy(
+        &client,
+        &base,
+        &operator_id,
+        &document(&owner_grant, "1.0.0"),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "a registrar cannot name an authority it does not hold: {refused}"
+    );
+    assert!(refused["audit_id"].is_string(), "{refused}");
+    assert_eq!(
+        refused["code"],
+        json!(OWNING_AUTHORITY_REFUSAL),
+        "the refusal names the rule: {refused}"
+    );
+
+    // Leg 2: nothing was written, so the library carries no row attributing
+    // that document to the other principal's authority.
+    let (status, library) = get(&client, &base, "/v1/policies", &owner_id).await;
+    assert_eq!(status, 200, "the library answers: {library}");
+    assert!(
+        !library
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["policy_id"] == json!("held-owner-baseline")),
+        "the refused registration left no row: {library}"
+    );
+
+    // Leg 3, THE MATCHED ADMISSION: the same registrar, document and
+    // coordinate, naming the grant it holds.
+    let (status, registered) = register_policy(
+        &client,
+        &base,
+        &operator_id,
+        &document(&operator_grant, "1.0.0"),
+    )
+    .await;
+    assert_eq!(status, 200, "a registrar names its own grant: {registered}");
+    assert_eq!(registered["owning_authority"], json!(operator_grant));
+
+    // Leg 4: a policy owned by someone other than the operator is still
+    // possible, by its owner registering it.
+    site_fixture::provision(
+        &pool,
+        &owner_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
+    let (status, registered) =
+        register_policy(&client, &base, &owner_id, &document(&owner_grant, "1.1.0")).await;
+    assert_eq!(
+        status, 200,
+        "the owner registers under its own grant: {registered}"
+    );
+    assert_eq!(registered["owning_authority"], json!(owner_grant));
+
+    sqlx::query("DELETE FROM policy_versions WHERE policy_id = 'held-owner-baseline'")
         .execute(&pool)
         .await
         .expect("drop the fixture rows");

@@ -558,7 +558,7 @@ who chooses what the whole site reads as governance is exactly the caller who
 must be able to explain it afterwards.
 
 **Two refusals moved behind the gate, and they answer `400` with an audit
-identifier.** Naming an owning authority that is not a live grant, and naming a
+identifier.** Naming an owning authority that is not a live grant you hold, and naming a
 `(policy_id, version)` that already exists, are both questions about the database
 rather than about the submitted document. Answering either one *before* the
 capability is checked would tell a principal with no site authority which grants
@@ -583,6 +583,26 @@ bundle all still answer any enrolled principal. A policy only its author can rea
 is not governance, and the test suite asserts that openness rather than leaving
 it implicit, so a future change that bound one of these reads fails a control
 instead of quietly reversing the decision behind it.
+
+**The owning authority must be a grant you hold** (`SIGNOFF-REPAIR.9.1.2`). The
+`policy_register` capability lets you write the library; it does not let you speak
+with someone else's authority. A registration names an `owning_authority`, and the
+publication verbs later treat that grant as the policy's owner, so the grant must be
+live, cover `policy_version_register`, and be held by the caller. Naming another
+principal's grant, or a grant that does not exist, is refused with one text for
+both, so a registrar learns nothing about grants it does not hold:
+
+```json
+{"code": "the named owning authority is not a live grant the caller holds that covers policy_version_register",
+ "audit_id": "…"}
+```
+
+That answer is `400`, because the caller did pass the site gate. A policy owned by
+someone other than the site operator is registered by its owner, once the owner
+holds `policy_register`. Delegating the registration is not possible yet, because
+nothing issues a grant from another grant (see *What `delegable` and
+`max_delegation_depth` do not do* in [Authority](authority.md)). The decision is
+`docs/decisions/2026-09-25_a-policy-registrar-holds-the-authority-it-names.md`.
 
 **Appending a version is still possible for a capability holder**, exactly as it
 is for a workflow profile. The registry is versioned by design; the defect was

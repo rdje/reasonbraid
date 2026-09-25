@@ -101,6 +101,9 @@ pub enum DeploymentError {
     /// The target was registered before targets named a reporter
     /// (`migrations/0114`), so it takes no receipt.
     NoReporter(String),
+    /// The caller does not hold the target's owning authority, so it may not
+    /// point the target at a publication (`SIGNOFF-REPAIR.9.3.3.7`).
+    NotTargetAuthority(String),
     /// The caller is not the principal the target names.
     NotTheReporter {
         principal: String,
@@ -191,6 +194,11 @@ impl std::fmt::Display for DeploymentError {
             DeploymentError::UnenrolledReporter(r) => {
                 write!(f, "reporter `{r}` is not an enrolled principal")
             }
+            DeploymentError::NotTargetAuthority(t) => write!(
+                f,
+                "assigning to target `{t}` requires HOLDING its owning authority, covering \
+                 `deployment_target_register` — the target's authority decides what it runs"
+            ),
             DeploymentError::NoReporter(t) => write!(
                 f,
                 "target `{t}` names no reporter — it was registered before targets named \
@@ -283,10 +291,12 @@ pub async fn register_target(
     }
 }
 
-/// Assign one publication to one target (the canary wave + the desired
-/// pair). The publication must be EFFECTIVE.
+/// Assign one publication to one target (the wave label + the desired
+/// pair). The caller must hold the target's authority, and the publication
+/// must be the caller's tenant's and EFFECTIVE.
 pub async fn assign(
     pool: &PgPool,
+    principal: &GrantSubject,
     tenant_id: &str,
     input: &AssignmentInput,
 ) -> Result<StoredAssignment, DeploymentError> {
@@ -295,14 +305,33 @@ pub async fn assign(
             input.desired_digest.clone(),
         ));
     }
-    let target: Option<bool> =
-        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM deployment_targets WHERE target_id = $1)")
+    let authority: Option<String> =
+        sqlx::query_scalar("SELECT owning_authority FROM deployment_targets WHERE target_id = $1")
             .bind(&input.target_id)
-            .fetch_one(pool)
+            .fetch_optional(pool)
             .await
-            .map_err(|_| DeploymentError::UnknownTarget(input.target_id.clone()))?;
-    if !target.unwrap_or(false) {
+            .map_err(DeploymentError::storage)?;
+    let Some(authority) = authority else {
         return Err(DeploymentError::UnknownTarget(input.target_id.clone()));
+    };
+    // ⛔ `SIGNOFF-REPAIR.9.3.3.7`: pointing a target at a publication is an act ON
+    // the target, so the caller must HOLD the target's owning authority, covering
+    // `deployment_target_register` — the predicate `register_target` asks above
+    // (`docs/decisions/2026-09-26_a-target-is-assigned-by-its-authority.md`).
+    // Targets are site-wide, so the publication's tenant alone let one tenant
+    // point another's target at its own publication. Asked BEFORE any
+    // publication is looked up; the target's existence is no secret (the target
+    // list is site-wide).
+    let held = crate::authority::grant_held_by(
+        pool,
+        &authority,
+        principal,
+        reasonbraid_core::GrantAction::DeploymentTargetRegister,
+    )
+    .await
+    .map_err(DeploymentError::storage)?;
+    if !held {
+        return Err(DeploymentError::NotTargetAuthority(input.target_id.clone()));
     }
     // ⛔ `SIGNOFF-REPAIR.6.1.5.2.1`: an assignment is tenant-owned by its
     // PUBLICATION (DOC-0071), and until now any enrolled principal could deploy

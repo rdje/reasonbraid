@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-26 — Only a target's own authority can decide what it runs (`SIGNOFF-REPAIR.9.3.3.7`)
+
+`REASONBRAID-REPAIR-0528`.
+
+- 🔴 **Before:** assigning a published policy to a target only checked that the policy belonged to the person assigning it. Targets are shared across the whole site, so one organization could set what another organization's target should run.
+- ✅ **Now:** only whoever holds the target's own authority can assign to it; anyone else is refused as unauthorized.
+- 🔎 **Found and fixed:** the review page still listed a problem with policy corrections that was fixed weeks ago. It is corrected, and 10 more entries on that page that may be similarly out of date are tracked (`.11.37`).
+
 ## 2026-09-26 — The book no longer implies deployments roll out in stages (`SIGNOFF-REPAIR.9.3.3.4`)
 
 `REASONBRAID-DOC-0182`.

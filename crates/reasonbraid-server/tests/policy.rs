@@ -4606,22 +4606,86 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
             "{label}: the refusal names `{named}`: {refused}"
         );
     }
-    let (status, assignment) = post(
-        &client,
-        &base,
-        "/v1/deployments",
-        &human_id,
-        &json!({
-            "target_id": "dp-target",
-            "publication_id": "dp-pub-1",
-            "wave": 1,
-            "desired_ref": object_ids[0],
-            "desired_digest": projection_digest,
-        }),
-    )
-    .await;
+    let valid = json!({
+        "target_id": "dp-target",
+        "publication_id": "dp-pub-1",
+        "wave": 1,
+        "desired_ref": object_ids[0],
+        "desired_digest": projection_digest,
+    });
+    // `SIGNOFF-REPAIR.9.3.3.7`: only the holder of the TARGET's authority points
+    // it at a publication. The reporter role is of the same tenant and enrolled,
+    // and holds no such grant: refused `403`, as an authority denial.
+    let (status, refused) = post(&client, &base, "/v1/deployments", &reporter_id, &valid).await;
+    assert_eq!(
+        status, 403,
+        "a same-tenant principal without the target's authority: {refused}"
+    );
+    assert_eq!(refused["code"], json!("unauthorized"), "{refused}");
+    // A store failure in either new lookup is the server's `500`, never "no such
+    // target" or an authority denial. Each table is withheld for one request and
+    // restored before anything is asserted.
+    for table in ["deployment_targets", "authority_grants"] {
+        sqlx::raw_sql(&format!("ALTER TABLE {table} RENAME TO {table}_withheld"))
+            .execute(&pool)
+            .await
+            .expect("withhold the table");
+        let (status, answered) = post(&client, &base, "/v1/deployments", &human_id, &valid).await;
+        sqlx::raw_sql(&format!("ALTER TABLE {table}_withheld RENAME TO {table}"))
+            .execute(&pool)
+            .await
+            .expect("restore the table");
+        assert_eq!(
+            status, 500,
+            "`{table}` unreadable is the server's failure: {answered}"
+        );
+        assert_eq!(
+            answered["code"],
+            json!("dependency_unavailable"),
+            "{answered}"
+        );
+    }
+    let (status, assignment) = post(&client, &base, "/v1/deployments", &human_id, &valid).await;
     assert_eq!(status, 200, "the assignment records: {assignment}");
     assert_eq!(assignment["observed_state"], json!("pending"));
+    // The held grant must COVER `deployment_target_register`: the same holder,
+    // with the grant narrowed to another verb, is refused on a second target it
+    // registered. The grant's actions are restored before anything is asserted.
+    let (status, registered) = post(
+        &client,
+        &base,
+        "/v1/deployment-targets",
+        &human_id,
+        &json!({ "target_id": "dp-target-narrowed", "target_type": "repository",
+                 "owning_authority": grant_id, "reporter": reporter_id }),
+    )
+    .await;
+    assert_eq!(status, 200, "the second target registers: {registered}");
+    let actions: Value =
+        sqlx::query_scalar("SELECT actions FROM authority_grants WHERE grant_id = $1")
+            .bind(&grant_id)
+            .fetch_one(&pool)
+            .await
+            .expect("the grant's actions read");
+    sqlx::query("UPDATE authority_grants SET actions = $2::jsonb WHERE grant_id = $1")
+        .bind(&grant_id)
+        .bind(r#"["policy_publication_write"]"#)
+        .execute(&pool)
+        .await
+        .expect("narrow the grant");
+    let mut narrowed = valid.clone();
+    narrowed["target_id"] = json!("dp-target-narrowed");
+    let (status, refused) = post(&client, &base, "/v1/deployments", &human_id, &narrowed).await;
+    sqlx::query("UPDATE authority_grants SET actions = $2 WHERE grant_id = $1")
+        .bind(&grant_id)
+        .bind(&actions)
+        .execute(&pool)
+        .await
+        .expect("restore the grant");
+    assert_eq!(
+        status, 403,
+        "holding the grant is not covering the verb: {refused}"
+    );
     // The STAGED publication refuses (the chain gate).
     let (status, refused) = post(
         &client,
@@ -7650,8 +7714,43 @@ async fn the_lifecycle_verbs_refuse_another_tenants_publication() {
         "target_id": "gtn-target", "publication_id": pub1, "wave": 1,
         "desired_ref": desired_ref, "desired_digest": desired_digest,
     });
+    // `SIGNOFF-REPAIR.9.3.3.7`: mallory holds no authority over alice's target,
+    // so she is refused there, `403`, before any publication is looked up.
     let (status, refused) = post(&client, &base, "/v1/deployments", &mallory_id, &assignment).await;
-    assert_eq!(status, 400, "a foreign tenant deploys nothing: {refused}");
+    assert_eq!(
+        status, 403,
+        "a foreign tenant points alice's target at nothing: {refused}"
+    );
+    // …so the TENANT binding is exercised from PAST that gate: mallory's own
+    // target, which she holds, pointed at alice's publication, is refused as an
+    // absent publication, `400`.
+    let (status, registered) = post(
+        &client,
+        &base,
+        "/v1/deployment-targets",
+        &mallory_id,
+        &json!({ "target_id": "gtn-target-m", "target_type": "repository",
+                 "owning_authority": mallory_grant, "reporter": mallory_id }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "mallory registers her own target: {registered}"
+    );
+    let mut foreign = assignment.clone();
+    foreign["target_id"] = json!("gtn-target-m");
+    let (status, refused) = post(&client, &base, "/v1/deployments", &mallory_id, &foreign).await;
+    assert_eq!(
+        status, 400,
+        "mallory is PAST the authority gate — the refusal must be the tenant one: {refused}"
+    );
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("does not exist"),
+        "another tenant's publication answers as an absent one: {refused}"
+    );
     let (status, assigned) = post(&client, &base, "/v1/deployments", &alice_id, &assignment).await;
     assert_eq!(status, 200, "the owner still deploys: {assigned}");
     let receipt = json!({ "observed_digest": DIGEST, "observed_state": "applied" });
@@ -8077,6 +8176,29 @@ async fn every_lifecycle_read_is_bound_to_its_own_tenant() {
     let (alice_thread, alice_verdict) =
         chain(alice_id.clone(), alice_tenant.clone(), "rdb-a").await;
     let _ = chain(mallory_id.clone(), mallory_tenant.clone(), "rdb-m").await;
+
+    // ── `SIGNOFF-REPAIR.9.3.3.7`: a target is pointed at a publication by whoever
+    //    holds the TARGET's owning authority. Targets are site-wide, so without
+    //    that check mallory could assign HER OWN effective publication to alice's
+    //    target: her tenant owns the assignment, and alice's target now carries a
+    //    desired state alice's authority never set.
+    let (desired_ref, desired_digest) = desired_pair(&pool, "rdb-m-pub").await;
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/deployments",
+        &mallory_id,
+        &json!({
+            "target_id": "rdb-a-target", "publication_id": "rdb-m-pub", "wave": 1,
+            "desired_ref": desired_ref, "desired_digest": desired_digest,
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 403,
+        "a principal without the target's authority points it at nothing: {refused}"
+    );
+    assert_eq!(refused["code"], json!("unauthorized"), "{refused}");
 
     // ── `publications::stage` reads `policy_projections`, and that read is one
     //    of the 32. ⛔ It probed EXISTENCE only, so a publication could be staged

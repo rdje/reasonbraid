@@ -547,6 +547,16 @@ publication must exist, and — the one that matters — **the publication must 
 effective**. Assigning one that is not is refused; a target is never pointed at
 something the deployment has not put into force.
 
+**Only the holder of the target's owning authority assigns to it.** The grant the
+target was registered under must be live, held by the caller, and cover
+`deployment_target_register`; anyone else is refused `403 unauthorized`, before
+any publication is looked up. The publication must also belong to the caller's
+tenant, so a target serves the tenant of whoever holds its authority: one tenant
+cannot point another's target at its own publication. Until 2026-09-26 any
+enrolled principal could, because targets are site-wide and only the
+publication's tenant was checked (`SIGNOFF-REPAIR.9.3.3.7`,
+`docs/decisions/2026-09-26_a-target-is-assigned-by-its-authority.md`).
+
 **The desired pair must be the publication's own** (ADR-021). `desired_digest`
 must equal the digest of the publication's projection, and `desired_ref` must be
 one of the Git object ids the publication recorded when it became effective.

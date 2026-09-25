@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — Only a target's own authority can decide what it runs (`SIGNOFF-REPAIR.9.3.3.7`)
+
+`REASONBRAID-REPAIR-0528`.
+
+- 🔴 **Root cause:** `assign` asked whether the target existed, never whose it was; the tenant binding is on the publication and targets are site-wide.
+- ✅ **Fix:** `assign` takes the principal and asks `grant_held_by(target.owning_authority, principal, DeploymentTargetRegister)` before any publication lookup; `NotTargetAuthority` → `403 unauthorized` via `deployment_refusal`; the target lookup classifies store faults. Decision record added. 7 of 7 viable mutants caught, including the check's order and verb.
+- 🔎 The qualification review's *citing an authority* row was stale since REPAIR-0184/0343; corrected. A scan finds 11 candidate rows owned only by done leaves: `.11.37` (row + gate).
+
 ## 2026-09-26 — The book no longer implies deployments roll out in stages (`SIGNOFF-REPAIR.9.3.3.4`)
 
 `REASONBRAID-DOC-0182`.

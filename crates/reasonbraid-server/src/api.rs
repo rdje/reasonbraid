@@ -4942,6 +4942,11 @@ fn deployment_refusal(error: crate::deployments::DeploymentError) -> ControlApiE
             ControlApiError::internal()
         }
         crate::deployments::DeploymentError::UnrepresentableInput => unrepresentable(),
+        // An AUTHORITY denial is `403`, as the publication verbs answer one; every
+        // other refusal is the caller's request being wrong, `400`.
+        refusal @ crate::deployments::DeploymentError::NotTargetAuthority(_) => {
+            ControlApiError::unauthorized(refusal.to_string())
+        }
         refusal => ControlApiError::invalid_command(refusal.to_string()),
     }
 }
@@ -5307,7 +5312,8 @@ async fn list_deployment_targets(
 }
 
 /// `POST /v1/deployments` — assign one publication to one target (`.5.2`):
-/// the canary wave + the DESIRED pair.
+/// the wave label + the DESIRED pair, by the holder of the target's authority
+/// (`SIGNOFF-REPAIR.9.3.3.7`).
 async fn assign_deployment(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -5323,7 +5329,7 @@ async fn assign_deployment(
             "an unenrolled principal assigns nothing",
         ));
     };
-    match crate::deployments::assign(&state.pool, &caller_tenant, &input).await {
+    match crate::deployments::assign(&state.pool, &principal, &caller_tenant, &input).await {
         Ok(row) => Ok(Json(row)),
         Err(error) => Err(deployment_refusal(error)),
     }

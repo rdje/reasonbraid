@@ -279,6 +279,7 @@ ADJUDICATION: dict[str, tuple[Claim, ...]] = {
     ),
     "docs/risks.md": (),
     "docs/parking-lot.md": (),
+    "docs/ARTIFACT_CLEANUP.md": (),
     "deploy/": (
         Claim("build_target", "the binaries `make release` produces", "release"),
     ),

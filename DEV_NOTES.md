@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-25 — Test databases left by failed runs are cleared, and the cleanup has a dated record (`SIGNOFF-REPAIR.11.4.3.1.10`)
+
+`REASONBRAID-REPAIR-0502`.
+
+- 🔴 **Before:** every failing database test keeps its throwaway database for inspection, and in three days they had grown from 0.2 GB to 11 GB. The daily cleanup kept no record of when it last ran.
+- ✅ **Now:** 210 of those databases, none referenced by any record, were removed by the project's own checking tool, freeing about 10.7 GB. `docs/ARTIFACT_CLEANUP.md` holds the date. The 165 GB compiler cache is left in place: the disk is 80% free, and clearing it forces a cold rebuild of over an hour. That choice is raised with the director.
+
 ## 2026-09-25 — The timestamp check runs on every change, and its six open cases are judged (`SIGNOFF-REPAIR.11.31.2`)
 
 `REASONBRAID-REPAIR-0501`.
@@ -451,110 +458,23 @@
 - ✅ Tested: five checks failed on the old code (two of them the capacity checks) and pass now; six live suites and the two-machine demonstration pass; a deliberately broken version was caught; strict lint clean.
 - Technical: `migrations/0105_node_inbox_consumed_by_command.sql` redefines `node_inbox_state`'s `consumed` rung as `e.payload->>'kind' = 'work_result' AND e.payload->>'command_id' = i.command_id` (was `e.operation_id = i.command_id` since `0021`); four `node_channel.rs` fixtures re-shaped to `op_…` ids; `node_work::a_completed_item_is_never_dead_lettered` asserts `consumed`.
 
-## 2026-09-24 — Finished jobs are no longer reported as undeliverable (`SIGNOFF-REPAIR.4.4.8`)
-
-`REASONBRAID-REPAIR-0467`. A defect found while testing the previous fix.
-
-- 🔴 **Before:** one round after a job finished successfully, the machine reported it as "undeliverable", and the server filed it in the dead-letter pile. An operator looking at the inbox saw every successful job marked as failed.
-- ✅ **Now:** the machine treats a finished job as finished and says nothing more about it. The server also refuses on its own to file a job as undeliverable once its answer has arrived, whoever sends the report.
-- 🔴 **Found along the way (now tracked, fixed next):** a successfully delivered job shows as "received" instead of "done" in the operator's inbox view.
-- ✅ Tested: two new checks (one on the machine, one against the real server) failed on the old code and pass now; 185 core and machine tests, six live suites and the two-machine demonstration pass; three deliberately broken versions were all caught; strict lint clean.
-- Technical: `RetryVerdict::Settled` for `completed` (`reconciled` stays `Refuse`, deliberately); `Worker::process` returns on `Settled`; `api.rs` `work_dead_lettered` fold adds `AND NOT EXISTS (… node_events e WHERE e.node_id = node_inbox.node_id AND e.payload->>'kind' = 'work_result' AND e.payload->>'command_id' = node_inbox.command_id)`. Controls: core `a_completed_attempt_is_settled_not_refused`, node `a_delivered_result_is_never_followed_by_a_dead_letter`, live `a_completed_item_is_never_dead_lettered`. Hand mutants 3/3.
-
-## 2026-09-23 — A dropped connection or one unanswerable reply no longer shuts a machine down (`SIGNOFF-REPAIR.4.4.5.2`)
-
-`REASONBRAID-REPAIR-0466`. The second part of the fifth recovery gap found by `REASONBRAID-DOC-0153`.
-
-- 🔴 **Before:** three ordinary problems stopped a machine's program entirely: the connection dropping while it sent an answer, a provider reply going missing, and one job with unreadable instructions. The last also left every job after it in the same round undone.
-- ✅ **Now:** a dropped connection makes the machine reconnect and resend. A missing reply is recorded as "unknown" and left for a person to decide, as designed. A job with unreadable instructions is reported once as undeliverable, and the other jobs carry on.
-- 🔴 **Found along the way (now tracked, fixed next):** every job that finishes successfully is wrongly reported as "undeliverable" one round later.
-- ✅ Tested: three new checks failed on the old code and pass now; 94 machine tests, six live suites and the two-machine demonstration pass; four deliberately broken versions were all caught; strict lint clean.
-- Technical: `WorkerError::calls_for_reconcile()` += `Node(NodeError::Channel(_))`; `Worker::process` maps `SupervisorError::OutcomeUnknown` to a log + `Ok`; `Worker::tick` dead-letters a `MalformedPayload` item via `report_dead_letter` and continues. Stub: `poll`, `start_with_epochs`. `tests/worker_failures.rs` 3 controls; `node_replacement` updated to the new contract. Mutants: tool 2/2 on `calls_for_reconcile`, hand 2/2 on the two arms.
-
-## 2026-09-23 — A machine no longer waits for ever on a server that stops answering (`SIGNOFF-REPAIR.4.4.5.1`)
-
-`REASONBRAID-REPAIR-0465`. The first part of the fifth recovery gap found by `REASONBRAID-DOC-0153`.
-
-- 🔴 **Before:** if the server accepted a machine's connection and then went silent, the machine waited for ever. It stalled completely, and because nothing reported an error, it never tried to reconnect. Measured: still waiting after 45 seconds, with no end in sight.
-- ✅ **Now:** the machine gives up after 10 seconds trying to connect, or 30 seconds waiting for an answer. It then treats the silence like any other broken connection and reconnects. Measured: it gives up at 30 seconds exactly.
-- ✅ Tested: the new checks use a stand-in server that accepts and never replies; 91 machine tests and three live suites pass; two deliberately broken versions were caught (one more could not be built); strict lint clean. One gap is stated in the record: only a 30-second check, run once and not kept, would notice the unbounded client being put back by hand.
-- Technical: `ChannelTimeouts { connect: 10 s, request: 30 s }`, `bounded_client` (`connect_timeout` + `timeout`) in both `NodeChannel` constructors, `with_timeouts`/`timeouts()`; `tests/support/control_plane.rs` `StalledServer`; `tests/channel_timeouts.rs` 2 controls. RED probe 45 s timeout → GREEN 30.00 s. Mutants: `bounded_client → Default` and `timeouts → Default` caught, `with_timeouts → Default` unviable.
-
-## 2026-09-23 — A machine that is not properly connected no longer starts paid work (`SIGNOFF-REPAIR.4.4.4.2.2`)
-
-`REASONBRAID-REPAIR-0464`. Closes the fourth recovery gap found by `REASONBRAID-DOC-0153`.
-
-- 🔴 **Before:** a machine whose reconnect had failed still sent work to the provider and paid for it, although it could not yet deliver the answer. If it ever noticed, it shut itself down.
-- ✅ **Now:** such a machine refuses to start paid work. The work waits untouched, and the machine reconnects and carries on instead of shutting down. Safety checks that need no connection still run first.
-- ✅ Tested: a new check failed on the old code (the machine did the work) and passes now; eleven existing checks now run on properly connected test machines; 89 machine tests, six live suites (91 tests) and the full two-machine demonstration pass; three deliberately broken versions were all caught; strict lint clean.
-- Technical: gate in `Worker::process` after the retry and cached-decision gates, before `execute_attempt_emitting`, returning `WorkerError::Node(NodeError::NotSchedulable)` with nothing journaled; `WorkerError::calls_for_reconcile()` (`Channel` | `Node(NotSchedulable)`) drives `rb-node`'s loop; `support::control_plane::reconciled_node` shared by `worker_cached_decision` (6), `worker_retry_policy` (2) and `worker_dead_letter` (3). Mutants 3/3 caught (`worker.rs:376:12 delete !`, `calls_for_reconcile → true/false`).
-
-## 2026-09-23 — The machine's own tests can now see an answer being sent (`SIGNOFF-REPAIR.4.4.4.2.1`)
-
-`REASONBRAID-REPAIR-0463`. Test equipment for the fourth recovery gap; no product behaviour changed.
-
-- 🔴 **Before:** the machine's own tests could never get a machine properly connected, so nothing below the slow full-system tests could see an answer actually being sent. A deliberately broken machine that claimed "sent" while sending nothing passed all 83 of them.
-- ✅ **Now:** a small stand-in server lets a test machine connect for real. New checks show an answer sent at once when connected, and an answer kept while disconnected then sent exactly once on reconnect under its original id.
-- ✅ Tested: the broken "claims sent, sends nothing" machine is now caught by the machine's own tests; 87 machine tests pass; strict lint clean.
-- Technical: `crates/reasonbraid-node/tests/support/control_plane.rs` `StubControlPlane` (`axum` 0.8 dev-dep; one `Cargo.lock` edge) serving `handshake`/`events`/`ack` with `HandshakeResponse`/`EventReceipt`/`AckResponse`; `tests/worker_delivery.rs` 4 controls. `cargo mutants --in-place` on `send_journaled|deliver_journaled_event`: 2 caught, 1 unviable, 0 missed; stub token mutant RED.
-
-## 2026-09-23 — A finished, paid-for answer can no longer be lost between "done" and "sent" (`SIGNOFF-REPAIR.4.4.4.1`)
-
-`REASONBRAID-REPAIR-0462`. The first half of the fourth recovery gap found by `REASONBRAID-DOC-0153`.
-
-- 🔴 **Before:** a machine recorded "the provider finished" and the answer to send as two separate saves. If it died between them, or was merely not yet reconnected, the answer was thrown away. The work was paid for, marked finished, and never sent; nothing could bring it back. Seven existing tests treated that loss as normal.
-- ✅ **Now:** the "finished" record and the answer are saved together in one step. If the machine cannot send the answer right away, the answer waits and goes out on the next reconnect, under its original id so it is never counted twice.
-- ⚠️ Still to do (tracked, next): a machine that is not yet reconnected should not start paid work at all.
-- ✅ Tested: the seven tests, rewritten to demand the waiting answer, failed on the old code (7 of 7) and pass now; two new crash tests; 83 machine tests and six live suites (91 tests) pass; nine deliberately broken versions were tried: four caught, three not buildable, one caught only by the live suites, one hand-made "two separate saves" version caught; strict lint clean.
-- Technical: `Journal::record_completed_with_event` over private `apply_transition_emitting` (transition + ledger row + `INSERT … SELECT operation_id FROM attempts`, one tx); `execute_attempt_emitting(…, &ResultEventBuilder)` + `land_completed` on the runtime and status-lookup paths; `ExecutionReport.result_event`; `Node::deliver_journaled_event` → `EventDelivery::{Delivered, Deferred}` sharing `send_journaled` with `emit_event`. Mutants: `cargo mutants --in-place -o target/r4_4_3` 8 → 4 caught / 3 unviable / 1 missed (`send_journaled → Ok(())`, caught live by `node_work` 10/13); hand two-transaction cut RED at `a_completion_whose_result_cannot_be_written_does_not_happen`. A `proved` flag selecting an identical `Complete` transition was removed when the tool showed it had no possible observer.
-
-## 2026-09-23 — The tests guarding the hand-off to the provider can now see whether the provider was reached (`SIGNOFF-REPAIR.4.4.3`)
-
-`REASONBRAID-REPAIR-0461`. The third of the seven recovery gaps found by `REASONBRAID-DOC-0153`.
-
-- 🔴 **Before:** one test was meant to prove that a replacement machine refuses outdated work instead of sending it to the provider. Its stand-in provider was set up to refuse by itself, though. The test also passed with the safety check switched off, because the stand-in's own refusals produced the same outcome. Nothing in the tests could count provider calls.
-- ✅ **Now:** the stand-in provider counts every call. The tests use one that *would* succeed, then check it was called zero times and that the recorded refusal is the safety check's own. Every step's result is checked, not thrown away, and a second test now looks for the right kind of event (a revision, not a contribution).
-- ⭐ **Shown, not assumed:** with the safety check deliberately broken, the OLD test still passed and the new one failed. A second test the review had flagged turned out to catch the break already through an earlier check; only its last line was blind, and that line is fixed too.
-- ✅ Tested: 13 + 2 live tests pass; 134 tests in the provider and machine packages pass; strict lint clean. No product behaviour changed.
-- Technical: `FakeAdapter::invocation_counter() -> Arc<AtomicU32>` (bumped on every `invoke`); `node_replacement::the_replacement_ritual_recovers_a_lost_node` scripts `Complete`, asserts 0 invocations, `MAX_DISPATCH_ATTEMPTS` `failed_before_dispatch` attempts whose evidence names *cached admission decision is stale* / *recorded epoch 0*, every tick `Ok`, and after the replay exactly 1 invocation and 1 `completed` attempt; `node_work::a_revocation_invalidates_the_cached_decision_at_the_next_dispatch` asserts invocations 1 → 1 across the refusal, the epoch pair in the evidence, and 0 `thread.revision_submitted`. Falsified with the `cargo mutants` diff `&&`→`||` in `CachedDecision::evaluate`, applied by `patch` and run through `run_pg_tests.sh`: new `node_replacement` RED (`left: 1`), HEAD `node_replacement` GREEN, `node_work` RED at its pre-existing lookup; restored, `shasum -a 256 -c` OK.
-
-## 2026-09-23 — A refused answer's cost is now counted, and the machine is told it was refused (`SIGNOFF-REPAIR.4.4.2`)
-
-`REASONBRAID-REPAIR-0460`. The second of the seven recovery gaps found by `REASONBRAID-DOC-0153`.
-
-- 🔴 **Before:** when the server refused a machine's finished answer (say, the agent's permission was withdrawn, or the conversation had closed), the provider's cost was never counted — the budget hold simply lapsed — and the machine was told only "received", so it believed the work had landed.
-- ✅ **Now:** a refused answer's cost is counted against the budget exactly like an accepted one, because the provider did the work either way. The machine is told the answer was refused and why, records it, and says so in its log. The budget charged is always the one the server attached to the job, never one the machine names.
-- ⚠️ Still to do (tracked): the operator's inbox view does not yet show that an answer was refused.
-- ✅ Tested: a new check failed on the old code (the budget hold stayed open) and passes now; a full run with a real machine closing the conversation mid-job shows the cost counted and the refusal recorded; two deliberately broken versions (no counting on refusal; the machine ignoring the refusal) were each caught; the machine's 81 tests and five further suites (160 tests) pass; strict lint clean.
-- Technical: `api::settle_work_item_reservation` (stored `work.reservation.reservation_id`, reported usage) after each of the three `store_rejection`s and on success; `EventReceipt.refused: Option<ResultRefusal{code,message}>` both sides (serde default/skip); node journal migration `0005_event_refusals.sql` (`outgoing_events.refusal`, user_version 5), `Journal::record_event_refusal` / `event_refusals`, `Node::record_refusal` on `emit_event` and the reconcile re-emission. Controls: `a_revoked_grant_refuses_a_later_node_result` grown (settled with 41/17; `refused.code = unauthorized`); new `a_refused_result_is_settled_and_the_node_journals_the_refusal` (node_work, real worker). Mutants M2 (no settlement on refusal) and M3 (node ignores `refused`) caught. Schema pins 4→5 (`journal.rs`, `journal_cli.rs`); `node-journal.md` example 2→5.
-
-## 2026-09-23 — An unresolved provider call is no longer "settled" by the machine's own give-up note, and an operator's ruling now lands as ruled (`SIGNOFF-REPAIR.4.4.1`)
-
-`REASONBRAID-REPAIR-0459`. The first, and worst, of the seven recovery gaps found by `REASONBRAID-DOC-0153`.
-
-- 🔴 **Before:** when a machine could not tell whether a paid provider call had happened, the server declared the case settled as soon as it held *any* message from the machine about that job — including the machine's own "I refused to retry this" report, or the answer from a later retry. The doubt vanished with no evidence. And when an operator ruled "it did not happen" or "it did happen", the machine recorded neither: every ruling became a bare "settled", with the operator's reasoning lost.
-- ✅ **Now:** only the machine's own answer *for that specific attempt* settles the doubt; a give-up note or another attempt's answer leaves it open and visible. An operator's ruling is recorded as ruled — "did not happen" or "did happen" — with the ruling itself kept as the evidence. A ruling the machine does not understand leaves the case open rather than closing it.
-- ⚖️ **Corrected a claim from an earlier fix:** "did not happen" was described as making the machine re-run the work by itself. It never did and still does not; re-asking is the thread owner's decision, and the fix's record now says so.
-- ✅ Tested: two new checks failed on the old code exactly where predicted (a give-up note settled the doubt; a "did not happen" ruling was recorded as a bare "settled") and pass now; two deliberately broken versions (any message settles the doubt; the ruling flattened again) were each caught; the machine's own 81 tests and six further suites (127 tests) pass; strict lint clean.
-- Technical: server `NodeChannelState::result_receipt_for_attempt` (`payload->>'kind' = 'work_result' AND payload->>'attempt_id' = $3`) drives the directive loop; the evidence and the `needs_adjudication` reason name the attempt. Node `Node::reconcile` matches `Directive::Adjudicated { terminal, evidence }`: `reconciled` → `Journal::reconcile_with_evidence`, `completed`/`failed_known` → `prove_result` with `{"adjudication": evidence}`; an unknown terminal is logged and left open. Controls: `a_receipt_that_is_not_this_attempts_result_does_not_adjudicate_it` (dead letter, another attempt's result, own result) and the grown operator control (`attempt_history` last `failed_known`; evidence names the admission); three fixtures' receipts now `work_result` naming their attempt. Mutants M2 (lookup accepts any event) and M3 (node flattens `failed_known`) caught.
-
 The entries before those above were rotated into reachable Git history at the
-**thirteenth rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
+**fourteenth rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
 stood at the commit named below, which is the object every retired record was
 checked against before this notice was written — is:
 
 ```bash
-git show 91af374d56bc890a274a15a4f6ac5ca22ab9fbe6:DEV_NOTES.md
+git show 27f4a670ffb40f9243c7159e5390a04c628d611b:DEV_NOTES.md
 ```
 
-That snapshot is 73047 bytes and 473 lines, and contains 47 dated
-entries; its Git blob is `945b49abee1733f493157ffb0e1ffff44dc2cf38` and its SHA-256 is
-`4f812f9eaf61571ece1f5db00ce29c61f8fc5d8482df39d9ac0cbf2e5f5c8ec1`. It carries the twelfth rotation's
+That snapshot is 73662 bytes and 562 lines, and contains 61 dated
+entries; its Git blob is `91090c74446fce54b3d1de21874000579b2d3005` and its SHA-256 is
+`1c0b6daf8cc9ff71872ae286590b6bf06faa10c25d300a41b13cf2ad584cd164`. It carries the thirteenth rotation's
 notice in turn, and each earlier notice names the one before it, so the chain
 walks all the way back. `docs/decisions/2026-09-09_changelog-rotation.md` holds
 the first transition's evidence.
 
-⛔ **11 record(s) rotated out, 37 kept, lossless** — every retired heading was retrieved from the
+⛔ **9 record(s) rotated out, 53 kept, lossless** — every retired heading was retrieved from the
 predecessor named above before this notice was written, and every figure in it was re-derived from that object with
 `git rev-parse`, `git cat-file` and SHA-256 rather than typed. ⭐ The cut is DERIVED, not chosen: it retires whole
 records until the ledger has at least 10 commits of runway at the p90 entry size measured over the last

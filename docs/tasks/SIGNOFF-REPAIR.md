@@ -6284,13 +6284,40 @@ assertion `left == right` failed: the modulo is over the whole u64
 
 #### SIGNOFF-REPAIR.9.3.3 — A deployment's declared digest is bound to nothing it deploys
 
-- Opened: `pending` by `SIGNOFF-REPAIR.11.13`'s ownership repair.
-- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 2, integrity: a deployment can claim content it does not deploy.
+- Status: `active` — split 2026-09-25 into `.9.3.3.1`–`.9.3.3.4`, one per obligation below; it closes when they do. Opened: `pending` by `SIGNOFF-REPAIR.11.13`'s ownership repair.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **structural** since the split (the four children carry the classes): originally **blocking**, class 2, integrity: a deployment can claim content it does not deploy.
 - Reproduce, at the source: `deployments::assign` validates `is_sha256_hex(&input.desired_digest)` — the SHAPE — and compares it against no publication projection; `tests/policy.rs:2724` assigns `sha256:` followed by sixty-four `a`s with `desired_ref: "abc123"` and asserts 200. The receipt then overwrites the observed state from client-supplied data bound to no node, keeping no history, so a target reports `applied` carrying a digest the publication never had.
 - ⚠️ The canary `wave` is a bare `i64` that nothing sequences on — recorded as the current contract rather than as a defect, and the leaf must decide whether the wave is a SEQUENCER or a LABEL and say which in the book.
 - Owns: comparing the declared digest and ref against the publication's actual projection at assignment, binding the receipt to the reporting node, retaining what a receipt replaced, and settling the wave's meaning.
 - Acceptance: an assignment whose digest is not the publication's projection is REFUSED; a receipt from a node the target does not name is refused; the prior observed state is recoverable after a receipt; and the existing fixture is re-seeded with the real projection digest rather than relaxed. Observed RED first.
 - Verification / commit: pending.
+- ⭐ **ADR-021 fixes what the desired pair MEANS**, so the first child needs no new decision: *"A deployment receipt is a per-target row: the target + the effective publication's ref id + the attested projection digest + the observed state."* The desired ref is therefore one of the publication's recorded Git object ids, and the desired digest is the digest of the publication's own projection.
+
+##### SIGNOFF-REPAIR.9.3.3.1 — An assignment's desired pair is whatever the caller declares
+
+- Status: `pending` — split from `.9.3.3` (2026-09-25).
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 2, integrity: a target can be assigned content its publication never had.
+- Owns: `deployments::assign` refuses, by name, a `desired_digest` that is not the digest of the publication's projection and a `desired_ref` that is not one of the publication's recorded Git object ids; RED first live; the fixtures that assign `"abc123"` (a ref nothing recorded) re-seeded with the publication's real ids, not relaxed.
+
+##### SIGNOFF-REPAIR.9.3.3.2 — A receipt is accepted from anyone who can see the assignment
+
+- Status: `pending` — split from `.9.3.3` (2026-09-25).
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 2, integrity: the observed state a target reports is the drift comparison's input, and today any principal of the owning tenant writes it.
+- Owns: deciding and recording who may report for a target (a target has no reporting identity today: `deployment_targets` holds an id, a type and an owning authority), the migration and route change that bind a receipt to it, and a live control where a principal the target does not name is refused.
+
+##### SIGNOFF-REPAIR.9.3.3.3 — A receipt overwrites the observed state it replaced
+
+- Status: `pending` — split from `.9.3.3` (2026-09-25).
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 2, integrity: *never a silent disappearance* (§12.9's rule, and the drift record's comparison input).
+- Owns: an append-only receipt history (each receipt a row, the assignment's observed pair its latest), a read of it, and a live control that recovers the prior observed state after a second receipt.
+
+##### SIGNOFF-REPAIR.9.3.3.4 — The canary wave is a number nothing reads
+
+- Status: `pending` — split from `.9.3.3` (2026-09-25).
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 3 if the book describes waves as sequencing a rollout (to be read at the leaf), otherwise deferred; the leaf reads the book first.
+- Census (`git grep -n wave -- 'crates/*/src/*.rs' 'crates/*/src/**/*.rs'`, at REPAIR-0524): outside `deployments.rs` one doc comment (`api.rs:5279`); inside it, the field is declared, bound into the INSERT, and selected back out by the two reads, and no expression compares, orders or gates on it.
+- Owns: deciding whether `wave` is a SEQUENCER (an assignment in wave N+1 waits for wave N's coverage) or a LABEL, recording it, and saying which in the book; a sequencer is a feature and would be deferred with a trigger if the book does not already promise it.
+
 
 #### SIGNOFF-REPAIR.9.3.5 — The publication store is BUILT; the gap is that nothing reads it and nothing operates it
 
@@ -14572,7 +14599,7 @@ git grep -nI -E "never run|licen[cs]e decision|license decision" -- \
 | 1a | `SIGNOFF-REPAIR.9.2.3` | `done` | ✅ REPAIR-0522 — the governance routes answer a database failure as the server's `500`, where 15 lookups answered it as a missing record or an invalid proof; a missing decision is named as one. RED by renaming a table for one request. A source guard refuses the pattern in both modules. ✅ **`.9.2` CLOSED.** |
 | 1a | `SIGNOFF-REPAIR.9.3.2` | `done` | ✅ REPAIR-0523 — a publication's review lifecycle recurs: a new occurrence after a completed review schedules a new review (own ids; one due per pair as a partial unique index, `migrations/0113`); a repeated waiver is 2 in force within 90 days; an insert failure is a `500`. The old control asserted the defect. 8 of 8 mutants caught. |
 | 1a | `SIGNOFF-REPAIR.11.2.10` | `done` | ✅ REPAIR-0524 — WAIVER-ROUTING read the policy constant `REPEATED_WAIVER_THRESHOLD` as a gate-waiver token and refused a correct commit; the token must now end at `_WAIVER`, and the gate has its first `--self-test` (13 verdicts), run on every commit. |
-| 1 | `SIGNOFF-REPAIR.9.3.3` | `pending` | ⚖️ blocking, class 2, integrity: a deployment's declared digest is bound to nothing it deploys. RED first live. Then `.11.3` (class 2, census first), then `.11.36` (class 3) per `REASONBRAID-DOC-0162`. |
+| 1 | `SIGNOFF-REPAIR.9.3.3.1` | `pending` | ⚖️ blocking, class 2: an assignment's desired digest and ref are whatever the caller declares. ADR-021 fixes them: the publication's projection digest and one of its recorded Git object ids; refuse otherwise by name; RED first live; re-seed the `"abc123"` fixtures. `.9.3.3` is split into `.9.3.3.1`–`.4` (the receipt's reporter, receipt history, the wave's meaning). Then `.11.3` (census first), then `.11.36`. |
 | 3 | `SIGNOFF-REPAIR.11.26` | `pending` | ⚖️ deferred on its next occurrence (DOC-0162). 120-run hunt 2026-09-24: 0 failures (0 in 299 since the instrument). ⚖️ `.4.4` is COMPLETE (REPAIR-0459…0482, DOC-0153…0155); this row is next by the table's order. ⏳ **CAUGHT — and it is the same defect as `.11.2.7`, which has been open five days.** 🔴 `Ran 73 tests in 375.967s` / **`FAILED (errors=9)`** against a normal ~21 s, and the per-phase instrument localizes every one: **8 of 8 stall in the `download` phase**, `started` at 15,239–15,251 ms where it normally costs 144–209 ms, with `version` and `command` never reached. ⭐ That phase runs **no network** — a stubbed `curl` copying a local file — so the 15 s is spent STARTING a small fresh child. ⛔ **The candidate was then produced deliberately and REFUTED**: a fresh 191 MB signed bundle extracted immediately before the suite gave **21.314 s, 73 OK** with `syspolicyd` at 66–81 %, so the daemon’s load joins *the machine was busy* as a withdrawn explanation. ⚠ Swap read the identical **5,719 MB** in the failing and the passing run. Ownership of `.11.2.7` consolidates here |
 | 1a | `SIGNOFF-REPAIR.11.26.2` | `done` | ✅ REPAIR-0381 — **this batch's own findings graded: 11 claims, 8 exact, 2 moved, 1 unverifiable.** ⭐ Held exactly by DIFFERENT routes: the population (raw shell vs the Python census), the census movement **62/2/40 → 101/1/2** (today's instrument replayed over past trees via `git show`), **21 coarse vs 14 per-route** and the seven partly-described families by name, every schema claim table-by-table, and both `git grep` named instances. 🔴 **WRONG: *24 timing records … nothing stalled*** — the log is APPEND-mode, 24 is the file's total across three runs, this run wrote **8**, and eight of the 24 are the 2026-09-20 stall. `CLAIM_VERIFICATION` §6's *a claim about an item, evidenced by its container*. 🔴 **UNVERIFIABLE: `.11.26`'s 240-invocation distribution** — its artefact is untracked and replaced; a leg-3 breach, and the CARRIED figure again. ✅ But the capture itself re-derives to the millisecond, so the leaf's conclusion survives its arithmetic. 🔴 MOVED: the gate price 0.16 s → **0.27–0.35 s**, decision unchanged |
 | 1a | `SIGNOFF-REPAIR.11.25.1` | `done` | ✅ REPAIR-0323 — **the holder is two `chrome_crashpad_handler` OUTSIDE the owned process group**, named by KERNEL PIPE IDENTITY: a render’s stderr pipe has **12 holders at fd 2**, 10 in the group `stop_process` kills and 2 double-forked to `ppid 1` with a process group each — so `kill_process_group` cannot reach them by construction. ✅ **The positive control PASSES** (45 of 46 mid-render samples resolve the pipe; `pgrep` returns 11–12), so `.11.25.1.1`’s *both are blind on this host* is annotated while its withdrawal stands. 🔴 **And the hold does NOT reproduce — 22 runs across four render durations, drain 0–1 ms, none censored** — while the control that opened `.11.25` now passes **18/0** with no predicate changed since it failed. ⛔ **No product change**: 7 launch flags suppress nothing, the handle is inherited before any code of ours runs, and there is nothing to bound. ✅ `scripts/measure_browser_stderr_holder.py` ships as the tracked producer, reporting `positive_control: blind` rather than an absence it cannot license |

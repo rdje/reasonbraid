@@ -113,6 +113,8 @@ curl -s "localhost:4310/v1/policies/pol_retention/2.1.0/impact" \
 ]
 ```
 
+⚠️ **The selectors above are written as strings, and the resolver does not read that form.** It reads each selector as an object with `layer` and `target` fields, and anything else, a bare string included, matches every target. So this example's non-applicability would remove the policy from every target. The selector form is being decided and validated under `SIGNOFF-REPAIR.9.1.5`; until then the impact map shows what was declared, not what resolution will do with it.
+
 ⛔ **This is derivable coverage, never an achievement claim.** It is the clauses
 multiplied by what the version *declares* it applies to. It does not say the
 policy is being obeyed anywhere, and nothing on this page measures compliance.
@@ -278,6 +280,8 @@ curl -s -X POST localhost:4310/v1/policy-projections \
   "resolved_policies": [{"policy_id": "pol_retention", "version": "2.1.0"}]
 }
 ```
+
+⚠️ **This example cannot be sent as written.** `gateway-v2` is not one of the compiler's four targets (`generic`, `lock`, `codex`, `claude`); `resolution` takes `policies` and `target`, not `subject`; and the compiler's only unrepresentable reasons are a control character and a length limit. The request also accepts a `lock` list that the `lock` target renders exactly as given, unchecked against the resolution. Both are being corrected under `SIGNOFF-REPAIR.9.1.4`, which replaces this example with one run against a live server.
 
 ⛔ **`unrepresentable` is part of the record, not a warning to be discarded.** A
 projection that could not express a clause says so, and staging a publication

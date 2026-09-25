@@ -74,7 +74,11 @@ pub struct CodexCliAdapter {
     binary: OsString,
     capabilities: AdapterCapabilities,
     /// One child per operation, so `cancel` can reach it while the handle streams.
-    children: Mutex<std::collections::HashMap<String, Arc<Mutex<Child>>>>,
+    ///
+    /// ⚠️ Shared with each handle, which removes its own entry when dropped
+    /// (`SIGNOFF-REPAIR.10.1.3`): the map used to keep every child for the
+    /// adapter's lifetime, so `kill_on_drop` never fired.
+    children: crate::subprocess::Children,
 }
 
 impl Default for CodexCliAdapter {
@@ -102,7 +106,7 @@ impl CodexCliAdapter {
                 tool_support: false,
                 policy_injection: PolicyInjectionMode::None,
             },
-            children: Mutex::new(std::collections::HashMap::new()),
+            children: crate::subprocess::Children::default(),
         }
     }
 
@@ -148,7 +152,7 @@ impl Adapter for CodexCliAdapter {
         let child = Arc::new(Mutex::new(child));
         self.children
             .lock()
-            .await
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .insert(operation_id.to_string(), Arc::clone(&child));
 
         let (stderr_buffer, stderr_drain) = crate::subprocess::drain_stderr(stderr);
@@ -162,6 +166,8 @@ impl Adapter for CodexCliAdapter {
             crate::contract::AttemptHandle::new(Box::new(CodexHandle {
                 lines: BufReader::new(stdout),
                 child,
+                children: Arc::clone(&self.children),
+                operation_id: operation_id.to_string(),
                 stderr: stderr_buffer,
                 stderr_drain,
                 finished: false,
@@ -171,7 +177,10 @@ impl Adapter for CodexCliAdapter {
 
     async fn cancel(&self, operation_id: &str) -> CancellationOutcome {
         let child = {
-            let children = self.children.lock().await;
+            let children = self
+                .children
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             match children.get(operation_id) {
                 Some(child) => Arc::clone(child),
                 None => return CancellationOutcome::BestEffort,
@@ -217,10 +226,20 @@ impl Adapter for CodexCliAdapter {
 struct CodexHandle {
     lines: BufReader<ChildStdout>,
     child: Arc<Mutex<Child>>,
+    /// The adapter's map and this attempt's key in it, so dropping the handle
+    /// releases the child (`SIGNOFF-REPAIR.10.1.3`).
+    children: crate::subprocess::Children,
+    operation_id: String,
     /// The LAST bytes of the child's stderr (`crate::subprocess::drain_stderr`).
     stderr: Arc<Mutex<Vec<u8>>>,
     stderr_drain: tokio::task::JoinHandle<()>,
     finished: bool,
+}
+
+impl Drop for CodexHandle {
+    fn drop(&mut self) {
+        crate::subprocess::release(&self.children, &self.operation_id, &self.child);
+    }
 }
 
 impl AttemptStream for CodexHandle {
@@ -249,18 +268,13 @@ impl CodexHandle {
                     // consumed the pipe's tail yet, and racing it leaves the reason
                     // EMPTY (the PHASE-1-MAINT-2 defect). The bound guards against a
                     // grandchild that inherited stderr keeping the pipe open.
-                    let _ = tokio::time::timeout(
-                        std::time::Duration::from_secs(5),
-                        &mut self.stderr_drain,
-                    )
-                    .await;
+                    // `SIGNOFF-REPAIR.10.1.3`: the drain, then the child, both
+                    // bounded, and the child reaped; the wait used to be unbounded.
+                    let status =
+                        crate::subprocess::settle(&self.child, &mut self.stderr_drain).await;
                     // `SIGNOFF-REPAIR.10.1.2`: cut on a character boundary; the
                     // byte slice this replaced panicked inside a multi-byte one.
                     let stderr_tail = crate::subprocess::stderr_tail(&self.stderr.lock().await);
-                    let status = {
-                        let mut child = self.child.lock().await;
-                        child.wait().await.ok()
-                    };
                     self.finished = true;
                     return match status {
                         Some(s) if s.success() => None, // no turn.completed seen: lost response
@@ -283,6 +297,7 @@ impl CodexHandle {
                     // treats output over ITS bound: never a silently shortened
                     // result, and never a line held whole to find out.
                     let _ = self.child.lock().await.start_kill();
+                    let _ = crate::subprocess::settle(&self.child, &mut self.stderr_drain).await;
                     self.finished = true;
                     return Some(AttemptEvent::FailedKnown {
                         reason: format!(
@@ -317,6 +332,12 @@ impl CodexHandle {
                         }
                         Some("turn.completed") => {
                             let usage = event.get("usage").cloned();
+                            // `SIGNOFF-REPAIR.10.1.3`: the completion ENDS the
+                            // attempt, so the child is settled before it is
+                            // reported; this arm used to return at once, leaving
+                            // the child unreaped and the drain running.
+                            let _ = crate::subprocess::settle(&self.child, &mut self.stderr_drain)
+                                .await;
                             self.finished = true;
                             return Some(AttemptEvent::Completed { usage });
                         }

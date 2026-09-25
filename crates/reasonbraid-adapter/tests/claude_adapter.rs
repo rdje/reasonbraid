@@ -86,6 +86,89 @@ async fn complete_path_streams_events_and_normalizes_usage() {
 }
 
 /// The run payload's `prompt` travels as the USER prompt (an argument), verbatim.
+fn present(pid: &str) -> bool {
+    std::process::Command::new("ps")
+        .args(["-o", "stat=", "-p", pid])
+        .output()
+        .expect("ps runs")
+        .status
+        .success()
+}
+
+fn running(pid: &str) -> bool {
+    let out = std::process::Command::new("ps")
+        .args(["-o", "stat=", "-p", pid])
+        .output()
+        .expect("ps runs");
+    let state = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    !state.is_empty() && !state.starts_with('Z')
+}
+
+/// `SIGNOFF-REPAIR.10.1.3`: the Claude mirror. The child is gone by the time the
+/// `result` is reported.
+#[tokio::test]
+async fn a_completed_child_is_reaped_before_completed_is_returned() {
+    let adapter = adapter_with_stub("linger");
+    let InvokeOutcome::Accepted(_, mut handle) =
+        adapter.invoke(&request_with("linger"), "op_linger").await
+    else {
+        panic!("expected an accepted dispatch");
+    };
+    let mut pid = None;
+    loop {
+        match handle.next().await {
+            Some(AttemptEvent::OutputChunk { chunk }) => {
+                pid = chunk.strip_prefix("pid:").map(str::to_string);
+            }
+            Some(AttemptEvent::Completed { .. }) => break,
+            Some(_) => {}
+            None => panic!("the stream ended without a completion"),
+        }
+    }
+    let pid = pid.expect("the stub reports its pid");
+    assert!(
+        !present(&pid),
+        "the child {pid} is gone when Completed arrives"
+    );
+}
+
+/// `SIGNOFF-REPAIR.10.1.3`: the Claude mirror. Dropping the handle stops the child.
+#[tokio::test]
+async fn an_abandoned_attempt_does_not_leave_its_child_running() {
+    let adapter = adapter_with_stub("abandon");
+    let InvokeOutcome::Accepted(_, mut handle) =
+        adapter.invoke(&request_with("abandon"), "op_abandon").await
+    else {
+        panic!("expected an accepted dispatch");
+    };
+    let mut pid = None;
+    while pid.is_none() {
+        match handle.next().await {
+            Some(AttemptEvent::OutputChunk { chunk }) => {
+                pid = chunk.strip_prefix("pid:").map(str::to_string);
+            }
+            Some(_) => {}
+            None => panic!("the stream ended before the pid"),
+        }
+    }
+    let pid = pid.expect("the stub reports its pid");
+    drop(handle);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while running(&pid) && std::time::Instant::now() < deadline {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    let still = running(&pid);
+    if still {
+        let _ = std::process::Command::new("kill")
+            .args(["-9", &pid])
+            .status();
+    }
+    assert!(
+        !still,
+        "the abandoned child {pid} is stopped once its handle is dropped"
+    );
+}
+
 /// `SIGNOFF-REPAIR.10.1.2`: the Claude mirror of the codex control. A stderr
 /// tail that ends mid-character is a failure, not a panic.
 #[tokio::test]

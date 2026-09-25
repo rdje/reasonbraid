@@ -223,6 +223,17 @@ adapters read the child's two streams as bytes, through one shared module:
   line the line that said what went wrong was never stored, and its 1 KiB tail was a
   byte slice that crashed the adapter when it fell inside a multi-byte character.
 
+**How an attempt ends, and what it leaves behind** (`SIGNOFF-REPAIR.10.1.3`). Every
+terminal path settles the child before the attempt's last event is reported: the
+provider's own completion or result, the end of its output, and a line over the
+bound. Settling means the stderr drain finishes and the child exits and is reaped,
+each within 5 seconds; a child that outlives that is killed, then reaped. And
+dropping an attempt's handle releases its child, which is then stopped. Until that
+leaf, the completion path returned at once and reaped nothing, and the adapter kept
+every child it had ever started for its whole lifetime, so an abandoned attempt's
+provider ran on. When two attempts share an operation id, dropping one releases only
+its own child, so `cancel` still reaches the other.
+
 The live qualification test is deliberately not run by default — it dispatches
 to the real harness and spends a few tokens:
 

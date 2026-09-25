@@ -114,6 +114,22 @@ case "$last" in
     echo "TAILMARK: the error the operator needs" >&2
     exit 2
     ;;
+  *linger*)
+    # `SIGNOFF-REPAIR.10.1.3`: report completion, then stay alive a second.
+    # The reply carries this process's pid so a test can look it up.
+    echo '{"type":"thread.started","thread_id":"stub_linger"}'
+    echo '{"type":"item.completed","item":{"type":"agent_message","text":"pid:'"$$"'"}}'
+    echo '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}'
+    sleep 1
+    exit 0
+    ;;
+  *abandon*)
+    # `SIGNOFF-REPAIR.10.1.3`: one chunk carrying the pid, then run for ever
+    # with no child process, so killing this script is the whole cleanup.
+    echo '{"type":"thread.started","thread_id":"stub_abandon"}'
+    echo '{"type":"item.completed","item":{"type":"agent_message","text":"pid:'"$$"'"}}'
+    while :; do :; done
+    ;;
   *stdout-invalid*)
     # A stdout line that is not UTF-8 between real events. It cannot be an
     # event, so it is skipped; the old reader treated it as an I/O error and
@@ -177,6 +193,20 @@ const CLAUDE_SCRIPT: &str = r#"#!/bin/sh
 # The adapter invokes: <binary> -p ... -- <prompt> — the prompt is the LAST arg.
 for last in "$@"; do :; done
 case "$last" in
+  *linger*)
+    # `SIGNOFF-REPAIR.10.1.3`: the Claude mirror: a result, then a second alive.
+    echo '{"type":"system","subtype":"init","session_id":"stub_linger","model":"stub"}'
+    echo '{"type":"assistant","session_id":"stub_linger","message":{"content":[{"type":"text","text":"pid:'"$$"'"}]}}'
+    echo '{"type":"result","subtype":"success","is_error":false,"result":"ok","session_id":"stub_linger","usage":{"input_tokens":1,"output_tokens":1}}'
+    sleep 1
+    exit 0
+    ;;
+  *abandon*)
+    # `SIGNOFF-REPAIR.10.1.3`: the Claude mirror: the pid, then run for ever.
+    echo '{"type":"system","subtype":"init","session_id":"stub_abandon","model":"stub"}'
+    echo '{"type":"assistant","session_id":"stub_abandon","message":{"content":[{"type":"text","text":"pid:'"$$"'"}]}}'
+    while :; do :; done
+    ;;
   *stderr-utf8*)
     # `SIGNOFF-REPAIR.10.1.2`: the Claude mirror of the codex branch.
     echo '{"type":"system","subtype":"init","session_id":"stub_utf8","model":"stub"}'

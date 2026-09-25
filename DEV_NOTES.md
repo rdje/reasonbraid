@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-25 — Finished or abandoned Claude and Codex programs are cleaned up (`SIGNOFF-REPAIR.10.1.3`)
+
+`REASONBRAID-REPAIR-0511`.
+
+- 🔴 **Before:** the Claude and Codex connections kept a hold on every program they had ever started, so a request that was given up on left its program running for ever. And a successful answer was reported before its program had even finished.
+- ✅ **Now:** every way a request can end waits (for at most a few seconds) for the program to finish and cleans it up, stopping it if it lingers. Giving up on a request stops its program.
+- ✅ Tested: both problems shown on the old code by looking at the real processes; every deliberately broken version caught.
+
 ## 2026-09-25 — The Claude and Codex connections read their output safely (`SIGNOFF-REPAIR.10.1.2`)
 
 `REASONBRAID-REPAIR-0510`.

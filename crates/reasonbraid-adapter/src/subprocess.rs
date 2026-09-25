@@ -19,6 +19,7 @@
 use std::sync::Arc;
 
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt};
+use tokio::process::Child;
 use tokio::sync::Mutex;
 
 /// The longest stdout event line an adapter reads: 2 MiB.
@@ -125,6 +126,56 @@ where
         }
     });
     (kept, handle)
+}
+
+/// How long [`settle`] waits for the stderr drain, and then for the child.
+pub(crate) const SETTLE_BOUND: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// End a child's attempt cleanly (`SIGNOFF-REPAIR.10.1.3`): the stderr drain
+/// finishes, then the child exits and is REAPED, each within [`SETTLE_BOUND`];
+/// a child that outlives the bound is killed, then reaped. The exit status, when
+/// one is known.
+///
+/// Every terminal path calls this: EOF, the provider's own completion, and a
+/// line over the bound. The completion path used to return at once, awaiting
+/// neither the child nor the drain, and the EOF path waited on the child with no
+/// bound at all.
+pub(crate) async fn settle(
+    child: &Mutex<Child>,
+    stderr_drain: &mut tokio::task::JoinHandle<()>,
+) -> Option<std::process::ExitStatus> {
+    // The drain first, so the stderr tail is complete when a reason is written
+    // (`PHASE-1-MAINT-2`); bounded, because a grandchild that inherited stderr
+    // can hold the pipe open.
+    let _ = tokio::time::timeout(SETTLE_BOUND, stderr_drain).await;
+    let mut child = child.lock().await;
+    match tokio::time::timeout(SETTLE_BOUND, child.wait()).await {
+        Ok(status) => status.ok(),
+        Err(_) => {
+            let _ = child.start_kill();
+            child.wait().await.ok()
+        }
+    }
+}
+
+/// The adapter's map of live children, shared with each handle so the handle can
+/// remove its own entry when it is dropped (`SIGNOFF-REPAIR.10.1.3`). A `std`
+/// mutex, because `Drop` cannot await; it is never held across an await.
+pub(crate) type Children =
+    Arc<std::sync::Mutex<std::collections::HashMap<String, Arc<Mutex<Child>>>>>;
+
+/// Remove `operation_id`'s entry, but only if it is still THIS child: a reused
+/// operation id may have replaced it, and that attempt's entry is not ours.
+pub(crate) fn release(children: &Children, operation_id: &str, child: &Arc<Mutex<Child>>) {
+    let mut map = children
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if map
+        .get(operation_id)
+        .is_some_and(|held| Arc::ptr_eq(held, child))
+    {
+        map.remove(operation_id);
+    }
 }
 
 /// The last [`STDERR_TAIL_BYTES`] of the kept stderr, cut on a character

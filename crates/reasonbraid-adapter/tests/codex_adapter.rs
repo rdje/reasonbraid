@@ -257,6 +257,152 @@ async fn a_stdout_line_that_is_not_utf8_is_skipped() {
     );
 }
 
+/// Whether a process is still RUNNING: present, and not a zombie. A zombie has
+/// terminated; only reaping removes it, and that is a separate question.
+fn running(pid: &str) -> bool {
+    let out = std::process::Command::new("ps")
+        .args(["-o", "stat=", "-p", pid])
+        .output()
+        .expect("ps runs");
+    let state = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    !state.is_empty() && !state.starts_with('Z')
+}
+
+/// Whether a process is still in the process table at all.
+fn present(pid: &str) -> bool {
+    std::process::Command::new("ps")
+        .args(["-o", "stat=", "-p", pid])
+        .output()
+        .expect("ps runs")
+        .status
+        .success()
+}
+
+/// `SIGNOFF-REPAIR.10.1.3`: by the time `Completed` is returned, the child has
+/// exited AND been reaped. The old success arm returned at once, awaiting
+/// neither the child nor the stderr drain, which only the EOF arm awaited.
+#[tokio::test]
+async fn a_completed_child_is_reaped_before_completed_is_returned() {
+    let adapter = adapter_with_stub("linger");
+    let InvokeOutcome::Accepted(_, mut handle) =
+        adapter.invoke(&request_with("linger"), "op_linger").await
+    else {
+        panic!("expected an accepted dispatch");
+    };
+    let mut pid = None;
+    loop {
+        match handle.next().await {
+            Some(AttemptEvent::OutputChunk { chunk }) => {
+                pid = chunk.strip_prefix("pid:").map(str::to_string);
+            }
+            Some(AttemptEvent::Completed { .. }) => break,
+            Some(_) => {}
+            None => panic!("the stream ended without a completion"),
+        }
+    }
+    let pid = pid.expect("the stub reports its pid");
+    assert!(
+        !present(&pid),
+        "the child {pid} is gone, not running and not a zombie, when Completed arrives"
+    );
+}
+
+/// `SIGNOFF-REPAIR.10.1.3`: an attempt whose handle is dropped does not leave
+/// its child running. The adapter's map kept a reference to every child for
+/// its own lifetime, so `kill_on_drop` never fired.
+#[tokio::test]
+async fn an_abandoned_attempt_does_not_leave_its_child_running() {
+    let adapter = adapter_with_stub("abandon");
+    let InvokeOutcome::Accepted(_, mut handle) =
+        adapter.invoke(&request_with("abandon"), "op_abandon").await
+    else {
+        panic!("expected an accepted dispatch");
+    };
+    let mut pid = None;
+    while pid.is_none() {
+        match handle.next().await {
+            Some(AttemptEvent::OutputChunk { chunk }) => {
+                pid = chunk.strip_prefix("pid:").map(str::to_string);
+            }
+            Some(_) => {}
+            None => panic!("the stream ended before the pid"),
+        }
+    }
+    let pid = pid.expect("the stub reports its pid");
+    assert!(
+        running(&pid),
+        "the stub {pid} runs while its attempt is live"
+    );
+    drop(handle);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while running(&pid) && std::time::Instant::now() < deadline {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    let still = running(&pid);
+    if still {
+        // Leave nothing behind whatever the verdict.
+        let _ = std::process::Command::new("kill")
+            .args(["-9", &pid])
+            .status();
+    }
+    assert!(
+        !still,
+        "the abandoned child {pid} is stopped once its handle is dropped"
+    );
+}
+
+/// The pid an `abandon` stub reports in its first chunk.
+async fn pid_of(handle: &mut reasonbraid_adapter::AttemptHandle) -> String {
+    loop {
+        match handle.next().await {
+            Some(AttemptEvent::OutputChunk { chunk }) => {
+                return chunk.strip_prefix("pid:").map(str::to_string).expect("pid");
+            }
+            Some(_) => {}
+            None => panic!("the stream ended before the pid"),
+        }
+    }
+}
+
+/// `SIGNOFF-REPAIR.10.1.3`: dropping one handle releases only ITS child. Two
+/// attempts under one operation id: the second replaced the first in the map,
+/// so the first's drop must not remove the second's entry, or `cancel` could no
+/// longer reach a child that is still running.
+#[tokio::test]
+async fn dropping_a_handle_releases_only_its_own_child() {
+    let adapter = adapter_with_stub("abandon");
+    let InvokeOutcome::Accepted(_, mut first) =
+        adapter.invoke(&request_with("abandon"), "op_shared").await
+    else {
+        panic!("expected an accepted dispatch");
+    };
+    let one = pid_of(&mut first).await;
+    let InvokeOutcome::Accepted(_, mut second) =
+        adapter.invoke(&request_with("abandon"), "op_shared").await
+    else {
+        panic!("expected an accepted dispatch");
+    };
+    let two = pid_of(&mut second).await;
+    drop(first);
+    // The second attempt is still live, so cancel must still reach its child.
+    let _ = adapter.cancel("op_shared").await;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while running(&two) && std::time::Instant::now() < deadline {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    let still = running(&two);
+    for pid in [&one, &two] {
+        let _ = std::process::Command::new("kill")
+            .args(["-9", pid])
+            .status();
+    }
+    drop(second);
+    assert!(
+        !still,
+        "cancel reached the second attempt's child {two} after the first was dropped"
+    );
+}
+
 /// A non-zero exit is a definitive, PROVEN failure — never a guess.
 #[tokio::test]
 async fn nonzero_exit_produces_failed_known_with_the_stderr_tail() {

@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-25 — The Claude and Codex connections checked point by point: three hold, four to fix, one deferred (`SIGNOFF-REPAIR.10.1`)
+
+`REASONBRAID-DOC-0179`.
+
+- Checked against the code: the overall output limit, the "never started" failure, and the Claude connection's handling of the prompt all hold.
+- 🔴 To fix, in this order: the Codex connection hands the prompt to the Codex program in a way that lets text starting with `-` be read as a program option (new, and the most serious); its output reading has no size limit, can crash on some non-English text, and can stall; finished programs are never cleaned up; and a cancelled request is recorded as a definite failure.
+- ⏸️ Deferred: checking the token counts against a real provider receipt, which needs a live run.
+
 ## 2026-09-25 — Policy error messages say what actually happened, and policy registration's review is complete (`SIGNOFF-REPAIR.9.1.7`)
 
 `REASONBRAID-REPAIR-0508`.

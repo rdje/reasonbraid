@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-25 — Policy publication checked: one problem found (`SIGNOFF-REPAIR.9.2`)
+
+`REASONBRAID-DOC-0166`. A closing check; no code changed.
+
+- 🔴 **Must be fixed:** the step that marks a policy publication as effective or failed checks the current state and then writes without locking, so two at the same moment can overwrite each other, and a live publication can be turned into a failed one (`.9.2.2`).
+- ✅ **Holds:** where a publication is written, which approval and policy it is tied to, the Git checks, the safe update of the live pointer, and the reconciliation between the database and Git.
+
 ## 2026-09-25 — Evaluation checked: two problems found (`SIGNOFF-REPAIR.8.2`)
 
 `REASONBRAID-DOC-0165`. A closing check; no code changed.

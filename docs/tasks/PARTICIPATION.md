@@ -101,6 +101,16 @@ The director's requirements of 2026-09-25, in their words:
     Verification: `pending`
     Commit: `pending`
 
+  - ID: `PARTICIPATION.7`
+    Status: `proposed`
+    Director (2026-09-25, a discussion message, not a decision): test locally first with the chat apps, then host ReasonBraid on a cloud provider (Alibaba Cloud, Google Cloud, AWS and Azure named as candidates); asked whether testing on one provider is enough. The director will open the provider accounts.
+    Goal: hosting — the first cloud provider and what changes between providers. The view given in reply: qualify ONE provider fully, and keep the deployment portable (a container, standard PostgreSQL, no provider-only service on the critical path). Then run a smoke test on a second provider before claiming portability. A matrix of four or five providers adds cost without much extra signal, because the differences sit in a few known places: the platform addresses the egress guard must refuse (`SIGNOFF-REPAIR.18` found one it does not), load-balancer idle timeouts on long-lived MCP streams, managed-PostgreSQL restrictions (no superuser, extension allow-lists), secret stores and outbound-network rules. Alibaba Cloud's mainland-China regions add a separate question (ICP filing; reaching model APIs outside China), which is a market choice rather than a test.
+    ⚠️ Local testing depends on each client's MCP transport: `rb-mcp` is stdio-only today (`.5`), which desktop and CLI clients can use locally, while ChatGPT accepts only a remote server, so local ChatGPT testing needs the HTTP transport and a reachable endpoint, which is the exposure gate `.5` already names.
+    Prerequisite owned by the director: an account on the chosen provider (and later on a second one for the smoke test), with multi-factor sign-in, a billing alert and least-privilege access. ⏰ The director asked to be TOLD WHEN (2026-09-25). The signal is `SIGNOFF-REPAIR.14`'s owner-only candidate being built and needing a real host to be tried on, which comes after the corrective exit bar (`REASONBRAID-DOC-0162`). The agent raises it then as a named blocker in its reply, and not before.
+    Acceptance: `pending` — opens after `.5`'s owner-only gate record is signed; the provider is the director's choice.
+    Verification: `pending`
+    Commit: `pending`
+
 ## Current Frontier
 
 | Order | Leaf | Status | Why next |

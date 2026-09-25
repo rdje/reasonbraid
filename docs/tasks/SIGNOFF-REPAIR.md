@@ -13383,6 +13383,24 @@ done
 - Verification: the ownership audit re-run at this commit; the two refuting citations read from the tracked records; `make gate` green, rc=0.
 - Commit: `REASONBRAID-DOC-0123 (leaf SIGNOFF-REPAIR.15): every remaining roadmap gap is owned by an executable leaf, and the order is a rule rather than a preference`.
 
+### SIGNOFF-REPAIR.18 — On Azure, the egress guard would let the fetcher reach the platform's host endpoint
+
+- Opened: `pending` 2026-09-25, found while answering the director's discussion question about cloud hosting (*one provider or several?*, `PARTICIPATION.7`).
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **deferred**. Trigger: a cloud provider is chosen for the owner-only profile (`.14`, `PARTICIPATION.7`), or ReasonBraid runs on Azure at all. It cannot occur in the claimed LAN profile: off Azure, `168.63.129.16` is an ordinary Microsoft public address with nothing behind it for this host. The book's limit is `.14`'s: Internet exposure is not claimed.
+- Measured from the code, not run: `crates/reasonbraid-server/src/ssrf.rs::classify_v4`/`classify_v6` refuse every class except `Public`. The provider addresses below come from memory of each provider's documentation and must be re-verified there when the trigger fires:
+
+| provider and endpoint | address | class the guard gives | refused |
+| --- | --- | --- | --- |
+| instance metadata on AWS, Google Cloud, Azure, Oracle Cloud | `169.254.169.254` | `cloud_metadata` | yes |
+| AWS instance metadata over IPv6 | `fd00:ec2::254` | `private` (`fc00::/7`) | yes |
+| Alibaba Cloud instance metadata | `100.100.100.200` | `reserved` (`100.64.0.0/10`) | yes, but under the wrong name |
+| Azure host endpoint (VM agent, DNS, health probes) | `168.63.129.16` | `public` | **no** |
+
+- 🔴 The one gap: Azure serves platform functions from `168.63.129.16`, which sits in public address space, so the guard classifies it as `public` and the fetcher may reach it. Security guidance names that endpoint as an SSRF target. ⚠️ Minor: Alibaba's metadata address is refused under the name `reserved`, so an operator reading the refusal is not told it was a metadata address.
+- ⚠️ Not claimed: that the endpoint returns anything harmful to this request, or that a host firewall would or would not stop it. The finding is only that the fetcher's own guard would allow it.
+- Owns: re-verify the table against each provider's current documentation; refuse `168.63.129.16` (a Microsoft-only address, so refusing it on every host costs nothing) and name Alibaba's address `cloud_metadata`, each RED first; state the judged provider addresses in the book's egress section.
+- Status: `pending`.
+
 ### SIGNOFF-REPAIR.17 — Thread sub-reads disagree about whether a thread exists
 
 - Status: `done` — `REASONBRAID-REPAIR-0418`. Opened by `docs/decisions/2026-09-23_this-sessions-findings-re-derived-against-the-running-server.md`.

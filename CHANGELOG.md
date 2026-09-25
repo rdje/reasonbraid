@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-25 — Evaluation checked: two problems found (`SIGNOFF-REPAIR.8.2`)
+
+`REASONBRAID-DOC-0165`. A closing check; no code changed.
+
+- 🔴 **Must be fixed:** an evaluation trial accepts the same option listed twice, which silently gives it twice the share of cases (`.8.2.6`). And when a thread is created, its routing decision is logged before the request is authorised, so a refused request still leaves a log entry for a thread that never existed (`.8.2.7`).
+- ✅ **Holds:** quality gates refuse missing or non-numeric results and are tied to the right test set, calibration ignores runs that do not belong to it, and only site operators can write evaluation records.
+
 ## 2026-09-25 — Checking each fix is now about five times faster, with the same rigour (`SIGNOFF-REPAIR.12.1`)
 
 `REASONBRAID-DOC-0164`. A measured decision; no product code changed.

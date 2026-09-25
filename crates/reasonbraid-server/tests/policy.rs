@@ -1554,7 +1554,6 @@ async fn the_projection_compiles_the_resolved_set_byte_identical() {
                 ],
                 "target": { "layer": "organization", "target": "*" },
             },
-            "lock": [],
         }),
     )
     .await;
@@ -1602,7 +1601,6 @@ async fn the_projection_compiles_the_resolved_set_byte_identical() {
                 ],
                 "target": { "layer": "organization", "target": "*" },
             },
-            "lock": [],
         }),
     )
     .await;
@@ -1625,18 +1623,27 @@ async fn the_projection_compiles_the_resolved_set_byte_identical() {
                 "policies": [ { "policy_id": "pj-base", "version": "1.0.0" } ],
                 "target": { "layer": "organization", "target": "*" },
             },
-            "lock": [
-                { "policy_id": "pj-base", "version": "1.0.0", "digest": DIGEST, "owning_authority": grant_id },
-            ],
         }),
     )
     .await;
     assert_eq!(status, 200, "the lock projects: {locked}");
+    // `SIGNOFF-REPAIR.9.1.4`: the rows are the SERVER'S, read from the
+    // registry; this request no longer supplies them.
+    let (status, library) = get(&client, &base, "/v1/policies", &human_id).await;
+    assert_eq!(status, 200, "the library answers: {library}");
+    let base_digest = library
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["policy_id"] == json!("pj-base"))
+        .and_then(|p| p["digest"].as_str())
+        .expect("pj-base is registered")
+        .to_string();
     assert!(
         locked["bytes"]
             .as_str()
             .unwrap()
-            .contains(&format!("pj-base 1.0.0 {DIGEST} {grant_id}")),
+            .contains(&format!("pj-base 1.0.0 {base_digest} {grant_id}")),
         "{locked}"
     );
 
@@ -7877,6 +7884,299 @@ async fn the_policy_digest_is_derived_from_the_document() {
     }
 
     sqlx::query("DELETE FROM policy_versions WHERE policy_id = 'derived-digest'")
+        .execute(&pool)
+        .await
+        .expect("drop the fixture rows");
+}
+
+/// `SIGNOFF-REPAIR.9.1.4`: the published `policy.lock` records what was
+/// RESOLVED, from the registry, and nothing the caller wrote.
+///
+/// §15.1 makes the lock the record of every version, digest and grant basis a
+/// resolution consumed. The projection request used to carry its own `lock`
+/// rows and the `lock` target rendered them verbatim, so a tenant could publish
+/// a lock naming a policy it never resolved, a digest nobody registered, or
+/// another principal's grant. The server now writes the rows itself: one per
+/// policy the request named, with the registry's derived digest and owner.
+#[tokio::test]
+async fn the_published_lock_records_what_was_resolved() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, alice) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "lock-alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "alice enrols: {alice}");
+    let alice_id = alice["principal_id"].as_str().unwrap().to_string();
+    let (status, bob) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "lock-bob" }),
+    )
+    .await;
+    assert_eq!(status, 200, "bob enrols: {bob}");
+    let bob_id = bob["principal_id"].as_str().unwrap().to_string();
+    site_fixture::provision(
+        &pool,
+        &alice_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
+    let alice_grant = format!("grt_{alice_id}");
+    let (status, registered) = register_policy(
+        &client,
+        &base,
+        &alice_id,
+        &json!({
+            "policy_id": "lock-real",
+            "version": "1.0.0",
+            "lifecycle": "active",
+            "title": "the policy the lock must name",
+            "owning_authority": alice_grant,
+            "clauses": [ { "id": "c1", "statement": "every publication names its authority" } ],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the policy registers: {registered}");
+    let digest = registered["digest"].as_str().unwrap().to_string();
+    // A second policy at the SAME version, so the lock is shown to carry every
+    // named policy, in its stable order, and not merely the first.
+    let (status, second) = register_policy(
+        &client,
+        &base,
+        &alice_id,
+        &json!({
+            "policy_id": "lock-also",
+            "version": "1.0.0",
+            "lifecycle": "active",
+            "title": "the second policy the lock must name",
+            "owning_authority": alice_grant,
+            "clauses": [ { "id": "c2", "statement": "every thread declares its objective" } ],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the second policy registers: {second}");
+    let second_digest = second["digest"].as_str().unwrap().to_string();
+    let resolution = json!({
+        "policies": [
+            { "policy_id": "lock-real", "version": "1.0.0" },
+            { "policy_id": "lock-also", "version": "1.0.0" },
+        ],
+        "target": { "layer": "organization", "target": "org-acme" },
+    });
+
+    // Leg 1, THE REFUSAL: a caller-written lock naming a policy that was never
+    // resolved, a digest nobody registered and another principal's grant.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-projections",
+        &alice_id,
+        &json!({
+            "projection_id": "lock-forged",
+            "target": "lock",
+            "resolution": resolution,
+            "lock": [ {
+                "policy_id": "never-resolved",
+                "version": "9.9.9",
+                "digest": format!("sha256:{}", "f".repeat(64)),
+                "owning_authority": format!("grt_{bob_id}"),
+            } ],
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 422,
+        "a projection request may not supply its own lock rows: {refused}"
+    );
+    let (status, projections) = get(&client, &base, "/v1/policy-projections", &alice_id).await;
+    assert_eq!(status, 200, "the projections list: {projections}");
+    assert!(
+        !projections
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["projection_id"] == json!("lock-forged")),
+        "the refused projection stored nothing: {projections}"
+    );
+
+    // Leg 2: the lock the server writes is exactly the resolved policy, with
+    // the registry's derived digest and its owner.
+    let (status, locked) = post(
+        &client,
+        &base,
+        "/v1/policy-projections",
+        &alice_id,
+        &json!({ "projection_id": "lock-derived", "target": "lock", "resolution": resolution }),
+    )
+    .await;
+    assert_eq!(status, 200, "the lock projects: {locked}");
+    assert_eq!(
+        locked["bytes"],
+        json!(format!(
+            "# policy.lock (deterministic projection)\n\
+             lock-also 1.0.0 {second_digest} {alice_grant}\n\
+             lock-real 1.0.0 {digest} {alice_grant}\n"
+        )),
+        "{locked}"
+    );
+
+    // Leg 3: a policy whose stored digest does not verify is refused by the
+    // lock, naming it; the lock never publishes a digest that identifies nothing.
+    sqlx::query(
+        "INSERT INTO policy_versions (policy_id, version, digest, lifecycle, title, \
+         owning_authority, clauses) \
+         VALUES ('lock-legacy', '1.0.0', $1, 'active', 'a legacy row', $2, \
+         '[{\"id\": \"c9\", \"statement\": \"stored with a declared digest\"}]'::jsonb)",
+    )
+    .bind(DIGEST)
+    .bind(&alice_grant)
+    .execute(&pool)
+    .await
+    .expect("the legacy row inserts");
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-projections",
+        &alice_id,
+        &json!({
+            "projection_id": "lock-legacy",
+            "target": "lock",
+            "resolution": {
+                "policies": [ { "policy_id": "lock-legacy", "version": "1.0.0" } ],
+                "target": { "layer": "organization", "target": "org-acme" },
+            },
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "an unverified digest is not locked: {refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("lock-legacy") && m.contains("digest")),
+        "the refusal names the policy and the digest: {refused}"
+    );
+
+    sqlx::query(
+        "DELETE FROM policy_versions WHERE policy_id IN ('lock-real', 'lock-also', 'lock-legacy')",
+    )
+    .execute(&pool)
+    .await
+    .expect("drop the fixture rows");
+}
+
+/// `SIGNOFF-REPAIR.9.1.4`: the projection example in `policy-lifecycle.md`,
+/// sent as the book writes it. Only the identifiers differ, because the book's
+/// are elided. A change that breaks the example breaks this control.
+#[tokio::test]
+async fn the_books_projection_example_runs() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "book-projection" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrols: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
+    let grant_id = format!("grt_{human_id}");
+    let (status, registered) = register_policy(
+        &client,
+        &base,
+        &human_id,
+        &json!({
+            "policy_id": "pol_retention",
+            "version": "2.1.0",
+            "lifecycle": "active",
+            "title": "evidence retention",
+            "owning_authority": grant_id,
+            "clauses": [ { "id": "c1", "statement": "evidence is retained for 90 days" } ],
+            "applicability": [ { "layer": "organization", "target": "*" } ],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the example's policy registers: {registered}");
+    let digest = registered["digest"].as_str().unwrap().to_string();
+
+    // The book's generic example, verbatim apart from the identifiers.
+    let (status, generic) = post(
+        &client,
+        &base,
+        "/v1/policy-projections",
+        &human_id,
+        &json!({
+            "projection_id": "prj_book_generic",
+            "target": "generic",
+            "resolution": {
+                "policies": [ { "policy_id": "pol_retention", "version": "2.1.0" } ],
+                "target": { "layer": "organization", "target": "org-acme" },
+            },
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the book's generic example projects: {generic}"
+    );
+    assert_eq!(generic["target"], json!("generic"), "{generic}");
+    assert!(generic["digest"].as_str().unwrap().starts_with("sha256:"));
+    assert_eq!(
+        generic["bytes"],
+        json!(
+            "# Policy bundle (deterministic projection)\n## c1 [pol_retention 2.1.0]\nevidence is retained for 90 days\n"
+        ),
+        "{generic}"
+    );
+    assert_eq!(generic["unrepresentable"], json!([]), "{generic}");
+    assert_eq!(
+        generic["resolved_policies"],
+        json!([ { "policy_id": "pol_retention", "version": "2.1.0" } ]),
+        "{generic}"
+    );
+
+    // And its lock example.
+    let (status, locked) = post(
+        &client,
+        &base,
+        "/v1/policy-projections",
+        &human_id,
+        &json!({
+            "projection_id": "prj_book_lock",
+            "target": "lock",
+            "resolution": {
+                "policies": [ { "policy_id": "pol_retention", "version": "2.1.0" } ],
+                "target": { "layer": "organization", "target": "org-acme" },
+            },
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the book's lock example projects: {locked}");
+    assert_eq!(
+        locked["bytes"],
+        json!(format!(
+            "# policy.lock (deterministic projection)\npol_retention 2.1.0 {digest} {grant_id}\n"
+        )),
+        "{locked}"
+    );
+
+    sqlx::query("DELETE FROM policy_versions WHERE policy_id = 'pol_retention'")
         .execute(&pool)
         .await
         .expect("drop the fixture rows");

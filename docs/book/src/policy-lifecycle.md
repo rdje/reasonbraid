@@ -253,9 +253,11 @@ be recused yet.
 ## Projections
 
 `POST /v1/policy-projections` resolves a policy set for one target and renders
-it through the hermetic compiler. The stored row keeps the rendered bytes, their
-digest, and anything the compiler declared it **could not represent** in that
-target's dialect:
+it through the hermetic compiler. `resolution` names the policies to resolve and
+the layer and target they are resolved for; the top-level `target` picks one of
+the compiler's four dialects: `generic`, `lock`, `codex` or `claude`. The stored
+row keeps the rendered bytes, their digest, the resolved set, and anything the
+compiler declared it **could not represent** in that dialect:
 
 ```bash
 curl -s -X POST localhost:4310/v1/policy-projections \
@@ -263,25 +265,56 @@ curl -s -X POST localhost:4310/v1/policy-projections \
   -H 'content-type: application/json' \
   -d '{
         "projection_id": "prj_0192…",
-        "target": "gateway-v2",
-        "resolution": {"subject": {"tenant_id": "ten_0192…"}}
+        "target": "generic",
+        "resolution": {
+          "policies": [{"policy_id": "pol_retention", "version": "2.1.0"}],
+          "target": {"layer": "organization", "target": "org-acme"}
+        }
       }'
 ```
 
 ```json
 {
   "projection_id": "prj_0192…",
-  "target": "gateway-v2",
+  "target": "generic",
   "digest": "sha256:…",
-  "bytes": "…",
-  "unrepresentable": [
-    {"clause_id": "c4", "reason": "no equivalent construct in gateway-v2"}
-  ],
+  "bytes": "# Policy bundle (deterministic projection)\n## c1 [pol_retention 2.1.0]\nevidence is retained for 90 days\n",
+  "unrepresentable": [],
   "resolved_policies": [{"policy_id": "pol_retention", "version": "2.1.0"}]
 }
 ```
 
-⚠️ **This example cannot be sent as written.** `gateway-v2` is not one of the compiler's four targets (`generic`, `lock`, `codex`, `claude`); `resolution` takes `policies` and `target`, not `subject`; and the compiler's only unrepresentable reasons are a control character and a length limit. The request also accepts a `lock` list that the `lock` target renders exactly as given, unchecked against the resolution. Both are being corrected under `SIGNOFF-REPAIR.9.1.4`, which replaces this example with one run against a live server.
+A clause the dialect cannot carry is listed rather than silently dropped. The
+compiler has two reasons: a statement with a control character a line-based
+bundle cannot express, and a statement over the 8,192-character limit:
+
+```json
+"unrepresentable": [
+  {"clause_id": "c4", "policy_id": "pol_retention",
+   "reason": "the statement exceeds the target's 8192-character limit"}
+]
+```
+
+**The `lock` target is written by the server** (`SIGNOFF-REPAIR.9.1.4`). It
+renders the policy.lock: one line per policy the request named, with its id,
+version, digest and owning authority, all read from the registry:
+
+```text
+# policy.lock (deterministic projection)
+pol_retention 2.1.0 sha256:… grt_hpr_0192…
+```
+
+The request used to carry its own `lock` rows, which were rendered verbatim, so a
+published lock could name a policy that was never resolved, a digest nobody
+registered, or another principal's grant. The field is gone: a request that still
+sends `lock` is refused by the body decoder with `422`, and nothing is stored. A
+policy whose stored digest does not verify, meaning a version registered before
+the server derived digests (`digest_verified` in
+[Site authority](site-authority.md)), is refused by the `lock` target with `400`,
+naming the policy. A lock never publishes a digest that identifies nothing.
+
+Both examples above are sent as written, identifiers aside, by the control
+`the_books_projection_example_runs`, so a change that breaks them fails a test.
 
 ⛔ **`unrepresentable` is part of the record, not a warning to be discarded.** A
 projection that could not express a clause says so, and staging a publication

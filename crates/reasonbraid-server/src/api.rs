@@ -4767,6 +4767,11 @@ async fn project_policies(
     };
     match crate::projections::project(&state.pool, &tenant_id, &request).await {
         Ok(row) => Ok(Json(row)),
+        // `SIGNOFF-REPAIR.9.1.4`: the lock's registry read can fail, and a store
+        // that did not answer is not a refusal.
+        Err(crate::projections::ProjectionError::Storage(cause)) => {
+            Err(storage_failure(cause, "the projection's lock rows"))
+        }
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }
 }

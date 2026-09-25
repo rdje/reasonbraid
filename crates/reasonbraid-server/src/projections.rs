@@ -6,16 +6,19 @@
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
-/// The projection request: the id, the target, the resolution request, and
-/// the lock rows (the policy.lock's inputs).
+/// The projection request: the id, the target, and the resolution request.
+///
+/// ⛔ It carries NO lock rows (`SIGNOFF-REPAIR.9.1.4`). It used to, and the
+/// `lock` target rendered them verbatim, so a published policy.lock could name a
+/// policy that was never resolved, a digest nobody registered, or another
+/// principal's grant. [`project`] writes the rows itself from the registry, and
+/// `deny_unknown_fields` refuses a request that still sends them.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectionRequest {
     pub projection_id: String,
     pub target: String,
     pub resolution: crate::policy::ResolutionRequest,
-    #[serde(default)]
-    pub lock: Vec<reasonbraid_policy_compiler::LockedPolicy>,
 }
 
 /// The stored projection row.
@@ -37,12 +40,23 @@ pub struct StoredProjection {
     pub resolved_policies: Option<Vec<crate::policy::PolicyRef>>,
 }
 
-/// The typed refusal reasons.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// The typed refusal reasons, and the one failure that is not a refusal.
+#[derive(Debug)]
 pub enum ProjectionError {
     Duplicate(String),
     Resolution(crate::policy::PolicyError),
     Compile(reasonbraid_policy_compiler::CompileError),
+    /// A policy the lock would name, whose stored digest does not verify: a
+    /// version registered before the server derived digests
+    /// (`SIGNOFF-REPAIR.9.1.4`). The lock never publishes a digest that
+    /// identifies nothing.
+    UnverifiedDigest {
+        policy_id: String,
+        version: String,
+    },
+    /// The store failed to answer. Not a refusal, so it reaches the caller as
+    /// `api::storage_failure` decides, never as a `400`.
+    Storage(sqlx::Error),
 }
 
 impl std::fmt::Display for ProjectionError {
@@ -56,6 +70,13 @@ impl std::fmt::Display for ProjectionError {
             }
             ProjectionError::Resolution(e) => write!(f, "{e}"),
             ProjectionError::Compile(e) => write!(f, "{e}"),
+            ProjectionError::UnverifiedDigest { policy_id, version } => write!(
+                f,
+                "policy `{policy_id}` version {version} carries a stored digest its document does \
+                 not hash to (it was declared before the server derived digests), so no lock \
+                 names it"
+            ),
+            ProjectionError::Storage(e) => write!(f, "the policy store failed: {e}"),
         }
     }
 }
@@ -89,11 +110,34 @@ pub async fn project(
             statement: clause.statement.clone(),
         })
         .collect();
+    // `SIGNOFF-REPAIR.9.1.4`: the lock rows are the SERVER'S. One per policy the
+    // request named (the collection the resolution consumed, §15.1), each read
+    // from the registry with its derived digest and its owner.
+    let named = crate::policy::registered(pool, &request.resolution.policies)
+        .await
+        .map_err(ProjectionError::Storage)?;
+    if request.target == "lock" {
+        if let Some(unverified) = named.iter().find(|p| !p.digest_verified) {
+            return Err(ProjectionError::UnverifiedDigest {
+                policy_id: unverified.policy_id.clone(),
+                version: unverified.version.clone(),
+            });
+        }
+    }
+    let lock = named
+        .into_iter()
+        .map(|p| reasonbraid_policy_compiler::LockedPolicy {
+            policy_id: p.policy_id,
+            version: p.version,
+            digest: p.digest,
+            owning_authority: p.owning_authority,
+        })
+        .collect();
     let artifact =
         reasonbraid_policy_compiler::compile(&reasonbraid_policy_compiler::CompileRequest {
             target: request.target.clone(),
             clauses,
-            lock: request.lock.clone(),
+            lock,
         })
         .map_err(ProjectionError::Compile)?;
     let unrepresentable =

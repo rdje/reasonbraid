@@ -519,41 +519,66 @@ pub async fn list(pool: &PgPool) -> Result<Vec<RegisteredPolicy>, sqlx::Error> {
     )
     .fetch_all(pool)
     .await?;
-    Ok(rows
-        .into_iter()
-        .map(|row| {
-            let mut policy = RegisteredPolicy {
-                policy_id: row.policy_id,
-                version: row.version,
-                digest: row.digest,
-                lifecycle: row.lifecycle,
-                title: row.title,
-                intent: row.intent,
-                rationale: row.rationale,
-                domain: row.domain,
-                risk_class: row.risk_class,
-                owning_authority: row.owning_authority,
-                clauses: serde_json::from_value(row.clauses).expect("the clauses parse"),
-                applicability: serde_json::from_value(row.applicability)
-                    .expect("the applicability parses"),
-                non_applicability: serde_json::from_value(row.non_applicability)
-                    .expect("the non-applicability parses"),
-                dependencies: serde_json::from_value(row.dependencies)
-                    .expect("the dependencies parse"),
-                conflicts: serde_json::from_value(row.conflicts).expect("the conflicts parse"),
-                precedence_hints: serde_json::from_value(row.precedence_hints)
-                    .expect("the precedence parses"),
-                exceptions: serde_json::from_value(row.exceptions).expect("the exceptions parse"),
-                provenance: serde_json::from_value(row.provenance).expect("the provenance parses"),
-                digest_verified: false,
-            };
-            // `SIGNOFF-REPAIR.9.1.3`: re-derived from what is STORED, on every
-            // read, so a row whose digest was declared rather than derived says
-            // so instead of being trusted.
-            policy.digest_verified = policy.content().digest() == policy.digest;
-            policy
-        })
-        .collect())
+    Ok(rows.into_iter().map(registered_from_row).collect())
+}
+
+/// The named versions, as stored, in the order named (`SIGNOFF-REPAIR.9.1.4`).
+///
+/// A reference to no stored row is simply absent, and a reference named twice
+/// is read twice: neither reaches here from [`crate::projections::project`],
+/// because [`resolve`] runs first and refuses both.
+pub async fn registered(
+    pool: &PgPool,
+    references: &[PolicyRef],
+) -> Result<Vec<RegisteredPolicy>, sqlx::Error> {
+    let mut found: Vec<RegisteredPolicy> = Vec::new();
+    for reference in references {
+        let row: Option<PolicyRow> = sqlx::query_as(
+            "SELECT policy_id, version, digest, lifecycle, title, intent, rationale, domain, \
+             risk_class, owning_authority, clauses, applicability, non_applicability, dependencies, \
+             conflicts, precedence_hints, exceptions, provenance \
+             FROM policy_versions WHERE policy_id = $1 AND version = $2",
+        )
+        .bind(&reference.policy_id)
+        .bind(&reference.version)
+        .fetch_optional(pool)
+        .await?;
+        found.extend(row.map(registered_from_row));
+    }
+    Ok(found)
+}
+
+/// One stored row as the library reports it, with `digest_verified` re-derived
+/// from what is stored (`SIGNOFF-REPAIR.9.1.3`).
+fn registered_from_row(row: PolicyRow) -> RegisteredPolicy {
+    let mut policy = RegisteredPolicy {
+        policy_id: row.policy_id,
+        version: row.version,
+        digest: row.digest,
+        lifecycle: row.lifecycle,
+        title: row.title,
+        intent: row.intent,
+        rationale: row.rationale,
+        domain: row.domain,
+        risk_class: row.risk_class,
+        owning_authority: row.owning_authority,
+        clauses: serde_json::from_value(row.clauses).expect("the clauses parse"),
+        applicability: serde_json::from_value(row.applicability).expect("the applicability parses"),
+        non_applicability: serde_json::from_value(row.non_applicability)
+            .expect("the non-applicability parses"),
+        dependencies: serde_json::from_value(row.dependencies).expect("the dependencies parse"),
+        conflicts: serde_json::from_value(row.conflicts).expect("the conflicts parse"),
+        precedence_hints: serde_json::from_value(row.precedence_hints)
+            .expect("the precedence parses"),
+        exceptions: serde_json::from_value(row.exceptions).expect("the exceptions parse"),
+        provenance: serde_json::from_value(row.provenance).expect("the provenance parses"),
+        digest_verified: false,
+    };
+    // `SIGNOFF-REPAIR.9.1.3`: re-derived from what is STORED, on every
+    // read, so a row whose digest was declared rather than derived says
+    // so instead of being trusted.
+    policy.digest_verified = policy.content().digest() == policy.digest;
+    policy
 }
 
 impl RegisteredPolicy {

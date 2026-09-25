@@ -5604,6 +5604,19 @@ assertion `left == right` failed: the modulo is over the whole u64
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
 
+#### SIGNOFF-REPAIR.9.1.1 — No site grant can hold `charter_register`, so the charter registration verb refuses everyone
+
+- Status: `done` — `REASONBRAID-REPAIR-0495`. Opened 2026-09-25 by `.7.1.3.1`'s reading of the site-action vocabulary, which it had to extend.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 3 and 4: the book documents `POST /v1/governance-charters`, and the gate it relies on can never admit anyone.
+- 🔴 Measured from the source, to be reproduced live: `site_authority::Action::CharterRegister` (`"charter_register"`) is the action `site_authority::charters::register_charter` authorizes, and `api::register_governance_charter` calls it. But the latest `site_boundaries_actions_check` and `site_grants_actions_check` (`migrations/0083_site_evaluation_actions.sql`) enumerate eleven actions and `charter_register` is not one, so no boundary or grant carrying it can be stored. The charter suite never noticed because it registers through `charters::register` directly; no test registers a charter through the site act. The tests' own `support::site::ALL` list omits it, and the evaluation actions, too.
+- Owns: a control deriving the Rust action vocabulary (`Action::value_variants()`) and requiring that a boundary can be issued for EVERY action, so the enum and the constraint cannot drift again; RED first; the migration adding `charter_register` to both constraints.
+- [x] **ROOT CAUSE** — the site-action set lives in two places, the `Action` enum and the two CHECK constraints, and every earlier action came with its migration (`0063`, `0071`, `0074`, `0083`); `CharterRegister` did not. Nothing compared the two copies, and the charter suite registered underneath the gate (`charters::register`), so the only path that met the gate had no control.
+- [x] **ADDRESSED** — `migrations/0109_site_charter_register_action.sql` adds `charter_register` to both constraints. `site_authority.rs::every_site_action_the_code_authorizes_can_be_granted` derives the action list from the enum (`Action::value_variants()`) and issues a boundary for each, so the two copies cannot drift silently again; `charters.rs::an_operator_holding_charter_register_registers_through_the_site_act` registers a charter through the site act with a real grant and refuses a principal holding none. Book: `site-authority.md` states the invariant under the action table.
+- [x] **VERIFIED** — RED FIRST, live, on `f83cbb6`: `site_authority` → `FAILED. 11 passed; 1 failed`, *site actions the code authorizes but no boundary can hold: ["charter_register"]*, exactly the one action the source reading predicted. GREEN: `site_authority` **12**, `charters` **9**, 0 failed.
+- [x] **FALSIFIED** — the control IS the falsification of the migration: without `0109` it fails naming the action (the RED above), and it covers every future action by construction. The end-to-end control's two arms (a holder admitted, a stranger refused) are a matched pair on one verb.
+- [x] **NO REGRESSION** — a migration is a shared primitive, so the broad run is this leaf's own (`REASONBRAID-DOC-0164`): `RB_DEMO=0 bash scripts/run_pg_tests.sh` → **all 47 suites, 51 test binaries, 546 passed, 0 failed** (`target/r4_4_3/broad_0495.log`); strict `cargo clippy --locked --workspace --all-targets -- -D warnings` rc=0.
+- Commit: `REASONBRAID-REPAIR-0495`.
+
 ### SIGNOFF-REPAIR.9.2 — Atomic policy lifecycle and publication
 
 - Status: `active` — ⭐ CLOSING-CENSUSED by `REASONBRAID-DOC-0166` (2026-09-25). It does NOT close: one goal clause is LIVE and is opened below as `.9.2.2`; every other clause is held by committed work. (Before: *the two publish-verb findings `SIGNOFF-REPAIR.11.9.1.3.1` measured are split out as `.9.2.1`*.)

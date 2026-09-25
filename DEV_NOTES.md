@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-25 — Governance charters can be registered again (`SIGNOFF-REPAIR.9.1.1`)
+
+`REASONBRAID-REPAIR-0495`.
+
+- 🔴 **Before:** registering a governance charter needs a site-operator permission, but that permission had been added to the code without the database change that lets it be stored. No one could hold it, so every charter registration was refused. The book listed it as a normal permission.
+- ✅ **Now:** the permission can be granted, and an operator holding it can register a charter while anyone else is refused. A new test lists every site permission from the code and checks the database accepts each one, so this cannot slip again.
+- ✅ Tested: the new test failed on the old database, naming exactly this permission, and passes now.
+
 ## 2026-09-25 — Closing checks finished: nine items reviewed, seven real problems found (`SIGNOFF-REPAIR.12`)
 
 `REASONBRAID-DOC-0163`, `0165`–`0171`. No code changed.

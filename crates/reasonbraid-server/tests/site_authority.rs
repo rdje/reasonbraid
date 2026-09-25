@@ -934,3 +934,28 @@ async fn validity_is_evaluated_after_the_guard_wait_using_database_time() {
     denied(&pool, request.await.unwrap(), "site_authority_required").await;
     assert_eq!(registry_count(&pool).await, 0);
 }
+
+/// `SIGNOFF-REPAIR.9.1.1` — every site action the code can authorize can be
+/// GRANTED. The action set lives twice, as the `Action` enum and as the
+/// `site_boundaries`/`site_grants` CHECK constraints, and nothing compared them:
+/// `charter_register` was authorized by the charter verb and storable by no
+/// grant, so the verb refused every caller. The list is derived from the enum,
+/// so an action added later is covered without editing this control.
+#[tokio::test]
+async fn every_site_action_the_code_authorizes_can_be_granted() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    use clap::ValueEnum;
+    let mut unstorable = Vec::new();
+    for action in Action::value_variants() {
+        let result =
+            site::issue_boundary(&pool, &scope(&[*action]), &reason("vocabulary control")).await;
+        if result.is_err() {
+            unstorable.push(action.as_str());
+        }
+    }
+    assert!(
+        unstorable.is_empty(),
+        "site actions the code authorizes but no boundary can hold: {unstorable:?}"
+    );
+}

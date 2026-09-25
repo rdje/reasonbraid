@@ -284,3 +284,57 @@ async fn changing_the_set_leaves_the_earlier_charter_exactly_as_it_was() {
         "the historical charter still hashes to what the decision record carries"
     );
 }
+
+/// `SIGNOFF-REPAIR.9.1.1` — the charter SITE ACT admits an operator holding
+/// `charter_register`, end to end. Before migration `0109` no boundary could
+/// hold that action, so the act, which `POST /v1/governance-charters` calls,
+/// refused every caller; this suite had only ever registered through
+/// `charters::register`, underneath the gate.
+#[tokio::test]
+async fn an_operator_holding_charter_register_registers_through_the_site_act() {
+    use chrono::{Duration, Utc};
+    use reasonbraid_server::site_authority::{self as site, Action, Scope};
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let operator = GrantSubject::Human(HumanPrincipalId::new());
+    let scope = Scope {
+        actions: vec![Action::CharterRegister],
+        valid_from: Utc::now() - Duration::hours(2),
+        expires_at: Utc::now() + Duration::hours(4),
+    };
+    let reason = Reason::new("charter operator").unwrap();
+    let boundary = site::issue_boundary(&pool, &scope, &reason)
+        .await
+        .expect("a boundary can hold charter_register");
+    let boundary_id = boundary.result["boundary_id"].as_str().unwrap().to_owned();
+    site::issue_grant(&pool, &boundary_id, &operator, &scope, &reason)
+        .await
+        .expect("a grant can hold charter_register");
+
+    let receipt = site::charters::register_charter(
+        &pool,
+        &operator,
+        &input("charter-test-site-act", &["consensus"], &[]),
+    )
+    .await
+    .expect("the site act admits the operator");
+    assert_eq!(
+        receipt.result["tenant_id"],
+        serde_json::json!("charter-test-site-act"),
+        "the charter was registered: {:?}",
+        receipt.result
+    );
+
+    // The matched pair: a principal holding no charter_register is refused.
+    let stranger = GrantSubject::Human(HumanPrincipalId::new());
+    assert!(
+        site::charters::register_charter(
+            &pool,
+            &stranger,
+            &input("charter-test-site-act-stranger", &["consensus"], &[]),
+        )
+        .await
+        .is_err(),
+        "only a holder registers a charter"
+    );
+}

@@ -46,6 +46,13 @@ and the development HTTP principal header remains a development assumption.
 | `gate_evaluate` | Measure against that standard: run a gate. Separate from `evaluation_record` because a party that measures must not be able to move the standard. |
 | `charter_register` | Register a [governance charter](governance-charter.md) version for a tenant. |
 
+Every action in this table can be held by a boundary and a grant. That was not
+always true. `charter_register` was added to the code without the migration that
+lets the database store it, so no grant could carry it and the charter verb
+refused every caller until `SIGNOFF-REPAIR.9.1.1` (migration `0109`). A live
+control now lists the actions from the code itself and issues a boundary for
+each one, so a new action that the database cannot store fails a test.
+
 For example, Alice may administer tenant A but have no site grant. Her tenant
 grant does not authorize any of these service operations. A deployment operator
 can issue Alice a site grant containing only `registry_inspect`; she can then

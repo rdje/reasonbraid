@@ -93,9 +93,42 @@ pub enum CorrectionError {
     },
     GhostAuthority(String),
     MissingExpiry,
+    /// The expiry was given and is not an RFC 3339 time
+    /// (`SIGNOFF-REPAIR.9.3.3.6`; it used to be reported as missing).
+    MalformedExpiry(String),
     MissingSupersedes,
     UnknownSupersedes(String),
     Duplicate(String),
+    /// The store could not answer: the server's fault, never the caller's
+    /// (`api::correction_refusal` answers it `500`).
+    Storage(String),
+    /// The caller's input holds a character the store cannot represent.
+    UnrepresentableInput,
+}
+
+impl CorrectionError {
+    /// A store error, classified while its SQLSTATE is still readable: the
+    /// server's, unless it is the caller's own unrepresentable input.
+    fn storage(error: sqlx::Error) -> Self {
+        if crate::api::unrepresentable_input(&error) {
+            Self::UnrepresentableInput
+        } else {
+            Self::Storage(error.to_string())
+        }
+    }
+
+    /// A failed WRITE (`SIGNOFF-REPAIR.9.3.3.6`): the database's own unique
+    /// violation is the caller's duplicate; anything else is [`Self::storage`].
+    fn write_failure(error: sqlx::Error, duplicate: impl FnOnce() -> String) -> Self {
+        if error
+            .as_database_error()
+            .is_some_and(|db| db.is_unique_violation())
+        {
+            Self::Duplicate(duplicate())
+        } else {
+            Self::storage(error)
+        }
+    }
 }
 
 impl std::fmt::Display for CorrectionError {
@@ -134,6 +167,13 @@ impl std::fmt::Display for CorrectionError {
                     f,
                     "the authority grant `{g}` is not an active, unexpired grant"
                 )
+            }
+            CorrectionError::MalformedExpiry(detail) => {
+                write!(f, "`expires_at` is not an RFC 3339 time ({detail})")
+            }
+            CorrectionError::Storage(detail) => write!(f, "the correction store failed: {detail}"),
+            CorrectionError::UnrepresentableInput => {
+                write!(f, "the input holds a character the store cannot represent")
             }
             CorrectionError::MissingExpiry => {
                 write!(
@@ -182,7 +222,7 @@ async fn publication_tenant(
     .bind(publication_id)
     .fetch_optional(pool)
     .await
-    .map_err(|_| CorrectionError::UnknownPublication(publication_id.to_string()))?;
+    .map_err(CorrectionError::storage)?;
     let Some((_, owner)) = row else {
         return Err(CorrectionError::UnknownPublication(
             publication_id.to_string(),
@@ -231,7 +271,7 @@ async fn authority_holds(
         reasonbraid_core::GrantAction::PolicyCorrectionRecord,
     )
     .await
-    .map_err(|_| CorrectionError::GhostAuthority(grant_id.to_string()))?;
+    .map_err(CorrectionError::storage)?;
     if !held {
         return Err(CorrectionError::GhostAuthority(grant_id.to_string()));
     }
@@ -269,7 +309,7 @@ pub async fn record_drift(
     .bind(&input.publication_id)
     .fetch_optional(pool)
     .await
-    .map_err(|_| CorrectionError::UnknownAssignment(input.target_id.clone()))?;
+    .map_err(CorrectionError::storage)?;
     let Some(assigned) = assigned else {
         return Err(CorrectionError::UnknownAssignment(format!(
             "({}, {})",
@@ -296,13 +336,9 @@ pub async fn record_drift(
     .bind(&tenant_id)
     .execute(pool)
     .await;
-    match inserted {
-        Ok(_) => Ok(()),
-        Err(_) => Err(CorrectionError::Duplicate(format!(
-            "drift `{}`",
-            input.drift_id
-        ))),
-    }
+    inserted.map(|_| ()).map_err(|error| {
+        CorrectionError::write_failure(error, || format!("drift `{}`", input.drift_id))
+    })
 }
 
 /// Record one correction (the §4.7 operation + the authority proof). The
@@ -346,7 +382,7 @@ pub async fn record_correction(
         .map(|raw| {
             chrono::DateTime::parse_from_rfc3339(raw)
                 .map(|dt| dt.with_timezone(&chrono::Utc))
-                .map_err(|_| CorrectionError::MissingExpiry)
+                .map_err(|error| CorrectionError::MalformedExpiry(format!("`{raw}`: {error}")))
         })
         .transpose()?;
     let inserted = sqlx::query(
@@ -379,10 +415,9 @@ pub async fn record_correction(
             "evidence": input.evidence,
             "remediation": input.remediation,
         })),
-        Err(_) => Err(CorrectionError::Duplicate(format!(
-            "correction `{}`",
-            input.correction_id
-        ))),
+        Err(error) => Err(CorrectionError::write_failure(error, || {
+            format!("correction `{}`", input.correction_id)
+        })),
     }
 }
 
@@ -421,10 +456,9 @@ pub async fn record_outcome(
     .await;
     match inserted {
         Ok(_) => Ok(()),
-        Err(_) => Err(CorrectionError::Duplicate(format!(
-            "outcome `{}`",
-            input.outcome_id
-        ))),
+        Err(error) => Err(CorrectionError::write_failure(error, || {
+            format!("outcome `{}`", input.outcome_id)
+        })),
     }
 }
 

@@ -128,6 +128,20 @@ impl DeploymentError {
             Self::Storage(error.to_string())
         }
     }
+
+    /// A failed WRITE (`SIGNOFF-REPAIR.9.3.3.6`): the database's own unique
+    /// violation is the caller's duplicate; anything else is [`Self::storage`].
+    /// Every insert here used to call ANY failure a duplicate.
+    fn write_failure(error: sqlx::Error, duplicate: impl FnOnce() -> String) -> Self {
+        if error
+            .as_database_error()
+            .is_some_and(|db| db.is_unique_violation())
+        {
+            Self::Duplicate(duplicate())
+        } else {
+            Self::storage(error)
+        }
+    }
 }
 
 impl std::fmt::Display for DeploymentError {
@@ -252,7 +266,7 @@ pub async fn register_target(
         reasonbraid_core::GrantAction::DeploymentTargetRegister,
     )
     .await
-    .map_err(|_| DeploymentError::GhostAuthority(input.owning_authority.clone()))?;
+    .map_err(DeploymentError::storage)?;
     if !held {
         return Err(DeploymentError::GhostAuthority(
             input.owning_authority.clone(),
@@ -282,13 +296,9 @@ pub async fn register_target(
     .bind(reporter.id_string())
     .execute(pool)
     .await;
-    match inserted {
-        Ok(_) => Ok(()),
-        Err(_) => Err(DeploymentError::Duplicate(format!(
-            "target `{}`",
-            input.target_id
-        ))),
-    }
+    inserted.map(|_| ()).map_err(|error| {
+        DeploymentError::write_failure(error, || format!("target `{}`", input.target_id))
+    })
 }
 
 /// Assign one publication to one target (the wave label + the desired
@@ -351,7 +361,7 @@ pub async fn assign(
         .bind(&input.publication_id)
         .fetch_optional(pool)
         .await
-        .map_err(|_| DeploymentError::UnknownPublication(input.publication_id.clone()))?;
+        .map_err(DeploymentError::storage)?;
     let Some((state, owner, recorded, projection)) = publication else {
         return Err(DeploymentError::UnknownPublication(
             input.publication_id.clone(),
@@ -397,11 +407,10 @@ pub async fn assign(
     .bind(&input.desired_digest)
     .execute(pool)
     .await;
-    if inserted.is_err() {
-        return Err(DeploymentError::Duplicate(format!(
-            "assignment ({}, {})",
-            input.target_id, input.publication_id
-        )));
+    if let Err(error) = inserted {
+        return Err(DeploymentError::write_failure(error, || {
+            format!("assignment ({}, {})", input.target_id, input.publication_id)
+        }));
     }
     Ok(StoredAssignment {
         target_id: input.target_id.clone(),
@@ -627,4 +636,35 @@ pub async fn list_assignments(
     .fetch_all(pool)
     .await?;
     Ok(rows.into_iter().map(stored_assignment).collect())
+}
+
+#[cfg(test)]
+mod store_fault_classification {
+    /// `SIGNOFF-REPAIR.9.3.3.6`: no product line in the deployment or the drift and
+    /// correction module discards a store error. Fourteen did at REPAIR-0525 — `map_err(|_| …)`,
+    /// `Err(_) =>` or `.is_err()` — and each answered the store's failure as the
+    /// caller's missing record, ghost authority or duplicate. A live control
+    /// reaches one site per route, so the SHAPE is refused here, in both modules,
+    /// over the code above each file's tests.
+    #[test]
+    fn no_store_error_is_discarded() {
+        for (module, source) in [
+            ("deployments.rs", include_str!("deployments.rs")),
+            ("corrections.rs", include_str!("corrections.rs")),
+        ] {
+            let product = source.split("#[cfg(test)]").next().unwrap_or(source);
+            let offending: Vec<&str> = product
+                .lines()
+                .filter(|line| {
+                    line.contains("map_err(|_|")
+                        || line.contains("Err(_) =>")
+                        || line.contains(".is_err()")
+                })
+                .collect();
+            assert!(
+                offending.is_empty(),
+                "{module} discards a store error: {offending:?}"
+            );
+        }
+    }
 }

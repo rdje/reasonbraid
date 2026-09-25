@@ -113,6 +113,17 @@ database failure is now `500 dependency_unavailable` everywhere on these routes,
 and a missing decision is named as one (*"decision `…` does not exist"*, where it
 read *"proposal `decision `…`` does not exist"*).
 
+The records after publication followed on 2026-09-26 (`SIGNOFF-REPAIR.9.3.3.6`):
+registering a target, assigning a publication, and recording drift, a correction
+or an outcome. Their lookups answered a database failure as a missing target,
+publication or assignment, or as an authority that is not an active grant, and
+every one of their writes called ANY failure a duplicate. Now a database failure
+is `500 dependency_unavailable`; only the database's own uniqueness check makes a
+duplicate (`400`, *"… already exists"*); input the store cannot hold, such as a
+NUL character, is `400 unrepresentable_input`; and an `expires_at` that is not an
+RFC 3339 time is refused as exactly that, where it used to be reported as
+missing.
+
 ⚠️ **The impact map is the one site-level read.** `policy_versions` carries no
 tenant column: the policy register is a deployment-wide register whose rows are
 owned by an `owning_authority`, not by a tenant. `GET

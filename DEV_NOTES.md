@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — Deployment records no longer blame database failures on the caller (`SIGNOFF-REPAIR.9.3.3.6`)
+
+`REASONBRAID-REPAIR-0530`.
+
+- 🔴 **Root cause:** 10 sites in `deployments.rs`/`corrections.rs` discarded the `sqlx::Error` (`map_err(|_| …)`, `Err(_) => Duplicate`, `.is_err()`), and the three correction handlers answered everything `400`; an unparseable expiry was `MissingExpiry`.
+- ✅ **Fix:** `write_failure` (only `is_unique_violation()` is a duplicate) and `storage` (unrepresentable input vs store fault) in both enums; `CorrectionError::{Storage, UnrepresentableInput, MalformedExpiry}`; `api::correction_refusal`. Source guard `deployments::store_fault_classification` refuses the three discarding shapes in both modules. 12 of 12 viable mutants caught; the guard caught a planted line.
+- ✅ `.9.3.3` CLOSED with a closing census (`.2.1` and `.4.1` deferred with triggers).
+
 ## 2026-09-26 — A drift record compares against what was actually assigned (`SIGNOFF-REPAIR.9.3.3.5`)
 
 `REASONBRAID-REPAIR-0529`.

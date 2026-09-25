@@ -4563,6 +4563,79 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
         json!("dependency_unavailable"),
         "{answered}"
     );
+    // `SIGNOFF-REPAIR.9.3.3.6`: a GENUINE duplicate is still the caller's `400`,
+    // and the store failing at the authority read or at the write is the
+    // server's `500` — both used to be answered as the caller's mistake.
+    let target_body = |target_id: &str| {
+        json!({ "target_id": target_id, "target_type": "repository",
+                "owning_authority": grant_id, "reporter": reporter_id })
+    };
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/deployment-targets",
+        &human_id,
+        &target_body("dp-target"),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "a genuine duplicate target is the caller's: {refused}"
+    );
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("already exists"),
+        "{refused}"
+    );
+    // Input the store cannot hold is the caller's, reaching the WRITE.
+    let (status, answered) = post(
+        &client,
+        &base,
+        "/v1/deployment-targets",
+        &human_id,
+        &target_body("dp-nul\u{0}target"),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "a NUL in the target id is the caller's: {answered}"
+    );
+    assert_eq!(
+        answered["code"],
+        json!("unrepresentable_input"),
+        "{answered}"
+    );
+    for (table, fault, target_id) in [
+        ("authority_grants", StoreFault::Unreadable, "dp-fault-grant"),
+        (
+            "deployment_targets",
+            StoreFault::InsertRefused,
+            "dp-fault-write",
+        ),
+    ] {
+        let (status, answered) = post_under_fault(
+            &pool,
+            table,
+            fault,
+            &client,
+            &base,
+            "/v1/deployment-targets",
+            &human_id,
+            &target_body(target_id),
+        )
+        .await;
+        assert_eq!(
+            status, 500,
+            "registering with `{table}` {fault:?}: {answered}"
+        );
+        assert_eq!(
+            answered["code"],
+            json!("dependency_unavailable"),
+            "{answered}"
+        );
+    }
 
     // 2. The assignment rides the EFFECTIVE publication, and its desired pair
     // IS that publication's (`SIGNOFF-REPAIR.9.3.3.1`, ADR-021: *the effective
@@ -4625,7 +4698,11 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
     // A store failure in either new lookup is the server's `500`, never "no such
     // target" or an authority denial. Each table is withheld for one request and
     // restored before anything is asserted.
-    for table in ["deployment_targets", "authority_grants"] {
+    for table in [
+        "deployment_targets",
+        "authority_grants",
+        "policy_publications",
+    ] {
         sqlx::raw_sql(&format!("ALTER TABLE {table} RENAME TO {table}_withheld"))
             .execute(&pool)
             .await
@@ -4685,6 +4762,40 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
     assert_eq!(
         status, 403,
         "holding the grant is not covering the verb: {refused}"
+    );
+    // `SIGNOFF-REPAIR.9.3.3.6`: the same assignment twice is a genuine duplicate,
+    // `400`; the write failing for any other reason is the server's `500`.
+    let (status, refused) = post(&client, &base, "/v1/deployments", &human_id, &valid).await;
+    assert_eq!(
+        status, 400,
+        "a genuine duplicate assignment is the caller's: {refused}"
+    );
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("already exists"),
+        "{refused}"
+    );
+    let (status, answered) = post_under_fault(
+        &pool,
+        "deployment_assignments",
+        StoreFault::InsertRefused,
+        &client,
+        &base,
+        "/v1/deployments",
+        &human_id,
+        &narrowed,
+    )
+    .await;
+    assert_eq!(
+        status, 500,
+        "an assignment the store will not write: {answered}"
+    );
+    assert_eq!(
+        answered["code"],
+        json!("dependency_unavailable"),
+        "{answered}"
     );
     // The STAGED publication refuses (the chain gate).
     let (status, refused) = post(
@@ -5626,6 +5737,128 @@ async fn the_drift_corrections_and_outcomes_ride_the_records() {
     let (status, outcomes) = get(&client, &base, "/v1/policy-outcomes", &human_id).await;
     assert_eq!(status, 200, "the outcomes read: {outcomes}");
     assert_eq!(outcomes.as_array().unwrap().len(), 1, "{outcomes:?}");
+
+    // 5. `SIGNOFF-REPAIR.9.3.3.6`: each writer tells the caller's mistake from the
+    // store's failure. A genuine duplicate, and an expiry that is not a time, stay
+    // the caller's `400`; the store failing at a read or at the write is the
+    // server's `500` — every one of these used to answer "does not exist", "not an
+    // active grant" or "already exists".
+    let drift = |drift_id: &str| {
+        json!({ "drift_id": drift_id, "target_id": "cr-target", "publication_id": "cr-pub-1",
+                "category": "pending_rollout", "desired_digest": desired_digest,
+                "observed_digest": null })
+    };
+    let correction = |correction_id: &str| {
+        json!({ "correction_id": correction_id, "publication_id": "cr-pub-1",
+                "operation": "retraction", "authority_grant": grant_id,
+                "reason": "the owners withdrew" })
+    };
+    let outcome = |outcome_id: &str| {
+        json!({ "outcome_id": outcome_id, "publication_id": "cr-pub-1",
+                "kind": "observation", "note": "n" })
+    };
+    for (path, body, what) in [
+        ("/v1/policy-drift", drift("cr-drift-1"), "drift"),
+        (
+            "/v1/policy-corrections",
+            correction("cr-retract"),
+            "correction",
+        ),
+        ("/v1/policy-outcomes", outcome("cr-out-1"), "outcome"),
+    ] {
+        let (status, refused) = post(&client, &base, path, &human_id, &body).await;
+        assert_eq!(
+            status, 400,
+            "a genuine duplicate {what} is the caller's: {refused}"
+        );
+        assert!(
+            refused["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("already exists"),
+            "{refused}"
+        );
+    }
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-corrections",
+        &human_id,
+        &json!({ "correction_id": "cr-suspend-badtime", "publication_id": "cr-pub-1",
+                 "operation": "suspension", "authority_grant": grant_id,
+                 "expires_at": "next tuesday", "reason": "r" }),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "an expiry that is not a time is the caller's: {refused}"
+    );
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("not an RFC 3339"),
+        "a malformed expiry is not reported as a missing one: {refused}"
+    );
+    let mut nul = correction("cr-corr-nul");
+    nul["reason"] = json!("with\u{0}nul");
+    let (status, answered) = post(&client, &base, "/v1/policy-corrections", &human_id, &nul).await;
+    assert_eq!(
+        status, 400,
+        "a NUL in the reason is the caller's: {answered}"
+    );
+    assert_eq!(
+        answered["code"],
+        json!("unrepresentable_input"),
+        "{answered}"
+    );
+    for (table, fault, path, body) in [
+        (
+            "policy_publications",
+            StoreFault::Unreadable,
+            "/v1/policy-outcomes",
+            outcome("cr-out-f1"),
+        ),
+        (
+            "deployment_assignments",
+            StoreFault::Unreadable,
+            "/v1/policy-drift",
+            drift("cr-drift-f1"),
+        ),
+        (
+            "policy_drift",
+            StoreFault::InsertRefused,
+            "/v1/policy-drift",
+            drift("cr-drift-f2"),
+        ),
+        (
+            "authority_grants",
+            StoreFault::Unreadable,
+            "/v1/policy-corrections",
+            correction("cr-corr-f1"),
+        ),
+        (
+            "policy_corrections",
+            StoreFault::InsertRefused,
+            "/v1/policy-corrections",
+            correction("cr-corr-f2"),
+        ),
+        (
+            "policy_outcomes",
+            StoreFault::InsertRefused,
+            "/v1/policy-outcomes",
+            outcome("cr-out-f2"),
+        ),
+    ] {
+        let (status, answered) =
+            post_under_fault(&pool, table, fault, &client, &base, path, &human_id, &body).await;
+        assert_eq!(status, 500, "{path} with `{table}` {fault:?}: {answered}");
+        assert_eq!(
+            answered["code"],
+            json!("dependency_unavailable"),
+            "{answered}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -10106,6 +10339,55 @@ async fn desired_pair(pool: &PgPool, publication_id: &str) -> (String, String) {
     .fetch_one(pool)
     .await
     .expect("an effective publication has a desired pair")
+}
+
+/// How a store fault is injected for one request (`SIGNOFF-REPAIR.9.3.3.6`).
+#[derive(Clone, Copy, Debug)]
+enum StoreFault {
+    /// The table is renamed away, so every statement touching it fails.
+    Unreadable,
+    /// A `BEFORE INSERT` trigger raises, so only the write fails.
+    InsertRefused,
+}
+
+/// POST once with `table` faulted, restoring it BEFORE returning, so no later
+/// arm or suite inherits the fault and nothing is asserted against it.
+#[allow(clippy::too_many_arguments)]
+async fn post_under_fault(
+    pool: &PgPool,
+    table: &str,
+    fault: StoreFault,
+    client: &reqwest::Client,
+    base: &str,
+    path: &str,
+    principal: &str,
+    body: &Value,
+) -> (u16, Value) {
+    let (apply, restore) = match fault {
+        StoreFault::Unreadable => (
+            format!("ALTER TABLE {table} RENAME TO {table}_withheld"),
+            format!("ALTER TABLE {table}_withheld RENAME TO {table}"),
+        ),
+        StoreFault::InsertRefused => (
+            format!(
+                "CREATE FUNCTION rb_refuse_insert() RETURNS trigger LANGUAGE plpgsql AS \
+                 $$ BEGIN RAISE EXCEPTION 'the write is withheld'; END; $$; \
+                 CREATE TRIGGER rb_refuse_insert BEFORE INSERT ON {table} \
+                 FOR EACH ROW EXECUTE FUNCTION rb_refuse_insert();"
+            ),
+            format!("DROP TRIGGER rb_refuse_insert ON {table}; DROP FUNCTION rb_refuse_insert();"),
+        ),
+    };
+    sqlx::raw_sql(&apply)
+        .execute(pool)
+        .await
+        .expect("inject the fault");
+    let answered = post(client, base, path, principal, body).await;
+    sqlx::raw_sql(&restore)
+        .execute(pool)
+        .await
+        .expect("restore the table");
+    answered
 }
 
 async fn allow_owner_decides(pool: &PgPool, tenant: &str) {

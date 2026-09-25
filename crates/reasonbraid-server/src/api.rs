@@ -4931,10 +4931,10 @@ fn lifecycle_refusal(error: crate::lifecycle::LifecycleError) -> ControlApiError
 
 /// A deployment verb's error on the wire: a store fault is the server's (`500`,
 /// logged), never a refusal of the caller's request; input the store cannot
-/// represent is the caller's `400 unrepresentable_input`. ⚠️ The reporter lookup
-/// (`SIGNOFF-REPAIR.9.3.3.2`), the receipt write and the receipt history
-/// (`.9.3.3.3`) classify through `DeploymentError::storage`; the module's older
-/// store sites still answer as refusals and are `.9.3.3.6`'s.
+/// represent is the caller's `400 unrepresentable_input`. Every store site in the
+/// module classifies through `DeploymentError::storage` or `write_failure` since
+/// `SIGNOFF-REPAIR.9.3.3.6`, and `deployments::store_fault_classification`
+/// refuses the discarding shapes.
 fn deployment_refusal(error: crate::deployments::DeploymentError) -> ControlApiError {
     match error {
         crate::deployments::DeploymentError::Storage(detail) => {
@@ -4947,6 +4947,22 @@ fn deployment_refusal(error: crate::deployments::DeploymentError) -> ControlApiE
         refusal @ crate::deployments::DeploymentError::NotTargetAuthority(_) => {
             ControlApiError::unauthorized(refusal.to_string())
         }
+        refusal => ControlApiError::invalid_command(refusal.to_string()),
+    }
+}
+
+/// A drift, correction or outcome error on the wire (`SIGNOFF-REPAIR.9.3.3.6`):
+/// a store fault is the server's (`500`, logged), input the store cannot
+/// represent is the caller's `400 unrepresentable_input`, and every other
+/// refusal is the caller's request being wrong, `400`. All three verbs used to
+/// answer every error, store faults included, as the caller's.
+fn correction_refusal(error: crate::corrections::CorrectionError) -> ControlApiError {
+    match error {
+        crate::corrections::CorrectionError::Storage(detail) => {
+            eprintln!("control api: the correction store failed: {detail}");
+            ControlApiError::internal()
+        }
+        crate::corrections::CorrectionError::UnrepresentableInput => unrepresentable(),
         refusal => ControlApiError::invalid_command(refusal.to_string()),
     }
 }
@@ -5427,7 +5443,7 @@ async fn record_policy_drift(
     };
     match crate::corrections::record_drift(&state.pool, &caller_tenant, &input).await {
         Ok(()) => Ok(Json(json!({ "drift_id": input.drift_id }))),
-        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+        Err(error) => Err(correction_refusal(error)),
     }
 }
 
@@ -5472,7 +5488,7 @@ async fn record_policy_correction(
         .await
     {
         Ok(row) => Ok(Json(row)),
-        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+        Err(error) => Err(correction_refusal(error)),
     }
 }
 
@@ -5515,7 +5531,7 @@ async fn record_policy_outcome(
     };
     match crate::corrections::record_outcome(&state.pool, &caller_tenant, &input).await {
         Ok(()) => Ok(Json(json!({ "outcome_id": input.outcome_id }))),
-        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+        Err(error) => Err(correction_refusal(error)),
     }
 }
 

@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-25 — Internet access greenlit, with an independent security review still required (`PARTICIPATION`, `SIGNOFF-REPAIR.13.1`)
+
+`REASONBRAID-DOC-0173`.
+
+- 📌 **Decided by the director:** the 64-item inbox limit stands; agents will be able to message each other by name; the web console will do everything the command-line tool does; ReasonBraid will go on the Internet over HTTPS with modern sign-in, with security first and no exceptions.
+- ⚖️ **What it changes:** the two parked Internet items are reopened, to resume once the current corrective work is finished.
+- ⛔ **What it does not change:** the roadmap's Internet gate still needs an independent review of the threat model and an outside penetration test with serious findings fixed. A new guide, `docs/runbooks/external-security-review.md`, lists what the director does and what the project does, step by step.
+
 ## 2026-09-25 — The choice of fetcher no longer depends on storage order (`SIGNOFF-REPAIR.7.1.5`)
 
 `REASONBRAID-REPAIR-0499`.

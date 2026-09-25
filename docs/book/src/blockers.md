@@ -61,10 +61,34 @@ outsider — and replacing it changed three answers immediately.
 
 | # | Blocker | Who clears it | Owed here? | What is owed, or the trigger |
 | --- | --- | --- | --- | --- |
-| **B1** | Externally reviewed **threat model** and abuse cases | An independent reviewer | **yes (deferred)** | `spec/threat-model.md` exists; its **fitness for review** is owed, and `SIGNOFF-REPAIR.14`'s frozen exposure candidate is what a reviewer would review. §2.6: AI review does not satisfy the requirement |
-| **B2** | **Penetration test**, critical and high findings resolved | An outside engagement | **yes (deferred)** | The **scope and environment** document, and `.14`'s candidate freeze — which is this row's own stated trigger. §19.6: the release is *cancelled*, not waived, if findings stand |
+| **B1** | Externally reviewed **threat model** and abuse cases | An independent reviewer, engaged by the director | **yes (deferred)** | `spec/threat-model.md` exists; its **fitness for review** is owed, and `SIGNOFF-REPAIR.14`'s frozen exposure candidate is what a reviewer would review. §2.6: AI review does not satisfy the requirement. Step by step: `docs/runbooks/external-security-review.md` |
+| **B2** | **Penetration test**, critical and high findings resolved | An outside engagement, signed by the director | **yes (deferred)** | The **scope and environment** document, and `.14`'s candidate freeze — which is this row's own stated trigger. §19.6: the release is *cancelled*, not waived, if findings stand. Step by step: `docs/runbooks/external-security-review.md` |
 | **B3** | **Prompt-injection action-boundary suite** | — | **yes (deferred)** | It lands with `.14`'s first action-bearing surface. The `ACTION-BOUNDARY` gate already fails the commit that ships one and says B3 is due |
 | **B4** | **Public-name clearance** (ADR-001) | Professional trademark, company, package and domain clearance | **no** | ⭐ The only row with nothing owed here. Jurisdictions decided; the rename cost is measured at 67 files / 191 lines. §2.7: the exact-name screen is explicitly *not* legal clearance |
+
+## Greenlit by the director on 2026-09-25, security first
+
+> *"I greenlight ReasonBraid to connect to the internet over HTTPS and fully
+> support sota OAuth sign-in support."* — *"Robustness and security are
+> non-negotiable and suffer no exception and no compromission."*
+
+Internet exposure is now the destination
+(`docs/decisions/2026-09-25_the-director-greenlights-internet-exposure-security-first.md`).
+Two things follow, and one does not:
+
+- The two leaves deferred on *a decision to claim Internet exposure* are reopened:
+  `SIGNOFF-REPAIR.13.1` (preparing what the external review needs) and
+  `SIGNOFF-REPAIR.14` (the exposure candidate).
+- B1–B3 resume as current work when the corrective work's blocking items are
+  closed, which is when the local network counts as complete. The director agreed
+  that cross-organisation defects close before the doors widen.
+- ⛔ **The greenlight does not clear B1 or B2.** Both need an independent party
+  (§2.6). The director's steps (choose and engage the reviewer, sign the rules of
+  engagement, be the contact, sign the gate record or cancel) and the project's
+  steps (a review-ready threat model, the scope and test environment, the other
+  eight §16.12 lines passing first, fixing and retesting) are in
+  `docs/runbooks/external-security-review.md`. Nothing is served publicly before
+  the director signs the G6 gate record.
 
 ## Deferred, by director instruction of 2026-09-18
 

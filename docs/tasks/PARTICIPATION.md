@@ -65,6 +65,7 @@ The director's requirements of 2026-09-25, in their words:
 
   - ID: `PARTICIPATION.2`
     Status: `proposed`
+    Director (2026-09-25, `REASONBRAID-DOC-0173`): wanted; *"64 items is perfectly fine"*. The shape (typed messages, an authorization rule for who may message whom, delivery on the inbox's replay machinery) is in that record.
     Goal: asynchronous delivery to a NAMED participant, like email — a question, bug report, feature request or any demand, addressed by one agent to another that may be offline, kept durably, and delivered on reconnect. The survey found the node inbox durable and replayed by cursor on reconnect, but written only by the SERVER (two dispatch arms), capped at 64 undelivered rows per node, and no primitive by which one agent addresses another.
     Acceptance: `pending` — opens after `.1`.
     Verification: `pending`
@@ -79,6 +80,7 @@ The director's requirements of 2026-09-25, in their words:
 
   - ID: `PARTICIPATION.4`
     Status: `proposed`
+    Director (2026-09-25, `REASONBRAID-DOC-0173`): the web console must *"behave exactly like the rb CLI tool"*, and both must be *"extremely secure and super intuitive"*: full parity, not a read-only window.
     Goal: human clients, CLI and web, production-grade, elegant, fool-proof and intuitive. The survey found the `rb` CLI the primary surface and the web console READ-ONLY by construction, both trusting a development identity header; a human has no production sign-in.
     Acceptance: `pending` — opens after `.1`; its first question is human authentication, which the rest depends on.
     Verification: `pending`
@@ -86,6 +88,7 @@ The director's requirements of 2026-09-25, in their words:
 
   - ID: `PARTICIPATION.5`
     Status: `proposed`
+    Director (2026-09-25, `REASONBRAID-DOC-0173`): greenlit — *"connect to the internet over HTTPS and fully support sota OAuth sign-in"*, security paramount. Public service still waits on the signed G6 gate record (`docs/runbooks/external-security-review.md`).
     Goal: the CONNECTOR path — a chat app or agent comes to ReasonBraid. MCP is the protocol ChatGPT, Claude and Gemini accept for this: a remote Streamable-HTTP MCP server with OAuth 2.1 per the MCP specification 2026-07-28 (RFC 9728 protected-resource metadata, RFC 8707 resource indicators, client ID metadata documents), and a tool vocabulary that covers what a participant does. The survey found `rb-mcp` stdio-only (HTTP priced and deferred, `docs/decisions/2026-09-20_the-mcp-server-transport-is-stdio-first.md`), six tools, and identity passed as a tool argument.
     Acceptance: `pending` — depends on `.4`'s authentication and on the G6/G7 exposure gate for any cloud-hosted app.
     Verification: `pending`
@@ -107,7 +110,8 @@ The director's requirements of 2026-09-25, in their words:
 ## Decisions
 
 - `2026-09-25`: two paths, not one. A chat app acts only when its person prompts it, so it takes part through a CONNECTOR (MCP) and finds its pending items in its inbox; an autonomous agent takes part through an ADAPTER that ReasonBraid runs. The director's question *"we should be able to achieve all these using what REASONBRAID calls adapters, right?"* is answered in the record: adapters are half of it.
-- `2026-09-25`: sequenced after the corrective exit bar, because every leaf here widens who can reach the server (`REASONBRAID-DOC-0162`).
+- `2026-09-25`: sequenced after the corrective exit bar, because every leaf here widens who can reach the server (`REASONBRAID-DOC-0162`). The director agreed the same day.
+- `2026-09-25`: the director's point-by-point answers (`REASONBRAID-DOC-0173`): the 64-item cap stands; direct addressing wanted; the web console at full CLI parity; Internet exposure over HTTPS with OAuth greenlit, security without exception.
 
 ## Open Questions
 
@@ -116,7 +120,7 @@ The director's requirements of 2026-09-25, in their words:
 
 ## Blockers
 
-- `.5` for cloud chat apps: the G6/G7 Internet-exposure gate (`LIVE_STATUS.md`, Phase 7: NOT MET).
+- `.5` for cloud chat apps: the G6/G7 Internet-exposure gate (`LIVE_STATUS.md`, Phase 7: NOT MET). The director greenlit the exposure (2026-09-25); the gate's two external lines need an independent reviewer the director engages (`docs/runbooks/external-security-review.md`, `SIGNOFF-REPAIR.13.1`).
 
 ## Acceptance Checklist (required for any leaf that lands a CODE change)
 
@@ -132,6 +136,7 @@ The director's requirements of 2026-09-25, in their words:
 ## Commit Log
 
 - `REASONBRAID-DOC-0172`: tree opened, requirements recorded.
+- `REASONBRAID-DOC-0173`: the director's answers recorded; `.2`, `.4` and `.5` scoped by them.
 
 ## Changelog
 

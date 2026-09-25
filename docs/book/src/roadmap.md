@@ -86,6 +86,19 @@ called this way; ReasonBraid has no adapter for any of these APIs yet. "Not
 confirmed" means the vendor's own documentation did not show it on 2026-09-25;
 vendors change this often, so it is checked again before the work starts.
 
+### What the director decided the same day
+
+- The 64-item inbox cap stands.
+- One agent will be able to message another by name (it is doable: typed messages,
+  a rule for who may message whom, delivery on the inbox's proven replay).
+- The web console will do everything the `rb` CLI does, not only read.
+- ReasonBraid will be reachable on the Internet over HTTPS with OAuth sign-in, with
+  security first and no exceptions. That does not by itself meet the Internet gate:
+  an independent threat-model review and penetration test are still required, and
+  [Blockers](blockers.md) says step by step how they are obtained.
+
+Recorded in `docs/decisions/2026-09-25_the-director-greenlights-internet-exposure-security-first.md`.
+
 ### When
 
 After the corrective work closes its blocking items

@@ -279,6 +279,7 @@
 - [`2026-09-25_any-human-or-agent-can-take-part.md`](docs/decisions/2026-09-25_any-human-or-agent-can-take-part.md)
 - [`2026-09-25_registering-a-resolver-is-a-site-act.md`](docs/decisions/2026-09-25_registering-a-resolver-is-a-site-act.md)
 - [`2026-09-25_the-corrective-tree-ends-at-a-bug-bar.md`](docs/decisions/2026-09-25_the-corrective-tree-ends-at-a-bug-bar.md)
+- [`2026-09-25_the-director-greenlights-internet-exposure-security-first.md`](docs/decisions/2026-09-25_the-director-greenlights-internet-exposure-security-first.md)
 - [`2026-09-25_verification-is-scoped-to-the-change-and-broad-at-batch-boundaries.md`](docs/decisions/2026-09-25_verification-is-scoped-to-the-change-and-broad-at-batch-boundaries.md)
 - [`2026-09-25_what-a-tenant-declares-about-a-reference-is-its-own.md`](docs/decisions/2026-09-25_what-a-tenant-declares-about-a-reference-is-its-own.md)
 

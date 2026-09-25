@@ -1116,9 +1116,10 @@ grant and boundary revocation; breaker arm and reset; node enrollment-token
 issuance, node revocation, inbox command replay, quarantine and prune; profile
 card import and capability-claim attestation; and the three federation direction
 verbs. They were not chosen by taste — the population was measured first, and the
-four other `tenant_admin`-gated mutations (resolver registration, automatic thread
-creation, recruitment open and close) are deliberately absent because they are
-owned elsewhere and this family cannot certify their gates.
+three other `tenant_admin`-gated mutations (automatic thread creation, recruitment
+open and close) are deliberately absent because they are owned elsewhere and this
+family cannot certify their gates. Resolver registration was a fourth until
+`SIGNOFF-REPAIR.7.1.3.1` made it the `resolver_register` site act.
 
 Every variant names a target the **caller supplied**, so the target exists when
 the outcome is `refused` just as it does when the mutation applied. Breaker

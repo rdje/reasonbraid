@@ -1154,7 +1154,7 @@ written on the replay as well as on the first registration.
 
 | Surface | A tenant that registered the reference | Any other enrolled tenant |
 | --- | --- | --- |
-| `GET /v1/resources/{resource_id}` | 200 with the §12.1 row | **404**, the same answer an absent id gets |
+| `GET /v1/resources/{resource_id}` | 200 with **this tenant's own** statement of the §12.1 reference | **404**, the same answer an absent id gets |
 | `POST /v1/resources/{resource_id}/resolve` | resolves and acquires | **404** |
 | `POST /v1/resources` with the same locator and digest | `replayed: true`, the same `resource_id` | **the same** `replayed: true` — and it records the second registration |
 
@@ -1181,7 +1181,9 @@ locator is the thing the row would have disclosed.
 no tenant reads it** — and registering the same pair again restores the read,
 exactly as re-acquiring a snapshot restores its. The attribution cannot be
 recovered: `submitted_by` is a one-way hash that joins to no identity table and
-the pair replay leaves it naming the first registrant regardless.
+the pair replay leaves it naming the first registrant regardless. Since
+`SIGNOFF-REPAIR.7.1.4` the read no longer shows that value: its `submitted_by`
+and `created_at` are the reading tenant's own registrant and registration time.
 
 ### A credential binding belongs to a tenant, not to a locator
 
@@ -1236,6 +1238,45 @@ authorization surface rather than a wiring change. ⚠️ Its reach today is mea
 rather than assumed: the R5 pack is off by default and no production code path
 registers a broker binding, so every shipped deployment runs an empty broker
 store. `SIGNOFF-REPAIR.11.14.3.10.1` owns it.
+
+### Everything a tenant declares about a reference is its own
+
+✅ **Since `SIGNOFF-REPAIR.7.1.4` the eight attributes a caller declares about a
+reference are stored on that tenant's registration**, beside its credential
+binding: `scheme`, `media_type_hint`, `fragment_or_selector`,
+`owning_node_or_capability`, `visibility_scope`, `purpose`, `retention_class` and
+`risk_class`. The shared row keeps only the content (`original_locator`,
+`expected_digest`) and its provenance. The wire contract is unchanged.
+
+⛔ **What that closed.** The shared row used to hold the declared attributes too,
+written once by the first tenant to cite the URL, and every later tenant's replay
+discarded its own. Resolution ranks on `scheme`, so the first citer chose how every
+tenant's citation of the URL resolved. Measured before the change: tenant A cites a
+loopback URL as `ftp`, tenant B cites the same URL as `https`, and B's read
+answered `ftp`, with A's purpose, A's media hint, A's risk class and A's actor
+handle, and B's resolution found nothing to serve it. Now each reads and resolves
+by its own statement: B ranks `r0-https-fetcher`, A stays explicitly
+unresolvable, and both still share one `resource_id`.
+
+| Surface | Reads from the shared row | Reads from the tenant's registration |
+| --- | --- | --- |
+| `GET /v1/resources/{resource_id}` | `original_locator`, `expected_digest` | the eight declared attributes, `credential_binding_ref`, and `submitted_by`/`created_at` (this tenant's registrant and time) |
+| `POST /v1/resources/{resource_id}/resolve` | the locator and digest | the `scheme` it ranks on, the media hint the acquisition admits, the credential binding |
+
+⚠️ **Re-submitting states the whole reference again, for this tenant only.** A
+field omitted on a later submission is cleared on this tenant's registration, as
+the binding already was; no other tenant's statement changes.
+
+⚠️ **Registrations recorded before `migrations/0111` hold the shared row's
+values**, which is what every registered tenant had been reading. A later
+citer's own values were discarded when it replayed and were never stored, so
+they cannot be recovered; its next submission replaces them. The old columns are
+then dropped from the shared row, so a read that inherits another tenant's
+statement can no longer be written.
+
+⚠️ **Still a documented limit, unchanged by this:** `replayed: true` on
+`POST /v1/resources` confirms that the pair was already cited, by any tenant.
+See *Who may read a reference* above.
 
 ### How a deliberation records an assessment
 

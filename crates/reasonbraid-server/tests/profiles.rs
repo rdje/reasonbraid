@@ -7031,23 +7031,13 @@ async fn a_replace_is_complete_and_the_http_verb_does_not_perform_one() {
         .expect("close the gate again");
 }
 
-/// The other half of `SIGNOFF-REPAIR.7.3.6.2`, as its own test so its RED is
-/// observed rather than hidden behind the first one's panic.
-///
-/// `POST /v1/resolvers` said "registers (or replaces)" over an upsert that
-/// wrote 6 of 18 columns, so the documented use of the verb — narrowing a
-/// pack's `media_types` — answered `200 {"registered": true}` and changed
-/// nothing. Completing the replace here was REJECTED: the table has no tenant
-/// column, so any tenant administrator addresses any row including the
-/// built-in packs' (`SIGNOFF-REPAIR.11.9.1.1.1`, owned by `.7.1`), and
-/// widening the upsert would have handed that unbound principal eleven more
-/// columns. The verb refuses instead, by name.
 /// `SIGNOFF-REPAIR.7.1.3` — a resolver the server cannot EXECUTE never turns a
 /// resolution into a silent nothing, whoever registered it.
 ///
-/// `resolver_capabilities` is site-global, and any tenant administrator may add
-/// a row. Tenant A registers an `https` resolver advertised faster than the
-/// built-in `r0`; nothing in the server executes it. Tenant B then resolves an
+/// `resolver_capabilities` is site-global, and when this leaf landed any tenant
+/// administrator could add a row (a site operator only, since `.7.1.3.1`).
+/// Tenant A registers an `https` resolver advertised faster than the built-in
+/// `r0`; nothing in the server executes it. Tenant B then resolves an
 /// `https` reference: before this leaf the answer ranked A's resolver first
 /// and carried NO acquisition and NO error, so B's fetch silently did nothing.
 /// Now execution goes to the first ranked resolver the server CAN execute,
@@ -7269,6 +7259,19 @@ async fn a_tenant_administrator_registers_no_resolver() {
     );
 }
 
+/// The other half of `SIGNOFF-REPAIR.7.3.6.2`, as its own test so its RED is
+/// observed rather than hidden behind the first one's panic.
+///
+/// `POST /v1/resolvers` said "registers (or replaces)" over an upsert that
+/// wrote 6 of 18 columns, so the documented use of the verb — narrowing a
+/// pack's `media_types` — answered `200 {"registered": true}` and changed
+/// nothing. Completing the replace here was REJECTED: the table has no tenant
+/// column, so any tenant administrator addresses any row including the
+/// built-in packs' (`SIGNOFF-REPAIR.11.9.1.1.1`, owned by `.7.1`), and
+/// widening the upsert would have handed that unbound principal eleven more
+/// columns. The verb refuses instead, by name. Since `SIGNOFF-REPAIR.7.1.3.1`
+/// the registrar is a site operator and the refusal is the site act's audited
+/// `400`.
 #[tokio::test]
 async fn the_resolver_verb_refuses_to_replace_an_existing_advertise() {
     let _guard = guard().await;
@@ -8772,6 +8775,223 @@ async fn the_gated_packs_resolve_only_while_the_gate_is_open() {
         resolved["unresolvable_now"],
         json!(true),
         "the closed gate has no rows to rank: {resolved}"
+    );
+}
+
+/// `SIGNOFF-REPAIR.7.1.4` — a tenant's citation is resolved by what THAT
+/// tenant declared, never by the first tenant to cite the same URL.
+///
+/// `resource_references` is content-addressed on `(original_locator,
+/// expected_digest)`, so two tenants citing one URL hold one row. Until this
+/// leaf the row also carried the eight DECLARED attributes, written once by the
+/// first citer; a later tenant's replay discarded its own. Resolution selects
+/// on `scheme`, so tenant A declaring `ftp` for a URL made tenant B's `https`
+/// citation of it unresolvable, and B's read showed A's purpose, A's hints and
+/// A's actor handle. Now each tenant's statement lives on its own
+/// registration: both arms resolve by their own scheme and read their own
+/// statement, and the shared id still replays.
+#[tokio::test]
+async fn a_tenants_citation_is_resolved_by_its_own_declared_attributes() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let principal = |name: &'static str| {
+        let (client, base) = (client.clone(), base.clone());
+        async move {
+            let (status, human) =
+                enroll(&client, &base, json!({ "kind": "human", "name": name })).await;
+            assert_eq!(status, 200, "enrolls: {human}");
+            (
+                human["principal_id"].as_str().unwrap().to_string(),
+                human["tenant_id"].as_str().unwrap().to_string(),
+            )
+        }
+    };
+    let (first, first_tenant) = principal("first-citer").await;
+    let (second, second_tenant) = principal("second-citer").await;
+    assert_ne!(
+        first_tenant, second_tenant,
+        "two TENANTS, or this control proves nothing"
+    );
+
+    // A loopback literal, so the executable arm is refused by R0's destination
+    // policy before any socket opens: no network, and a named outcome.
+    const LOCATOR: &str = "https://127.0.0.1/cited-by-two-tenants";
+    let submit = |principal: String, body: Value| {
+        let (client, base) = (client.clone(), base.clone());
+        async move {
+            let response = client
+                .post(format!("{base}/v1/resources"))
+                .header(PRINCIPAL_HEADER, &principal)
+                .json(&body)
+                .send()
+                .await
+                .expect("submit request");
+            let status = response.status().as_u16();
+            (status, response.json::<Value>().await.expect("submit json"))
+        }
+    };
+    let resolve = |principal: String, resource_id: String| {
+        let (client, base) = (client.clone(), base.clone());
+        async move {
+            client
+                .post(format!("{base}/v1/resources/{resource_id}/resolve"))
+                .header(PRINCIPAL_HEADER, &principal)
+                .json(&json!({ "required_sandbox": "none", "required_egress": "listed" }))
+                .send()
+                .await
+                .expect("resolve request")
+                .json::<Value>()
+                .await
+                .expect("resolve json")
+        }
+    };
+
+    // The first citer declares a scheme no resolver serves.
+    let (status, a) = submit(
+        first.clone(),
+        json!({
+            "original_locator": LOCATOR,
+            "scheme": "ftp",
+            "media_type_hint": "text/plain",
+            "purpose": "the first tenant's own research note",
+            "risk_class": "high",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the first citation submits: {a}");
+    let resource_id = a["resource_id"].as_str().unwrap().to_string();
+    // The second cites the SAME URL as `https`, and the content row replays.
+    let (status, b) = submit(
+        second.clone(),
+        json!({
+            "original_locator": LOCATOR,
+            "scheme": "https",
+            "media_type_hint": "text/html",
+            "purpose": "the second tenant's reading",
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the second citation submits: {b}");
+    assert_eq!(
+        b["resource_id"].as_str().unwrap(),
+        resource_id,
+        "one URL at one digest is ONE content row — without the replay this \
+         control is two rows and proves nothing: {b}"
+    );
+
+    // Each tenant reads its OWN statement of the shared reference.
+    let (status, second_read) = get(
+        &client,
+        &base,
+        &format!("/v1/resources/{resource_id}"),
+        &second,
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the second tenant reads its citation: {second_read}"
+    );
+    let (status, first_read) = get(
+        &client,
+        &base,
+        &format!("/v1/resources/{resource_id}"),
+        &first,
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the first tenant reads its citation: {first_read}"
+    );
+    let declared = |read: &Value| {
+        (
+            read["reference"]["scheme"].clone(),
+            read["reference"]["media_type_hint"].clone(),
+            read["reference"]["purpose"].clone(),
+            read["reference"]["risk_class"].clone(),
+        )
+    };
+    assert_eq!(
+        declared(&second_read),
+        (
+            json!("https"),
+            json!("text/html"),
+            json!("the second tenant's reading"),
+            json!("low")
+        ),
+        "the second tenant reads what IT declared, not the first citer's statement: {second_read}"
+    );
+    assert_eq!(
+        declared(&first_read),
+        (
+            json!("ftp"),
+            json!("text/plain"),
+            json!("the first tenant's own research note"),
+            json!("high")
+        ),
+        "the first tenant's statement is undisturbed by the second: {first_read}"
+    );
+    assert_ne!(
+        second_read["submitted_by"], first_read["submitted_by"],
+        "the read names the reading tenant's own registrant, never the first citer's"
+    );
+
+    // And each RESOLVES by its own scheme: the second by R0, whose destination
+    // policy then refuses the loopback literal by name; the first explicitly
+    // unresolvable, because nothing serves `ftp`.
+    let second_resolved = resolve(second.clone(), resource_id.clone()).await;
+    assert_eq!(
+        second_resolved["resolvers"],
+        json!(["r0-https-fetcher"]),
+        "the second tenant's `https` citation resolves by ITS scheme: {second_resolved}"
+    );
+    assert_eq!(
+        second_resolved["acquisition_error"]["kind"],
+        json!("destination_refused"),
+        "and acquires under R0's own destination policy: {second_resolved}"
+    );
+    let first_resolved = resolve(first.clone(), resource_id.clone()).await;
+    assert_eq!(
+        first_resolved["unresolvable_now"],
+        json!(true),
+        "the first tenant's `ftp` citation stays its own: {first_resolved}"
+    );
+
+    // A re-submission is the tenant's complete statement, replacing its OWN
+    // declaration and nobody else's.
+    let (status, _) = submit(
+        second.clone(),
+        json!({ "original_locator": LOCATOR, "scheme": "ftp" }),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let (_, second_again) = get(
+        &client,
+        &base,
+        &format!("/v1/resources/{resource_id}"),
+        &second,
+    )
+    .await;
+    assert_eq!(second_again["reference"]["scheme"], json!("ftp"));
+    assert_eq!(
+        second_again["reference"]["purpose"],
+        Value::Null,
+        "a re-submission that omits the purpose clears it: {second_again}"
+    );
+    let (_, first_again) = get(
+        &client,
+        &base,
+        &format!("/v1/resources/{resource_id}"),
+        &first,
+    )
+    .await;
+    assert_eq!(
+        declared(&first_again),
+        declared(&first_read),
+        "the second tenant's re-submission changed nothing of the first's: {first_again}"
     );
 }
 
@@ -12152,9 +12372,13 @@ async fn the_contribution_citation_registers_a_resource_reference() {
     assert_eq!(status, 200, "the citing contribution commits: {cited}");
 
     let registered: Vec<(String, Option<String>, String, String)> = sqlx::query_as(
-        "SELECT resource_id, expected_digest, scheme, submitted_by \
-         FROM resource_references WHERE original_locator = $1 \
-         ORDER BY created_at",
+        // The scheme is the registering tenant's statement since
+        // `SIGNOFF-REPAIR.7.1.4`, so it is read from the registration.
+        "SELECT r.resource_id, r.expected_digest, g.scheme, r.submitted_by \
+         FROM resource_references r \
+         JOIN reference_registrations g ON g.resource_id = r.resource_id \
+         WHERE r.original_locator = $1 \
+         ORDER BY r.created_at",
     )
     .bind(locator)
     .fetch_all(&pool)
@@ -15722,7 +15946,9 @@ async fn a_reference_s_declared_fields_are_checked_or_defaulted() {
     assert_eq!(status, 200, "the reference registers: {defaulted}");
     let defaulted_id = defaulted["resource_id"].as_str().unwrap().to_string();
     let (scope, risk): (String, String) = sqlx::query_as(
-        "SELECT visibility_scope, risk_class FROM resource_references WHERE resource_id = $1",
+        // The tenant's own registration holds the declared fields since
+        // `SIGNOFF-REPAIR.7.1.4`; the only registrant here is this test's.
+        "SELECT visibility_scope, risk_class FROM reference_registrations WHERE resource_id = $1",
     )
     .bind(&defaulted_id)
     .fetch_one(&pool)
@@ -15780,8 +16006,9 @@ async fn a_reference_s_declared_fields_are_checked_or_defaulted() {
     .await;
     assert_eq!(status, 200, "the citation contributes: {contributed}");
     let (cited_scope, cited_risk): (String, String) = sqlx::query_as(
-        "SELECT visibility_scope, risk_class FROM resource_references \
-         WHERE original_locator = $1",
+        "SELECT g.visibility_scope, g.risk_class FROM reference_registrations g \
+         JOIN resource_references r ON r.resource_id = g.resource_id \
+         WHERE r.original_locator = $1",
     )
     .bind(cited)
     .fetch_one(&pool)

@@ -16,17 +16,25 @@
 //! refusal is retired: it was a §9.8 cross-tenant existence leak (it revealed a
 //! pin the caller was never shown) and a cross-tenant denial (the first
 //! principal to pin a locator made it uncitable by everyone else, in any form).
+//!
+//! **What a tenant DECLARES about the reference is that tenant's own**
+//! (`SIGNOFF-REPAIR.7.1.4`, `migrations/0111`). The shared row holds the
+//! content identity and its provenance; the eight declared attributes live on
+//! the tenant's own `reference_registrations` row, beside its credential
+//! binding, and the tenant-bound read overlays nothing: it reads that row.
 
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
-/// The durable `resource_references` row shape (the query's tuple type).
-// One column shorter since `SIGNOFF-REPAIR.11.14.3.10`: `credential_binding_ref`
-// left this row for the tenant's own registration, and `migrations/0069` dropped
-// the column rather than leaving a dead credential selector on a SHARED row.
-type ResourceRow = (
+/// One tenant's statement of a shared reference, as [`get_for_tenant`] reads
+/// it: the content from `resource_references`, everything the tenant declared
+/// and the tenant's own registrant and time from `reference_registrations`.
+// The declared half moved off the shared row at `SIGNOFF-REPAIR.7.1.4`
+// (`migrations/0111`), as the credential binding did at `.11.14.3.10` (`0069`).
+type TenantReferenceRow = (
     String,
     String,
+    Option<String>,
     String,
     Option<String>,
     Option<String>,
@@ -74,8 +82,9 @@ pub struct ResourceReference {
     pub expected_digest: Option<String>,
     #[serde(default)]
     pub fragment_or_selector: Option<String>,
-    /// Opaque; never a secret — and the one field on this struct that is NOT
-    /// stored on the shared reference row (`SIGNOFF-REPAIR.11.14.3.10`).
+    /// Opaque; never a secret. Stored on the TENANT's registration, never on the
+    /// shared reference row (`SIGNOFF-REPAIR.11.14.3.10`), and the first field
+    /// to move there: every declared field followed it at `.7.1.4`.
     ///
     /// ⛔ It SELECTS a credential: the R5 arm hands it to `broker.resolve` and
     /// the result attaches to the acquisition. That is an ACCESS decision, and
@@ -87,8 +96,8 @@ pub struct ResourceReference {
     ///
     /// ⭐ So it is carried on the wire, written to the TENANT's own
     /// `reference_registrations` row, and read back from there by
-    /// [`get_for_tenant`]. The unbound [`get`] cannot produce one at all — it
-    /// has no column to read, which is the structural form of the guarantee.
+    /// [`get_for_tenant`]. The shared row has no column to hold one, which is
+    /// the structural form of the guarantee (`migrations/0069`).
     #[serde(default)]
     pub credential_binding_ref: Option<String>,
     #[serde(default)]
@@ -272,7 +281,7 @@ where
         .await
         .map_err(ReferenceError::Storage)?;
     if let Some(resource_id) = existing {
-        record_registration(&mut *executor, &resource_id, registrant).await?;
+        record_registration(&mut *executor, &resource_id, reference, registrant).await?;
         return Ok(SubmitOutcome {
             resource_id,
             replayed: true,
@@ -283,31 +292,25 @@ where
     // runs inside the caller's transaction (a contribution registers its
     // citations there), and a raised violation would abort that transaction,
     // so the re-read after it could never run.
+    //
+    // ⭐ The shared row takes the CONTENT only (`SIGNOFF-REPAIR.7.1.4`): what
+    // this caller declares about the URL is its tenant's statement, written by
+    // `record_registration` on this path and on both replay paths alike.
     let inserted: Option<String> = sqlx::query_scalar(
         "INSERT INTO resource_references \
-         (resource_id, original_locator, scheme, media_type_hint, expected_digest, \
-          fragment_or_selector, owning_node_or_capability, \
-          visibility_scope, purpose, retention_class, risk_class, submitted_by) \
-         VALUES ('res_' || gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) \
+         (resource_id, original_locator, expected_digest, submitted_by) \
+         VALUES ('res_' || gen_random_uuid()::text, $1, $2, $3) \
          ON CONFLICT (original_locator, expected_digest) DO NOTHING \
          RETURNING resource_id",
     )
     .bind(&reference.original_locator)
-    .bind(&reference.scheme)
-    .bind(&reference.media_type_hint)
     .bind(&reference.expected_digest)
-    .bind(&reference.fragment_or_selector)
-    .bind(&reference.owning_node_or_capability)
-    .bind(&reference.visibility_scope)
-    .bind(&reference.purpose)
-    .bind(&reference.retention_class)
-    .bind(&reference.risk_class)
     .bind(submitted_by)
     .fetch_optional(&mut *executor)
     .await
     .map_err(ReferenceError::Storage)?;
     if let Some(resource_id) = inserted {
-        record_registration(&mut *executor, &resource_id, registrant).await?;
+        record_registration(&mut *executor, &resource_id, reference, registrant).await?;
         return Ok(SubmitOutcome {
             resource_id,
             replayed: false,
@@ -322,7 +325,7 @@ where
         .fetch_one(&mut *executor)
         .await
         .map_err(ReferenceError::Storage)?;
-    record_registration(&mut *executor, &resource_id, registrant).await?;
+    record_registration(&mut *executor, &resource_id, reference, registrant).await?;
     Ok(SubmitOutcome {
         resource_id,
         replayed: true,
@@ -340,31 +343,55 @@ where
 async fn record_registration<'e, E>(
     mut executor: E,
     resource_id: &str,
+    reference: &ResourceReference,
     registrant: &Registrant,
 ) -> Result<(), ReferenceError>
 where
     E: std::ops::DerefMut,
     for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
 {
-    // ⚠️ `DO NOTHING` on the audit columns and `DO UPDATE` on the binding, and the
-    // asymmetry is the point. `registered_at`/`registered_by` record WHEN and BY
-    // WHOM this tenant first registered — a re-registration must not rewrite
-    // history. The binding is not history: it is this tenant's CURRENT access
-    // decision, and a submission is the complete statement of a reference (the
-    // rule `SIGNOFF-REPAIR.11.14.3.5` settled for the declared fields), so
-    // re-submitting without one clears it. Any other rule makes a credential
+    // ⚠️ `DO NOTHING` on the audit columns and `DO UPDATE` on the statement, and
+    // the asymmetry is the point. `registered_at`/`registered_by` record WHEN and
+    // BY WHOM this tenant first registered — a re-registration must not rewrite
+    // history. The binding and the declared attributes are not history: they
+    // are this tenant's CURRENT statement, and a submission is the complete
+    // statement of a reference (the rule `SIGNOFF-REPAIR.11.14.3.5` settled), so
+    // re-submitting without a field clears it. Any other rule makes a credential
     // selector impossible to withdraw.
+    //
+    // ⛔ Every declared attribute is written HERE, on the insert and on the
+    // replay alike (`SIGNOFF-REPAIR.7.1.4`). While they lived on the shared row,
+    // the first tenant to cite a URL chose the scheme every tenant's citation
+    // of it resolved by, and a later tenant's own statement was discarded.
     sqlx::query(
         "INSERT INTO reference_registrations \
-         (resource_id, tenant_id, registered_by, credential_binding_ref) \
-         VALUES ($1, $2, $3, $4) \
+         (resource_id, tenant_id, registered_by, credential_binding_ref, \
+          scheme, media_type_hint, fragment_or_selector, owning_node_or_capability, \
+          visibility_scope, purpose, retention_class, risk_class) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) \
          ON CONFLICT (resource_id, tenant_id) \
-         DO UPDATE SET credential_binding_ref = EXCLUDED.credential_binding_ref",
+         DO UPDATE SET credential_binding_ref = EXCLUDED.credential_binding_ref, \
+                       scheme = EXCLUDED.scheme, \
+                       media_type_hint = EXCLUDED.media_type_hint, \
+                       fragment_or_selector = EXCLUDED.fragment_or_selector, \
+                       owning_node_or_capability = EXCLUDED.owning_node_or_capability, \
+                       visibility_scope = EXCLUDED.visibility_scope, \
+                       purpose = EXCLUDED.purpose, \
+                       retention_class = EXCLUDED.retention_class, \
+                       risk_class = EXCLUDED.risk_class",
     )
     .bind(resource_id)
     .bind(&registrant.tenant_id)
     .bind(&registrant.principal)
     .bind(&registrant.credential_binding_ref)
+    .bind(&reference.scheme)
+    .bind(&reference.media_type_hint)
+    .bind(&reference.fragment_or_selector)
+    .bind(&reference.owning_node_or_capability)
+    .bind(&reference.visibility_scope)
+    .bind(&reference.purpose)
+    .bind(&reference.retention_class)
+    .bind(&reference.risk_class)
     .execute(&mut *executor)
     .await
     .map_err(ReferenceError::Storage)?;
@@ -374,9 +401,12 @@ where
 /// Read one reference for a tenant that REGISTERED it — the detail read's gate
 /// (`SIGNOFF-REPAIR.11.14.3.4`).
 ///
-/// ⛔ There is deliberately no unbound read in this module. A caller cannot ask
-/// for a reference without naming the tenant the answer is for, which is the
-/// property `crate::snapshots` already holds for the row this one points at.
+/// ⛔ There is deliberately no unbound read in this module, and since
+/// `SIGNOFF-REPAIR.7.1.4` there is nothing an unbound read could return but the
+/// locator and the digest: every declared field is the registering tenant's. A
+/// caller cannot ask for a reference without naming the tenant the answer is
+/// for, which is the property `crate::snapshots` already holds for the row this
+/// one points at.
 pub async fn get_for_tenant(
     pool: &PgPool,
     resource_id: &str,
@@ -390,78 +420,46 @@ pub async fn get_for_tenant(
     )>,
     sqlx::Error,
 > {
-    // The probe and the binding read are ONE statement: the registration's
-    // existence is the gate, and its `credential_binding_ref` is the selector
-    // this tenant declared. A second statement could observe a registration that
-    // the first one did not, and the answer would be a binding from a row the
-    // gate never approved.
-    let registration: Option<Option<String>> = sqlx::query_scalar(
-        "SELECT credential_binding_ref FROM reference_registrations \
-         WHERE resource_id = $1 AND tenant_id = $2",
+    // ⭐ ONE statement, and the registration is both the gate and the answer.
+    // Everything the tenant declared, its binding, its registrant and its time
+    // come from ITS registration; only the content comes from the shared row.
+    // There is no second read to disagree with the first, and no path through
+    // which another tenant's statement could be read (`SIGNOFF-REPAIR.7.1.4`).
+    //
+    // ⚠️ `submitted_by` and `created_at` are therefore the READING tenant's
+    // `registered_by` and `registered_at`. The shared row's own `submitted_by`
+    // names the first citer, whoever that was, and a second tenant's read showed
+    // it: the same first-writer defect, seen from the read.
+    let row: Option<TenantReferenceRow> = sqlx::query_as(
+        "SELECT r.resource_id, r.original_locator, r.expected_digest, \
+                g.scheme, g.media_type_hint, g.fragment_or_selector, \
+                g.credential_binding_ref, g.owning_node_or_capability, \
+                g.visibility_scope, g.purpose, g.retention_class, g.risk_class, \
+                g.registered_by, g.registered_at \
+         FROM reference_registrations g \
+         JOIN resource_references r ON r.resource_id = g.resource_id \
+         WHERE g.resource_id = $1 AND g.tenant_id = $2",
     )
     .bind(resource_id)
     .bind(tenant_id)
-    .fetch_optional(pool)
-    .await?;
-    let Some(credential_binding_ref) = registration else {
-        return Ok(None);
-    };
-    let Some((resource_id, mut reference, submitted_by, created_at)) =
-        get(pool, resource_id).await?
-    else {
-        return Ok(None);
-    };
-    // ⭐ The overlay is where the tenant binding actually happens. `get` returns
-    // the SHARED content with no selector; this line supplies the one selector
-    // this tenant is entitled to, and no path exists that supplies another's.
-    reference.credential_binding_ref = credential_binding_ref;
-    Ok(Some((resource_id, reference, submitted_by, created_at)))
-}
-
-/// Read one reference, UNBOUND. Private to this module since
-/// `SIGNOFF-REPAIR.11.14.3.4`: every caller outside it goes through
-/// [`get_for_tenant`].
-///
-/// ⭐ Since `SIGNOFF-REPAIR.11.14.3.10` it returns `credential_binding_ref: None`
-/// unconditionally, because `migrations/0069` took the column away. An unbound
-/// read of a shared row CANNOT yield a credential selector — not by convention,
-/// by schema.
-async fn get(
-    pool: &PgPool,
-    resource_id: &str,
-) -> Result<
-    Option<(
-        String,
-        ResourceReference,
-        String,
-        chrono::DateTime<chrono::Utc>,
-    )>,
-    sqlx::Error,
-> {
-    let row: Option<ResourceRow> = sqlx::query_as(
-        "SELECT resource_id, original_locator, scheme, media_type_hint, expected_digest, \
-                fragment_or_selector, owning_node_or_capability, \
-                visibility_scope, purpose, retention_class, risk_class, submitted_by, created_at \
-         FROM resource_references WHERE resource_id = $1",
-    )
-    .bind(resource_id)
     .fetch_optional(pool)
     .await?;
     Ok(row.map(
         |(
             resource_id,
             original_locator,
+            expected_digest,
             scheme,
             media_type_hint,
-            expected_digest,
             fragment_or_selector,
+            credential_binding_ref,
             owning_node_or_capability,
             visibility_scope,
             purpose,
             retention_class,
             risk_class,
-            submitted_by,
-            created_at,
+            registered_by,
+            registered_at,
         )| {
             (
                 resource_id,
@@ -471,18 +469,15 @@ async fn get(
                     media_type_hint,
                     expected_digest,
                     fragment_or_selector,
-                    // ⛔ Structurally None: the unbound read has no column to
-                    // read one from. Only `get_for_tenant` can supply a
-                    // selector, and only the asking tenant's own.
-                    credential_binding_ref: None,
+                    credential_binding_ref,
                     owning_node_or_capability,
                     visibility_scope,
                     purpose,
                     retention_class,
                     risk_class,
                 },
-                submitted_by,
-                created_at,
+                registered_by,
+                registered_at,
             )
         },
     ))

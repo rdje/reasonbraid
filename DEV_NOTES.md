@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-25 — Closing checks finished: nine items reviewed, seven real problems found (`SIGNOFF-REPAIR.12`)
+
+`REASONBRAID-DOC-0163`, `0165`–`0171`. No code changed.
+
+- ✅ **Closed** after checking the evidence: machine-acquisition safety (`.7.2`), bootstrap waits, and two tooling items.
+- ⏸️ **Deferred:** the optional browser pack's storage and process limits, which only matter when that pack is switched on.
+- 🔴 **Found, and now queued to fix:** four evidence problems, two evaluation problems and one publication problem (listed in the entries below). These are exactly what "every sub-item done" had hidden.
+- ⏭️ **Next:** the must-fix items, starting with the ones that cross between organisations.
+
 ## 2026-09-25 — Three finished items formally closed (`SIGNOFF-REPAIR.11.4.5`, `.3.3.4.3.3.3.3.2.3`, `.11.4.3.1.7`)
 
 `REASONBRAID-DOC-0167`–`0169`. Closing checks; no code changed.

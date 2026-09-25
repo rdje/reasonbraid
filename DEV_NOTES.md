@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-25 — A policy can be reviewed more than once (`SIGNOFF-REPAIR.9.3.2`)
+
+`REASONBRAID-REPAIR-0523`.
+
+- 🔴 **Root cause:** `review_id = rev_{publication}_{trigger}` was the primary key, so the second review of a pair collided and `inserted.is_ok()` swallowed it (and every other insert error); the waiver trigger had no count, window or expiry.
+- ✅ **Fix:** per-pair latest occurrence vs the pair's latest review; own ids; `policy_reviews_one_due` partial unique index (`migrations/0113`) named in `ON CONFLICT`; `REPEATED_WAIVER_THRESHOLD = 2`, `REPEATED_WAIVER_WINDOW_DAYS = 90`, in force; insert errors propagate. Decision record added.
+- ⭐ The old control asserted the defect; rewritten with relative clocks, a backdated waiver and a trigger-forced insert failure. 8 of 8 mutants caught; broad run (migration).
+
 ## 2026-09-25 — A database failure is no longer reported as "that record does not exist" (`SIGNOFF-REPAIR.9.2.3`)
 
 `REASONBRAID-REPAIR-0522`.

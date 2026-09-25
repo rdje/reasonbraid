@@ -4872,7 +4872,8 @@ async fn the_drift_corrections_and_outcomes_ride_the_records() {
             "publication_id": "cr-pub-1",
             "operation": "suspension",
             "authority_grant": grant_id,
-            "expires_at": "2026-09-15T00:00:00Z",
+            // RELATIVE (`SIGNOFF-REPAIR.9.3.2`): the hard-coded date had passed.
+            "expires_at": (chrono::Utc::now() + chrono::Duration::days(30)).to_rfc3339(),
             "reason": "the adverse outcome",
         }),
     )
@@ -5222,57 +5223,103 @@ async fn the_scheduled_reviews_evaluate_the_triggers() {
     )
     .await;
     assert_eq!(status, 400, "the unknown trigger refuses: {refused}");
-    let (status, _) = post(
-        &client,
-        &base,
-        "/v1/policy-corrections",
-        &human_id,
-        &json!({
-            "correction_id": "rv-waiver",
+    // ⛔ RELATIVE clocks (`SIGNOFF-REPAIR.9.3.2`): this fixture hard-coded
+    // `2026-09-15`, which had passed before the expiry predicate arrived.
+    let in_force = (chrono::Utc::now() + chrono::Duration::days(30)).to_rfc3339();
+    let lapsed = (chrono::Utc::now() - chrono::Duration::days(1)).to_rfc3339();
+    let waiver = |id: &str, expires_at: &str| {
+        json!({
+            "correction_id": id,
             "publication_id": "rv-pub",
             "operation": "waiver",
             "authority_grant": grant_id,
-            "expires_at": "2026-09-15T00:00:00Z",
+            "expires_at": expires_at,
             "reason": "the bounded exception",
-        }),
+        })
+    };
+    let schedule = || {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        async move {
+            post(
+                &client,
+                &base,
+                "/v1/policy-reviews/schedule",
+                &human_id,
+                &json!({}),
+            )
+            .await
+        }
+    };
+    // A LAPSED waiver, one recorded OUTSIDE the window, and ONE in force within
+    // it: that is not a repeated waiver.
+    for (id, expires_at) in [
+        ("rv-waiver-lapsed", &lapsed),
+        ("rv-waiver-old", &in_force),
+        ("rv-waiver-1", &in_force),
+    ] {
+        let (status, recorded) = post(
+            &client,
+            &base,
+            "/v1/policy-corrections",
+            &human_id,
+            &waiver(id, expires_at),
+        )
+        .await;
+        assert_eq!(status, 200, "the waiver records: {recorded}");
+    }
+    // The window is measured from when a waiver was RECORDED, which only the
+    // store sets; backdate one past it.
+    sqlx::query(
+        "UPDATE policy_corrections SET created_at = now() - interval '91 days' \
+         WHERE correction_id = 'rv-waiver-old'",
     )
-    .await;
-    assert_eq!(status, 200, "the waiver records");
+    .execute(&pool)
+    .await
+    .expect("backdate the old waiver");
 
-    // 2. The schedule: the drift trigger (the outcome) + the
-    // repeated_waiver trigger (the waiver) → two due reviews.
-    let (status, scheduled) = post(
-        &client,
-        &base,
-        "/v1/policy-reviews/schedule",
-        &human_id,
-        &json!({}),
-    )
-    .await;
+    // 2. The schedule: the drift trigger (the outcome) alone. One waiver in
+    // force used to satisfy `repeated_waiver`, and a lapsed one counted too.
+    let (status, scheduled) = schedule().await;
     assert_eq!(status, 200, "the schedule evaluates: {scheduled}");
-    let scheduled = scheduled.as_array().unwrap();
-    assert_eq!(scheduled.len(), 2, "{scheduled:?}");
+    let scheduled = scheduled.as_array().unwrap().clone();
     let triggers: Vec<&str> = scheduled
         .iter()
         .map(|r| r["trigger"].as_str().unwrap())
         .collect();
-    assert!(triggers.contains(&"drift"), "{triggers:?}");
-    assert!(triggers.contains(&"repeated_waiver"), "{triggers:?}");
+    assert_eq!(
+        triggers,
+        ["drift"],
+        "one waiver in force is not a repeat: {scheduled:?}"
+    );
 
-    // 3. The schedule is IDEMPOTENT (the dedupe: the second run adds
-    // nothing).
-    let (status, again) = post(
+    // 3. A SECOND waiver in force within the window IS a repeat.
+    let (status, recorded) = post(
         &client,
         &base,
-        "/v1/policy-reviews/schedule",
+        "/v1/policy-corrections",
         &human_id,
-        &json!({}),
+        &waiver("rv-waiver-2", &in_force),
     )
     .await;
+    assert_eq!(status, 200, "the second waiver records: {recorded}");
+    let (status, repeated) = schedule().await;
+    assert_eq!(status, 200, "{repeated}");
+    let repeated = repeated.as_array().unwrap().clone();
+    assert_eq!(repeated.len(), 1, "{repeated:?}");
+    assert_eq!(
+        repeated[0]["trigger"],
+        json!("repeated_waiver"),
+        "{repeated:?}"
+    );
+
+    // 4. The schedule is IDEMPOTENT while a review is due.
+    let (status, again) = schedule().await;
     assert_eq!(status, 200, "the second schedule: {again}");
     assert_eq!(again.as_array().unwrap().len(), 0, "the dedupe holds");
 
-    // 4. The done transition + the re-done refusal.
+    // 5. The done transition + the re-done refusal.
     let review_id = scheduled[0]["review_id"].as_str().unwrap().to_string();
     let (status, done) = post(
         &client,
@@ -5293,15 +5340,122 @@ async fn the_scheduled_reviews_evaluate_the_triggers() {
     )
     .await;
     assert_eq!(status, 400, "the re-done refuses: {refused}");
+    // The completed review covered its occurrence: nothing new is due.
+    let (status, covered) = schedule().await;
+    assert_eq!(status, 200, "{covered}");
+    assert_eq!(
+        covered.as_array().unwrap().len(),
+        0,
+        "the review covered its occurrence"
+    );
 
-    // 5. The list.
+    // 6. The lifecycle RECURS: a new drift occurrence after the completed
+    // review schedules a NEW review. The id used to be `rev_{publication}_{trigger}`,
+    // the primary key, so every later insert for the pair collided and the
+    // error was discarded — the pair could be reviewed once, for ever.
+    let drift_outcome = |id: &str| {
+        json!({
+            "outcome_id": id,
+            "publication_id": "rv-pub",
+            "kind": "observation",
+            "review_trigger": "drift",
+            "note": "the target lagged again",
+        })
+    };
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-outcomes",
+        &human_id,
+        &drift_outcome("rv-out-2"),
+    )
+    .await;
+    assert_eq!(status, 200, "the second drift outcome records");
+    let (status, recurred) = schedule().await;
+    assert_eq!(status, 200, "{recurred}");
+    let recurred = recurred.as_array().unwrap().clone();
+    assert_eq!(
+        recurred.len(),
+        1,
+        "a new occurrence, a new review: {recurred:?}"
+    );
+    assert_eq!(recurred[0]["trigger"], json!("drift"), "{recurred:?}");
+    assert_ne!(
+        recurred[0]["review_id"], scheduled[0]["review_id"],
+        "a NEW review, not the completed one"
+    );
+    // Another occurrence while that review is due folds into it: one due
+    // review per publication and trigger.
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-outcomes",
+        &human_id,
+        &drift_outcome("rv-out-2b"),
+    )
+    .await;
+    assert_eq!(status, 200, "another drift outcome records");
+    let (status, folded) = schedule().await;
+    assert_eq!(status, 200, "{folded}");
+    assert_eq!(
+        folded.as_array().unwrap().len(),
+        0,
+        "one due review per pair: {folded}"
+    );
+
+    // 7. The list: the completed drift review, the due repeated-waiver review,
+    // and the recurred drift review.
     let (status, reviews) = get(&client, &base, "/v1/policy-reviews", &human_id).await;
     assert_eq!(status, 200, "the reviews read: {reviews}");
     let reviews = reviews.as_array().unwrap();
-    assert_eq!(reviews.len(), 2, "{reviews:?}");
+    assert_eq!(reviews.len(), 3, "{reviews:?}");
     assert!(
         reviews.iter().any(|r| r["status"] == json!("done")),
         "the done review rides the list"
+    );
+
+    // 8. An INSERT that fails is an error, not an empty success: every insert
+    // error used to be discarded by `is_ok()`, so a failing store answered
+    // "nothing was due". The failure is forced by a trigger on the table,
+    // dropped before anything is asserted.
+    let recurred_id = recurred[0]["review_id"].as_str().unwrap().to_string();
+    let (status, _) = post(
+        &client,
+        &base,
+        &format!("/v1/policy-reviews/{recurred_id}/done"),
+        &human_id,
+        &json!({}),
+    )
+    .await;
+    assert_eq!(status, 200, "the recurred review marks done");
+    let (status, _) = post(
+        &client,
+        &base,
+        "/v1/policy-outcomes",
+        &human_id,
+        &drift_outcome("rv-out-3"),
+    )
+    .await;
+    assert_eq!(status, 200, "the third drift outcome records");
+    sqlx::raw_sql(
+        "CREATE FUNCTION rv_forced_failure() RETURNS trigger LANGUAGE plpgsql AS \
+         $$ BEGIN RAISE EXCEPTION 'forced insert failure'; END $$; \
+         CREATE TRIGGER rv_forced_failure BEFORE INSERT ON policy_reviews \
+         FOR EACH ROW EXECUTE FUNCTION rv_forced_failure();",
+    )
+    .execute(&pool)
+    .await
+    .expect("force the insert to fail");
+    let (status, failed) = schedule().await;
+    sqlx::raw_sql(
+        "DROP TRIGGER rv_forced_failure ON policy_reviews; DROP FUNCTION rv_forced_failure();",
+    )
+    .execute(&pool)
+    .await
+    .expect("remove the forced failure");
+    assert_eq!(
+        status, 500,
+        "a failed insert is the server's failure, not an empty schedule: {failed}"
     );
 }
 

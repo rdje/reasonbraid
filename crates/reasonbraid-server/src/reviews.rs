@@ -60,101 +60,123 @@ impl std::fmt::Display for ReviewError {
     }
 }
 
-/// Evaluate the DUE reviews: the outcomes' named triggers (where the
-/// trigger is in the vocabulary) + the drift occurrences + the repeated
-/// waivers — one due review per (publication, trigger), the dedupe.
+/// A repeated waiver is at least this many waivers IN FORCE for one
+/// publication (`SIGNOFF-REPAIR.9.3.2`). One waiver is an exception; a second is
+/// the pattern §15.11 names. It used to fire on the first waiver, and on waivers
+/// that had long lapsed.
+pub const REPEATED_WAIVER_THRESHOLD: i64 = 2;
+
+/// ... recorded within this many days of the evaluation (the window).
+pub const REPEATED_WAIVER_WINDOW_DAYS: i32 = 90;
+
+/// Evaluate the DUE reviews: for each (publication, trigger) the records name,
+/// its LATEST occurrence — the outcomes naming a trigger in the vocabulary, the
+/// drift occurrences, and the repeated waivers — and a new review when that
+/// occurrence is newer than the pair's latest review and none is due.
+///
+/// ⭐ `SIGNOFF-REPAIR.9.3.2`: the lifecycle RECURS. A review had the id
+/// `rev_{publication}_{trigger}`, the primary key, so once the pair's first
+/// review was done every later one collided — and `inserted.is_ok()` discarded
+/// the error, which also turned a failing store into an empty schedule. A review
+/// now has its own id; at most one DUE review per pair is the partial unique
+/// index `policy_reviews_one_due` (`migrations/0113`), which the insert names,
+/// so a concurrent schedule is a skip; and any other insert error is returned.
+///
+/// Occurrence times and the waiver window read the DATABASE clock, the one the
+/// rows were stamped with.
+///
 /// ⛔ `SIGNOFF-REPAIR.6.1.5.2.1`: SCOPED to the caller's tenant, not gated by a
 /// refusal, because this verb names no id at all — one POST used to materialise
 /// review rows for EVERY tenant's publications, so a stranger decided which of
 /// your publications were under review.
-///
-/// ⭐ The write gate and the read binding are ONE change here, which is why this
-/// function belongs to this leaf rather than to `.6.1.5.3`: narrowing these
-/// three reads is what stops the write, and splitting them would leave two
-/// leaves editing one body.
 pub async fn schedule_reviews(
     pool: &PgPool,
     tenant_id: &str,
 ) -> Result<Vec<StoredReview>, sqlx::Error> {
-    let outcome_rows: Vec<(String, String)> = sqlx::query_as(
-        "SELECT publication_id, review_trigger FROM policy_outcomes \
-         WHERE review_trigger IS NOT NULL AND tenant_id = $1",
+    type Occurrence = (String, String, chrono::DateTime<chrono::Utc>);
+    let outcomes: Vec<Occurrence> = sqlx::query_as(
+        "SELECT publication_id, review_trigger, max(created_at) FROM policy_outcomes \
+         WHERE review_trigger IS NOT NULL AND tenant_id = $1 GROUP BY 1, 2",
     )
     .bind(tenant_id)
     .fetch_all(pool)
     .await?;
-    let drift_rows: Vec<String> =
-        sqlx::query_scalar("SELECT publication_id FROM policy_drift WHERE tenant_id = $1")
-            .bind(tenant_id)
-            .fetch_all(pool)
-            .await?;
-    let waiver_rows: Vec<String> = sqlx::query_scalar(
-        "SELECT publication_id FROM policy_corrections \
-         WHERE operation = 'waiver' AND tenant_id = $1",
+    let drift: Vec<Occurrence> = sqlx::query_as(
+        "SELECT publication_id, 'drift', max(created_at) FROM policy_drift \
+         WHERE tenant_id = $1 GROUP BY 1",
     )
     .bind(tenant_id)
+    .fetch_all(pool)
+    .await?;
+    // A lapsed waiver is not in force, and an old one is outside the window.
+    let waivers: Vec<Occurrence> = sqlx::query_as(
+        "SELECT publication_id, 'repeated_waiver', max(created_at) FROM policy_corrections \
+         WHERE operation = 'waiver' AND tenant_id = $1 \
+           AND (expires_at IS NULL OR expires_at > now()) \
+           AND created_at > now() - make_interval(days => $2) \
+         GROUP BY 1 HAVING count(*) >= $3",
+    )
+    .bind(tenant_id)
+    .bind(REPEATED_WAIVER_WINDOW_DAYS)
+    .bind(REPEATED_WAIVER_THRESHOLD)
     .fetch_all(pool)
     .await?;
 
-    // The (publication, trigger) pairs, deduped + the existing due rows
-    // excluded (the schedule is idempotent).
-    let mut pairs: Vec<(String, String)> = outcome_rows
-        .into_iter()
-        .filter(|(_, trigger)| REVIEW_TRIGGERS.contains(&trigger.as_str()))
-        .collect();
-    for publication_id in drift_rows {
-        pairs.push((publication_id, "drift".to_string()));
+    // Each pair's latest occurrence: an outcome naming `drift` and a drift row
+    // are occurrences of ONE pair.
+    let mut latest: std::collections::BTreeMap<(String, String), chrono::DateTime<chrono::Utc>> =
+        std::collections::BTreeMap::new();
+    for (publication_id, trigger, at) in outcomes.into_iter().chain(drift).chain(waivers) {
+        if !REVIEW_TRIGGERS.contains(&trigger.as_str()) {
+            continue;
+        }
+        let entry = latest.entry((publication_id, trigger)).or_insert(at);
+        if at > *entry {
+            *entry = at;
+        }
     }
-    for publication_id in waiver_rows {
-        pairs.push((publication_id, "repeated_waiver".to_string()));
-    }
-    pairs.sort();
-    pairs.dedup();
 
     let mut scheduled = Vec::new();
-    for (publication_id, trigger) in pairs {
-        let already: Option<bool> = sqlx::query_scalar(
-            "SELECT EXISTS (SELECT 1 FROM policy_reviews \
-             WHERE publication_id = $1 AND trigger = $2 AND status = 'due')",
+    for ((publication_id, trigger), occurred_at) in latest {
+        // Covered: the pair's latest review was scheduled after this occurrence.
+        let reviewed_at: Option<chrono::DateTime<chrono::Utc>> = sqlx::query_scalar(
+            "SELECT max(created_at) FROM policy_reviews WHERE publication_id = $1 AND trigger = $2",
         )
         .bind(&publication_id)
         .bind(&trigger)
         .fetch_one(pool)
         .await?;
-        if already.unwrap_or(false) {
+        if reviewed_at.is_some_and(|reviewed_at| reviewed_at >= occurred_at) {
             continue;
         }
-        let review_id = format!("rev_{}_{}", publication_id, trigger.replace('_', "-"));
         // `SIGNOFF-REPAIR.6.1.5.2`: a review belongs to the PUBLICATION it
-        // reviews, never to whoever posted the schedule verb. This function
-        // reads outcomes, drift and corrections with no predicate at all, so a
-        // single caller materialises rows for every tenant's publications —
-        // stamping that caller's tenant on all of them would attribute each
-        // tenant's review trail to one stranger.
+        // reviews, never to whoever posted the schedule verb.
         //
         // ⚠️ The lookup conflates two absences deliberately: a publication that
         // does not exist and one staged before `migrations/0073` both yield
-        // NULL, and both are unattributable. ⛔ It does not REFUSE the first —
-        // that would change which review rows exist, which is `.6.1.5.3`'s
-        // question about this same function, not this leaf's.
-        let tenant_id: Option<String> = sqlx::query_scalar(
+        // NULL, and both are unattributable.
+        let owner: Option<String> = sqlx::query_scalar(
             "SELECT tenant_id FROM policy_publications WHERE publication_id = $1",
         )
         .bind(&publication_id)
         .fetch_optional(pool)
         .await?
         .flatten();
+        let review_id = crate::snapshots::evidence_id("rev");
         let inserted = sqlx::query(
             "INSERT INTO policy_reviews (review_id, publication_id, trigger, status, tenant_id) \
-             VALUES ($1, $2, $3, 'due', $4)",
+             VALUES ($1, $2, $3, 'due', $4) \
+             ON CONFLICT (publication_id, trigger) WHERE status = 'due' DO NOTHING",
         )
         .bind(&review_id)
         .bind(&publication_id)
         .bind(&trigger)
-        .bind(&tenant_id)
+        .bind(&owner)
         .execute(pool)
-        .await;
-        if inserted.is_ok() {
+        .await?;
+        // Zero rows: a review for the pair is already due — this call's
+        // occurrence is that review's to cover.
+        if inserted.rows_affected() == 1 {
             scheduled.push(StoredReview {
                 review_id,
                 publication_id,

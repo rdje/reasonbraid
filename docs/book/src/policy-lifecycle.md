@@ -607,15 +607,28 @@ that are **due** from rows that already exist, for the caller's tenant only:
 
 - every outcome carrying a `review_trigger`, under that trigger;
 - every drift observation, under the `drift` trigger;
-- every correction whose operation is `waiver`, under `repeated_waiver`.
+- **repeated waivers**, under `repeated_waiver`: at least **two** waivers of the
+  same publication that are still in force (not past their `expires_at`) and
+  were recorded within the last **90 days**. One waiver is an exception; the
+  second is the repetition §15.11 names.
 
 The seven triggers are `elapsed_interval`, `dependency_change`,
 `adverse_threshold`, `external_standard_change`, `repeated_waiver`, `drift` and
 `evaluator_regression`.
 
-The pairs are deduplicated, and a `(publication, trigger)` that already has a
-`due` review is skipped — so **the verb is idempotent** and can be run on a timer
-without accumulating duplicates. It returns the reviews it created:
+A `(publication, trigger)` gets a review when it has an occurrence recorded
+**after its latest review**, and no review of it is `due`:
+
+- run on a timer, **the verb is idempotent**: an occurrence already covered by a
+  review, due or done, schedules nothing;
+- the lifecycle **recurs**: an occurrence after a completed review schedules a
+  new review, with its own `review_id`;
+- occurrences that arrive while a review is due fold into it. At most one review
+  per pair is ever due, which the database enforces, so two schedules racing
+  cannot both create one.
+
+If a review cannot be stored the verb answers `500`; it never answers an empty
+list for a schedule it failed to write. It returns the reviews it created:
 
 ```bash
 curl -s -X POST localhost:4310/v1/policy-reviews/schedule \
@@ -636,6 +649,13 @@ curl -s -X POST localhost:4310/v1/policy-reviews/schedule \
 `POST /v1/policy-reviews/{review_id}/done` performs the **due → done**
 transition once the review has been carried out, and `GET /v1/policy-reviews`
 lists the caller's tenant's reviews with their current status.
+
+⚠️ **Until `SIGNOFF-REPAIR.9.3.2` a pair could be reviewed once, for ever.** A
+review's id was built from the publication and the trigger and was the table's
+key, so after the first review of a pair was done every later one collided with
+it, and the collision was discarded. The same discard turned a failing database
+into a successful, empty schedule. And a single waiver, even one that had lapsed,
+counted as a repeated waiver.
 
 ## What this machinery does not claim
 

@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-25 — A refused conversation leaves no trace in the routing log (`SIGNOFF-REPAIR.8.2.7`)
+
+`REASONBRAID-REPAIR-0520`.
+
+- 🔴 **Root cause:** `create_thread` wrote the `create_boundary` resolution on the pool before `run_thread_command`, so neither the authorization nor the idempotency replay could undo it.
+- ✅ **Fix:** `CommandTarget::Create { resolution }` + `routing::record_resolution_in` on the command's transaction, after the two committed-denial refusals. The autonomous handler's routing branch was dead (`routing_class` always `None`) and is removed.
+- ⭐ RED live; 2 tool + 3 placement mutants caught, the before-authorization and before-claim placements by the new control alone. `.8.2` closed.
+
 ## 2026-09-25 — An experiment can no longer list the same option twice, and its errors say what is wrong (`SIGNOFF-REPAIR.8.2.6`)
 
 `REASONBRAID-REPAIR-0519`.

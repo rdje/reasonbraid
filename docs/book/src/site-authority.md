@@ -719,6 +719,16 @@ Every successful resolution is recorded in the routing journal described below;
 the lookup itself reads the rule table and the profile registry only, never the
 journals.
 
+A resolution made while **creating a thread** (a `thread.create` naming a
+`routing_class` and no profile, journalled with `surface: "create_boundary"`) is
+recorded by the create command itself, after its authorization, and commits
+exactly when the thread does (`SIGNOFF-REPAIR.8.2.7`). A create that is refused
+leaves no journal row, and replaying a create with its idempotency key adds none.
+Until the repair the row was written before the authorization, so a refused
+create left a row describing a resolution for a thread that never existed, and
+every replay added another. The `POST /v1/routing/resolve` verb's own row is
+unchanged: recording the resolution is what that verb does.
+
 ### The routing journals: bound to their own tenant
 
 `GET /v1/routing/resolutions` and `GET /v1/routing/recommendations` used to

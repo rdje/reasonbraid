@@ -104,6 +104,20 @@ pub async fn record_resolution(
     surface: &str,
     tenant: &str,
 ) -> Result<(), sqlx::Error> {
+    record_resolution_in(&mut *pool.acquire().await?, route, caller, surface, tenant).await
+}
+
+/// The same row inside a caller's transaction, for a resolution that is part of
+/// a larger act: the create boundary records it in the command's own
+/// transaction, so it commits exactly when the thread does
+/// (`SIGNOFF-REPAIR.8.2.7`).
+pub async fn record_resolution_in(
+    conn: &mut sqlx::PgConnection,
+    route: &ResolvedRoute,
+    caller: &str,
+    surface: &str,
+    tenant: &str,
+) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO routing_resolutions (case_class, arm, rule_id, caller, surface, tenant_id) \
          VALUES ($1, $2, $3, $4, $5, $6)",
@@ -114,7 +128,7 @@ pub async fn record_resolution(
     .bind(caller)
     .bind(surface)
     .bind(tenant)
-    .execute(pool)
+    .execute(conn)
     .await?;
     Ok(())
 }

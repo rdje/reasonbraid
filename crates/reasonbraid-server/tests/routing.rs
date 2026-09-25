@@ -781,3 +781,100 @@ async fn the_shadow_recommendations_are_read_by_their_own_tenant() {
         "the shadow is never applied"
     );
 }
+
+/// `SIGNOFF-REPAIR.8.2.7`: a create's routing resolution was written to the
+/// POOL before the command's authorization, so a create that was then refused
+/// left an audit row asserting a resolution for a thread that never existed,
+/// and every idempotent replay of a successful create added another. The row
+/// now commits with the thread it routed, and with nothing else.
+#[tokio::test]
+async fn a_create_boundary_resolution_commits_only_with_its_thread() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, owner) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "rt-boundary-owner" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{owner}");
+    let owner_id = owner["principal_id"].as_str().unwrap().to_string();
+    let tenant_id = owner["tenant_id"].as_str().unwrap().to_string();
+    let (status, stranger) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "rt-boundary-stranger" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{stranger}");
+    let stranger_id = stranger["principal_id"].as_str().unwrap().to_string();
+
+    let create = |key: &str| {
+        json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": key,
+            "body": {
+                "tenant_id": tenant_id,
+                "subject": "routed",
+                "objective": "probe",
+                "routing_class": "uncertain",
+            },
+            "client_context": {},
+        })
+    };
+    let rows = |caller: String| {
+        let pool = pool.clone();
+        async move {
+            sqlx::query_scalar::<_, i64>(
+                "SELECT count(*) FROM routing_resolutions \
+                 WHERE surface = 'create_boundary' AND caller = $1",
+            )
+            .bind(caller)
+            .fetch_one(&pool)
+            .await
+            .expect("count the create-boundary rows")
+        }
+    };
+
+    // A principal of another tenant is refused, and leaves no row.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/threads",
+        &stranger_id,
+        &create("rt-boundary-stranger"),
+    )
+    .await;
+    assert_eq!(status, 403, "the stranger's create is refused: {refused}");
+    assert_eq!(
+        rows(stranger_id.clone()).await,
+        0,
+        "a refused create records no resolution"
+    );
+
+    // The owner's create commits its thread and exactly one row.
+    let body = create("rt-boundary-owner");
+    let (status, created) = post(&client, &base, "/v1/threads", &owner_id, &body).await;
+    assert_eq!(status, 200, "{created}");
+    assert_eq!(
+        rows(owner_id.clone()).await,
+        1,
+        "one create, one resolution"
+    );
+
+    // Its idempotent replay creates nothing, and records nothing.
+    let (status, replayed) = post(&client, &base, "/v1/threads", &owner_id, &body).await;
+    assert_eq!(status, 200, "{replayed}");
+    assert_eq!(replayed["replayed"], json!(true), "{replayed}");
+    assert_eq!(
+        rows(owner_id).await,
+        1,
+        "a replay records no second resolution"
+    );
+}

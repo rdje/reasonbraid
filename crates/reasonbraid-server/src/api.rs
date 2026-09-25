@@ -6275,42 +6275,12 @@ async fn create_thread_auto(
     // cause is a mismatch, never a replay.
     let hashed = serde_json::json!({ "body": body_value, "caused_by": req.caused_by });
     let hash = request_hash(threads::OP_CREATE, &principal, &hashed, None, None);
-    // `.5.2` (ADR-031): the explicit profile always wins; the routing class
-    // resolves through the rule table ONLY when no profile is named (the
-    // human authority outranks the rule).
-    let profile_id = match body.workflow_profile.as_deref() {
-        Some(explicit) => Some(explicit.to_owned()),
-        None => match body.routing_class.as_deref() {
-            Some(class) => {
-                let route = crate::routing::resolve(&state.pool, class)
-                    .await
-                    .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
-                // ⛔ The journal's tenant is DERIVED from the authenticated
-                // caller, NOT taken from `body.tenant_id`: this write happens
-                // BEFORE the command authorization below, so a caller-supplied
-                // tenant here would let anyone inject rows into another
-                // tenant's audit trail (`SIGNOFF-REPAIR.7.1.2.2`).
-                let Some(journal_tenant) = reader_tenant(&state.pool, &principal).await? else {
-                    return Err(ControlApiError::unauthorized(
-                        "an unenrolled principal resolves no route",
-                    ));
-                };
-                crate::routing::record_resolution(
-                    &state.pool,
-                    &route,
-                    &principal.id_string(),
-                    "create_boundary",
-                    &journal_tenant,
-                )
-                .await?;
-                Some(route.arm)
-            }
-            None => None,
-        },
-    };
-    // The same `.3.3` catch as `create_thread`: the resolve ALWAYS runs —
-    // the bare thread defaults to `quick_advice` (never empty steps).
-    let resolved = crate::workflows::resolve(&state.pool, profile_id.as_deref())
+    // The autonomous request carries no profile and no routing class — its
+    // body is built above from the tenant, subject and objective alone — so the
+    // thread takes the default profile, as it always has. `SIGNOFF-REPAIR.8.2.7`
+    // removed the create boundary's routing branch from here: it could never
+    // run, and it wrote its audit row before the command's authorization.
+    let resolved = crate::workflows::resolve(&state.pool, None)
         .await
         .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
     let workflow_steps = resolved.steps;
@@ -6326,6 +6296,7 @@ async fn create_thread_auto(
         CommandTarget::Create {
             body: &body,
             workflow_steps,
+            resolution: None,
         },
     )
     .await?;
@@ -8707,6 +8678,20 @@ async fn inspect_breakers(
 // ── Thread commands ──────────────────────────────────────────────────────────────
 
 /// One prepared command's execution target inside the shared transaction flow.
+/// A routing resolution made at the create boundary (`SIGNOFF-REPAIR.8.2.7`).
+///
+/// ⛔ It used to be written to the POOL before the command's authorization, so
+/// a create that was then refused left an audit row asserting a resolution for
+/// a thread that never existed, and each idempotent replay of a successful
+/// create added another. It now rides the command and is recorded in its
+/// transaction after authorization, so it commits exactly when the thread does.
+pub(crate) struct CreateResolution {
+    pub route: crate::routing::ResolvedRoute,
+    /// DERIVED from the authenticated caller, never from `body.tenant_id`
+    /// (`SIGNOFF-REPAIR.7.1.2.2`); unchanged by the move into the transaction.
+    pub journal_tenant: String,
+}
+
 pub(crate) enum CommandTarget<'a> {
     /// `thread.create` — pure preparation; the thread id is server-assigned.
     Create {
@@ -8714,6 +8699,9 @@ pub(crate) enum CommandTarget<'a> {
         /// The resolved profile steps (the ADR-016 composition) — the
         /// create boundary resolved them against the registry.
         workflow_steps: Vec<String>,
+        /// The routing resolution that chose the profile, when a routing class
+        /// did; recorded inside the command's transaction.
+        resolution: Option<CreateResolution>,
     },
     /// A command against an existing thread — validated against the locked
     /// projection inside the transaction.
@@ -8865,6 +8853,7 @@ pub(crate) async fn run_thread_command(
         CommandTarget::Create {
             body,
             workflow_steps,
+            resolution,
         } => {
             // The INITIATOR quota (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.1`, ROADMAP
             // §11.5's rate bound): an AUTONOMOUS creation — one carrying a
@@ -8958,6 +8947,19 @@ pub(crate) async fn run_thread_command(
                 workflow_steps.clone(),
                 declared,
             );
+            // After the authorization and the quota, whose refusals COMMIT their
+            // recorded denial, and on this transaction: the resolution commits
+            // with the thread it routed and with nothing else.
+            if let Some(resolution) = resolution {
+                crate::routing::record_resolution_in(
+                    &mut tx,
+                    &resolution.route,
+                    &principal.id_string(),
+                    "create_boundary",
+                    &resolution.journal_tenant,
+                )
+                .await?;
+            }
             (thread_id, prepared)
         }
         CommandTarget::Existing {
@@ -9739,6 +9741,7 @@ async fn create_thread(
     // `.5.2` (ADR-031): the explicit profile always wins; the routing class
     // resolves through the rule table ONLY when no profile is named (the
     // human authority outranks the rule).
+    let mut resolution = None;
     let profile_id = match body.workflow_profile.as_deref() {
         Some(explicit) => Some(explicit.to_owned()),
         None => match body.routing_class.as_deref() {
@@ -9747,24 +9750,21 @@ async fn create_thread(
                     .await
                     .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
                 // ⛔ The journal's tenant is DERIVED from the authenticated
-                // caller, NOT taken from `body.tenant_id`: this write happens
-                // BEFORE the command authorization below, so a caller-supplied
-                // tenant here would let anyone inject rows into another
-                // tenant's audit trail (`SIGNOFF-REPAIR.7.1.2.2`).
+                // caller, NOT taken from `body.tenant_id`, so a caller-supplied
+                // tenant cannot inject rows into another tenant's audit trail
+                // (`SIGNOFF-REPAIR.7.1.2.2`). The row itself is written by the
+                // command, after its authorization (`SIGNOFF-REPAIR.8.2.7`).
                 let Some(journal_tenant) = reader_tenant(&state.pool, &principal).await? else {
                     return Err(ControlApiError::unauthorized(
                         "an unenrolled principal resolves no route",
                     ));
                 };
-                crate::routing::record_resolution(
-                    &state.pool,
-                    &route,
-                    &principal.id_string(),
-                    "create_boundary",
-                    &journal_tenant,
-                )
-                .await?;
-                Some(route.arm)
+                let arm = route.arm.clone();
+                resolution = Some(CreateResolution {
+                    route,
+                    journal_tenant,
+                });
+                Some(arm)
             }
             None => None,
         },
@@ -9819,6 +9819,7 @@ async fn create_thread(
         CommandTarget::Create {
             body: &body,
             workflow_steps,
+            resolution,
         },
     )
     .await?;

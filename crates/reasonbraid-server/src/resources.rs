@@ -175,8 +175,18 @@ pub fn scheme_of(uri: &str) -> Option<&str> {
     Some(scheme)
 }
 
-/// The submission outcome: a fresh reference, or a replay (the same locator +
-/// the same digest — the pair the unique index is built on).
+/// The submission outcome: the pair's `resource_id` (one row per `(locator,
+/// digest)`, whoever cited it), and whether THIS tenant had already registered
+/// it.
+///
+/// ⛔ `replayed` is the TENANT's history with the pair, never the shared row's
+/// (`SIGNOFF-REPAIR.7.1.4.1`). It used to report whether the row existed, so a
+/// tenant's first citation of a URL told it that another tenant had cited the
+/// same URL: the cross-tenant existence confirmation §9.8 forbids.
+/// `migrations/0067` recorded that as a limit that could not be closed, because
+/// the same pair must return the same id. The id still is the same; what it
+/// cannot be is a report on anyone else. The migration's comment is left as
+/// written, because an applied migration is immutable.
 #[derive(Debug, Clone, Serialize)]
 pub struct SubmitOutcome {
     pub resource_id: String,
@@ -281,10 +291,11 @@ where
         .await
         .map_err(ReferenceError::Storage)?;
     if let Some(resource_id) = existing {
-        record_registration(&mut *executor, &resource_id, reference, registrant).await?;
+        let replayed =
+            record_registration(&mut *executor, &resource_id, reference, registrant).await?;
         return Ok(SubmitOutcome {
             resource_id,
-            replayed: true,
+            replayed,
         });
     }
 
@@ -310,10 +321,11 @@ where
     .await
     .map_err(ReferenceError::Storage)?;
     if let Some(resource_id) = inserted {
-        record_registration(&mut *executor, &resource_id, reference, registrant).await?;
+        let replayed =
+            record_registration(&mut *executor, &resource_id, reference, registrant).await?;
         return Ok(SubmitOutcome {
             resource_id,
-            replayed: false,
+            replayed,
         });
     }
     // The pre-check and the insert are not atomic, so two callers can both pass
@@ -325,15 +337,16 @@ where
         .fetch_one(&mut *executor)
         .await
         .map_err(ReferenceError::Storage)?;
-    record_registration(&mut *executor, &resource_id, reference, registrant).await?;
+    let replayed = record_registration(&mut *executor, &resource_id, reference, registrant).await?;
     Ok(SubmitOutcome {
         resource_id,
-        replayed: true,
+        replayed,
     })
 }
 
 /// Record one registration — idempotent, so a re-registration by the same
-/// tenant keeps the original time and actor.
+/// tenant keeps the original time and actor. Returns whether this tenant had
+/// ALREADY registered the pair, which is what `SubmitOutcome::replayed` reports.
 ///
 /// ⛔ Written on the REPLAY as well as on the insert. Without that, the first
 /// tenant to name a pair would own the row's read for ever and every other
@@ -345,12 +358,12 @@ async fn record_registration<'e, E>(
     resource_id: &str,
     reference: &ResourceReference,
     registrant: &Registrant,
-) -> Result<(), ReferenceError>
+) -> Result<bool, ReferenceError>
 where
     E: std::ops::DerefMut,
     for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
 {
-    // ⚠️ `DO NOTHING` on the audit columns and `DO UPDATE` on the statement, and
+    // ⚠️ The audit columns are written once and the statement every time, and
     // the asymmetry is the point. `registered_at`/`registered_by` record WHEN and
     // BY WHOM this tenant first registered — a re-registration must not rewrite
     // history. The binding and the declared attributes are not history: they
@@ -363,22 +376,22 @@ where
     // replay alike (`SIGNOFF-REPAIR.7.1.4`). While they lived on the shared row,
     // the first tenant to cite a URL chose the scheme every tenant's citation
     // of it resolved by, and a later tenant's own statement was discarded.
-    sqlx::query(
+    //
+    // ⭐ Two statements rather than one upsert, because the caller needs to know
+    // WHICH happened: `replayed` is whether this tenant had already registered
+    // the pair (`SIGNOFF-REPAIR.7.1.4.1`), and `ON CONFLICT DO UPDATE` reports
+    // an insert and an update alike. `DO NOTHING` waits for a concurrent
+    // registration by the same tenant to commit and then finds its row, so two
+    // racing first registrations answer one `false` and one `true`, as the
+    // sequential pair would.
+    let inserted: Option<String> = sqlx::query_scalar(
         "INSERT INTO reference_registrations \
          (resource_id, tenant_id, registered_by, credential_binding_ref, \
           scheme, media_type_hint, fragment_or_selector, owning_node_or_capability, \
           visibility_scope, purpose, retention_class, risk_class) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) \
-         ON CONFLICT (resource_id, tenant_id) \
-         DO UPDATE SET credential_binding_ref = EXCLUDED.credential_binding_ref, \
-                       scheme = EXCLUDED.scheme, \
-                       media_type_hint = EXCLUDED.media_type_hint, \
-                       fragment_or_selector = EXCLUDED.fragment_or_selector, \
-                       owning_node_or_capability = EXCLUDED.owning_node_or_capability, \
-                       visibility_scope = EXCLUDED.visibility_scope, \
-                       purpose = EXCLUDED.purpose, \
-                       retention_class = EXCLUDED.retention_class, \
-                       risk_class = EXCLUDED.risk_class",
+         ON CONFLICT (resource_id, tenant_id) DO NOTHING \
+         RETURNING resource_id",
     )
     .bind(resource_id)
     .bind(&registrant.tenant_id)
@@ -392,10 +405,34 @@ where
     .bind(&reference.purpose)
     .bind(&reference.retention_class)
     .bind(&reference.risk_class)
+    .fetch_optional(&mut *executor)
+    .await
+    .map_err(ReferenceError::Storage)?;
+    if inserted.is_some() {
+        return Ok(false);
+    }
+    sqlx::query(
+        "UPDATE reference_registrations \
+         SET credential_binding_ref = $3, scheme = $4, media_type_hint = $5, \
+             fragment_or_selector = $6, owning_node_or_capability = $7, \
+             visibility_scope = $8, purpose = $9, retention_class = $10, risk_class = $11 \
+         WHERE resource_id = $1 AND tenant_id = $2",
+    )
+    .bind(resource_id)
+    .bind(&registrant.tenant_id)
+    .bind(&registrant.credential_binding_ref)
+    .bind(&reference.scheme)
+    .bind(&reference.media_type_hint)
+    .bind(&reference.fragment_or_selector)
+    .bind(&reference.owning_node_or_capability)
+    .bind(&reference.visibility_scope)
+    .bind(&reference.purpose)
+    .bind(&reference.retention_class)
+    .bind(&reference.risk_class)
     .execute(&mut *executor)
     .await
     .map_err(ReferenceError::Storage)?;
-    Ok(())
+    Ok(true)
 }
 
 /// Read one reference for a tenant that REGISTERED it — the detail read's gate

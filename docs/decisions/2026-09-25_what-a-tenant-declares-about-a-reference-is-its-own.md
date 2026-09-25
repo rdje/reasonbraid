@@ -26,4 +26,4 @@ A §12.1 reference is one shared CONTENT row per `(original_locator, expected_di
 
 - Anything a caller STATES about a shared, content-addressed row belongs on its tenant-bound registration, never on the shared row.
 - Existing registrations were backfilled with the shared values, which is what each tenant had been reading; a later citer's discarded values were never stored and cannot be recovered, and its next submission replaces them.
-- Not decided here: `replayed: true` still confirms that another tenant cited the pair, the limit `migrations/0067` records. With the read no longer showing the first citer's handle and time, it is the remaining signal, and it is re-examined as its own leaf.
+- Not decided here: `replayed: true` still confirmed that another tenant cited the pair, the limit `migrations/0067` records. With the read no longer showing the first citer's handle and time, it was the remaining signal, and `SIGNOFF-REPAIR.7.1.4.1` closed it the same day (`REASONBRAID-REPAIR-0498`): `replayed` reports this tenant's own history with the pair.

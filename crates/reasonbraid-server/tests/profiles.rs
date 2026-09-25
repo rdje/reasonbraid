@@ -8995,6 +8995,82 @@ async fn a_tenants_citation_is_resolved_by_its_own_declared_attributes() {
     );
 }
 
+/// `SIGNOFF-REPAIR.7.1.4.1` — a tenant's FIRST registration of a pair is not a
+/// replay, whoever cited the pair before.
+///
+/// `replayed` used to report whether the SHARED row existed, so a tenant that
+/// had never cited a URL learned from its own first submission that another
+/// tenant had — the cross-tenant existence confirmation §9.8 forbids. The id
+/// is still shared (the pair names one row); what `replayed` reports is now
+/// this tenant's own history with it.
+#[tokio::test]
+async fn a_first_registration_does_not_confirm_another_tenants_citation() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let principal = |name: &'static str| {
+        let (client, base) = (client.clone(), base.clone());
+        async move {
+            let (status, human) =
+                enroll(&client, &base, json!({ "kind": "human", "name": name })).await;
+            assert_eq!(status, 200, "enrolls: {human}");
+            (
+                human["principal_id"].as_str().unwrap().to_string(),
+                human["tenant_id"].as_str().unwrap().to_string(),
+            )
+        }
+    };
+    let (first, first_tenant) = principal("earlier-citer").await;
+    let (second, second_tenant) = principal("later-citer").await;
+    assert_ne!(
+        first_tenant, second_tenant,
+        "two TENANTS, or this proves nothing"
+    );
+
+    let submit = |principal: String| {
+        let (client, base) = (client.clone(), base.clone());
+        async move {
+            let response = client
+                .post(format!("{base}/v1/resources"))
+                .header(PRINCIPAL_HEADER, &principal)
+                .json(&json!({
+                    "original_locator": "https://example.org/cited-before",
+                    "scheme": "https",
+                }))
+                .send()
+                .await
+                .expect("submit request");
+            assert_eq!(response.status().as_u16(), 200);
+            response.json::<Value>().await.expect("submit json")
+        }
+    };
+
+    let a = submit(first.clone()).await;
+    assert_eq!(
+        a["replayed"],
+        json!(false),
+        "the first citation is new: {a}"
+    );
+    let b = submit(second.clone()).await;
+    assert_eq!(
+        b["resource_id"], a["resource_id"],
+        "one pair is one row; without the shared id this control proves nothing: {b}"
+    );
+    assert_eq!(
+        b["replayed"],
+        json!(false),
+        "the later tenant's FIRST registration must not tell it another tenant cited the pair: {b}"
+    );
+    // Each tenant's own second submission IS a replay.
+    let b_again = submit(second.clone()).await;
+    assert_eq!(b_again["replayed"], json!(true), "{b_again}");
+    let a_again = submit(first.clone()).await;
+    assert_eq!(a_again["replayed"], json!(true), "{a_again}");
+}
+
 /// `credential_binding_ref` SELECTS a credential, and the reference row it
 /// lived on is SHARED (`SIGNOFF-REPAIR.11.14.3.10`). `UNIQUE (original_locator,
 /// expected_digest)` means a second tenant registering the same pair replays
@@ -15151,15 +15227,16 @@ async fn the_reference_read_is_bound_to_the_registering_tenant() {
         "the owner's own row is unchanged: {own}"
     );
 
-    // ── The supported path, and the limit that is DELIBERATELY kept ──────────
+    // ── The supported path ────────────────────────────────────────────────────
     //
     // The second tenant registers the SAME pair. §12.1's key makes that one
-    // shared row, so it replays — and the replay records the second
-    // registration, exactly as a snapshot re-acquisition records the second
-    // citation. ⚠️ The `replayed: true` IS an existence confirmation, and it
-    // cannot be closed without breaking the pair key §12.1 and §12.6 require.
-    // The caller must already know the locator AND the digest, which is the
-    // width this control pins rather than leaves implicit.
+    // shared row, so the id is the first tenant's — and the submission records
+    // the second registration, exactly as a snapshot re-acquisition records the
+    // second citation. ⭐ Since `SIGNOFF-REPAIR.7.1.4.1` it answers
+    // `replayed: false`: `replayed` is THIS tenant's history with the pair, so
+    // the shared id no longer comes with a confirmation that someone else cited
+    // it. This control used to pin that confirmation as a limit that could not
+    // be closed; the pair key required the shared id, never the flag.
     let (status, replayed) = post(
         &client,
         &base,
@@ -15168,7 +15245,7 @@ async fn the_reference_read_is_bound_to_the_registering_tenant() {
         &reference_body,
     )
     .await;
-    assert_eq!(status, 200, "the second registration replays: {replayed}");
+    assert_eq!(status, 200, "the second registration submits: {replayed}");
     assert_eq!(
         replayed["resource_id"].as_str().unwrap(),
         resource_id,
@@ -15176,9 +15253,9 @@ async fn the_reference_read_is_bound_to_the_registering_tenant() {
     );
     assert_eq!(
         replayed["replayed"],
-        json!(true),
-        "the pair replay is kept — it is the §12.1 identity, and closing it \
-         would make one tenant's pin uncitable by another: {replayed}"
+        json!(false),
+        "the stranger's FIRST registration confirms nothing about the first \
+         tenant's citation: {replayed}"
     );
 
     let (status, now_readable) = get(

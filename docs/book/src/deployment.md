@@ -871,7 +871,7 @@ client can rely on:
 
 | The request | The result |
 | --- | --- |
-| the same locator **and** the same digest, again | the **same** `resource_id`; `POST /v1/resources` reports `"replayed": true` |
+| the same locator **and** the same digest, again | the **same** `resource_id`; `POST /v1/resources` reports `"replayed": true` when **this tenant** had already registered it (a first registration by another tenant reports `false`, `SIGNOFF-REPAIR.7.1.4.1`) |
 | the same locator at a **different** digest | a **second** reference. §12.6's live page changed, and §12.1 forbids erasing that distinction |
 | the same locator with **no** digest, twice | one unpinned reference, replayed the second time |
 
@@ -1156,7 +1156,7 @@ written on the replay as well as on the first registration.
 | --- | --- | --- |
 | `GET /v1/resources/{resource_id}` | 200 with **this tenant's own** statement of the §12.1 reference | **404**, the same answer an absent id gets |
 | `POST /v1/resources/{resource_id}/resolve` | resolves and acquires | **404** |
-| `POST /v1/resources` with the same locator and digest | `replayed: true`, the same `resource_id` | **the same** `replayed: true` — and it records the second registration |
+| `POST /v1/resources` with the same locator and digest | `replayed: true`, the same `resource_id` | the same `resource_id`, **`replayed: false`** on its first registration — and it records the second registration |
 
 ⛔ **Until `SIGNOFF-REPAIR.11.14.3.4` the first two admitted any enrolled
 principal.** Measured with a second tenant holding a `res_…` id it had never
@@ -1166,16 +1166,22 @@ wrote about its own research, `risk_class`, `submitted_by`. ⭐ Including
 `visibility_scope`, which that row declared as `"tenant"` while the read ignored
 it.
 
-⚠️ **The last row of that table is a limit and it is deliberate.** The pair
-replay IS an existence confirmation, and it cannot be closed: §12.6 requires a
+✅ **The last row of that table used to be a limit, and it is closed**
+(`SIGNOFF-REPAIR.7.1.4.1`). `replayed: true` answered a tenant's FIRST
+registration of a pair another tenant had cited, which confirmed that citation,
+the cross-tenant existence §9.8 forbids. It was recorded here, and in
+`migrations/0067`, as a limit that *cannot be closed*, because §12.6 requires a
 changed page to be a second reference and §12.1 forbids erasing that
-distinction, so the same pair must return the same id. ⭐ The difference from a
-snapshot is nameable — confirming a snapshot means presenting its **bytes**,
-while confirming a reference means presenting a **locator**, which anyone can
-type. What the binding buys is therefore precise rather than total: **the read
-stops disclosing anything the caller did not already hold.** A bare opaque
-handle used to be the whole predicate; the locator is now required, and the
-locator is the thing the row would have disclosed.
+distinction, so the same pair must return the same id. The pair key requires the
+shared **id**, never the flag: `replayed` now reports whether **this tenant** had
+already registered the pair, and the id is unchanged. It became closable when
+`SIGNOFF-REPAIR.7.1.4` stopped the read showing the first citer's handle and
+time, the other signals that gave the citation away. `migrations/0067`'s comment
+still says otherwise, because an applied migration is never edited.
+
+What the binding buys: **the read discloses nothing the caller did not already
+hold.** A bare opaque handle used to be the whole predicate; the locator is now
+required, and the locator is the thing the row would have disclosed.
 
 ⚠️ **A reference registered before this binding has no recorded registrant, so
 no tenant reads it** — and registering the same pair again restores the read,
@@ -1274,9 +1280,9 @@ they cannot be recovered; its next submission replaces them. The old columns are
 then dropped from the shared row, so a read that inherits another tenant's
 statement can no longer be written.
 
-⚠️ **Still a documented limit, unchanged by this:** `replayed: true` on
-`POST /v1/resources` confirms that the pair was already cited, by any tenant.
-See *Who may read a reference* above.
+✅ **And `replayed` no longer reports another tenant's citation**
+(`SIGNOFF-REPAIR.7.1.4.1`): it is this tenant's own history with the pair. See
+*Who may read a reference* above.
 
 ### How a deliberation records an assessment
 

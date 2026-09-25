@@ -114,7 +114,11 @@ did not already hold.
 ## What it does NOT close
 
 - ⚠️ **The pair replay stays an existence confirmation.** Published above with
-  its width.
+  its width. ⭐ **Closed on 2026-09-25 by `SIGNOFF-REPAIR.7.1.4.1`**
+  (`REASONBRAID-REPAIR-0498`): the pair key needs the shared id, never the
+  flag, so `replayed` now reports whether THIS tenant had registered the pair.
+  It became closable once `.7.1.4` stopped the read showing the first citer's
+  handle and time.
 - ⛔ **`credential_binding_ref` remains an unauthenticated caller field that
   SELECTS a credential**, and binding the read does not touch it: the second
   tenant can register the same pair, inherit the shared row, and resolve it. That

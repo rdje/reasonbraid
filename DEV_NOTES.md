@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-25 — Citing a web address no longer reveals that another organisation cited it (`SIGNOFF-REPAIR.7.1.4.1`)
+
+`REASONBRAID-REPAIR-0498`.
+
+- 🔴 **Before:** when an organisation cited a web address for the first time, the reply said "already seen" if any other organisation had cited it before. That told it something about another organisation's research.
+- ✅ **Now:** "already seen" means only that this organisation cited it before. The page is still stored once and shared.
+- ✅ Tested: the new test failed on the old code and passes now; an older test that had recorded this as a limit that could not be fixed was updated, because it could be.
+
 ## 2026-09-25 — The director's requirements for who can take part are recorded (`PARTICIPATION`)
 
 `REASONBRAID-DOC-0172`.

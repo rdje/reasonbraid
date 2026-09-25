@@ -5370,7 +5370,36 @@ async fn the_drift_corrections_and_outcomes_ride_the_records() {
     .await;
     assert_eq!(status, 200, "the assignment records");
 
-    // 1. The drift: the categorized pair.
+    // 1. The drift: the categorized pair. Its DESIRED half is the assignment's
+    // (`SIGNOFF-REPAIR.9.3.3.5`): a drift record says a target is not running what
+    // was published, and a desired digest the assignment does not carry makes
+    // that a comparison against a value nobody published.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-drift",
+        &human_id,
+        &json!({
+            "drift_id": "cr-drift-declared",
+            "target_id": "cr-target",
+            "publication_id": "cr-pub-1",
+            "category": "pending_rollout",
+            "desired_digest": DIGEST,
+            "observed_digest": null,
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "a desired digest the assignment does not carry is refused: {refused}"
+    );
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("desired_digest"),
+        "the refusal names the field: {refused}"
+    );
     let (status, _) = post(
         &client,
         &base,
@@ -5381,12 +5410,34 @@ async fn the_drift_corrections_and_outcomes_ride_the_records() {
             "target_id": "cr-target",
             "publication_id": "cr-pub-1",
             "category": "pending_rollout",
-            "desired_digest": DIGEST,
+            "desired_digest": desired_digest,
             "observed_digest": null,
         }),
     )
     .await;
     assert_eq!(status, 200, "the drift records");
+    // The assignment is the PAIR: `cr-pub-2` is this tenant's and effective, and
+    // was never assigned to `cr-target`, so a drift naming the two is refused
+    // even though the target carries another assignment with the same digest.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-drift",
+        &human_id,
+        &json!({
+            "drift_id": "cr-drift-unassigned",
+            "target_id": "cr-target",
+            "publication_id": "cr-pub-2",
+            "category": "pending_rollout",
+            "desired_digest": desired_digest,
+            "observed_digest": null,
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "a pair that was never assigned has no drift: {refused}"
+    );
     let (status, refused) = post(
         &client,
         &base,
@@ -5397,7 +5448,7 @@ async fn the_drift_corrections_and_outcomes_ride_the_records() {
             "target_id": "cr-target",
             "publication_id": "cr-pub-1",
             "category": "vibes",
-            "desired_digest": DIGEST,
+            "desired_digest": desired_digest,
             "observed_digest": null,
         }),
     )
@@ -5413,7 +5464,7 @@ async fn the_drift_corrections_and_outcomes_ride_the_records() {
             "target_id": "ghost",
             "publication_id": "cr-pub-1",
             "category": "pending_rollout",
-            "desired_digest": DIGEST,
+            "desired_digest": desired_digest,
             "observed_digest": null,
         }),
     )
@@ -7205,7 +7256,7 @@ async fn the_lifecycle_row_carries_the_tenant_that_owns_it() {
         &alice_id,
         &json!({
             "drift_id": "lto-drift", "target_id": "lto-target", "publication_id": "lto-pub",
-            "category": "pending_rollout", "desired_digest": DIGEST, "observed_digest": null,
+            "category": "pending_rollout", "desired_digest": desired_digest, "observed_digest": null,
         }),
     )
     .await;
@@ -7781,7 +7832,7 @@ async fn the_lifecycle_verbs_refuse_another_tenants_publication() {
     // ── ARMS 7, 8 and 9: drift, correction and outcome.
     let drift = json!({
         "drift_id": "gtn-drift", "target_id": "gtn-target", "publication_id": pub1,
-        "category": "pending_rollout", "desired_digest": DIGEST, "observed_digest": null,
+        "category": "pending_rollout", "desired_digest": desired_digest, "observed_digest": null,
     });
     let (status, refused) = post(&client, &base, "/v1/policy-drift", &mallory_id, &drift).await;
     assert_eq!(status, 400, "a foreign tenant records no drift: {refused}");
@@ -8150,7 +8201,7 @@ async fn every_lifecycle_read_is_bound_to_its_own_tenant() {
                     json!({
                     "drift_id": ids("drift"), "target_id": ids("target"),
                     "publication_id": ids("pub"), "category": "pending_rollout",
-                    "desired_digest": DIGEST, "observed_digest": null }),
+                    "desired_digest": desired_digest, "observed_digest": null }),
                 ),
                 (
                     "/v1/policy-corrections".to_string(),

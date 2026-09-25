@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — A drift record compares against what was actually assigned (`SIGNOFF-REPAIR.9.3.3.5`)
+
+`REASONBRAID-REPAIR-0529`.
+
+- 🔴 **Root cause:** `record_drift` checked the assignment's existence and stored the caller's `desired_digest` verbatim.
+- ✅ **Fix:** the existence read returns the assignment's `desired_digest`; `CorrectionError::DesiredDigestNotAssigned` refuses a mismatch by name. Six fixtures re-seeded from `desired_pair`.
+- ⭐ A mutant unbinding the lookup from the publication survived: no control had ever asserted the assignment is the (target, publication) pair. Added; 4 of 4 caught.
+
 ## 2026-09-26 — Only a target's own authority can decide what it runs (`SIGNOFF-REPAIR.9.3.3.7`)
 
 `REASONBRAID-REPAIR-0528`.

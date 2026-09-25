@@ -686,6 +686,15 @@ The six categories are `expected_override`, `pending_rollout`,
 `stale_agent_incarnation`. Anything else is refused, and the refusal lists the
 vocabulary.
 
+**The two halves are not equally the caller's.** The drift must name an
+assignment, the (target, publication) pair itself, and its `desired_digest` must
+be that assignment's desired digest, which is the publication's own
+([Deployment and receipts](#deployment-and-receipts)). Anything else is refused
+with `400`, naming the field. The `observed_digest` is the observer's report and
+is stored as given. Until 2026-09-26 the desired half was stored as given too, so
+a drift record could compare what a target ran against a digest nobody assigned
+(`SIGNOFF-REPAIR.9.3.3.5`).
+
 ## Outcomes
 
 `POST /v1/policy-outcomes` records a real effect of a live publication, and may

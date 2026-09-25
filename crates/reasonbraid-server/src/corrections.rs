@@ -85,6 +85,12 @@ pub enum CorrectionError {
     UnknownKind(String),
     UnknownPublication(String),
     UnknownAssignment(String),
+    /// The drift's desired digest is not its assignment's
+    /// (`SIGNOFF-REPAIR.9.3.3.5`).
+    DesiredDigestNotAssigned {
+        declared: String,
+        assigned: String,
+    },
     GhostAuthority(String),
     MissingExpiry,
     MissingSupersedes,
@@ -118,6 +124,11 @@ impl std::fmt::Display for CorrectionError {
             }
             CorrectionError::UnknownPublication(p) => write!(f, "publication `{p}` does not exist"),
             CorrectionError::UnknownAssignment(a) => write!(f, "assignment `{a}` does not exist"),
+            CorrectionError::DesiredDigestNotAssigned { declared, assigned } => write!(
+                f,
+                "desired_digest `{declared}` is not the assignment's desired digest \
+                 `{assigned}` — a drift record compares against what was assigned"
+            ),
             CorrectionError::GhostAuthority(g) => {
                 write!(
                     f,
@@ -244,20 +255,32 @@ pub async fn record_drift(
     // ownership check now answers first, so a foreign publication gives ONE
     // answer whatever its deployment.
     let tenant_id = publication_tenant(pool, &input.publication_id, tenant_id).await?;
-    let assignment: Option<bool> = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM deployment_assignments \
-         WHERE target_id = $1 AND publication_id = $2)",
+    //
+    // ⛔ `SIGNOFF-REPAIR.9.3.3.5`: the same read returns the assignment's DESIRED
+    // digest, and the drift's desired half must be it. A drift record says a
+    // target is not running what was published; stored verbatim, the caller's
+    // value made that a comparison against a digest nobody assigned. The
+    // observed half stays the observer's report.
+    let assigned: Option<String> = sqlx::query_scalar(
+        "SELECT desired_digest FROM deployment_assignments \
+         WHERE target_id = $1 AND publication_id = $2",
     )
     .bind(&input.target_id)
     .bind(&input.publication_id)
-    .fetch_one(pool)
+    .fetch_optional(pool)
     .await
     .map_err(|_| CorrectionError::UnknownAssignment(input.target_id.clone()))?;
-    if !assignment.unwrap_or(false) {
+    let Some(assigned) = assigned else {
         return Err(CorrectionError::UnknownAssignment(format!(
             "({}, {})",
             input.target_id, input.publication_id
         )));
+    };
+    if input.desired_digest != assigned {
+        return Err(CorrectionError::DesiredDigestNotAssigned {
+            declared: input.desired_digest.clone(),
+            assigned,
+        });
     }
     let inserted = sqlx::query(
         "INSERT INTO policy_drift \

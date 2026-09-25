@@ -556,8 +556,14 @@ check "the shell loads its assets from the same origin" bash -c \
     "grep -q '/app.js' '$EVIDENCE/console-index.html' && grep -q '/style.css' '$EVIDENCE/console-index.html'"
 
 curl -s "$SERVER_BASE/app.js" > "$EVIDENCE/console-app.js"
-check "the page consumes ONLY the documented read surfaces" bash -c \
-    "for p in '/v1/threads?' '/v1/threads/' '/events?' '/audit?' '/budget?' '/v1/nodes/presence?node_id=' '/v1/nodes/inbox?node='; do grep -qF \"\$p\" '$EVIDENCE/console-app.js' || exit 1; done"
+# The SERVED page names each documented read surface. This is a presence check
+# over the page the demo's own server serves; the stronger checks are elsewhere:
+# `ui.rs` parses the inbox query with the route's own extractor, and
+# `tests/console_browser.rs` runs every view in the pinned Chrome.
+# ⛔ It pinned `/v1/nodes/inbox?node=` — the parameter REPAIR-0475 retired — and
+# failed from that commit until SIGNOFF-REPAIR.4.4.2.2.1.
+check "the page names every documented read surface" bash -c \
+    "for p in '/v1/threads?' '/v1/threads/' '/events?' '/audit?' '/budget?' '/v1/nodes/presence?node_id=' '/v1/nodes/inbox?node_id='; do grep -qF \"\$p\" '$EVIDENCE/console-app.js' || exit 1; done"
 check "the page is read-only (no write verb)" bash -c \
     "! grep -q 'POST' '$EVIDENCE/console-app.js'"
 

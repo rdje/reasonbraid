@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-25 — The two-host demonstration passes again (`SIGNOFF-REPAIR.4.4.2.2.1`)
+
+`REASONBRAID-REPAIR-0516`.
+
+- 🔴 **Before:** since the web console's inbox panel was fixed on 2026-09-24, the demonstration's check of the console still looked for the panel's old, broken query and failed. Nothing noticed because everyday test runs skip the demonstration, but the next publication to GitHub would have failed its automated checks on it.
+- ✅ **Now:** the check looks for the corrected query and says what it actually checks, and the whole demonstration passes. The book's description of that step was corrected the same way.
+
 ## 2026-09-25 — Deleted evidence can no longer be built on, and fetching it again makes fresh evidence (`SIGNOFF-REPAIR.7.4.6`)
 
 `REASONBRAID-REPAIR-0515`.
@@ -509,118 +516,23 @@
 - ✅ Tested: a new check failed on the old code (a profile with that character) and passes now; the shared rule is checked against every kind of database error; six live suites pass; strict lint clean.
 - Technical: `api::storage_failure(cause, context)` routes `EvaluationError`, both `QuotaError`, `AssessmentError`, `DerivationError`, `SnapshotError`, `ReferenceError` storage arms and `profile_error` through `unrepresentable_input`. Unit `storage_failures::only_unrepresentable_input_is_the_callers` (stand-in `DatabaseError`); live `profiles::a_profile_holding_nul_is_refused_as_the_callers`.
 
-## 2026-09-24 — Time spent on jobs now counts against a conversation's time budget (`SIGNOFF-REPAIR.4.4.6.1`)
-
-`REASONBRAID-REPAIR-0476`.
-
-- 🔴 **Before:** each conversation has a time budget (10 minutes by default) alongside its call and token budgets. Time was never charged once a job finished, so the budget only limited how many jobs could run at the same moment, never the total. However long the jobs took altogether, the time budget never ran out.
-- ✅ **Now:** each machine times every job, rounding up to whole seconds, and reports the time alongside the tokens. The server charges it, so a conversation's time budget runs out like its token budget does.
-- ✅ Tested: two checks (one on the machine, one against the real server) failed on the old code and pass now; 199 core and machine tests and three live suites pass. The deliberately broken versions exposed a gap ("always charge one second" went unnoticed because every test job was quick); a longer job was added, and all are now caught. Strict lint clean.
-- Technical: `BudgetDimensions::attempt_usage(input, output, wall_clock_seconds)`; supervisor `seconds_since(dispatched_at)` (ceil, min 1) at every settlement; `ExecutionReport.wall_clock_seconds`; worker adds `usage.wall_clock_seconds`; `api::settle_work_item_reservation` reads it. Controls: two in `supervisor_bounds`, one live assertion in `node_work`.
-
-## 2026-09-24 — The web console's inbox panel works (`SIGNOFF-REPAIR.4.4.2.2`)
-
-`REASONBRAID-REPAIR-0475`. A defect found by the previous fix.
-
-- 🔴 **Before:** the console's "Inspect inbox" panel had never worked. It asked the server with the wrong parameter name, so every request was refused, and it tried to show a field that does not exist. The check meant to keep the console honest had itself been written with the wrong name, so it agreed with the mistake.
-- ✅ **Now:** the panel works and shows each job's delivery state, whether its answer was refused (and why), and any quarantine. The check now tests the panel against the server's own definitions, so the two cannot drift apart unnoticed again.
-- ✅ Tested: the new check failed on the old console, once for each of the two mistakes, and passes now; strict lint clean.
-- Technical: `web/app.js` inbox panel → `node_id`, `delivery_state`, `result_refusal`; `ui.rs` `the_inbox_panel_speaks_the_servers_contract` parses the panel's query with `axum::extract::Query::<InboxInspectionParams>::try_from_uri` and checks every `r.<field>` against a serialized `InboxRow`; `web-ui.md` corrected.
-
-## 2026-09-24 — Operators can now see when a finished job's answer was refused (`SIGNOFF-REPAIR.4.4.2.1`)
-
-`REASONBRAID-REPAIR-0474`.
-
-- 🔴 **Before:** in the operator's inbox view, a job whose answer the server refused (for example because the conversation had closed) looked exactly like one whose answer was accepted. Both showed as "done".
-- ✅ **Now:** each job in the view shows whether its answer was refused, and why. Accepted answers show nothing extra. The same information reaches the assistant-facing (MCP) view.
-- 🔴 **Found along the way (tracked, fixed next):** the web console's inbox panel has never worked. It asks the server in the wrong way, and it reads a field that does not exist.
-- ✅ Tested: two checks failed on the old code and pass now; six live suites pass; a deliberately broken version was caught; strict lint clean.
-- Technical: `api::inbox_inspection` LEFT JOIN `idempotency` on `(tenant_id, node_id || ':' || command_id)` → `InboxRow.result_refusal` = `response_result->'error'` when `ok = 'false'`. Controls in `node_work` (refused → code; applied → null). Hand mutant (pre-0104 key) caught.
-
-## 2026-09-24 — An answer containing the null character now gets through, marked (`SIGNOFF-REPAIR.4.4.10.3`)
-
-`REASONBRAID-REPAIR-0473`. The last of the three fixes for the lock-out measured by `REASONBRAID-DOC-0154`.
-
-- 🔴 **Before:** an answer containing the invisible "null" character could never be stored, so the whole paid answer was lost over one character.
-- ✅ **Now:** the machine swaps each null character for the standard "unreadable character" symbol (�), which shows exactly where it was, and the answer records how many were swapped. Nothing else in the answer changes, and answers without the character are untouched.
-- ⚖️ **A decision taken for you to review:** the alternative was to reject such an answer outright, keeping the principle that answers pass through unchanged but losing the work. The reasoning is recorded, and switching is a one-line change.
-- ✅ Tested: a new check failed on the old code (the answer was lost) and passes now; the real server stores such an answer as a contribution; 108 machine tests pass; all eight deliberately broken versions were caught; strict lint clean.
-- Technical: `worker.rs` `storable_content(&chunks) -> (String, usize)`: U+0000 → U+FFFD, count in the result's `nul_replaced` (absent when 0). Decision `docs/decisions/2026-09-24_nul-in-provider-output-is-replaced-visibly.md`. Controls: unit, two `worker_refusals`, live `provider_output_holding_nul_lands_as_a_contribution`. Mutants 8/8.
-
-## 2026-09-24 — A machine no longer locks itself out on an answer the server can never accept (`SIGNOFF-REPAIR.4.4.10.2`)
-
-`REASONBRAID-REPAIR-0472`. The second of the three fixes for the lock-out measured by `REASONBRAID-DOC-0154`.
-
-- 🔴 **Before:** when the server refused an answer permanently (because of what the answer contained), the machine treated it as a broken connection. It reconnected, resent the same answer, was refused again, and never got back to work.
-- ✅ **Now:** the machine records the refusal (the server's reason included), stops offering that answer, and carries on with its other work. Only refusals about the answer's own contents count as permanent. Login problems, outages and version mismatches are still handled by reconnecting.
-- ⚠️ Tracked next: the answer itself is still lost when it contains the null character. The last fix decides what the machine does with that character.
-- ✅ Tested: two new checks (one on first sending, one on resending after a reconnect) failed on the old code and pass now; 105 machine tests, five live suites and the two-machine demonstration pass; all ten deliberately broken versions were caught; strict lint clean.
-- Technical: `ChannelError::permanent_refusal()` (400/413/422, not `protocol_incompatible`; unit-pinned); `Node::deliver_at` is the one send path for `emit_event`, `deliver_journaled_event` and the reconcile's re-emission; a permanent refusal → `record_event_refusal` + `acknowledge_event` → `EventDelivery::Refused`. Stub `start_refusing(epochs, marker)`; `tests/worker_refusals.rs` 2 controls. Mutants 8/8 + hand 2/2.
-
-## 2026-09-24 — The server now says clearly when an answer can never be stored (`SIGNOFF-REPAIR.4.4.10.1`)
-
-`REASONBRAID-REPAIR-0471`. The first of the three fixes for the lock-out measured by `REASONBRAID-DOC-0154`.
-
-- 🔴 **Before:** input holding the invisible "null" character, which the database cannot store, was answered "internal server error", a reply that looks like a temporary outage. A machine given that reply for its answer kept retrying for ever.
-- ✅ **Now:** such input is refused with a clear, permanent "cannot be stored" reply, and nothing of it is kept. This covers both the machines' channel and the command interface people use. A genuine server fault on normal input still reports as a server fault, so the two are never confused.
-- ⚠️ Tracked next: the machine side (stop retrying anything refused permanently); and seven less-used command paths that still give the old reply.
-- ✅ Tested: a new check failed on the old code and passes now; eight live suites pass; all five deliberately broken versions of the new rule were caught, after the first round showed a missing check (a real server fault was being confused with bad input), which was added; strict lint clean.
-- Technical: `api::unrepresentable_input` (SQLSTATE `22P05`/`22021`) → `400 unrepresentable_input` in `From<sqlx::Error>` for the node channel's `ApiError` and `ControlApiError`; `ApplyError::Sql` and unrepresentable `EvaluationError::Storage` routed through it; `status_for_code` maps it. Control `node_work::input_the_store_cannot_hold_is_refused_as_the_callers` (jsonb, text, command API, and an injected store fault staying 500).
-
-## 2026-09-24 — Measured: a single invisible character in an answer can lock a machine out for good (`SIGNOFF-REPAIR.4.4.10`)
-
-`REASONBRAID-DOC-0154`. A check of a suspected risk; it turned out to be real.
-
-- ✅ **Confirmed safe:** the largest answer a machine can now produce (256 KB, `.4.4.6`) is accepted by the server, even in its most expensive encoding. Double that is refused, so the server's limit really exists.
-- 🔴 **Found:** an answer containing one particular invisible character (the "null" character, which the database cannot store) is refused by the server with a message that looks like a temporary outage. The machine keeps retrying the same answer and can never get back to work. A provider can produce that character; the test provider's own sample of garbled output contains it.
-- ⚖️ Now three tracked fixes, in order: the server rejects such an answer clearly and permanently; a machine stops retrying anything the server rejects permanently; and a machine decides up front what to do with that character.
-- Technical: census of `node_channel::events`' error statuses (domain refusals are 200 + `refused`); `node_work::the_largest_result_a_node_can_produce_is_accepted` (256 KiB of U+0001 accepted; 512 KiB → 413). U+0000 → `jsonb` "unsupported Unicode escape sequence" → `500 dependency_unavailable` → `calls_for_reconcile` → re-emission → wedge. Split `.4.4.10.1`–`.3`.
-
-## 2026-09-24 — A provider that never answers no longer freezes the machine, and answers have a size limit (`SIGNOFF-REPAIR.4.4.6`)
-
-`REASONBRAID-REPAIR-0470`. The sixth recovery gap found by `REASONBRAID-DOC-0153`.
-
-- 🔴 **Before:** every job came with a time limit, but nothing enforced it. A provider that took a job and never answered froze the machine for good. Answers could also be any size, including sizes the server would refuse to accept.
-- ✅ **Now:** when the time limit passes, the machine tells the provider to stop and records the job as "outcome unknown", with the reason. It never guesses the job failed or succeeded, because the provider may have done the work. An answer larger than 256 KB is stopped and recorded as failed, naming the limit; a partial answer is never passed off as a whole one.
-- ✅ Tested: two checks failed on the old code (a frozen job, and an oversized answer accepted) and pass now, plus four more; 102 machine tests, four live suites and the two-machine demonstration pass. The deliberately broken versions first exposed a gap: nothing checked that the provider was actually told to stop. The checks were strengthened until all were caught. Strict lint clean.
-- ⚠️ Tracked next: whether a machine can get stuck on an answer the server refuses outright; and charging a job's elapsed time to its budget.
-- Technical: supervisor `within` (`tokio::time::timeout_at`) over `invoke` and every `next()`; `cancel_within_grace` (5 s); `Terminal::Lost(reason)` → extracted `settle_unknown(UnknownOutcome{…}, …)`; `MAX_OUTPUT_BYTES = 256 KiB` → `Terminal::FailedKnown`; `tokio` `time` feature. `tests/supervisor_bounds.rs` 6 controls (`SlowCancel`, `SilentInvoke`). Mutants: first pass 3 missed in `cancel_within_grace`, strengthened to 0 missed; hand mutant on the `invoke` wait caught.
-
-## 2026-09-24 — A machine that cannot reconnect now waits longer between tries (`SIGNOFF-REPAIR.4.4.5.3`)
-
-`REASONBRAID-REPAIR-0469`. Completes the fifth recovery gap found by `REASONBRAID-DOC-0153`.
-
-- 🔴 **Before:** a machine that could not reconnect tried again every second, for ever. A server down for an hour met 3,600 reconnect attempts from each machine.
-- ✅ **Now:** the wait doubles after each failure (1, 2, 4 … seconds) up to a minute, and goes back to one second once a reconnect succeeds.
-- ✅ Tested: the waiting rule has its own check; 96 machine tests and the two-machine demonstration pass; three deliberately broken versions were all caught; strict lint clean.
-- Technical: `reasonbraid_node::reconcile_backoff(n)` = `1s.saturating_mul(2.saturating_pow(n)).min(60s)`; `rb-node` loops `while let Err(e) = node.reconcile()` with a per-recovery failure count. No jitter (decided; trigger: a fleet profile).
-
-## 2026-09-24 — A delivered job now shows as done, and stops counting against the machine's capacity (`SIGNOFF-REPAIR.4.4.9`)
-
-`REASONBRAID-REPAIR-0468`. A defect found while testing the previous fix.
-
-- 🔴 **Before:** a job a real machine had finished and delivered never showed as "done" in the operator's inbox view, only "received". Worse, the same check decides how busy a machine is, so every finished job kept counting as "in progress". A machine allowed N jobs at a time stopped getting new work after its first N, until old records were cleaned out. The tests had not noticed because they built their fake results in a shape no real machine produces.
-- ✅ **Now:** the server recognises a finished job by the job the answer names, so it shows as done and frees its capacity slot at once. The tests now use results shaped the way a real machine sends them, plus one end-to-end check with a real machine.
-- ✅ Tested: five checks failed on the old code (two of them the capacity checks) and pass now; six live suites and the two-machine demonstration pass; a deliberately broken version was caught; strict lint clean.
-- Technical: `migrations/0105_node_inbox_consumed_by_command.sql` redefines `node_inbox_state`'s `consumed` rung as `e.payload->>'kind' = 'work_result' AND e.payload->>'command_id' = i.command_id` (was `e.operation_id = i.command_id` since `0021`); four `node_channel.rs` fixtures re-shaped to `op_…` ids; `node_work::a_completed_item_is_never_dead_lettered` asserts `consumed`.
-
 The entries before those above were rotated into reachable Git history at the
-**fourteenth rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
+**fifteenth rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
 stood at the commit named below, which is the object every retired record was
 checked against before this notice was written — is:
 
 ```bash
-git show 27f4a670ffb40f9243c7159e5390a04c628d611b:DEV_NOTES.md
+git show 0174602bbc827d8e56f6e56215c7b39fc4e6f409:DEV_NOTES.md
 ```
 
-That snapshot is 73662 bytes and 562 lines, and contains 61 dated
-entries; its Git blob is `91090c74446fce54b3d1de21874000579b2d3005` and its SHA-256 is
-`1c0b6daf8cc9ff71872ae286590b6bf06faa10c25d300a41b13cf2ad584cd164`. It carries the thirteenth rotation's
+That snapshot is 74565 bytes and 628 lines, and contains 71 dated
+entries; its Git blob is `7fbbf4f4f5d9ba9b3aacd6258c4dca7a70b78729` and its SHA-256 is
+`038af6baf5b749c58bc4684d5ced0abd17d5d34095fad9919b9367c8838f2f10`. It carries the fourteenth rotation's
 notice in turn, and each earlier notice names the one before it, so the chain
 walks all the way back. `docs/decisions/2026-09-09_changelog-rotation.md` holds
 the first transition's evidence.
 
-⛔ **9 record(s) rotated out, 53 kept, lossless** — every retired heading was retrieved from the
+⛔ **10 record(s) rotated out, 62 kept, lossless** — every retired heading was retrieved from the
 predecessor named above before this notice was written, and every figure in it was re-derived from that object with
 `git rev-parse`, `git cat-file` and SHA-256 rather than typed. ⭐ The cut is DERIVED, not chosen: it retires whole
 records until the ledger has at least 10 commits of runway at the p90 entry size measured over the last

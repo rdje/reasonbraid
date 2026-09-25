@@ -63,10 +63,15 @@ its evidence.
     close authority), and B's budget ledger (the denied reservation row with
     the engine's reason).
 12. **The inspection console** (`.1.6.3`): the same binary that serves the API
-    serves the embedded page at `/`; the beat asserts the shell, that `app.js`
-    references ONLY the documented read surfaces and no write verb, and that
-    the page's live same-origin fetch (the dev-profile header, the exact
-    endpoints) returns the demo's thread and its budget ledger.
+    serves the embedded page at `/`; the beat asserts the shell, that the
+    served `app.js` names each documented read surface and no write verb, and
+    that the page's live same-origin fetch (the dev-profile header, the exact
+    endpoints) returns the demo's thread and its budget ledger. Naming a
+    surface is a presence check; the stronger checks run the page itself (see
+    [How the console is checked](web-ui.md#how-the-console-is-checked)).
+    ⚠️ From `SIGNOFF-REPAIR.4.4.2.2` until `.4.4.2.2.1` this beat failed: it
+    still looked for the inbox's old `?node=` parameter after the page had
+    been corrected to `?node_id=`.
 
 ## Two real hosts
 

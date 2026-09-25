@@ -182,6 +182,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 ### SIGNOFF-REPAIR.3.3 — Bound-boundary authorization and grant selection
 
 - Status: `active`; execute bounded children below, committing each before the next.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **structural**: closes when its children do.
 - Sources / owned surfaces: `core authority, server authority.rs`.
 - Goal and acceptance: Resolve a grant's actual boundary, enforce identity/tenant/subset/window correspondence, reject thread-only selectors for tenant actions, avoid latest-grant shadowing, and serialize all relevant authorization/mutation paths against revocation. Revocation administrative paths must persist the submitted reason and final outcome in an attributable effect audit atomically with status/epoch changes; the current tenant-admin admission audit is not that effect record.
 - Additional runtime-confirmed defect owned here: `GrantSubject` derives internally tagged serde encoding over transparent primitive ID newtypes (`crates/reasonbraid-core/src/authority.rs`), so serializing `Human` fails with `cannot serialize tagged newtype variant GrantSubject::Human containing a string`; `json!` panics on that error. The initial `.3.2.1` live service run reproduced it in seven tests. Audit all consumers and establish an explicit, tested human/role wire contract with round-trip and enclosing-payload controls; the site service's explicit kind/id encoding did not close the core defect by itself. The canonical core correction is now completed by `.3.3.1`.
@@ -335,6 +336,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 #### SIGNOFF-REPAIR.3.3.4 — Tenant authority serialization and effect auditing
 
 - Status: `active`; predecessor 1ba6184 is committed and clean, brief zero/untracked and consumed escalated project-job census handoff: OK. Path census and design are a separate first child before code.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **structural**: closes when its children do.
 - Owns: tenant authority/effect transaction ordering, issuance/revocation interaction, submitted administrative reasons and committed final-outcome audit, including status/epoch no-ops.
 - Acceptance: relevant authority changes and protected effects have a consistent serialization rule; revocation ordered first fences later effects; denial/audit failure leaves protected state unchanged; final effect records commit with the change. Preserve the `.3.1` foreign-target and repeated-revoke corrections.
 - Verification: pending.
@@ -375,6 +377,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 ##### SIGNOFF-REPAIR.3.3.4.3 — Guard tenant boundary and grant issuance
 
 - Status: `active`; predecessor a74ca85 committed with all thirteen doctrines green; brief zero/untracked, clean tree and consumed escalated job census handoff: OK. Refine bounded service/writer/enrollment children from the qualified primitive before product edits.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **structural**: closes when its children do.
 - Owns: standalone create_boundary/create_grant and internal insertion executors, dev enrollment bootstrap/existing-tenant insertion, exclusive guard from before authority reads through commit, actual-parent live issuance checks and checked storage refusal. Preserve structural subset rules, scheduled grants and documented dev-trusted issuer semantics; caller/issuer policy remains `.3.5`.
 - Acceptance: boundary revocation ordered first refuses later issuance; issuance ordered first completes before revocation; future grants still obey parent ceilings; new-tenant bootstrap and standalone authority fixtures work without implicit identity creation. Missing/corrupt parent storage must not masquerade as a structural violation. Import's complete local transaction is `.11` below.
 - Verification / commit: pending.
@@ -417,6 +420,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 ###### SIGNOFF-REPAIR.3.3.4.3.3 — Guard development enrollment as one transaction
 
 - Status: `active`; typed rollback support REPAIR-0024 and complete local enrollment REPAIR-0025 are qualified. The newly tracked bootstrap client-recovery child follows before coverage reconciliation; no complete response-loss recovery claim yet.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **structural**: closes when its children do.
 - Owns: fresh/existing-tenant enrollment through the guard before replay/authority/identity/quota writes; database time after waits, active-boundary lookup on the same context, grant/identity/quota/enrollment rollback and concurrent replay behavior. Preserve dev-trusted issuer policy and existing successful response shape; caller/issuer policy repair remains `.3.5`.
 - Acceptance: observed revocation/issuance ordering and queued expiry; no orphan identity/grant/quota on storage refusal; concurrent same-name enrollment has one identity and honest replay. Frozen/new/foreign tenant and original snapshot controls. Card import's complete identity/grant/profile/receipt transaction remains `.11`.
 - Verification / commit: pending.
@@ -454,6 +458,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 ###### SIGNOFF-REPAIR.3.3.4.3.3.3 — Qualify and repair recovery of uncertain new-tenant bootstrap
 
 - Status: `active`; predecessor 01bd473 committed with all thirteen doctrines green, brief zero/untracked, clean tree and consumed escalated handoff census (handoff: OK). Split runtime qualification/contract, server protocol and CLI durable recovery before product changes.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **structural**: closes when its children do.
 - Source candidate / gap census: api.rs enroll generates a fresh TenantId when tenant_id is absent; EnrollRequest has no stable bootstrap request key; the router exposes POST /v1/enrollments only and no tenant/bootstrap lookup route. ControlApiError's commit_outcome_unconfirmed response carries no generated tenant/principal identifier. CLI run_enroll builds kind/name plus optional tenant/actions, then stores IDs only after a successful response. Searches of the complete server route file, enrollment models/body, CLI enrollment send/state flow and current repair tree found no end-to-end bootstrap reconciliation contract. Existing request retry without tenant_id generates another tenant; names are only tenant-scoped. The qualified primitive proves COMMIT may finish after acknowledgment timeout, but a matched new-bootstrap response-loss/commit-timeout reproduction is still pending. This is a client recovery gap candidate, not a claim that the controlled rollback faults committed.
 - Owns: reproduce actual bootstrap uncertainty and lost-success recovery through supported client/API behavior; select an explicit, bounded request identity and recoverable outcome contract that keeps distinct intentionally new tenants distinct and never conflates names with idempotency. Qualify same-request replay, conflicting request refusal, concurrent callers, failure-before-write versus commit-unknown, exact one original tenant/identity/grant/quota result and durable CLI recovery across lost response/state-write interruption. Any new wire/schema/state shape must be backward-compatible where possible and documented before delivery. Preserve caller/issuer admission ownership `.3.5`; no automatic retry of unconfirmed work without an authoritative identity/outcome mechanism.
 - Immediate mitigation in the current book: new bootstrap uncertainty may require operator database reconciliation because a client has not received its generated tenant ID; do not suggest that retrying an identical name safely recovers it. Mark the remaining repair explicitly, rather than treating a truthful unconfirmed error as a complete recovery protocol.
@@ -492,6 +497,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 ###### SIGNOFF-REPAIR.3.3.4.3.3.3.3 — Persist and recover the CLI bootstrap request
 
 - Status: `active`; clean transition after 8c08558, thirteen green doctrines, zero/untracked brief and consumed escalated handoff census. Refine into bounded publication/recovery children from the committed server protocol and local-state source review before product edits.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **structural**: closes when its children do.
 - Owns: durable bounded request identity before sending a new-tenant bootstrap, exact pending request/reply recovery across response loss and local-state write interruption, payload-conflict refusal, successful completion/cleanup, deliberate new requests remaining distinct, project-local storage and live CLI qualification. Do not automatically retry unconfirmed work without the keyed authoritative outcome mechanism.
 - Verification / commit: pending.
 
@@ -538,6 +544,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 ###### SIGNOFF-REPAIR.3.3.4.3.3.3.3.2 — Persist and recover the pending bootstrap request
 
 - Status: `active`; follows clean f2c29c3, thirteen green doctrines, zero/untracked brief and consumed escalated handoff census. Refine this protocol into bounded children before product edits.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **structural**: closes when its children do.
 - Owns: bounded strict pending request/version/server binding, canonical client RequestId before HTTP, exact request reuse, pending conflict refusal, strict complete response validation, same locked state merge and durable pending cleanup only after publication. Retain the key after transport/commit/reply/state-write uncertainty. Preserve deliberate new invocation and existing-tenant semantics. Use only the qualified storage primitive; no direct in-place writer or ambiguous stale-lock bypass.
 - Bounded HTTP ownership added from the preceding writer source review: ApiClient::new uses Client::new; pinned Reqwest 0.12.28 defaults connect_timeout/read_timeout/timeout to None. Holding the store across a peer that never replies can therefore retain exclusion until process cancellation. Reproduce with an owned stalled-response control, select explicit connect/whole-request limits and preserve the durable key on timeout. Source-level risk is established; runtime timeout qualification remains this child, not a repaired claim by .3.1.2.
 - Design refinement owned before edits: persist recovery metadata in a version-two state snapshot, using the qualified atomic writer for each phase while keeping the same lock. Retain version-zero/version-one compatibility; earlier qualified clients must refuse version two instead of ignoring pending intent. Preserve one pending request and one most recent completed request/outcome. Publish the principal/outcome with pending still present, then clear pending in another synchronized snapshot. Retaining the completed receipt allows an explicit --resume-bootstrap operation after cleanup or lost CLI output without inferring intent from equal names. Normal fresh invocation remains distinct once no pending request exists. Explicit recovery and automatic pending reuse are separate documented intents; do not promise detection of whether a human consumed stdout.
@@ -577,6 +584,7 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 ###### SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3 — Bound HTTP waits without losing pending request identity
 
 - Status: `active`; follows clean a3fca5e and consumed handoff census. Capacity preflight takes priority before peer deadline integration; bounded children are explicit below.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **closing census**: every child is done; a goal clause no child held becomes a leaf classified by the bar.
 - Newly owned source-risk follow-up before measurement: pending publication and outcome publication have different encoded sizes. A near-limit valid preexisting map may admit the pending snapshot but reject the completed receipt/mapping after remote creation. The .2.2 source audit owns a bounded serialization-size counterexample under target/cli-bootstrap-controls; this child owns matched real-CLI reproduction and a pre-dispatch capacity check, with exact preserved bytes/zero-request refusal and adjacent fitting positive controls. Do not mistake a retained key for proof that the current store has capacity to publish completion. Existing local-write recovery claims remain limited to retained identity and reported uncertainty.
 - Owns: reproduce the pinned no-timeout behavior using an owned stalled response, choose explicit connect/whole-request budgets, retain pending identity on transport/timeout and release local exclusion. Preserve real error phase and forbid automatic fresh-key retry after an uncertain response. Qualify same-key successful recovery, malformed/oversized replies and ordinary CLI HTTP compatibility. Any wider client behavior change must be explicit in docs and focused controls.
 - Verification / commit: pending.
@@ -632,12 +640,14 @@ remain preserved under `docs/tasks/artifacts/signoff_review/`.
 ###### SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.4 — Reconcile request recovery integration and focused compatibility
 
 - Status: `pending`; follows schema, keyed flow and bounded HTTP.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 2 and 3, finishes a half-landed recovery protocol and its book examples.
 - Owns: exact request/state/API consumer census, removal of obsolete recovery paths, completion of book examples and selected real CLI/server compatibility. Reconcile all intermediate limitations and carry remaining process/filesystem/server interruption cases into the .3 qualification leaf. No complete power-loss, endpoint-authentication or universal automatic-retry claim.
 - Verification / commit: pending.
 
 ###### SIGNOFF-REPAIR.3.3.4.3.3.3.3.3 — Qualify CLI interruption, restart and compatibility
 
 - Status: `pending`; refine from the implemented server/client/store protocol.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 2 and 3, qualifies the same protocol under interruption.
 - Inherited-descriptor boundary added by .11.4.3.1.2.11.1 before further changes: qualify abrupt writer death with a surviving inherited lock reference, exact descendant lifetime/cleanup and safe recovery policy. Normal Drop cannot establish that crash guarantee; never unlink a lock or treat same-user unrelated processes as authorized cleanup. This concrete restart work remains pending, separate from the immediate normal/error/cancellation release repair.
 - Owns: real CLI process loss around pending durability, HTTP dispatch/reply, state replacement/durability and pending cleanup; observed server commit outcome and exact original IDs after restart; concurrent enrollment/thread writers, conflicting server/payload, malformed state/replies and legacy command compatibility. Any defect found gains an owned repair child before changes; do not classify-and-move-on. No unrestricted automatic retry or complete power-loss claim without supporting evidence.
 - Verification / commit: pending; exhaust this recovery activity before coverage reconciliation.
@@ -3969,6 +3979,7 @@ git grep -il reconnect -- crates              # -> 12 files
 ### SIGNOFF-REPAIR.6.3 — A2A executable interoperability
 
 - Status: `pending`.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 3, a false claim until A2A says serialization-only; the build half is deferred at its census.
 - Sources / owned surfaces: `reasonbraid-a2a, compatibility records`.
 - Goal and acceptance: Make semantic-loss defaults honest, wire mapped messages through local grants, and demonstrate a real independently connected peer; serialization-only tests must remain labeled as such.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
@@ -3977,6 +3988,7 @@ git grep -il reconnect -- crates              # -> 12 files
 ### SIGNOFF-REPAIR.6.4 — Assess semantic introspection and autonomous diagnostic workflows
 
 - Status: `pending`; discussion/proposal assessment, no active pivot or claim of implemented full introspection.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **deferred**, trigger: roadmap planning of introspection; a proposal, not a defect.
 - Source: director discussion during `.3.3.4.3.3.3.2`; docs/tasks/artifacts/signoff_review/semantic-introspection-proposal.md.
 - Owns the assessment: inventory existing operation IDs, events, authorization receipts, dependency links, consistency boundaries and MCP read tools. Identify missing causal evidence before promising complete diagnosis. Define bounded typed inspect/trace/explain/invariant results, tenant/site admission and redaction, source references, observed versions/times, incomplete/unknown states, and honest replay limits. Compare the proposal with existing roadmap owners; map any approved expansion into independently qualified children before implementation.
 - Suggested qualification sequence for review: read-only operation/authority diagnostics; isolated deterministic replay with captured inputs where supported; separately permissioned repair plans/execution with preconditions, idempotency and verification receipts. Use unconfirmed bootstrap commit recovery as one concrete scenario. A diagnostic hypothesis is not a proved root cause; no unrestricted debug SQL/shell endpoint or production fault injection follows from this proposal.
@@ -4159,6 +4171,7 @@ git grep -il reconnect -- crates              # -> 12 files
 ### SIGNOFF-REPAIR.7.1 — Authenticated resource and resolver ownership
 
 - Status: `active` — ⭐ CENSUSED by `REASONBRAID-DOC-0161` (2026-09-24): its first goal clause was closed by `.7.1.1`/`.7.1.2`, and the REST of the goal line and two attached clauses had never been censused. Split `.7.1.3`–`.7.1.5` by exposure.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **structural**: closes when its children do.
 - Sources / owned surfaces: `resource_references, resolvers, API registration`.
 - Goal and acceptance: Bind writes/reads to explicit tenant or site authority; prevent global URL first-writer poisoning and partial-upsert stale claims; enforce expected content digests, declared capabilities, deterministic ranking and supported execution.
 - ⭐ **ATTACHED CLAUSES — routed-record findings this leaf's goal line does NOT make visible.** Read these with the goal line at this leaf's own census, or its split drops them; that dropping is `SIGNOFF-REPAIR.11.9`'s measured mechanism and these rows are it caught before it fires (`docs/tasks/artifacts/signoff_review/RECONCILIATION.md`).
@@ -4371,16 +4384,19 @@ grep -oE '`[a-z_]+`' docs/decisions/2026-09-16_evidence-is-shared-the-read-is-te
 ##### SIGNOFF-REPAIR.7.1.3.1 — Any tenant administrator may add a row to the site-global resolver registry
 
 - Status: `pending` — split from `.7.1.3` (2026-09-25).
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 1, cross-tenant: any tenant administrator writes a row every tenant ranks.
 - Owns: decide, against `docs/decisions/2026-09-19_the-policy-registry-is-a-shared-control-surface.md` and the site-authority actions `.3.2` defined, who may register a resolver (site authority, or a tenant-scoped row the resolution of OTHER tenants never ranks); record it; RED first live; `api::register_resolver`'s `authorize_tenant_admin` then matches the decision.
 
 #### SIGNOFF-REPAIR.7.1.4 — The first tenant to cite a URL chooses its scheme and hints for every tenant
 
 - Status: `pending` — split from `.7.1` by DOC-0161 (2026-09-24).
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 1, cross-tenant: one tenant decides how another's citation resolves.
 - Owns: RED first live (tenant A cites a URL with scheme `git`; tenant B cites the same URL as `https` and resolves through the git pack); decide where a tenant's declared attributes live (per registrant, as the credential binding already does since `.11.14.3.10`, or part of the row's identity) and record it; resolution reads the REQUESTING tenant's attributes.
 
 #### SIGNOFF-REPAIR.7.1.5 — Resolver ranking is nondeterministic on a tie
 
 - Status: `pending` — split from `.7.1` by DOC-0161 (2026-09-24).
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 3, a false claim: deterministic ranking is promised.
 - Owns: a total order (latency midpoint, then a stable key such as `resolver_id`), with the tie made explicit in the SQL or the sort; RED first with two tied rows inserted in both orders.
 
 ### SIGNOFF-REPAIR.7.2 — HTTPS and Git acquisition safety
@@ -4400,6 +4416,7 @@ grep -oE '`[a-z_]+`' docs/decisions/2026-09-16_evidence-is-shared-the-read-is-te
   1. **The Git LFS gate refuses on a ten-byte run, not on a pointer.** `git.rs` refuses a blob when `head.windows(10).any(|w| w == b"version ht")` holds over its first 64 bytes, so any text file mentioning `version http…` near its start is rejected as a pointer file, while a real pointer is `version https://git-lfs.github.com/spec/v1\n` at offset **0**. §12.5 requires an "explicit Git LFS policy" and none of this goal line's mechanisms reaches one. ✅ **DISCHARGED by `.7.2.3`** (REPAIR-0206): the predicate is anchored to the version line at offset 0, and §12.5's "explicit Git LFS policy" is now STATED — refusal, with the reason — in `docs/book/src/deployment.md` rather than only implied by a predicate.
   2. 🔴 **The acquisition opens its repository with gix's DEFAULT permissions, over an untrusted remote.** `acquire_into` calls `gix::init_bare(target_dir)`, which is `ThreadSafeRepository::init(…, create::Options::default())` — and gix 0.87.1 ships the named remedy it does not use, `open::Options::isolated()`, whose own doc is "prevent accessing anything else than the repository configuration file, prohibiting accessing the environment or spreading beyond the git repository location". So the operator's global and system git configuration and the git environment variables are honoured while fetching a caller-supplied URL, against §12.5's "default refusal of submodules, hooks, filters, alternates, and external diff/clean drivers". ⛔ Distinct from `.7.2.1`, which owned the workspace DIRECTORY and closed the locality half of the same record sentence: this is about what gix READS, and an owned directory does not bound it. ✅ **DISCHARGED by `.7.2.4`** (REPAIR-0207): the open is `open::Options::isolated()`, the census of what that turns off is in the leaf and in the book, and a child-process control proves a `GIT_CONFIG_*` setting that still reaches a default open no longer reaches the acquisition's.
 - Status: `active`; censused and split below by DOC-0026, as `.9.2.1` was by REPAIR-0189 and for the same reason: **these are three different repairs wearing one goal line.** One changes a client's redirect policy, one changes a content predicate, one changes how a repository is opened — and each needs its own control observed RED before its fix. ⛔ `.11.13`'s rule applies to the products of a split as much as to the split: a child without `- Acceptance:` is not an owner, so each carries one.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **closing census**: every child is done; a goal clause no child held becomes a leaf classified by the bar.
 - **census of the R1 dial, read at HEAD rather than carried from the record, because the record is one session old and the leaf must not re-derive a number it can cite:**
   - `git.rs:457` — `.redirect(reqwest::redirect::Policy::limited(5))`, auto-follow; `git.rs:459` — `.dns_resolver(Arc::new(ClassifiedDns::new(resolver, policy)))`. `fetcher.rs:385` — `Policy::none()` with the inline comment *"the manual per-hop policy owns redirects"*. Two designs, one product, unchanged since the record.
   - `git.rs:323` — `GitFetcher::classify` IS a real pre-flight and DOES handle an IP literal: `if let Ok(ip) = host.parse::<IpAddr>() { return allow_ip(&self.policy, ip); }`. It runs ONCE, from `acquire`, before `acquire_blocking`. Nothing re-runs it per hop.
@@ -4690,6 +4707,7 @@ grep -oE '`[a-z_]+`' docs/decisions/2026-09-16_evidence-is-shared-the-read-is-te
 ### SIGNOFF-REPAIR.7.3 — Extraction, browser and credential workers
 
 - Status: `pending`.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **structural**: closes when its children do. Its own ungated R2 extraction clauses are classified at its closing census; a blocking clause becomes a leaf.
 - Sources / owned surfaces: `extract worker, browser worker, acquisition pipelines`.
 - Goal and acceptance: Wire PDF/archive/feed inputs to supported acquisition; bound parse/decode/output, drain pipes concurrently, reap descendants, enforce browser redirect/subresource isolation and credential origin binding, and prove malicious local fixtures cannot escape.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
@@ -4698,6 +4716,7 @@ grep -oE '`[a-z_]+`' docs/decisions/2026-09-16_evidence-is-shared-the-read-is-te
 #### SIGNOFF-REPAIR.7.3.1 — Integrate parent browser transport and termination ownership
 
 - Status: `pending`; owned before repair following .11.4.3.1.5.2 source inspection.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **deferred**, trigger: `RB_ENABLE_R5R3RX` is turned on in a claimed profile, or a gated pack is made default.
 - Sources: crates/reasonbraid-server/src/browse.rs. Parent writes stdin, waits for exit before draining stdout, uses the render budget as a hard worker-kill deadline, discards stderr and owns no descendant group. It can deadlock on a full pipe or interrupt the worker's separate shutdown window. Source-level evidence; full parent runtime reproduction remains pending.
 - Owns: bounded concurrent pipes and request/reply decoding, explicit render-versus-cleanup deadline agreement, worker/descendant ownership through cancellation and failure, consumed status and precise public refusals. Qualify real parent/worker success, pipe pressure, deadline, crash and process/store residue with an owned origin before claiming integrated lifetime safety. No worker-only test closes this child.
 - Verification / commit: pending.
@@ -4705,6 +4724,7 @@ grep -oE '`[a-z_]+`' docs/decisions/2026-09-16_evidence-is-shared-the-read-is-te
 #### SIGNOFF-REPAIR.7.3.2 — Bound retained browser storage and detached-process containment
 
 - Status: `pending`; explicit remaining limits after .11.4.3.1.5.2.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **closing census**: every child is done; a goal clause no child held becomes a leaf classified by the bar.
 - Owns: deployment-level aggregate profile/diagnostic quotas and safe retention/retirement after failed or forcibly interrupted invocation; identify each process before cleanup, never signal a historical numeric PID solely from a stale receipt. Qualify the container boundary for detached descendants and hard termination; process-group absence alone cannot establish absence of intentionally detached processes. Chrome profile/network/output total resource bounds remain part of .7.3, not inferred from the new 64 KiB stderr capture.
 - Native evidence from .11.4.3.1.2.4: the real desktop Chrome deadline run leaves detached crashpad and GoogleUpdater writers on the exact stderr pipe after its browser group is gone. The worker correctly reports cleanup unconfirmed; those observed helpers later exit naturally. The qualified dedicated testing runtime addresses the checkpoint prerequisite, not arbitrary untrusted content, detached-process containment or global updater-state provenance. Preserve target/browser-checkpoint-controls/shutdown-observation and close these deployment limits with explicit containment evidence.
 - 🔴 **ANNOTATED 2026-09-15 by `.11.4.7.2.4` (REPAIR-0202), and it narrows the runtime half of the line above: THE PINNED TESTING RUNTIME ESCAPES TOO.** The sentence that closed the checkpoint prerequisite reads as though the dedicated Chrome for Testing build contains its helpers. It does not. `lsof -p` sampled every 500 ms through a pinned run shows **two** `chrome_crashpad_handler` processes at `PPID 1`, in process groups `50752` and `50754` against an owned browser group of `50742`, both holding `PIPE 0xe8181443c00b5a90` whose peer is the worker's own fd 11. The structure is identical to the desktop case; the ONLY difference measured is exit latency — inside one 150 ms sample of the group kill for the pinned build, against **+6.24 s past the worker's own exit** for desktop Google Chrome 152.0.7977.83, which is why one confirms cleanup within the 10 s budget and the other cannot.
@@ -5069,6 +5089,7 @@ grep -oE '`[a-z_]+`' docs/decisions/2026-09-16_evidence-is-shared-the-read-is-te
 #### SIGNOFF-REPAIR.7.3.4 — Bound extraction transport and retained storage
 
 - Status: `pending`; concrete parent-worker source boundary separated before .7.3.3 implementation.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **structural**: closes when its children do.
 - Sources: crates/reasonbraid-server/src/extraction.rs writes stdin synchronously, waits for child exit before draining stdout, and reads the reply without a byte bound; descendants can keep pipes alive after direct-child exit. Own concurrent bounded pipes, total deadlines, descendant containment, deployment-level storage quotas and safe retention/retirement for failed/unconfirmed invocations. Direct-child completion and exclusive inputs alone do not close this boundary. Qualify pressure, cancellation, escaped writers and malicious worker/input controls before claiming full isolation.
 - ⭐ **ATTACHED CLAUSE — the BROWSER worker's retained workspaces are a third unretired population, and this goal line names only the extraction worker** (`REASONBRAID-DOC-0080`). ⚠️ That is `.11.24`'s shape exactly: a finding inside the owned surface — *safe retention/retirement for failed/unconfirmed invocations* — and outside the list of mechanisms the Sources line enumerates, so a census driven by that line cannot see it.
 - 🔴 **MEASURED, and it is the retention rule's own founding shape in a third place.** `crates/reasonbraid-browse/src/lifetime.rs` retains its whole workspace whenever the render did not succeed **or** cleanup was unconfirmed — and a tripped time budget is a legitimate, documented outcome, so an R3 deployment accumulates one per refused render with no retirement rule at all:
@@ -5085,6 +5106,7 @@ grep -oE '`[a-z_]+`' docs/decisions/2026-09-16_evidence-is-shared-the-read-is-te
 ##### SIGNOFF-REPAIR.7.3.4.1 — The browser worker's retained workspaces have no retirement rule
 
 - Opened: `pending` by `REASONBRAID-DOC-0080`, which measured the population while cleaning up after `.11.25.1`.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **deferred**, trigger: as `.7.3.1` (the browser pack is gated).
 - 🔴 **THE MEASUREMENT** is the table above: **48 workspaces, 880,130,713 bytes, 99.99 % reproducible payload, 95,280 bytes of evidence**, every one carrying a `completion.json`. The producer is `Lifetime::finish`, which retains the workspace unless the render succeeded AND cleanup was confirmed.
 - Owns: extending `scripts/census_retained_fixtures.py` to a third population, with the safety checks re-derived for it rather than copied — a browser workspace's `owner.json` records a **process group**, and the instrument's standing rule is that a recorded id is only ever asked whether it EXISTS, never signalled, because a numeric id may since have been recycled.
 - ⚠️ **Which bytes are evidence must be decided by measurement, not by extension**, as it was for the other two: `owner.json`, `completion.json`, `browser.stderr` and `chrome.log` are written *inside* the workspace beside `profile/` and `cache/`, so a rule that drops whole directories has to name them.
@@ -5095,6 +5117,7 @@ grep -oE '`[a-z_]+`' docs/decisions/2026-09-16_evidence-is-shared-the-read-is-te
 ### SIGNOFF-REPAIR.7.4 — Evidence integrity and retention
 
 - Status: `pending`.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **closing census**: every child is done; a goal clause no child held becomes a leaf classified by the bar.
 - Sources / owned surfaces: `snapshots, derivations, claim_assessments`.
 - Goal and acceptance: Bind metadata and authors to authenticated actions, make object+snapshot writes atomic, refresh actual freshness horizons, retain tombstone honesty, restrict expiry clocks/scope, and distinguish excerpt existence from claim entailment with explicit evidence gates.
 - ⭐ **ATTACHED CLAUSES — routed-record findings this leaf's goal line does NOT make visible** (`R-40-42-3` clauses 3, 5 and 6, tranche 4b; `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`). ⚠️ Five of that record's eight clauses ARE visible or already handled; these three are the residue, and each is about a vocabulary or a lifecycle state the goal line never names.
@@ -5108,6 +5131,7 @@ grep -oE '`[a-z_]+`' docs/decisions/2026-09-16_evidence-is-shared-the-read-is-te
 ### SIGNOFF-REPAIR.8.1 — Workflow and thread state invariants
 
 - Status: `pending`.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **structural**: closes when its children do.
 - Sources / owned surfaces: `thread engine, workflow registry, profiles tests`.
 - Goal and acceptance: Version and authorize shared workflow registration, prevent built-in override and MAX+1 races, track each challenge's resolution once, recover expired invitations, validate duration bounds and record attribution, and reconcile durable unresolved challenges with close contracts.
 - ⭐ **ATTACHED CLAUSE — a routed-record finding this leaf's goal line does NOT make visible** (`R-80-82-1` clause 3, tranche 2a; `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`). **The adjudication verdict's `target_digest` is bound to nothing.** `VerdictInput.target_digest` is a plain `String`, and `threads.rs` copies it verbatim into the contribution event — no format check, and no lookup against any proposal revision. `tests/policy.rs` accepts `"sha256:00"` against no claimed target in **SEVEN distinct test functions**, one occurrence each. ⛔ **CORRECTED by `SIGNOFF-REPAIR.11.9.1.3.1`**: this block and its ledger row both said "four places", and the number was wrong when written — `git diff --stat b227ce8 HEAD` over that file is empty and the count at `b227ce8` was already 7, so the corpus did not move. The finding is STRONGER than published. "Record attribution" in the goal line covers the synthesizer's identity; it does not reach the digest the verdict claims to be about, and a verdict that names no real target cannot be checked by anyone later.
@@ -5183,6 +5207,7 @@ grep -oE '`[a-z_]+`' docs/decisions/2026-09-16_evidence-is-shared-the-read-is-te
 ##### SIGNOFF-REPAIR.8.1.1.4 — `role_weighted` and `human_committee` have no bar anything can count
 
 - Opened: `pending` by `.8.1.1`'s split.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 3, a false claim: a declarable rule the close cannot count; refusing the rule is a valid resolution.
 - Owns: a schema for `role_weighted`'s charter-defined weights, and a roadmap-grounded bar for `human_committee` — or a written decision that one of them stays declarable-only-as-refused.
 - ⛔ Until this closes, both are refused at creation by `.2`, and the refusal names this leaf.
 - Verification / commit: pending.
@@ -5210,6 +5235,7 @@ grep -oE '`[a-z_]+`' docs/decisions/2026-09-16_evidence-is-shared-the-read-is-te
 ##### SIGNOFF-REPAIR.8.1.1.6 — The §13.3 rule obligations this build does not implement
 
 - Opened: `pending` by `.8.1.1`'s split.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 3, a false claim, per unimplemented obligation.
 - Owns: *recusals*, *role replacement*, *changed incarnations* and *amendments after voting starts* — four of §13.3's thirteen per-rule obligations. `.2` answers each by the narrowest honest rule (no member is recused; a ballot is attributed to the principal wire id that cast it and is final), and the decision record says so, but none has a mechanism.
 - ⚠️ *A role's vote remains attributable to its incarnation* is §13.3's own sentence, and a principal wire id is not an incarnation.
 - Verification / commit: pending.
@@ -5217,6 +5243,7 @@ grep -oE '`[a-z_]+`' docs/decisions/2026-09-16_evidence-is-shared-the-read-is-te
 ### SIGNOFF-REPAIR.8.2 — Evaluation and routing evidence
 
 - Status: `pending`.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **closing census**: every child is done; a goal clause no child held becomes a leaf classified by the bar.
 - Sources / owned surfaces: `evaluation service, benchmark, routing`.
 - Goal and acceptance: Bind corpora/digests/cases/arms/run references, validate seeds and duplicate assignments, reject missing/non-numeric gate measurements, derive calibration from eligible runs, and audit routing only in the intended authorized transaction.
 - ⭐ **ATTACHED CLAUSES — routed-record findings this leaf's goal line does NOT make visible** (`R-33-35-1` clause 1 and `R-40-42-7` clauses 3, 6 and 7, tranche 4c; `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`). ⚠️ Four of `R-40-42-7`'s seven clauses ARE visible — "bind corpora/digests/cases/arms", "validate seeds and duplicate assignments", "reject missing/non-numeric gate measurements" and "derive calibration from eligible runs" each name one — which is exactly why the three below are easy to read past.
@@ -5539,6 +5566,7 @@ assertion `left == right` failed: the modulo is over the whole u64
 ### SIGNOFF-REPAIR.9.1 — Policy registration and authority
 
 - Status: `pending`.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 1 and 2, authorization and integrity of a shared control surface; census first.
 - Sources / owned surfaces: `policy registry, lifecycle, approvals, corrections`.
 - Goal and acceptance: Tenant-scope all material records, bind claimed authorities to the authenticated caller and live action/scope/boundary, enforce immutable content digests and fail-closed selectors, and validate lifecycle/dependency/precedence/waiver semantics.
 - ⭐ **ATTACHED CLAUSE — a routed-record finding this leaf's goal line does NOT make visible** (`R-50-3` clause 5, tranche 3b; `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`). **`is_semver` is not SemVer, in both directions, and the NAME is the part that misleads.** `crates/reasonbraid-server/src/policy.rs:151`–`:157` accepts 1 to 3 dot-separated groups of ASCII digits: `1` and `007.8` pass, while `1.2.3-rc.1` and `1.2.3+build` — valid SemVer with a pre-release or build metadata — are REFUSED. ⛔ Version-format validation is in none of the five mechanisms this goal line names, so a census driven by it reads past the function; a reader who sees the name takes the standard for granted. ⚠️ The decision is not obviously "use a real SemVer parser": policy versions may be deliberately narrower than SemVer, in which case the FUNCTION should be renamed and the narrowing stated. Either way the name and the behaviour must stop disagreeing.
@@ -5548,6 +5576,7 @@ assertion `left == right` failed: the modulo is over the whole u64
 ### SIGNOFF-REPAIR.9.2 — Atomic policy lifecycle and publication
 
 - Status: `active`; the two publish-verb findings `SIGNOFF-REPAIR.11.9.1.3.1` measured are split out as `.9.2.1` with their own acceptance. ⛔ `SIGNOFF-REPAIR.11.13`'s ownership repair: a ledger row naming this leaf is not the same as this leaf owning the fix.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **closing census**: every child is done; a goal clause no child held becomes a leaf classified by the bar.
 - Sources / owned surfaces: `proposals/decisions/approvals, projections, publisher, reconciler`.
 - Goal and acceptance: Serialize stage transitions, bind projection and manifest to approved policy, constrain filesystem targets, reject fabricated effective Git IDs, make CAS retries recoverable, verify both immutable and effective refs, and reconcile DB/Git failure points.
 - ⭐ **ATTACHED CLAUSE — a routed-record finding this leaf's goal line does NOT make visible** (`R-52-2` clause 1, tranche 2b; `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`). **The publication commit is not deterministic, and the source says the opposite.** `publisher::publish` builds its commit with `signature(gix::date::Time::now_local_or_utc())` as both author and committer, so the object id is a function of the wall-clock second. The staging step's own documentation calls it "the idempotent re-write: the same content commits identically", and re-publishing byte-identical content one second later writes a different commit. ⚠️ Every other clause of this leaf is about ORDERING and BINDING; this one is about the identity of the object those clauses are trying to bind to, so a repair that settles the ordering on a non-deterministic id settles nothing. ⛔ ROADMAP §5's "same inputs/toolchain yield byte-identical outputs" is a stated quality attribute, so the decision — fix the timestamp, or withdraw the idempotence claim — belongs to this leaf rather than to a comment.
@@ -5812,6 +5841,7 @@ assertion `left == right` failed: the modulo is over the whole u64
 ### SIGNOFF-REPAIR.9.3 — Deployment, correction and review lifecycle
 
 - Status: `active`; censused and SPLIT below into `.9.3.1`–`.9.3.3`, because `SIGNOFF-REPAIR.11.9.1.3.1` measured concrete live defects against three of its five mechanisms and a single leaf would have to qualify all of them at once. ⛔ `SIGNOFF-REPAIR.11.13`'s ownership repair.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **structural**: closes when its children do.
 - Sources / owned surfaces: `deployment assignments, drift, corrections, reviews`.
 - Goal and acceptance: Bind desired digests/refs to publication, validate receipts and corrective authority, permit subsequent reviews after completed occurrences, enforce waiver constraints, and use relative test clocks with failure visibility.
 - ⭐ **ATTACHED CLAUSES, added by tranche 4a** (`R-40-42-5` clause 5 and `R-53-5` clause 3; same ledger). ⚠️ Read the second one BESIDE the `R-53-5` clause 2 row, which locates the cause of the requirement this leaf's goal line already names — they are the same two lines of code.
@@ -5935,6 +5965,7 @@ assertion `left == right` failed: the modulo is over the whole u64
 #### SIGNOFF-REPAIR.9.3.2 — A publication can be reviewed once, for ever
 
 - Opened: `pending` by `SIGNOFF-REPAIR.11.13`'s ownership repair.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 2, integrity: the review lifecycle cannot recur.
 - Reproduce, at the source: `reviews::schedule_reviews` builds `review_id = format!("rev_{publication_id}_{trigger}")` — deterministic — and `migrations/0045_policy_reviews.sql:12` makes `review_id` the PRIMARY KEY. The dedupe skips a pair whose review is still `due`; once it is `done` the skip no longer applies, the INSERT collides with the existing key, and **`if inserted.is_ok()`** discards the error. No second review for that pair can ever be scheduled.
 - ⛔ The same `is_ok()` discards EVERY insert error, so a total storage failure returns `Ok(vec![])` — a successful empty schedule, indistinguishable from "nothing was due".
 - ⛔ And the `repeated_waiver` trigger fires on the FIRST waiver — one row yields one pair — and on waivers that lapsed long ago, because neither `record_correction` nor `schedule_reviews` consults an expiry. Two records reached this independently (`R-75-1` clause 1 and `R-53-5` clause 1).
@@ -5946,6 +5977,7 @@ assertion `left == right` failed: the modulo is over the whole u64
 #### SIGNOFF-REPAIR.9.3.3 — A deployment's declared digest is bound to nothing it deploys
 
 - Opened: `pending` by `SIGNOFF-REPAIR.11.13`'s ownership repair.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 2, integrity: a deployment can claim content it does not deploy.
 - Reproduce, at the source: `deployments::assign` validates `is_sha256_hex(&input.desired_digest)` — the SHAPE — and compares it against no publication projection; `tests/policy.rs:2724` assigns `sha256:` followed by sixty-four `a`s with `desired_ref: "abc123"` and asserts 200. The receipt then overwrites the observed state from client-supplied data bound to no node, keeping no history, so a target reports `applied` carrying a digest the publication never had.
 - ⚠️ The canary `wave` is a bare `i64` that nothing sequences on — recorded as the current contract rather than as a defect, and the leaf must decide whether the wave is a SEQUENCER or a LABEL and say which in the book.
 - Owns: comparing the declared digest and ref against the publication's actual projection at assignment, binding the receipt to the reporting node, retaining what a receipt replaced, and settling the wave's meaning.
@@ -6062,6 +6094,7 @@ assertion `left == right` failed: the modulo is over the whole u64
 ### SIGNOFF-REPAIR.10.1 — Adapter subprocess supervision
 
 - Status: `pending`.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 1 and 2, the documented Claude and Codex adapters: prompt-option injection and unbounded output; census first.
 - Sources / owned surfaces: `codex/claude adapters, process maps, fixtures`.
 - Goal and acceptance: Bound UTF-8-safe stderr/stdout/chunk storage, drain concurrently, reap terminal children, prevent prompt-option injection, and preserve honest pre-dispatch versus unknown-outcome semantics.
 - ⭐ **ATTACHED CLAUSE — a routed-record finding this leaf's goal line does NOT make visible** (`R-6-27-3` clause 6, tranche 3c; `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`). **The provider usage mapping is verified against nothing.** `codex.rs` and `claude.rs` each implement `normalize_usage`, turning a provider's receipt into `NormalizedUsage`, and no control compares either mapping against the field names the provider actually documents. ⛔ Every other clause of this leaf fails LOUDLY — a panic, a deadlock, an unreaped child, a wrong terminal verdict. This one fails silently: a mis-mapped token count settles the local budget with a wrong number, the ledger records it as fact, and nothing anywhere raises an error. ⚠️ The `RB_LIVE_CODEX`/`RB_LIVE_CLAUDE` runs are the only place a real receipt appears, and `docs/compatibility-matrix.md` marks both `untested` with no CI measurement — so the mapping's correctness rests today on reading the provider's documentation once.
@@ -6071,6 +6104,7 @@ assertion `left == right` failed: the modulo is over the whole u64
 ### SIGNOFF-REPAIR.10.2 — Certification and release verification
 
 - Status: `pending`.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **deferred**, trigger: the first signed release (G9).
 - Sources / owned surfaces: `adapter certification, verification ladder, release-manifest tool`.
 - Goal and acceptance: Bind adapter identity/capabilities/artifact to signed complete scenario evidence; require actual coverage of every invariant; secure key creation and manifest paths/hex parsing; implement load-side checks and document unsupported SDK execution.
 - ⭐ **ATTACHED CLAUSES — routed-record findings this leaf's goal line does NOT make visible** (`R-6-27-2`, tranche 2b; `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`). Read them with the goal line at this leaf's census, or its split drops them.
@@ -6082,6 +6116,7 @@ assertion `left == right` failed: the modulo is over the whole u64
 ### SIGNOFF-REPAIR.11.1 — Console behavior
 
 - Status: `pending`.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 1, cross-tenant: a value not rendered inert runs in an administrator's browser; census first.
 - Sources / owned surfaces: `web/app.js, web-ui book chapter`.
 - Goal and acceptance: Render numeric and structured values as inert text, prevent stale asynchronous views after navigation/identity change, and prove real browser timeline/audit behavior.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
@@ -6090,6 +6125,7 @@ assertion `left == right` failed: the modulo is over the whole u64
 ### SIGNOFF-REPAIR.11.2 — Repository safety and doctrine accuracy
 
 - Status: `pending`.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **structural**: closes when its children do. Its own gate clauses are classified at its closing census; a blocking clause becomes a leaf.
 - Additional owned follow-up from `.3.3.4.3.3.3.2`: bootstrap fixture process 71828 had 756 sampled stacks through Reqwest Client::new, rustls_native_certs and macOS SecTrustSettingsCopyCertificates/dispatch wait; raw target/bootstrap-server-controls/bootstrap-loader.sample (the filename predates diagnosis). Audit existing plaintext loopback fixtures for unnecessary native certificate/proxy discovery and qualify their exact supported transports before removing it. The new bootstrap fixture is corrected/qualified in its current leaf. This is distinct from the earlier proved dyld/dlopen samples; OS trust service internals are not root-caused, no global host/security setting changed. Evidence: docs/tasks/artifacts/signoff_review/bootstrap-server.md.
 - Connection-ownership follow-up from `.3.3.4.2`: its fixed delayed-BEGIN control reproduces SQLx 0.8.6 reusing an open transaction after setup cancellation; the new guarded owner discards that connection and is qualified separately. Census remaining pooled/borrowed transaction entrypoints outside the guarded integration children, reproduce their cancellation/reuse behavior, and extend ownership before claiming repository-wide coverage. Coordinate `.3.3.4.13` and existing domain owners; the pinned-driver mechanism alone is not per-caller runtime evidence.
 - Additional source-confirmed locality mechanism: SQLx 0.8.6 falls back from a missing/nonmatching PGPASSFILE to the home passfile. Audit direct database entrypoints and connection-option constructors; a nonexistent override does not establish locality. The owned test runner and the new `rb-site` binary are corrected/proved in `.3.2.2`; this leaf owns the remaining entrypoints and must not infer actual credential-file contents or access from source evidence alone.
@@ -6723,7 +6759,7 @@ EOF
 - ✅ **OWNERSHIP CONSOLIDATES TO `.11.26`**, which carries the per-phase instrument, the localization to child-process start and two refuted levers. ⛔ This leaf is **not** closed by that — nothing is repaired — and it is not worked in parallel either; it contributes the evidence below and its acceptance is subsumed. Both close together or neither does.
 - ⭐ **WHAT THIS LEAF HOLDS THAT `.11.26` DID NOT: `rustc` children at 0.0 % CPU blocked on paging.** That is the same shape `.11.26` reached independently from the other side — *a stall in a process whose timing is insensitive to CPU load is a BLOCKING WAIT, not starvation*. Two leaves, one conclusion, neither aware of the other.
 - ⛔ **AND THE SWAP FIGURE IS MEASURED NOT TO DISCRIMINATE, on its own terms.** `vm.swapusage` read **5,719 of 7,168 MB used** during `.11.26`'s captured failure **and the identical 5,719 MB** minutes later while the suite passed in 21.3 s. Swap *used* on this platform is a high-water mark, so the quantity that could discriminate is the paging **rate**, not the total — and neither leaf has measured it.
-- Status: `pending`.
+- Status: `done` — closed as a DUPLICATE by `REASONBRAID-DOC-0162` (2026-09-25): `.11.26` records this leaf as its twin (same command, same three modules, same `TimeoutExpired`, same hypothesis), and `.11.26` owns the defect, deferred on its next occurrence.
 - Verification / commit: pending; the repair, if any, lands on `.11.26`.
 
 
@@ -6868,6 +6904,7 @@ python3 -B scripts/check_pointer_currency.py --against f41997c
 ### SIGNOFF-REPAIR.11.3 — Operational scripts and evidence
 
 - Status: `pending`.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 2, integrity: restore targets and secrets; census first.
 - Sources / owned surfaces: `backup/restore/dev/demo/load scripts`, plus remaining artifact/error cleanup in `crates/reasonbraid-server/tests/backup_restore.rs`.
 - Goal and acceptance: Protect restore targets and secrets, use atomic restrictive backups, validate identifiers and quoting, verify HTTP status and negative controls, avoid fixed-port/output collisions, reap jobs, and ensure requested load counts and honest demo evidence.
 - ⭐ **ATTACHED CLAUSES — routed-record findings this leaf's goal line does NOT make visible** (`R-90-1` clauses 4, 5, 6, 15 and 16; tranche 2c, `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`). ⚠️ `dev` IS in this leaf's owned surfaces and three of these five are `dev.sh`, which the goal line never reaches — it names mechanisms belonging to the restore, demo and load scripts only.
@@ -7081,6 +7118,7 @@ PY
 ##### SIGNOFF-REPAIR.11.4.7.2.1.1 — Deferral #5: the fuzz baseline, fired at Phase 4 and never revisited
 
 - Opened: `pending` by `.11.4.7.2.1`, which adjudicated the six Phase-1 deferrals and found this one the only `fired and open` its parent had already measured.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 4, a deferral whose trigger fired and was never acted on.
 - 🔴 **THE TRIGGER FIRED AND THE BASELINE DOES NOT EXIST.** Measured at `.11.4.7.2`: the trigger is *the first untrusted parser (Phase 4's resource packs)*, Phase 4 has a gate record, and `fetcher.rs`, `git.rs`, `reasonbraid-extract` and `reasonbraid-browse` all parse untrusted input. `git ls-files | grep -ic fuzz` returns **0**, and the word appears in exactly ONE decision record — the Phase-1 one that deferred it — and ZERO times in Phase 4's, with the Phase-1 record returning 2 as the positive control.
 - ⛔ **What is NOT claimed:** that a parser is exploitable. This leaf owns the baseline's ABSENCE against a fired trigger, not a vulnerability; anything found would be routed with its own evidence.
 - Owns: deciding what a fuzz baseline means for this project's untrusted-input surfaces — which parsers are in scope, what corpus each starts from, where it runs and what makes it fail — or recording, with the same one-command-per-claim standard, that the deferral is superseded and why.
@@ -7433,6 +7471,7 @@ PY
 ###### SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.4 — A side-effect bound has nothing to bound
 
 - Status: `pending` — deferred on a readable trigger, per DOC-0137: **the first verb that attributes a side effect to a thread.** Today `POST /v1/resources/{id}/resolve` and `POST /v1/snapshots` are principal-bound and carry no thread id, so a bound on an autonomous thread's side effects has no enforcement point. The condition is re-read with `grep -n "thread_id" crates/reasonbraid-server/src/resources.rs` and the two request structs.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **deferred**, trigger: as this leaf already states (DOC-0137).
 - Verification / commit: pending.
 
 ###### SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.4 — Four node-local wake items are evaluated nowhere
@@ -7445,6 +7484,7 @@ PY
 ###### SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.4.1 — The adapter records no billing route
 
 - Status: `pending` — deferred on a readable trigger, per DOC-0138: **the next `SDK_VERSION` bump** of the adapter contract (`grep -n 'SDK_VERSION: &str' crates/reasonbraid-adapter/src/contract.rs`, `"1"` today), so the contract changes once. §14.5: *the adapter records the configured route and what telemetry is actually observable*.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **deferred**, trigger: as this leaf already states (DOC-0138).
 - Owns: a `billing_route` on `AdapterCapabilities` (API, managed agent, local model, enterprise allocation, subscription) declared by every shipped adapter, carried on the usage receipt, and a certification-matrix row; the VALIDITY half stays with a tenant policy that names accepted routes, which nothing declares yet.
 - Verification / commit: pending.
 
@@ -7493,6 +7533,7 @@ PY
 ###### SIGNOFF-REPAIR.11.4.7.2.1.5.4.2 — A grant's policy domains have nothing to bind
 
 - Status: `pending` — deferred on a readable trigger, per DOC-0140: a request, target or evaluator names a domain — `grep -c -i domain crates/reasonbraid-core/src/authority.rs` > 2. The boundary's own `permitted_domains` is compared to nothing today, so a grant-level narrowing would narrow nothing; when the dimension arrives, both land together.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **deferred**, trigger: as this leaf already states (DOC-0140).
 - Verification / commit: pending.
 
 ###### SIGNOFF-REPAIR.11.4.7.2.1.5.4.3 — A grant's conditions have no vocabulary
@@ -7511,6 +7552,7 @@ PY
 ###### SIGNOFF-REPAIR.11.4.7.2.1.5.4.4 — The enrolment's dev grant has neither a signature nor a record
 
 - Status: `pending` — **deferred on a readable trigger**, corrected by `REASONBRAID-DOC-0141` (the correction section of DOC-0140). Opened by DOC-0140 as *the record half owed now*; 🔴 that was wrong by one read: `administrative_effects` is keyed on an ADMISSION (`FOREIGN KEY (record_id, tenant_id) REFERENCES authorization_records`, `migrations/0058`) and `async fn enroll(State, Json)` takes no principal — the enrolment IS the dev profile's un-admitted bootstrap. An issuance record presupposes an authorized issuer, which the dev bootstrap deliberately lacks; giving it one replaces the bootstrap trust, which is what the SIGNATURE waits for too. Both halves ride ONE trigger: the dev bootstrap's replacement at the first non-loopback deployment (ADR-022), with mTLS (`SIGNOFF-REPAIR.11.4.7.2.1.5.2`). Read as `grep -n "^async fn enroll(" -A 3 crates/reasonbraid-server/src/api.rs` — a principal in that signature is the trigger firing.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **deferred**, trigger: as this leaf already states (DOC-0141).
 - Owns, when the trigger fires: enrolment as an admitted operation (an issuer with authority, an admission, the effect record) and the grant signature, together.
 - Verification / commit: pending, on the trigger.
 - `policy_domains`, `decision_rule_constraints`, `conditions[]` and the grant signature are §4.2 fields with no column, type or check anywhere (`grep -rn -i "policy_domains\|decision_rule_constraints" crates migrations` → none).
@@ -7949,6 +7991,7 @@ PY
 
 - Opened: `active`; the director asked whether the two defects recorded in REPAIR-0092/0093 were being FIXED or merely written down. They were written down. Recording a defect is the first step, not the fix, and the second had been left as prose in a project whose whole thesis is that a rule living only in a doc is a suggestion.
 - Status: `active`; children `.1`, `.2`, `.3` and `.4` are all `done` (REPAIR-0094 / 0099 / 0100 / 0188). ⚠️ This line said *"child `.2` is pending"* for two closures after `.2` and `.3` landed — a status summarised in a PARENT is a second copy of a fact each child already owns, which is `.11.4.5.3`'s own finding reproducing one heading above it. Re-derive from the children rather than reading this line.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **closing census**: every child is done; a goal clause no child held becomes a leaf classified by the bar.
 - ⛔ The heading says *"the two defects"* and there are now **four**. Kept rather than renamed: the title records what the director asked about, and the count is not the point — every child is a defect in the ENFORCEMENT SPINE itself, the driver that runs on every commit and in CI, which is why they get leaves rather than footnotes.
 - Verification / commit: per child.
 
@@ -8740,6 +8783,7 @@ Six children by the adopted ranking, at the natural gaps in the distribution. Me
 - The 30 records: `R-31-32-4`, `R-33-35-1`, `R-33-35-2`, `R-36-39-2`, `R-36-39-3`, `R-36-39-6`, `R-36-39-9`, `R-40-42-3`, `R-40-42-4`, `R-40-42-5`, `R-40-42-7`, `R-43-1`, `R-43-4`, `R-44-45-4`, `R-51-3`, `R-53-1`, `R-53-5`, `R-54-2`, `R-56-57-3`, `R-58-3`, `R-59-1`, `R-59-2`, `R-61-62-2`, `R-63-2`, `R-73-74-3`, `R-75-2`, `R-76-77-3`, `R-78-1`, `R-86-1`, `R-89-1`.
 - Acceptance: as `.11.9.1.1`.
 - Status: `active`; sized, split, and its first child executed (REPAIR-0180). ⛔ The acceptance descends to `.11.9.1.3.1`–`.5` collectively.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **structural**: closes when its children do.
 
 **The sizing, taken BEFORE the split — the method `.11.9.1.1` established and `.11.9.1.2` repeated.**
 
@@ -8853,6 +8897,7 @@ Six children by the adopted ranking, at the natural gaps in the distribution. Me
 ###### SIGNOFF-REPAIR.11.9.1.3.4 — Tranche 4d: the four records whose narrowest candidate is `SIGNOFF-REPAIR.11.3`
 
 - Opened: `pending` by `.11.9.1.3`'s split.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 3, review records not yet routed: an unrouted finding is unclassified.
 - The four records: `R-56-57-3`, `R-58-3`, `R-59-2`, `R-89-1` (1,734 characters; `R-89-1` alone is 935).
 - ⚠️ `R-58-3` and `R-59-2` are two of the six records dispositioned in the `#### Historical census dispositions for .2.2` table — read those rows before classifying, exactly as `R-90-1` needed in tranche 2c.
 - Acceptance: as `.11.9.1.1`.
@@ -8861,6 +8906,7 @@ Six children by the adopted ranking, at the natural gaps in the distribution. Me
 ###### SIGNOFF-REPAIR.11.9.1.3.5 — Tranche 4e: the four records whose narrowest candidate is `SIGNOFF-REPAIR.7.1`
 
 - Opened: `pending` by `.11.9.1.3`'s split.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 3, as `.11.9.1.3.4`.
 - The four records: `R-43-1`, `R-53-1`, `R-54-2`, `R-78-1` (1,464 characters).
 - ⚠️ `.7.1` already carries THREE `attach` clauses from `R-53-4` and `R-31-32-2`/`R-53-3`/`R-78-2`, and `R-78-1` is a sibling of one of them — read those rows first.
 - Acceptance: as `.11.9.1.1`.
@@ -8869,6 +8915,7 @@ Six children by the adopted ranking, at the natural gaps in the distribution. Me
 ##### SIGNOFF-REPAIR.11.9.1.4 — Tranche 5: narrowest candidate named by sixteen to eighteen records
 
 - Opened: `pending` by `.11.9.1`'s split.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 3, as `.11.9.1.3.4`.
 - The 22 records: `R-33-35-5`, `R-33-35-6`, `R-36-39-5`, `R-36-39-7`, `R-40-42-8`, `R-43-2`, `R-43-3`, `R-44-45-1`, `R-44-45-2`, `R-44-45-3`, `R-52-3`, `R-52-5`, `R-54-3`, `R-55-1`, `R-58-1`, `R-6-27-5`, `R-6-27-6`, `R-61-62-3`, `R-66-2`, `R-67-68-1`, `R-70-1`, `R-73-74-2`.
 - Acceptance: as `.11.9.1.1`.
 - Verification / commit: pending.
@@ -8876,6 +8923,7 @@ Six children by the adopted ranking, at the natural gaps in the distribution. Me
 ##### SIGNOFF-REPAIR.11.9.1.5 — Tranche 6: narrowest candidate named by twenty to twenty-two records
 
 - Opened: `pending` by `.11.9.1`'s split.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 3, as `.11.9.1.3.4`.
 - The 14 records: `R-33-35-3`, `R-46-1`, `R-48-49-7`, `R-51-4`, `R-52-4`, `R-55-2`, `R-56-57-1`, `R-56-57-2`, `R-56-57-4`, `R-6-27-4`, `R-65-1`, `R-69-2`, `R-71-72-1`, `R-76-77-4`.
 - Acceptance: as `.11.9.1.1`.
 - Verification / commit: pending.
@@ -8883,6 +8931,7 @@ Six children by the adopted ranking, at the natural gaps in the distribution. Me
 ##### SIGNOFF-REPAIR.11.9.1.6 — Tranche 7: narrowest candidate named by twenty-six or more records
 
 - Opened: `pending` by `.11.9.1`'s split.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 3, as `.11.9.1.3.4`.
 - The 12 records: `R-33-35-4`, `R-36-39-4`, `R-40-42-1`, `R-40-42-6`, `R-46-3`, `R-47-1`, `R-51-1`, `R-54-1`, `R-6-27-1`, `R-61-62-1`, `R-66-3`, `R-76-77-1`.
 - ⚠️ Every record here routes only to container leaves, and `R-6-27-1` carries no finding at all. `none` and `handled` should dominate — and that expectation is the hazard, because a tranche where the right answer is usually "nothing to do" is where a real clause is easiest to wave past. Read each body before assigning its state.
 - Acceptance: as `.11.9.1.1`.
@@ -10002,6 +10051,7 @@ absent:  400 {"code":"invalid_command","message":"the parent snapshot does not e
 ###### SIGNOFF-REPAIR.11.14.3.10.1 — The broker's binding namespace is global, so naming a binding is still the whole predicate
 
 - Opened: `pending` by `.11.14.3.10`, which closed the INHERITANCE half and measured that the naming half is a different mechanism.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **deferred**, trigger: as `.7.3.1` (the R5 credential broker is gated).
 - 🔴 **The remaining defect, stated exactly.** A tenant may write any binding name into its OWN registration and reach the credential an operator registered for someone else. `.11.14.3.10` removed the silent inheritance — the name now has to be typed — but typing it is still sufficient, and ROADMAP §16.3 invariant 5 wants an authorization BEFORE the selection: *"target credentials are selected only after authorization for the concrete target and action."*
 - ⛔ **Why it is not a wiring change, which is why it is not folded into its parent.** `crates/reasonbraid-server/src/authority.rs` has the machinery — boundaries, scoped grants, `authorize` writing an audit row for allowances AND denials — but its vocabulary does not reach here: `GrantAction` is `thread_*` plus `TenantAdmin` (**10 variants, 0 about a resource or a credential**) and `TargetSelector` is thread/tenant-shaped. Authorizing a credential selection means a NEW action and a NEW selector, which is a §16.4 authorization surface, not a call site.
 - ⛔ **And `.11.6` bars proposing the rule before its population is measured.** `grep -rn "\.register(" crates/ --include=*.rs | grep -i broker` returns **3** hits and **all three are tests**; `grep -rn "Broker" crates/reasonbraid-server/src/bin/*.rs` returns **0**. The population of operator-granted bindings is ZERO, so there is nothing yet to shape a grant vocabulary against.
@@ -10227,6 +10277,7 @@ absent:  400 {"code":"invalid_command","message":"the reference does not exist"}
 ### SIGNOFF-REPAIR.11.4 — Documentation containment and historical claims
 
 - Status: `active`; `.11.4.1` rotation is complete, and broader containment/claim reconciliation remain `.11.4.2`–`.11.4.3`.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **structural**: closes when its children do.
 - Sources / owned surfaces: `live docs, book, task records, external ledger, CI`.
 - Goal and acceptance: Partition oversized live status/history, review adopted containment requirements, reconcile all phase/gate claims with measured behavior, refresh dependency evidence, and make pre-push CI discover every required live suite without counting skips as passes.
 - ⭐ **ATTACHED CLAUSE — a routed-record finding this leaf's goal line does NOT make visible** (`R-63-1` clause 4, tranche 1; `docs/tasks/artifacts/signoff_review/RECONCILIATION.md`). **A repair left a false claim behind in the suite that documents it.** `crates/reasonbraid-server/tests/escalation.rs` still opens by saying this suite adds "cross-tenant isolation (the census found NO test asserting it)" — which `SIGNOFF-REPAIR.3.1` made false when REPAIR-0005 added the foreign-grant and foreign-boundary controls. The same header claims the suite covers the property "at every boundary" while the added controls live in other suites. ⚠️ This is a historical-claim reconciliation in SOURCE prose, not in a live document, which is why a census of `LIVE_STATUS.md` and the book would never reach it.
@@ -11021,6 +11072,7 @@ absent:  400 {"code":"invalid_command","message":"the reference does not exist"}
 #### SIGNOFF-REPAIR.11.4.3 — Reconcile historical qualification and verification coverage
 
 - Status: `active`; scheduled checkpoint child precedes the later complete historical/external reconciliation.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **structural**: closes when its children do.
 - Owns: remaining historical phase/gate claims, dependency evidence refresh, external ledger and pre-push suite discovery after the concrete repair leaves complete.
 - Acceptance: claims trace to actual consumed evidence; skipped or missing suites are not passes; no unsupported production qualification remains in live views.
 - Verification / commit: pending.
@@ -11028,6 +11080,7 @@ absent:  400 {"code":"invalid_command","message":"the reference does not exist"}
 ##### SIGNOFF-REPAIR.11.4.3.1 — Verify the scheduled pre-push checkpoint
 
 - Status: `active`; activated after clean 6bc76c6, thirteen green doctrines, zero/untracked brief and consumed escalated handoff census. The recorded remote is 301 commits behind 6bc76c6; the approximately 300-commit push cadence requires a full CI checkpoint before publishing further commits. This is required batch verification, not a declaration that corrective review or release qualification is complete.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **structural**: closes when its children do.
 - Owns before work: census actual workflow/Makefile/local-runner gates and available tools; run full Rust format/all-target all-feature strict lint/workspace tests, the full owned PostgreSQL suite collection plus demonstration, doctrine gate, dependency/advisory/license/source checks and redacted secret scanning with repository-derived logs/caches/temp. Discover suites from source, compare the runner registry and do not count skips/omissions as live passes. Include required script/runner checks where the workflow relies on them. Use installed toolchains/OS dependencies read-only; any necessary new tool/cache data stays on the repository volume. Document external-tool/advisory evidence and any unavailable verification honestly.
 - Failure ownership: every gate/tool/locality/coverage defect receives an exact child before any repair. Preserve failing logs, process identities and owned fixture shutdown; do not bypass a failing check or broaden shared-cache cleanup. Complete/commit each repaired unit and rerun the affected/full checkpoint as warranted. A skipped live-provider test is a stated external qualification boundary, never a pass or permission to spend tokens on an unrequested provider run.
 - Completion: all required local results consumed, exact source/command/test/skip census and limitations durable, live docs/book aligned, all completed units committed and message brief cleared. Full CI must pass before the authorized push to the existing public tracking branch, following the director's visibility correction. Verify remote advancement and any triggered CI status; remote job results that are still required remain explicit in-flight work. Preserve unrelated remote changes and use no force push. Resume .3.3.4.3.3.3.3.2.3.2 afterward.
@@ -11207,6 +11260,7 @@ absent:  400 {"code":"invalid_command","message":"the reference does not exist"}
 ###### SIGNOFF-REPAIR.11.4.3.1.7 — Re-run the periodic artifact review, with a tracked instrument
 
 - Opened: `pending`; the `CLAUDE.md` §8 review is due (`MEMORY.md` recorded it as owed on resumption) and `.11.4.3.1.6`'s compiler-cache retirement left no instrument behind — its selection, probes and manifests were task-owned evidence, so the next review starts from prose.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **closing census**: every child is done; a goal clause no child held becomes a leaf classified by the bar.
 - census, before any disposition: `python3 -B scripts/project_env.py python3 -B scripts/census_pg_test_clusters.py` reports **13 retained clusters / 676,882,885 bytes** under `target/pg-tests`. Every one carries `state: stopped` (the runner verified shutdown) and `command_exit: 101`; by suite, 8 are `profiles`, 4 are `command_ordering` and 1 is `node_result_ordering`, aged 0.1–5.2 hours. `ps aux | grep '[p]ostgres'` returns **0** live servers, and `git grep -c` over each of the 13 names returns **0** tracked files naming any of them — so none is cited evidence.
 - Owns: the instrument, not one cleanup. `scripts/census_pg_test_clusters.py` censuses the retained clusters and, only under `--retire --confirm`, removes those passing every check: the receipt says `stopped`, no `postmaster.pid` process is alive, the path is a real directory on the REPOSITORY's own volume, no tracked file names it, and it is older than an age floor. Each check is re-run immediately before the removal, because a census is a snapshot.
 - Scope bound, stated rather than implied: this leaf owns the runner's retained clusters. The compiler cache under `target/debug` is NOT touched here — `.11.4.3.1.6` established that it needs native lock probes against the exact installed compiler and a frozen identity-bound manifest, and repeating that at signoff quality is its own slice. What this leaf adds for it is a measurement, and the measurement corrected the obvious guess.
@@ -11333,6 +11387,7 @@ done
 - It closes no external gate: G6/G7, name clearance and the license decision remain open, the historical phase closures remain under corrective review, and `.7.4.2`, `.7.2.1`, `.7.3.3.4`, `.11.4.3.1.2.15` and `.11.5` remain open repair leaves.
 
 - Status: `active`; source-b0cddfe878520b0368402c44c16a5ba63ba26b05 passed nine gates, then failed the fourteenth live PostgreSQL command. Fixture prerequisites .2.6/.2.7 and exposed repairs .2.8–.10 are now qualified; resume on the next committed source. Public visibility is authorized by the director; history-scan repair .2.2 and dedicated browser prerequisite .2.5 are qualified. Preserve source-f0265e2/source-7e01097 gate failures and stops and the exact source-b0cddfe outcomes under target/checkpoint-ci/full-b0cddfe.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **structural**: closes when its children do.
 - Prerequisites: completed inventory .1, workflow repair .3, publisher ownership .4, browser lifetime .5 and evidence-based cleanup .6 (a justified retention outcome is valid).
 - Owns: all selected required local full CI commands on a named committed source, exact pass/fail/skip and suite census, bounded owned process/fixture/tool lifetimes and complete consumed evidence. Any encountered failure must be root-caused and repaired in a named child before claiming the checkpoint; no suppressed checks or new blanket allow-list exemptions. Commit completed units promptly, consume all required local/remote results and perform the already-authorized normal push only after the full local checkpoint passes. Return to CLI transport bounds afterward.
 - Selected execution before probes: target/checkpoint-ci/full-f0265e2 owns exact source/input/command receipts and bounded supervised gate logs. Clear database/provider/scanner/compiler overrides through the established CI environment, use the pinned installed compiler read-only with repository-local stores, require real Chrome/extraction binaries, two build jobs and nonincremental CI parity. Run format, strict all-target/all-feature lint, locked workspace bins/tests sequentially to avoid replacing in-flight executables; run all forty owned PostgreSQL commands with explicit demo and all Python controls. Book/doctrine and fresh online dependency/redacted Git-history scans are separate recorded gates. Inspect all failures/skips and stop dependent steps on failure; own concrete repair children without weakening gates. Verify the configured public remote/tracking state before normal authorized push, then consume actual triggered CI results. Installed OS/compiler/browser tools are read-only exceptions; all command output/scratch/cache stays on the repo volume. No provider calls or OS-setting changes are owned.
@@ -11641,6 +11696,7 @@ done
 ###### SIGNOFF-REPAIR.11.4.3.1.2.17 — Stop a coarse clock from naming concurrent guard fixtures
 
 - Status: `active`; the source-5c8609e checkpoint stops at `02-check` (rc=2, 2,608s).
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 4, the full CI checkpoint fails.
 - Reproduce: `crates/reasonbraid-server/tests/pg_guard.rs:41` panics with `Os { code: 17, kind: AlreadyExists }` creating its fixture directory; the suite returns `7 passed; 1 failed`. Running the compiled binary fifteen times at default concurrency reproduces it once — intermittent, not deterministic.
 - Root cause, measured on this host: `Fixture::new` names its directory `{pid}-{SystemTime::now().as_nanos()}`, and six consecutive `time_ns()` samples on this machine are byte-identical (`1789125006057405000`), so the stamp cannot distinguish concurrent callers. Three `#[test]` functions call `Fixture::new()` in parallel threads of one process, so two can produce the same name; exclusive `create` then refuses the loser and the `unwrap` panics. `scripts/run_pg_tests.py:356` appends `--test-threads=1`, which is precisely why this suite has always passed under the PostgreSQL runner and only fails under `make check`'s parallel `cargo test --all`.
 - This is the third instance of one family. `.7.3.3.1` reproduced it in the production R2 input span and `.11.4.3.1.2.12` in the extractor fixtures, both named from a process id and a clock field. A name proposes ownership; only exclusive creation with a bounded fresh candidate proves it, and a clock is not a source of uniqueness.
@@ -11774,6 +11830,7 @@ done
 ###### SIGNOFF-REPAIR.11.4.3.1.2.19 — Make a conformance refusal name its cause, and diagnose the first remote CI failure
 
 - Status: `active`; the project's FIRST remote CI run, on pushed `a626768`, failed.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 4, the first remote CI run fails.
 - Reproduce: `doctrines` and `supply-chain` succeed; `rust` (run 34603215022) fails at `codex_adapter_passes_the_conformance_suite` with `codex:lose: the certification refused: ambiguous_outcome_honesty: the lose trigger refused instead of dispatching` (`crates/reasonbraid-adapter/tests/conformance/mod.rs:57`). The same suite passes locally and `claude_adapter_passes_the_conformance_suite` passes on the SAME runner, so this is environment-dependent and specific to the Codex scenario.
 - The diagnosis is blocked by an instrument gap, and that gap is the first defect. `InvokeOutcome::FailedBeforeDispatch` carries a `reason: String`, and `crates/reasonbraid-adapter/src/certification.rs` discards it at all four arms (lines 214, 245, 271, 321) with `{ .. }`, emitting a fixed sentence instead. The CI log therefore contains no cause at all. This is the same class repaired twice today — a refusal that names nothing — and here it is in the harness whose entire job is to explain why an adapter failed to qualify.
 - Candidate mechanisms, none yet evidenced and none to be assumed: `tests/conformance/stubs.rs` names its stub directory `{name}-{subsec_nanos}` with `create_dir_all`, the same clock-as-uniqueness shape repaired in `.11.4.3.1.2.17`, `.7.3.3.1` and `.7.4.1`; `codex` and `claude` scenarios share scenario names, so they can share a directory; and on Linux writing a script that another thread is executing yields `ETXTBSY`, which macOS does not reproduce. The local tree holds 2,446 uncleaned stub directories whose timestamps end in `000`, confirming microsecond clock resolution.
@@ -11791,6 +11848,7 @@ done
 ###### SIGNOFF-REPAIR.11.4.3.1.2.20 — Retain the browser worker's own stderr in CI
 
 - Status: `active`; the next remote failure after the conformance repair.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 4, the remote CI failure cannot diagnose itself.
 - Reproduce: run 34608054338 on `28515ee`. `book` and `pg-tests` SUCCEED — the full PostgreSQL collection passes on a runner for the first time — and the conformance suite passes, so REPAIR-0073 held. `check` now fails in `reasonbraid-browse`: six tests including `the_browser_renders_the_page_and_logs_the_network`, `a_real_navigation_deadline_stops_the_browser_and_origin` and `overlapping_workers_use_distinct_profiles_under_the_same_root`, with `{"error":{"kind":"browser_launch_failed","message":"browser exited before publishing a loopback endpoint"}}` and witnesses reporting `expected 1 gated navigations within 30s; observed 0`.
 - What is already ruled out: the launcher reports `ci-browser: completed; evidence target/ci-browser/linux64-…`, and it verifies the executable's exact version before dispatching, so the pinned Chrome for Testing binary runs on the runner. `CHROME_ARGS` already passes `--no-sandbox` and `--headless`, so the usual Linux CI sandbox failure is not it. Chrome starts and exits before publishing its loopback endpoint.
 - The diagnosis is blocked by the same gap as `.11.4.3.1.2.19`: the evidence exists and is discarded. The worker retains up to 64 KiB of `browser.stderr` alongside `owner.json` and `completion.json` for a failed or unconfirmed invocation, and the failing test even printed its fixture path — but `.github/workflows/rust.yml` uploads only `target/ci-browser/*/browser.json` and `version.log`, so Chrome's own complaint never leaves the runner.
@@ -11816,6 +11874,7 @@ done
 ###### SIGNOFF-REPAIR.11.4.3.1.2.22 — Fit Chrome's singleton socket inside its path budget
 
 - Status: `pending`; the proved cause from `.11.4.3.1.2.20`.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 4, the proved remote CI cause.
 - Sources: `crates/reasonbraid-browse/src/lifetime.rs:69-71` overrides `TMPDIR`/`TMP`/`TEMP` into the per-invocation workspace, nesting Chrome's singleton socket 228 bytes deep against a 108-byte `sun_path` limit on Linux. macOS does not use `process_singleton_posix.cc`, so the development platform cannot observe it.
 - Owns: a temporary directory whose path fits Chrome's socket budget, retaining §13 repository-volume storage and the worker's per-invocation isolation. Requalify the sixteen browser integration controls, and state plainly that a macOS pass is not evidence for the Linux path this repairs.
 - The arithmetic decided the design before any code was written. Chrome's socket suffix is 45 bytes, so TMPDIR has a 63-byte budget. Measured candidates: today's absolute path 183; a short temporary directory under the existing fixture 132; a short temporary directory under a SHORTENED fixture 67 — still over. Shortening names cannot fix this at any reasonable aggression, because the harness gives each command its own fake repository root and the worker derives storage from it. Only a relative path escapes the nesting: 3 bytes.
@@ -11845,6 +11904,7 @@ done
 ###### SIGNOFF-REPAIR.11.4.3.1.2.23 — Prove input identity against the descriptor, not an inode number
 
 - Status: `active`; a defect in REPAIR-0063's own repair, found by Linux CI.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 4, a defect in a gate's own repair, found by Linux CI.
 - The browser repair landed: run 34620840899 shows every `reasonbraid-browse` control passing, with `render_succeeded: true` and one worker reporting `stderr_bytes: 0` where it previously reported 403. `book` and `pg-tests` pass. The `check` job now fails elsewhere.
 - Reproduce: `extraction_input::tests::a_replaced_input_is_retained_and_its_successor_survives` fails at `crates/reasonbraid-server/src/extraction_input.rs:431` with `a changed identity must refuse: ()` — `release` returned success where it must refuse.
 - Root cause: `verify` compared a stored `(device, inode)` pair. **Linux reuses an inode number as soon as it is freed**, so a file deleted and immediately replaced can present the same pair. A standalone probe confirms both halves of this on the development platform: an open file reports `nlink = 1` while linked and `nlink = 0` after unlink, and macOS hands the successor a DIFFERENT inode (…892 against …891) — which is exactly why the defect was invisible locally.
@@ -12268,6 +12328,7 @@ done
 ### SIGNOFF-REPAIR.11.26 — A pre-push gate failed once in fifteen and its evidence was discarded by the way it was run
 
 - Opened: `pending` by the pre-push sequence at `7c69bd2`, which is the first time this session ran all four of `COMMIT.md`'s cheap gates together.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **deferred**, trigger: the next occurrence, which its instrument captures unattended (0 in 299 runs).
 - 🔴 **THE OBSERVATION.** `python3 -B scripts/project_env.py python3 -B -m unittest discover -s scripts/tests -p 'test_*.py'` — one of the four gates `COMMIT.md` names as the pre-push condition — reported `Ran 73 tests in 62.216s` / **`FAILED (errors=2)`**. It has since passed **14 consecutive times**, including a dedicated ten-run reproduction loop. **1 failure in 15.**
 - ⛔ **AND THE EVIDENCE IS GONE, WHICH IS THE PART THAT IS MINE.** That run was piped through `tail -4`, so the summary survived and the two error texts did not. A gate's failure text is the only thing that makes it actionable, and it was discarded by the way the gate was invoked rather than by the gate.
 - ⚠️ **WHAT IS NOT CLAIMED.** Not that the suite is broken — 14 of 15 green, and every commit in this session passed the doctrine gate at commit time. Not that it is environmental either: the failing run followed a long series of probe subprocesses that had been spawning browsers, binding loopback ports and writing under `target/`, which makes a port or fixture collision a **candidate** and not a measurement. ⛔ Naming a cause here would be the habit `.11.25.1.1` just promoted a rule against.
@@ -13162,15 +13223,32 @@ done
 
 ### SIGNOFF-REPAIR.12 — Requalification and return to roadmap
 
-- Status: `pending`.
+- Status: `active` — its exit criterion REDEFINED by `REASONBRAID-DOC-0162` (2026-09-25; the director delegated it): the tree ends at a bug bar, not at exhaustion (`docs/decisions/2026-09-25_the-corrective-tree-ends-at-a-bug-bar.md`).
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **structural**: closes when its children do.
 - Sources / owned surfaces: `all corrective leaves, PHASE-8.5.3/.5.4/.6, PHASE-9`.
-- Goal and acceptance: Close or refute every census finding with reproducible evidence and owning leaf, run broad required gates before push, update qualification limits, then resume store-and-forward, export/import, G8 and later executable roadmap work. External judgment gates remain explicit, never self-certified.
+- Goal and acceptance (by the bar): every leaf in a blocking class (cross-tenant; integrity of state, money, evidence or publication; a false claim; a gate that lies) is closed with reproducible evidence, fixed or refuted; every deferred leaf names a readable trigger and the qualification chapter states its limit; the full CI checkpoint passes on a pushed commit; the qualification chapter reconciles with measured behaviour. Then resume store-and-forward, export/import, G8 and later executable roadmap work. External judgment gates remain explicit, never self-certified.
+- ⛔ **Superseded wording, kept:** *Close or refute every census finding with reproducible evidence and owning leaf.* Measured not to converge: between `fcb2a7c` and `ac90ee3` seventeen leaves were closed and seventeen opened, and the open count stayed at 65.
 - Verification: pending; capture the failing case, corrected case, and independent control in this leaf or its children before closure.
 - Commit: pending.
+
+#### SIGNOFF-REPAIR.12.1 — The exit bar, the triage, and the verification policy
+
+- Status: `done` — `REASONBRAID-DOC-0162` (2026-09-25).
+- Decided under the director's delegation (*"all are yours to decide, but better be sota and signoff"*): `docs/decisions/2026-09-25_the-corrective-tree-ends-at-a-bug-bar.md` (the bar, the exit, and the triage of all 65 open leaves, each annotated with a `⚖️ Bar` line). The verification policy, the third delegated decision, is recorded by the next commit with its measurement: ⚠️ the first attempt to scope mutation testing, `--cargo-test-arg=--lib`, measured SLOWER (10 mutants in 2 h against 77 min), because cargo-mutants 27 applies that flag only to the test RUN and still builds every integration binary; `--cargo-arg=--lib` is being measured.
+- Closes `.11.2.7` as a duplicate of `.11.26`.
+
+#### SIGNOFF-REPAIR.12.2 — The open-leaf count has no instrument, and two state forms hid 16 leaves
+
+- Status: `pending` — opened 2026-09-25 by `.12.1`'s triage, which measured it.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 4: the exit bar is a count, and the count was wrong by 15.
+- 🔴 Measured: a count reading only `- Status:` lines reported 50 open; 16 open leaves record their state only as `- Opened: \`pending\`` and 10 closed ones say *opened and closed* on one line, so the true count is 65. `TASK-STATUS` refuses a SECOND Status line and requires none.
+- Owns: `scripts/census_open_leaves.py` (reads both forms and the inline closure, reports open leaves by their `⚖️ Bar` class, `--self-test`), and a gate refusing an open leaf with no bar line, so the exit is a number a machine derives.
+
 
 ### SIGNOFF-REPAIR.14 — The exposure-profile candidate, built and frozen, never deployed
 
 - Opened: `pending` by `docs/decisions/2026-09-16_internet-qualification-route.md` (DOC-0030), which took the four B1–B4 decisions.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **deferred**, trigger: as `.13.1`.
 - ⭐ **THE STRUCTURAL FINDING THIS LANE EXISTS FOR.** `2026-09-08_phase7-subtraction-record.md` records S-1 (the exposure) as not built because "the qualification gate is incomplete", while S-3 (**B3**) waits on "the exposure profile's first action-bearing surface" and S-4 (**B2**) on "the exposure profile's candidate freeze". That is a circular wait — and it is an artefact of S-1's stated reason, not of the gate. §16.12 blocks Internet-capable **deployment**; §25.1 blocks **exposing** remote enrollment. Neither forbids BUILDING. ⛔ So the single prerequisite B1, B2 and B3 share is in-repo work, and it is permitted.
 - ⛔ **THE STANDING PROHIBITION ON EVERY LEAF IN THIS LANE: nothing here may deploy the profile, serve it on a public interface, or claim any part of G6/G7.** The candidate is built, frozen and left off. A commit that turns it on is out of scope by construction, and §25.1 is why.
 - **Where it starts, measured rather than assumed.** `crates/reasonbraid-server/src/mtls.rs` already builds a complete `rustls::ServerConfig` with a `WebPkiClientVerifier` over the workload CA. `grep -rn "mtls::" -- crates` finds its only callers at `tests/mtls.rs:42` and `:72`; `grep -c mtls crates/reasonbraid-server/src/bin/rb-server.rs` returns **0**. The server has never served TLS. ⭐ A finished module with no production caller — `.13.1.1`'s shape, and this lane's first concrete slice.
@@ -13198,6 +13276,7 @@ done
 #### SIGNOFF-REPAIR.13.1 — The three external G6 preconditions
 
 - Opened: `pending` by `.13`. Covers register rows **B1**, **B2** and **B3**.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **deferred**, trigger: a decision to claim Internet exposure; external judgment, never self-certified.
 - ⛔ **This project cannot produce any of the three, and the leaf must not pretend otherwise.** §16.12 line (1) is an externally reviewed threat model — §2.6 says AI review does not satisfy an independent-review requirement. Line (9) is a penetration test whose critical/high findings are resolved or the release is CANCELLED (§19.6), not waived. Line (5) is the prompt-injection action-boundary suite, which lands with the exposure profile's first action-bearing surface and has nothing to attach to yet.
 - What this leaf CAN own, which is not nothing: the input each engagement needs (a threat model fit to be reviewed, a scope and an environment for a pen test), the trigger that starts it, and the durable record of its outcome. ⚠️ Preparing the input is not the gate and the leaf must never let one read as the other.
 - Acceptance: each of the three names the party who clears it, the input this project owes them, and the trigger; none is described as "in progress" while it is unstarted; the register and the book say the same thing.
@@ -13851,8 +13930,9 @@ git grep -nI -E "never run|licen[cs]e decision|license decision" -- \
 | 1a | `SIGNOFF-REPAIR.11.4.7.2.1.2` | `done` | ✅ DOC-0125 — **the contract is quoted from FIVE roadmap places, and this premise GREW under measurement where the two before it shrank.** ⭐ §26 step 2 lists *objective* and *expected artifact* in one enumeration, as two items — so the deferral's recorded stand-in is refuted by the roadmap's own sentence. 🔴 `CreateBody` carries neither field; the only `decision_rule` in the tree is `reasonbraid-a2a`'s **bool** recording that a remote rule is always LOST; `charter_digest` is a TEXT digest and no table holds §4.1's *allowed decision rules and approval thresholds*. 🔴 **And §13.2 step 11 — *compute the deterministic decision result* — is unimplemented at EVERY decision surface**: thread close takes a free-form `rule: String` beside a caller-declared outcome (`AcceptedByRule` assertable with no rule ever declared), and a policy approval's `quorum` is a JSON blob checked only for a non-empty `participants` array. ✅ DECIDED: a typed, CHARTER-SCOPED vocabulary, never a string — and ⛔ it never ships without the tally that reads it, because a declared rule nothing evaluates is this defect one step earlier. ✅ Owed before G9 on §19.6's G3 line, which names *quorum* in the gate itself. Three children, one (`.2.1`, the charter prerequisite) invisible before the measurement |
 | 1a | `SIGNOFF-REPAIR.4.6` | `done` | ✅ DOC-0124 — **four verdicts, four commands, and two of the four delete outright.** ✅ SLO baselines DISCHARGED (`2026-09-07_phase2-slo-hypotheses.md` carries §18.4's exact EIGHT fields (⚠️ published as *nine*; corrected by `.13.4.7`) over SLO-1…SLO-5, zero error budget, every unmeasured latency family named with its trigger rather than given a number); ✅ game days DISCHARGED (`2026-09-08_game-days-pentest.md` maps EIGHT shipped exercises to runbook closure tests, 13 runbooks, its three gaps already triggered). ⭐ **Both discharges PREDATE the 2026-09-22 audit that graded the row open** — second consecutive leaf where a deferral row was graded open over shipped work, after `.9.3.5`; there a grep keyed on the wrong module, here a verdict taken over four nouns at once. ⏸️ The sink is DEFERRED on a readable fact: `rb-server --host` not a loopback address (leaving §6.6's Developer profile), or a second control-plane process — at one process on `127.0.0.1` there is no second process for a §18.1 class-3 trace to cross, and §18.2's attribute-redaction rules would ship an egress path before there is anything to correlate. ⚠️ §18.5 is PARTIAL and KEPT: **4 covered · 3 partial · 2 absent** over nine bullets, scoped to `.4.6.1`. ⭐ The two absences share one shape — health and backup status are the only bullets describing the SYSTEM rather than a domain aggregate |
 | 1a | `SIGNOFF-REPAIR.9.3.5` | `done` | ✅ REPAIR-0394 — **the publication store is BUILT and this leaf retracted its own premise.** It opened as *a publication's immutable content is never written*; both halves shipped **2026-09-08, fourteen days BEFORE the audit that called them absent**. ⛔ The audit ran `git grep "git::" -- publications.rs` → 0 and inferred an absence — the module is `publisher::` (`publications.rs:595`, `api.rs:4061`). **A grep keyed on one module path is not an absence proof**, third instance after `.11.8.2` and `census_book_coverage.py`. ✅ Re-derived three ways, one per CLAIM_VERIFICATION leg: §15.7 steps 5–8 in `publisher.rs`; `f53d73d` 2026-09-08; suite **7/0**. ✅ Both stores KEPT; only the external BACKING deferred, on `max_bytes` > 16 MiB or `sum(length(bytes))` > 10 GiB. 🔴 Three real gaps opened instead: `.1` the §15.8 matrix is decided and NEVER OPERATED (`reconciler::` has ONE caller, a test), `.2` a published bundle is readable by nothing, `.3` the book documents none of it. 🔴 And it exposed a second defect: the 21-row roll-up asserted 13 discharged / 1 open where its own tables counted **12 / 2** |
-| 1 | `SIGNOFF-REPAIR.7.1.3.1` | `pending` | ⚖️ `.7.1.3` DONE (REPAIR-0494): an unexecutable resolver can no longer silence resolution; the first executable ranked resolver acts. NOW: decide who may add a row to the site-global resolver registry (site authority, or a tenant-scoped row other tenants never rank), record it, RED first. Then `.7.1.4` (URL first-writer), `.7.1.5` (tie ranking). |
-| 2 | `SIGNOFF-REPAIR.11.26` | `pending` | 120-run hunt 2026-09-24: 0 failures (0 in 299 since the instrument). ⚖️ `.4.4` is COMPLETE (REPAIR-0459…0482, DOC-0153…0155); this row is next by the table's order. ⏳ **CAUGHT — and it is the same defect as `.11.2.7`, which has been open five days.** 🔴 `Ran 73 tests in 375.967s` / **`FAILED (errors=9)`** against a normal ~21 s, and the per-phase instrument localizes every one: **8 of 8 stall in the `download` phase**, `started` at 15,239–15,251 ms where it normally costs 144–209 ms, with `version` and `command` never reached. ⭐ That phase runs **no network** — a stubbed `curl` copying a local file — so the 15 s is spent STARTING a small fresh child. ⛔ **The candidate was then produced deliberately and REFUTED**: a fresh 191 MB signed bundle extracted immediately before the suite gave **21.314 s, 73 OK** with `syspolicyd` at 66–81 %, so the daemon’s load joins *the machine was busy* as a withdrawn explanation. ⚠ Swap read the identical **5,719 MB** in the failing and the passing run. Ownership of `.11.2.7` consolidates here |
+| 1 | `SIGNOFF-REPAIR.7.4` | `pending` | ⚖️ DOC-0162 set the exit BAR and triaged all 65 open leaves (`docs/decisions/2026-09-25_the-corrective-tree-ends-at-a-bug-bar.md`): 8 closing censuses, 1 duplicate, 25 blocking (+ `.12.2`), 12 deferred with triggers, 19 structural. NOW: the closing censuses first, because they are cheap and remove false backlog; `.7.4` evidence integrity is the first. Then the blocking leaves by exposure, `.7.1.3.1` first. |
+| 2 | `SIGNOFF-REPAIR.7.1.3.1` | `pending` | ⚖️ blocking, class 1: who may add a row to the site-global resolver registry. After the closing censuses. |
+| 3 | `SIGNOFF-REPAIR.11.26` | `pending` | ⚖️ deferred on its next occurrence (DOC-0162). 120-run hunt 2026-09-24: 0 failures (0 in 299 since the instrument). ⚖️ `.4.4` is COMPLETE (REPAIR-0459…0482, DOC-0153…0155); this row is next by the table's order. ⏳ **CAUGHT — and it is the same defect as `.11.2.7`, which has been open five days.** 🔴 `Ran 73 tests in 375.967s` / **`FAILED (errors=9)`** against a normal ~21 s, and the per-phase instrument localizes every one: **8 of 8 stall in the `download` phase**, `started` at 15,239–15,251 ms where it normally costs 144–209 ms, with `version` and `command` never reached. ⭐ That phase runs **no network** — a stubbed `curl` copying a local file — so the 15 s is spent STARTING a small fresh child. ⛔ **The candidate was then produced deliberately and REFUTED**: a fresh 191 MB signed bundle extracted immediately before the suite gave **21.314 s, 73 OK** with `syspolicyd` at 66–81 %, so the daemon’s load joins *the machine was busy* as a withdrawn explanation. ⚠ Swap read the identical **5,719 MB** in the failing and the passing run. Ownership of `.11.2.7` consolidates here |
 | 1a | `SIGNOFF-REPAIR.11.26.2` | `done` | ✅ REPAIR-0381 — **this batch's own findings graded: 11 claims, 8 exact, 2 moved, 1 unverifiable.** ⭐ Held exactly by DIFFERENT routes: the population (raw shell vs the Python census), the census movement **62/2/40 → 101/1/2** (today's instrument replayed over past trees via `git show`), **21 coarse vs 14 per-route** and the seven partly-described families by name, every schema claim table-by-table, and both `git grep` named instances. 🔴 **WRONG: *24 timing records … nothing stalled*** — the log is APPEND-mode, 24 is the file's total across three runs, this run wrote **8**, and eight of the 24 are the 2026-09-20 stall. `CLAIM_VERIFICATION` §6's *a claim about an item, evidenced by its container*. 🔴 **UNVERIFIABLE: `.11.26`'s 240-invocation distribution** — its artefact is untracked and replaced; a leg-3 breach, and the CARRIED figure again. ✅ But the capture itself re-derives to the millisecond, so the leaf's conclusion survives its arithmetic. 🔴 MOVED: the gate price 0.16 s → **0.27–0.35 s**, decision unchanged |
 | 1a | `SIGNOFF-REPAIR.11.25.1` | `done` | ✅ REPAIR-0323 — **the holder is two `chrome_crashpad_handler` OUTSIDE the owned process group**, named by KERNEL PIPE IDENTITY: a render’s stderr pipe has **12 holders at fd 2**, 10 in the group `stop_process` kills and 2 double-forked to `ppid 1` with a process group each — so `kill_process_group` cannot reach them by construction. ✅ **The positive control PASSES** (45 of 46 mid-render samples resolve the pipe; `pgrep` returns 11–12), so `.11.25.1.1`’s *both are blind on this host* is annotated while its withdrawal stands. 🔴 **And the hold does NOT reproduce — 22 runs across four render durations, drain 0–1 ms, none censored** — while the control that opened `.11.25` now passes **18/0** with no predicate changed since it failed. ⛔ **No product change**: 7 launch flags suppress nothing, the handle is inherited before any code of ours runs, and there is nothing to bound. ✅ `scripts/measure_browser_stderr_holder.py` ships as the tracked producer, reporting `positive_control: blind` rather than an absence it cannot license |
 | 1a | `SIGNOFF-REPAIR.11.24.1.3.2` | `done` | ✅ REPAIR-0325 — **a git snapshot is a REFERENCE, because the object database it acquires is not an identity.** §12.9 permits both — *remain addressable … **or** retain a verifiable external archival reference* — and the first is UNSOUND here, measured rather than argued: 🔴 **one immutable commit, two acquisitions across a source-side `pack.window 0` repack, 6857 bytes against 10071 and two different digests**, because the pack is built by `git-upload-pack` on the REMOTE. Keyed on those bytes, an upstream forge's housekeeping files a second evidence snapshot for evidence that did not change. ⭐ Re-derived with plain `git clone`, no product code in the path. ⭐ **Three NEGATIVE legs run first and leg C is why** — a repack of a FOUR-object tree is stable, so the first attempt at this measurement reported STABLE and the fixture had to be rebuilt delta-capable. ✅ `resolved_commit` is the identity and §12.6 already had the column (*immutable source version where available*); re-acquiring and comparing it IS the verification. ⛔ **`storage_class` gained four readers in the same change** — a CHECK, a partial unique index carrying the replay key, a named refusal on the inline surface, and the assessment path — because `.11.24.1.3` measured it as read by NO predicate and shipping a second value nothing consults would have made it a defect. ⛔ `raw_digest` made NULLABLE rather than filled with a stand-in. 🔎 **And a consumer defect the change would have created, closed in it**: the excerpt check's INNER JOIN would have told a tenant its own cited evidence does not exist
@@ -13951,7 +14031,7 @@ git grep -nI -E "never run|licen[cs]e decision|license decision" -- \
 | 1e2 | `SIGNOFF-REPAIR.11.4.7.2` | `done` | ✅ closed; the row said `pending` until REPAIR-0253 reconciled it against the leaf's own `Status:`. — G1–G2's **16** verdict claims, the largest of the gate children, and it carries the deferral undercount plus its superseding record. ⭐ `.11.4.7.1` is DONE: of G6–G7's seven shipped lines, **3 must be re-earned, 2 narrowed, 2 stand** |
 | 2 | `SIGNOFF-REPAIR.3.4.7` | `done` | ✅ DOC-0023: the subject is NOT asked, deliberately — and **consent was never a delegation requirement here**. `grep -ic consent ROADMAP.md` returns 8 and **zero** fall inside §16.3 (lines 1754–1768), which states six invariants and no consent clause; the roadmap's consent is §4.4's ENROLLMENT act. The residual is attribution, bounded by four gates, each pinned by a named control |
 | 2b | `SIGNOFF-REPAIR.11.2.4` (see row 1a20) | — | ⭐ `.11.12` closed here (REPAIR-0211): the boot order is fail-closed, and the bind is a DOCUMENTED profile choice reported at boot rather than a gate — a refusal would have broken the trusted-LAN profile the book ships |
-| 3 | `SIGNOFF-REPAIR.11.2.7` | `pending` | 🔴 **one of `COMMIT.md`'s four pre-push gates answers differently about the same bytes** — the script unittest suite reported `failures=1, errors=2` and then **17 ERROR + 2 FAIL** minutes later, with `git status --porcelain -- scripts/` empty between them. All 19 sit in the three modules that drive a subprocess with a deadline. ⚠️ Load is the obvious suspect and is recorded as a HYPOTHESIS, not the finding; the finding is that a gate is red with no established cause, and **the push cadence depends on this gate** |
+| 3 | `SIGNOFF-REPAIR.11.2.7` | `done` | ⛔ CLOSED as a duplicate of `.11.26` by DOC-0162 (2026-09-25). Previously: 🔴 **one of `COMMIT.md`'s four pre-push gates answers differently about the same bytes** — the script unittest suite reported `failures=1, errors=2` and then **17 ERROR + 2 FAIL** minutes later, with `git status --porcelain -- scripts/` empty between them. All 19 sit in the three modules that drive a subprocess with a deadline. ⚠️ Load is the obvious suspect and is recorded as a HYPOTHESIS, not the finding; the finding is that a gate is red with no established cause, and **the push cadence depends on this gate** |
 | 1c | `SIGNOFF-REPAIR.11.2.1.3.2` | `done` | ✅ **DOC-0110 — CONSUMED CLEANUP IS DELIVERED, and `.11.2.1.3` and `.11.2.1` CLOSE WITH IT.** Every family in tracked Rust that accumulates now has a producer-owned `Drop` guard: a passing test removes its own fixture, a failing one keeps it with its WAL. Seven leaves, `REPAIR-0370`–`0376`. ⭐ **Each of the four acceptance clauses was answered by a COMMAND, not from memory** — the defect `REPAIR-0364` found and `.11.2.1.3.1` repeated is closing a leaf against unmet acceptance. Both states produced in three suites; the family **2,375 → 2,375** with PEAK 2,376 under full-rate sampling; `git diff --diff-filter=D` over the whole batch returns **nothing**; `census_retained_fixtures.py` untouched at **0 commits** and `browser-lifetime-controls` **21 → 21**. 🔴 **The batch's largest finding was about its own instrument**: the census had been reporting **15.9% of the bytes**, because it read only Rust while the largest families are created by Python. ⛔ **One named exception**: `conformance-stubs` keeps no cleanup, because its `static OnceLock` closes an `ETXTBSY` race the remote runner already caught and the retrofit would reintroduce it — decided, with its trigger, in `docs/decisions/2026-09-21_one-fixture-family-keeps-no-cleanup-and-the-reason-is-a-race.md` |
 | 8 | `SIGNOFF-REPAIR.11.2.4` (see row 1a20) | — | ⭐ `.3.5.2.1` is DONE (REPAIR-0196) and vacates this row: the held decision dissolved when a migration showed the route never needed to name a tenant. It was held two days over three shapes that all shared the same false premise |
 | 1a | `SIGNOFF-REPAIR.13.4.6` | `done` | ✅ DOC-0088 — the director's *ensure the findings hold*, a SIXTH time, over this session's eleven commits. **18 claims re-derived, 14 hold, 4 moved, and the pass found 2 defects nobody had claimed anything about.** ⭐ The compiler, not a grep, named the four `held_publication_grant` call sites. 🔴 **All four failures are one habit**: a number true when taken and published unpinned — and in two of them the publishing commit is what staled it. 🔴 The worst has THREE errors in one sentence and it is the case I had already decided to REJECT, which is why it got less scrutiny than the argument I was resting on |

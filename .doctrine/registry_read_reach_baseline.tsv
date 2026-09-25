@@ -48,7 +48,7 @@
 # a site act with a held owning grant (`.6.1.5.4`, `.9.1.2`).
 agent_profiles	agent_profiles→agent_roles	list_node_presence,create_thread_auto!,respondent_candidate!,inspect_call,replay!,presence,write_profile_in_tx!,current_profile!,lock_existing_profile_anchor_in_tx!,current_profile_in_tx!,offer_to_subscribers
 deployment_assignments	-	record_drift!,record_receipt,load_assignment!,list_assignments
-deployment_targets	-	list_deployment_targets!,assign!
+deployment_targets	-	list_deployment_targets!,assign!,record_receipt
 derivations	-	submit!,children_of!
 evaluation_calibrations	-	list_calibrations!
 evaluation_corpora	-	record_run!,list_corpora!,create_trial!,record_gate!

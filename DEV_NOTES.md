@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-25 — Only the principal a target names can report what it runs (`SIGNOFF-REPAIR.9.3.3.2`)
+
+`REASONBRAID-REPAIR-0526`.
+
+- 🔴 **Root cause:** `record_receipt`'s only gate was the tenant join, and `deployment_targets` had no column naming a reporter.
+- ✅ **Fix:** `migrations/0114` adds `deployment_targets.reporter`; `TargetInput.reporter` is required, parsed by the new shared `api::parse_principal` and required enrolled AFTER the authority check (no enrolment oracle); `record_receipt` reads the reporter in its tenant join and refuses `NoReporter` / `NotTheReporter` by name. `DeploymentError::Storage` + `api::deployment_refusal` make the reporter lookup's store failure a `500`. Decision record added; renaming/replacing a reporter deferred (`.9.3.3.2.1`).
+- ⭐ RED first live; 9 of 9 viable mutants caught (1 of the tool's unviable), including the check ORDER and the store-fault arm (withholding `agent_roles` for one request).
+
 ## 2026-09-25 — A deployment must deploy what its publication published (`SIGNOFF-REPAIR.9.3.3.1`)
 
 `REASONBRAID-REPAIR-0525`.

@@ -14,13 +14,16 @@ pub const TARGET_TYPES: [&str; 3] = ["repository", "node_policy", "service_confi
 pub const OBSERVED_STATES: [&str; 4] = ["pending", "applied", "waived", "rejected"];
 
 /// The target submission (`.5.2`): the id + the type + the OWNING AUTHORITY
-/// (the grant reference — the ADR-021 authority, checked like the policies').
+/// (the grant reference — the ADR-021 authority, checked like the policies') +
+/// the REPORTER, the one principal that files the target's receipts
+/// (`SIGNOFF-REPAIR.9.3.3.2`).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TargetInput {
     pub target_id: String,
     pub target_type: String,
     pub owning_authority: String,
+    pub reporter: String,
 }
 
 /// The assignment submission (`.5.2`): the target + the effective
@@ -80,7 +83,22 @@ pub enum DeploymentError {
         target_id: String,
         publication_id: String,
     },
+    /// The reporter named at registration is not a principal id.
+    MalformedReporter(String),
+    /// The reporter named at registration is not enrolled.
+    UnenrolledReporter(String),
+    /// The target was registered before targets named a reporter
+    /// (`migrations/0114`), so it takes no receipt.
+    NoReporter(String),
+    /// The caller is not the principal the target names.
+    NotTheReporter {
+        principal: String,
+        target_id: String,
+    },
     Duplicate(String),
+    /// The store could not answer: the server's fault, never the caller's
+    /// (`api::deployment_refusal` answers it `500`).
+    Storage(String),
 }
 
 impl std::fmt::Display for DeploymentError {
@@ -136,6 +154,27 @@ impl std::fmt::Display for DeploymentError {
                     "assignment ({target_id}, {publication_id}) does not exist"
                 )
             }
+            DeploymentError::Storage(detail) => write!(f, "the deployment store failed: {detail}"),
+            DeploymentError::MalformedReporter(r) => write!(
+                f,
+                "reporter `{r}` is not a principal id (expected hpr_… | rol_…)"
+            ),
+            DeploymentError::UnenrolledReporter(r) => {
+                write!(f, "reporter `{r}` is not an enrolled principal")
+            }
+            DeploymentError::NoReporter(t) => write!(
+                f,
+                "target `{t}` names no reporter — it was registered before targets named \
+                 one, so it takes no receipt"
+            ),
+            DeploymentError::NotTheReporter {
+                principal,
+                target_id,
+            } => write!(
+                f,
+                "principal `{principal}` is not target `{target_id}`'s reporter — only the \
+                 principal the target names files its receipts"
+            ),
             DeploymentError::Duplicate(what) => {
                 write!(
                     f,
@@ -182,13 +221,28 @@ pub async fn register_target(
             input.owning_authority.clone(),
         ));
     }
+    // `SIGNOFF-REPAIR.9.3.3.2`: the target names the one principal that files its
+    // receipts, and it must be one that can
+    // (`docs/decisions/2026-09-25_a-target-names-its-reporter.md`). ⛔ AFTER the
+    // authority, so a caller that may not register learns nothing about which
+    // principals are enrolled; and a store failure here is the server's
+    // (`Storage`), not an unenrolled reporter.
+    let reporter = crate::api::parse_principal(&input.reporter)
+        .ok_or_else(|| DeploymentError::MalformedReporter(input.reporter.clone()))?;
+    let enrolled = crate::api::reader_tenant(pool, &reporter)
+        .await
+        .map_err(|error| DeploymentError::Storage(error.to_string()))?;
+    if enrolled.is_none() {
+        return Err(DeploymentError::UnenrolledReporter(input.reporter.clone()));
+    }
     let inserted = sqlx::query(
-        "INSERT INTO deployment_targets (target_id, target_type, owning_authority) \
-         VALUES ($1, $2, $3)",
+        "INSERT INTO deployment_targets (target_id, target_type, owning_authority, reporter) \
+         VALUES ($1, $2, $3, $4)",
     )
     .bind(&input.target_id)
     .bind(&input.target_type)
     .bind(&input.owning_authority)
+    .bind(reporter.id_string())
     .execute(pool)
     .await;
     match inserted {
@@ -302,9 +356,11 @@ pub async fn assign(
     })
 }
 
-/// Record the receipt (the OBSERVED digest + the state — the attestation).
+/// Record the receipt (the OBSERVED digest + the state — the attestation),
+/// filed by the principal the target names (`SIGNOFF-REPAIR.9.3.3.2`).
 pub async fn record_receipt(
     pool: &PgPool,
+    principal: &GrantSubject,
     tenant_id: &str,
     target_id: &str,
     publication_id: &str,
@@ -323,24 +379,41 @@ pub async fn record_receipt(
     // a target is site-wide by design — so the join is the ownership check, and
     // an assignment whose publication is not the caller's answers as an absent
     // assignment does.
-    let exists: Option<bool> = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM deployment_assignments a \
+    //
+    // ⛔ `SIGNOFF-REPAIR.9.3.3.2`: the same read returns the target's REPORTER,
+    // and only that principal files the receipt. The tenant join answers first,
+    // so a caller of another tenant gets the unknown-assignment answer it always
+    // got; a caller of the right tenant that the target does not name is refused
+    // by name. The owner is deliberately not enough: ADR-021's receipt is what the
+    // target OBSERVED, and the operator who assigned the desired pair is the hope.
+    let reporter: Option<Option<String>> = sqlx::query_scalar(
+        "SELECT t.reporter FROM deployment_assignments a \
          JOIN policy_publications p ON p.publication_id = a.publication_id \
-         WHERE a.target_id = $1 AND a.publication_id = $2 AND p.tenant_id = $3)",
+         JOIN deployment_targets t ON t.target_id = a.target_id \
+         WHERE a.target_id = $1 AND a.publication_id = $2 AND p.tenant_id = $3",
     )
     .bind(target_id)
     .bind(publication_id)
     .bind(tenant_id)
-    .fetch_one(pool)
+    .fetch_optional(pool)
     .await
     .map_err(|_| DeploymentError::UnknownAssignment {
         target_id: target_id.to_string(),
         publication_id: publication_id.to_string(),
     })?;
-    if !exists.unwrap_or(false) {
+    let Some(reporter) = reporter else {
         return Err(DeploymentError::UnknownAssignment {
             target_id: target_id.to_string(),
             publication_id: publication_id.to_string(),
+        });
+    };
+    let Some(reporter) = reporter else {
+        return Err(DeploymentError::NoReporter(target_id.to_string()));
+    };
+    if reporter != principal.id_string() {
+        return Err(DeploymentError::NotTheReporter {
+            principal: principal.id_string(),
+            target_id: target_id.to_string(),
         });
     }
     sqlx::query(

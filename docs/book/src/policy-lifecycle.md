@@ -487,6 +487,31 @@ nothing ever read it back.
 
 ## Deployment and receipts
 
+A **target** is where a policy is applied: a `repository`, a `node_policy` or a
+`service_config`. Registering one names its owning authority, a grant the caller
+holds that covers `deployment_target_register` ([Authority](authority.md)), and
+its **reporter**, the one principal allowed to say what the target is running:
+
+```bash
+curl -s -X POST localhost:4310/v1/deployment-targets \
+  -H 'x-reasonbraid-principal: hpr_0192…' \
+  -H 'content-type: application/json' \
+  -d '{
+        "target_id": "gateway-v2",
+        "target_type": "service_config",
+        "owning_authority": "grt_hpr_0192…",
+        "reporter": "rol_0192…"
+      }'
+```
+
+The reporter is a human (`hpr_…`) or an agent role (`rol_…`) and must be
+enrolled; a malformed or unenrolled one is refused by name. Name the principal
+that runs where the policy is applied, not the operator: the operator states what
+the target *should* run, and the reporter states what it *does* run. Those checks
+run only after the caller's authority is accepted, so a caller that may not
+register a target cannot use the refusals to learn which principals are enrolled.
+`GET /v1/deployment-targets` shows each target's `reporter`.
+
 A publication does not reach a target by itself. `POST /v1/deployments` assigns
 one publication to one target in a **canary wave**, recording the *desired* pair
 — the ref and its digest. Both come from the publication; the caller names them
@@ -529,11 +554,13 @@ target reported against a value nobody published (`SIGNOFF-REPAIR.9.3.3.1`).
 
 The target then reports back. `POST
 /v1/deployments/{target_id}/{publication_id}/receipt` is the **attestation**: the
-digest the target says it is actually running, and the state it reached.
+digest the target says it is actually running, and the state it reached. **Only
+the target's reporter files it.** Anyone else, including the operator who
+registered the target and assigned the publication, is refused by name:
 
 ```bash
 curl -s -X POST "localhost:4310/v1/deployments/gateway-v2/pub_0192…/receipt" \
-  -H 'x-reasonbraid-principal: hpr_0192…' \
+  -H 'x-reasonbraid-principal: rol_0192…' \
   -H 'content-type: application/json' \
   -d '{"observed_digest": "sha256:…", "observed_state": "applied"}'
 ```
@@ -541,6 +568,16 @@ curl -s -X POST "localhost:4310/v1/deployments/gateway-v2/pub_0192…/receipt" \
 `observed_state` is one of `pending`, `applied`, `waived` or `rejected`; anything
 else is refused with the vocabulary. A receipt for an assignment that was never
 made is refused, as is a malformed digest.
+
+The reporter must also belong to the tenant whose publication was assigned: a
+caller from another tenant gets the same *unknown assignment* answer whether or
+not the assignment exists. A target registered before targets named a reporter
+(`migrations/0114`, 2026-09-25) has none and **takes no receipt from anyone**. The
+server does not guess one. There is no way yet to name or replace the reporter of
+an existing target; that is deferred until a target needs one
+(`SIGNOFF-REPAIR.9.3.3.2.1`). Until 2026-09-25 any principal of the owning tenant
+could file a receipt (`SIGNOFF-REPAIR.9.3.3.2`,
+`docs/decisions/2026-09-25_a-target-names-its-reporter.md`).
 
 `GET /v1/deployments` returns the assignments with **both halves side by side**:
 
@@ -565,8 +602,9 @@ records, and `unauthorized_modification` and `pending_rollout` are the two
 categories for those two shapes.
 
 ⛔ **A receipt is the target's claim, not the deployment's verification.** The
-server stores the digest the caller reported; nothing here re-reads the target to
-confirm it. The receipt makes the disagreement *visible* and recordable — it does
+server stores the digest the reporter reported; nothing here re-reads the target
+to confirm it, and the reporter's identity is only as strong as the deployment
+profile's authentication. The receipt makes the disagreement *visible* and recordable — it does
 not adjudicate it.
 
 ## Drift

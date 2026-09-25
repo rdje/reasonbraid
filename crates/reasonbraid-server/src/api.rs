@@ -453,15 +453,21 @@ pub(crate) fn resolve_principal(headers: &HeaderMap) -> Result<GrantSubject, Con
                 "missing `{PRINCIPAL_HEADER}` header (dev profile: hpr_… | rol_…)"
             ))
         })?;
+    parse_principal(value).ok_or_else(|| {
+        ControlApiError::unauthenticated(format!(
+            "malformed `{PRINCIPAL_HEADER}` value `{value}` (expected hpr_… | rol_…)"
+        ))
+    })
+}
+
+/// A principal id as the control API spells one: `hpr_…` (a human) or `rol_…`
+/// (an agent role). One definition for the header and for a body field that
+/// names a principal (`deployments::register_target`'s reporter).
+pub(crate) fn parse_principal(value: &str) -> Option<GrantSubject> {
     if let Ok(human) = value.parse::<HumanPrincipalId>() {
-        return Ok(GrantSubject::Human(human));
+        return Some(GrantSubject::Human(human));
     }
-    if let Ok(role) = value.parse::<AgentRoleId>() {
-        return Ok(GrantSubject::Role(role));
-    }
-    Err(ControlApiError::unauthenticated(format!(
-        "malformed `{PRINCIPAL_HEADER}` value `{value}` (expected hpr_… | rol_…)"
-    )))
+    value.parse::<AgentRoleId>().ok().map(GrantSubject::Role)
 }
 
 /// Resolve the delegation from the envelope's `authority_context` (`.1.4.2`,
@@ -4919,6 +4925,20 @@ fn lifecycle_refusal(error: crate::lifecycle::LifecycleError) -> ControlApiError
     }
 }
 
+/// A deployment verb's error on the wire: a store fault is the server's (`500`,
+/// logged), never a refusal of the caller's request. ⚠️ Only the reporter lookup
+/// (`SIGNOFF-REPAIR.9.3.3.2`) produces `Storage` today; the module's older store
+/// sites still answer as refusals and are `.9.3.3.6`'s.
+fn deployment_refusal(error: crate::deployments::DeploymentError) -> ControlApiError {
+    match error {
+        crate::deployments::DeploymentError::Storage(detail) => {
+            eprintln!("control api: the deployment store failed: {detail}");
+            ControlApiError::internal()
+        }
+        refusal => ControlApiError::invalid_command(refusal.to_string()),
+    }
+}
+
 /// A publication transition's error on the wire: a store fault is the server's
 /// (`500`, logged), never a refusal of the caller's request, which is how both
 /// transition verbs used to answer it (`SIGNOFF-REPAIR.9.2.2`, `.7.4.2`'s rule).
@@ -5241,7 +5261,7 @@ async fn register_deployment_target(
     }
     match crate::deployments::register_target(&state.pool, &principal, &input).await {
         Ok(()) => Ok(Json(json!({ "target_id": input.target_id }))),
-        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+        Err(error) => Err(deployment_refusal(error)),
     }
 }
 
@@ -5257,18 +5277,22 @@ async fn list_deployment_targets(
             "an unenrolled principal reads no targets",
         ));
     }
-    let rows: Vec<(String, String, String)> = sqlx::query_as(
-        "SELECT target_id, target_type, owning_authority FROM deployment_targets ORDER BY target_id",
+    // `SIGNOFF-REPAIR.9.3.3.2`: `reporter` is `null` for a target registered
+    // before `migrations/0114`, which takes no receipt.
+    let rows: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
+        "SELECT target_id, target_type, owning_authority, reporter \
+         FROM deployment_targets ORDER BY target_id",
     )
     .fetch_all(&state.pool)
     .await?;
     Ok(Json(
         rows.into_iter()
-            .map(|(target_id, target_type, owning_authority)| {
+            .map(|(target_id, target_type, owning_authority, reporter)| {
                 json!({
                     "target_id": target_id,
                     "target_type": target_type,
                     "owning_authority": owning_authority,
+                    "reporter": reporter,
                 })
             })
             .collect(),
@@ -5294,7 +5318,7 @@ async fn assign_deployment(
     };
     match crate::deployments::assign(&state.pool, &caller_tenant, &input).await {
         Ok(row) => Ok(Json(row)),
-        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+        Err(error) => Err(deployment_refusal(error)),
     }
 }
 
@@ -5338,6 +5362,7 @@ async fn record_deployment_receipt(
     };
     match crate::deployments::record_receipt(
         &state.pool,
+        &principal,
         &caller_tenant,
         &target_id,
         &publication_id,
@@ -5346,7 +5371,7 @@ async fn record_deployment_receipt(
     .await
     {
         Ok(row) => Ok(Json(row)),
-        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+        Err(error) => Err(deployment_refusal(error)),
     }
 }
 

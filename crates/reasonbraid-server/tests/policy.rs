@@ -3582,7 +3582,8 @@ async fn a_held_grant_must_cover_the_administrative_verb_it_is_cited_for() {
                 "deployment target",
                 "/v1/deployment-targets".to_string(),
                 json!({ "target_id": format!("cv-target-{arm}"),
-                        "target_type": "repository", "owning_authority": grant_id }),
+                        "target_type": "repository", "owning_authority": grant_id,
+                        "reporter": human_id }),
             ),
             (
                 "correction",
@@ -4411,7 +4412,17 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
     let (_, projection_digest) = make_chain("1", "dp-pub-1", true).await;
     let _ = make_chain("2", "dp-pub-2", false).await;
 
-    // 1. The target registers (the authority checked).
+    // 1. The target registers (the authority checked), naming its REPORTER — the
+    // one principal that files its receipts (`SIGNOFF-REPAIR.9.3.3.2`): here an
+    // agent role of the tenant, not the operator who registers and assigns.
+    let (status, reporter) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "dp-reporter", "tenant_id": tenant_id }),
+    )
+    .await;
+    assert_eq!(status, 200, "the reporter role enrols: {reporter}");
+    let reporter_id = reporter["principal_id"].as_str().unwrap().to_string();
     let (status, _) = post(
         &client,
         &base,
@@ -4421,6 +4432,7 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
             "target_id": "dp-target",
             "target_type": "repository",
             "owning_authority": grant_id,
+            "reporter": reporter_id,
         }),
     )
     .await;
@@ -4434,6 +4446,7 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
             "target_id": "dp-ghost-authority",
             "target_type": "repository",
             "owning_authority": "grt_ghost",
+            "reporter": reporter_id,
         }),
     )
     .await;
@@ -4447,10 +4460,108 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
             "target_id": "dp-bad-type",
             "target_type": "not_a_type",
             "owning_authority": grant_id,
+            "reporter": reporter_id,
         }),
     )
     .await;
     assert_eq!(status, 400, "the unknown type refuses: {refused}");
+    // The reporter must be a principal that can file: a malformed id and an
+    // unenrolled one are refused by name. ⛔ And only AFTER the authority: a
+    // caller that may not register gets the authority refusal whatever reporter
+    // it names, so the verb is no oracle over which principals are enrolled.
+    const UNENROLLED: &str = "hpr_00000000-0000-7000-8000-000000009332";
+    for (label, target, authority, named, expected) in [
+        (
+            "a malformed reporter",
+            "dp-bad-reporter",
+            grant_id.as_str(),
+            "nobody",
+            "not a principal id",
+        ),
+        (
+            "an unenrolled reporter",
+            "dp-ghost-reporter",
+            grant_id.as_str(),
+            UNENROLLED,
+            "not an enrolled principal",
+        ),
+        (
+            "an unauthorized caller",
+            "dp-oracle",
+            "grt_ghost",
+            UNENROLLED,
+            "owning authority",
+        ),
+    ] {
+        let (status, refused) = post(
+            &client,
+            &base,
+            "/v1/deployment-targets",
+            &human_id,
+            &json!({
+                "target_id": target,
+                "target_type": "repository",
+                "owning_authority": authority,
+                "reporter": named,
+            }),
+        )
+        .await;
+        assert_eq!(status, 400, "{label} refuses: {refused}");
+        let message = refused["message"].as_str().unwrap_or_default();
+        assert!(message.contains(expected), "{label}: {refused}");
+    }
+    let (status, targets) = get(&client, &base, "/v1/deployment-targets", &human_id).await;
+    assert_eq!(status, 200, "the targets read: {targets}");
+    let listed: Vec<&Value> = targets
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|row| {
+            row["target_id"]
+                .as_str()
+                .is_some_and(|id| id.starts_with("dp-"))
+        })
+        .collect();
+    assert_eq!(
+        listed.len(),
+        1,
+        "only the valid target was stored: {targets}"
+    );
+    assert_eq!(listed[0]["reporter"], json!(reporter_id), "{targets}");
+    // A store failure while looking the reporter up is the server's `500`, never
+    // "not an enrolled principal". The reporter is an agent role and the caller a
+    // human, so withholding `agent_roles` for one request fails only that lookup;
+    // the table is restored before anything is asserted.
+    sqlx::raw_sql("ALTER TABLE agent_roles RENAME TO agent_roles_withheld")
+        .execute(&pool)
+        .await
+        .expect("withhold the table");
+    let (status, answered) = post(
+        &client,
+        &base,
+        "/v1/deployment-targets",
+        &human_id,
+        &json!({
+            "target_id": "dp-store-fault",
+            "target_type": "repository",
+            "owning_authority": grant_id,
+            "reporter": reporter_id,
+        }),
+    )
+    .await;
+    sqlx::raw_sql("ALTER TABLE agent_roles_withheld RENAME TO agent_roles")
+        .execute(&pool)
+        .await
+        .expect("restore the table");
+    assert_eq!(
+        status, 500,
+        "the reporter lookup's failure is the server's: {answered}"
+    );
+    assert_eq!(
+        answered["code"],
+        json!("dependency_unavailable"),
+        "{answered}"
+    );
 
     // 2. The assignment rides the EFFECTIVE publication, and its desired pair
     // IS that publication's (`SIGNOFF-REPAIR.9.3.3.1`, ADR-021: *the effective
@@ -4562,12 +4673,50 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
     .await;
     assert_eq!(status, 400, "the bad digest refuses: {refused}");
 
-    // 3. The receipt attests the OBSERVED digest + the state.
+    // 3. The receipt attests the OBSERVED digest + the state — and only the
+    // principal the TARGET names may file it (`SIGNOFF-REPAIR.9.3.3.2`). Any
+    // principal of the owning tenant used to write the observed half, which is
+    // the drift comparison's input.
+    let (status, bystander) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "dp-bystander", "tenant_id": tenant_id }),
+    )
+    .await;
+    assert_eq!(status, 200, "the bystander role enrols: {bystander}");
+    let bystander_id = bystander["principal_id"].as_str().unwrap().to_string();
+    // ⭐ The operator is refused too: it registered the target and assigned the
+    // desired pair, and ADR-021's receipt is what the target OBSERVED, not what
+    // the operator hoped.
+    for (label, who) in [
+        ("a same-tenant role the target does not name", &bystander_id),
+        ("the operator who registered and assigned", &human_id),
+    ] {
+        let (status, refused) = post(
+            &client,
+            &base,
+            "/v1/deployments/dp-target/dp-pub-1/receipt",
+            who,
+            &json!({
+                "observed_digest": projection_digest,
+                "observed_state": "applied",
+            }),
+        )
+        .await;
+        assert_eq!(status, 400, "{label} files no receipt: {refused}");
+        assert!(
+            refused["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("reporter"),
+            "{label}: the refusal names the reporter rule: {refused}"
+        );
+    }
     let (status, receipt) = post(
         &client,
         &base,
         "/v1/deployments/dp-target/dp-pub-1/receipt",
-        &human_id,
+        &reporter_id,
         &json!({
             "observed_digest": projection_digest,
             "observed_state": "applied",
@@ -4581,19 +4730,67 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
         &client,
         &base,
         "/v1/deployments/dp-target/dp-pub-1/receipt",
-        &human_id,
+        &reporter_id,
         &json!({ "observed_digest": projection_digest, "observed_state": "vibes" }),
     )
     .await;
     assert_eq!(status, 400, "the unknown state refuses: {refused}");
+    // A target registered before targets named a reporter (`migrations/0114`
+    // left its `reporter` NULL) takes no receipt from anyone: nothing is
+    // inferred for it.
+    sqlx::query(
+        "INSERT INTO deployment_targets (target_id, target_type, owning_authority) \
+         VALUES ('dp-legacy', 'repository', $1)",
+    )
+    .bind(&grant_id)
+    .execute(&pool)
+    .await
+    .expect("the pre-0114 target seeds");
+    let (desired_ref, desired_digest) = desired_pair(&pool, "dp-pub-1").await;
+    let (status, assigned) = post(
+        &client,
+        &base,
+        "/v1/deployments",
+        &human_id,
+        &json!({
+            "target_id": "dp-legacy", "publication_id": "dp-pub-1", "wave": 1,
+            "desired_ref": desired_ref, "desired_digest": desired_digest,
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the legacy target is assigned: {assigned}");
+    for who in [&reporter_id, &human_id] {
+        let (status, refused) = post(
+            &client,
+            &base,
+            "/v1/deployments/dp-legacy/dp-pub-1/receipt",
+            who,
+            &json!({ "observed_digest": projection_digest, "observed_state": "applied" }),
+        )
+        .await;
+        assert_eq!(
+            status, 400,
+            "a target naming no reporter takes no receipt: {refused}"
+        );
+        assert!(
+            refused["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("names no reporter"),
+            "{refused}"
+        );
+    }
 
     // 4. The list carries the desired/observed pair.
     let (status, deployments) = get(&client, &base, "/v1/deployments", &human_id).await;
     assert_eq!(status, 200, "the deployments read: {deployments}");
     let deployments = deployments.as_array().unwrap();
-    assert_eq!(deployments.len(), 1, "{deployments:?}");
-    assert_eq!(deployments[0]["desired_digest"], json!(projection_digest));
-    assert_eq!(deployments[0]["observed_digest"], json!(projection_digest));
+    assert_eq!(deployments.len(), 2, "{deployments:?}");
+    // Ordered by target: `dp-legacy`, never reported, then `dp-target`.
+    assert_eq!(deployments[0]["target_id"], json!("dp-legacy"));
+    assert_eq!(deployments[0]["observed_digest"], Value::Null);
+    assert_eq!(deployments[1]["desired_digest"], json!(projection_digest));
+    assert_eq!(deployments[1]["observed_digest"], json!(projection_digest));
 }
 
 #[tokio::test]
@@ -4812,7 +5009,8 @@ async fn the_drift_corrections_and_outcomes_ride_the_records() {
         &base,
         "/v1/deployment-targets",
         &human_id,
-        &json!({ "target_id": "cr-target", "target_type": "repository", "owning_authority": grant_id }),
+        &json!({ "target_id": "cr-target", "target_type": "repository", "owning_authority": grant_id,
+                 "reporter": human_id }),
     )
     .await;
     assert_eq!(status, 200, "the target registers");
@@ -5631,6 +5829,7 @@ async fn citing_an_authority_requires_holding_it() {
             "target_id": "cite-target-foreign",
             "target_type": "repository",
             "owning_authority": bob_grant,
+            "reporter": alice_id,
         }),
     )
     .await;
@@ -5896,6 +6095,7 @@ async fn citing_an_authority_requires_holding_it() {
             "target_id": "cite-target-own",
             "target_type": "repository",
             "owning_authority": alice_grant,
+            "reporter": alice_id,
         }),
     )
     .await;
@@ -6640,7 +6840,8 @@ async fn the_lifecycle_row_carries_the_tenant_that_owns_it() {
         &base,
         "/v1/deployment-targets",
         &alice_id,
-        &json!({ "target_id": "lto-target", "target_type": "repository", "owning_authority": alice_grant }),
+        &json!({ "target_id": "lto-target", "target_type": "repository", "owning_authority": alice_grant,
+                 "reporter": alice_id }),
     )
     .await;
     assert_eq!(status, 200, "the target registers");
@@ -7165,7 +7366,7 @@ async fn the_lifecycle_verbs_refuse_another_tenants_publication() {
         "/v1/deployment-targets",
         &alice_id,
         &json!({ "target_id": "gtn-target", "target_type": "repository",
-                 "owning_authority": alice_grant }),
+                 "owning_authority": alice_grant, "reporter": alice_id }),
     )
     .await;
     assert_eq!(status, 200, "the target registers");
@@ -7539,7 +7740,7 @@ async fn every_lifecycle_read_is_bound_to_its_own_tenant() {
                     "/v1/deployment-targets".to_string(),
                     json!({
                     "target_id": ids("target"), "target_type": "repository",
-                    "owning_authority": grant }),
+                    "owning_authority": grant, "reporter": who }),
                 ),
                 (
                     "/v1/deployments".to_string(),

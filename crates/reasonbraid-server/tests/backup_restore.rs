@@ -318,11 +318,17 @@ async fn the_backup_status_is_reported_from_what_the_scripts_leave_behind() {
     );
     let dump_path = backups.join(&dump);
     let dump_arg = dump_path.to_str().unwrap();
+    // `SIGNOFF-REPAIR.11.3.2`: the connection rides libpq's environment, so an
+    // AMBIENT libpq variable meant for another server must not ride along —
+    // this test server speaks neither TLS nor a password, and both are asked
+    // for here. The script clears them before it exports the target's own.
     let (ok, out) = run_script(
         "restore.sh",
         &[
             ("BACKUP_FILE", dump_arg),
             ("RESTORE_DATABASE_URL", &target_url),
+            ("PGSSLMODE", "require"),
+            ("PGPASSWORD", "meant-for-another-server"),
         ],
     );
     assert!(ok, "restore.sh: {out}");
@@ -332,6 +338,39 @@ async fn the_backup_status_is_reported_from_what_the_scripts_leave_behind() {
     assert_eq!(restore["matches_backup"], json!(true), "{body}");
     assert_eq!(restore["target_database"], json!(target));
     assert!(restore["migrations"].as_u64().unwrap() > 0, "{body}");
+
+    // (2b) `SIGNOFF-REPAIR.11.3.2`: the restore test runs `pg_restore --clean`, so
+    // its target must be EMPTY. The target just restored into now carries this
+    // product's schema; restoring into it again is refused before anything is
+    // dropped, and the receipt it already earned is untouched.
+    let (ok, out) = run_script(
+        "restore.sh",
+        &[
+            ("BACKUP_FILE", dump_arg),
+            ("RESTORE_DATABASE_URL", &target_url),
+        ],
+    );
+    assert!(!ok, "a populated target must not be restored into: {out}");
+    assert!(out.contains("is not empty"), "the refusal says why: {out}");
+    // …and the live database is refused BY NAME, before its contents are even
+    // looked at: `DATABASE_URL` is the database this run is serving from.
+    let (ok, out) = run_script(
+        "restore.sh",
+        &[
+            ("BACKUP_FILE", dump_arg),
+            ("RESTORE_DATABASE_URL", &url),
+            ("DATABASE_URL", &url),
+        ],
+    );
+    assert!(!ok, "the live database must not be restored into: {out}");
+    assert!(
+        out.contains("names the live database"),
+        "the refusal says why: {out}"
+    );
+    assert!(
+        !out.contains("pg_restore"),
+        "nothing ran against the live database: {out}"
+    );
 
     // (3) Damage the dump. The restore test refuses it before restoring
     // anything, and the report stops counting it.

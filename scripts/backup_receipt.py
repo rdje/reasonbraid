@@ -10,13 +10,25 @@ size, and reports §18.5's backup/restore status
 
     backup_receipt.py write-backup  DUMP DATABASE_URL
     backup_receipt.py check         DUMP
-    backup_receipt.py write-restore DUMP TARGET_URL MIGRATIONS
+    backup_receipt.py write-restore DUMP URL_VARIABLE MIGRATIONS
     backup_receipt.py redact        URL
+    backup_receipt.py redact-env    URL_VARIABLE
+    backup_receipt.py pg-env        URL_VARIABLE
+    backup_receipt.py pg-names
+    backup_receipt.py guard-restore-target
 
 ⛔ A receipt never carries a credential. A database URL is reduced to its
 database NAME, and `redact` prints one without its user information. That is
 what the scripts echo, because `backup.sh` used to print `$DATABASE_URL`
 verbatim, password and all.
+
+⛔ A URL never rides a command line (`SIGNOFF-REPAIR.11.3`). Any local user
+reads another process's arguments, so a URL passed to `pg_restore` or to this
+helper disclosed its password for as long as the process ran. The subcommands
+that take a URL_VARIABLE read it from the ENVIRONMENT by name, and `pg-env`
+turns it into libpq's own variables (`PGHOST`, `PGPASSWORD`, …), one
+`NAME=value` per line, for the script to export before calling a client with no
+connection argument at all.
 """
 
 from __future__ import annotations
@@ -24,9 +36,10 @@ from __future__ import annotations
 import datetime
 import hashlib
 import json
+import os
 import sys
 from pathlib import Path
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qsl, unquote, urlsplit, urlunsplit
 
 BACKUP_FORMAT = "reasonbraid-backup/1"
 RESTORE_FORMAT = "reasonbraid-restore/1"
@@ -62,9 +75,105 @@ def redact(url: str) -> str:
     """The URL without user information or query, safe to print or record."""
     parts = urlsplit(url)
     host = parts.hostname or ""
-    if parts.port is not None:
-        host = f"{host}:{parts.port}"
+    # A port that is not a number is left out rather than raised on: the
+    # redactor is what prints the refusal of such a URL (`SIGNOFF-REPAIR.11.3.2`
+    # found it raising instead).
+    try:
+        port = parts.port
+    except ValueError:
+        port = None
+    if port is not None:
+        host = f"{host}:{port}"
     return urlunsplit((parts.scheme, host, parts.path, "", ""))
+
+
+# libpq's environment variable for each URL component and query parameter it
+# honours (PostgreSQL 16, "Environment Variables"). A parameter outside this
+# table is REFUSED, never dropped: a silently ignored `sslmode` downgrades the
+# connection without a word.
+LIBPQ_PARAMETERS = {
+    "host": "PGHOST",
+    "port": "PGPORT",
+    "user": "PGUSER",
+    "password": "PGPASSWORD",
+    "dbname": "PGDATABASE",
+    "service": "PGSERVICE",
+    "options": "PGOPTIONS",
+    "application_name": "PGAPPNAME",
+    "connect_timeout": "PGCONNECT_TIMEOUT",
+    "sslmode": "PGSSLMODE",
+    "sslcert": "PGSSLCERT",
+    "sslkey": "PGSSLKEY",
+    "sslrootcert": "PGSSLROOTCERT",
+    "sslcrl": "PGSSLCRL",
+    "channel_binding": "PGCHANNELBINDING",
+    "gssencmode": "PGGSSENCMODE",
+    "target_session_attrs": "PGTARGETSESSIONATTRS",
+}
+
+
+def libpq_environment(url: str) -> dict[str, str]:
+    """libpq's variables for one `postgres://` URL, or `ReceiptError` if any part
+    of it cannot be carried faithfully."""
+    parts = urlsplit(url)
+    if parts.scheme not in ("postgres", "postgresql"):
+        raise ReceiptError(f"not a postgres:// URL: {redact(url)}")
+    location = parts.netloc.rpartition("@")[2]
+    if "," in location:
+        raise ReceiptError(f"a URL naming several hosts is not supported: {redact(url)}")
+    try:
+        port = parts.port
+    except ValueError:
+        raise ReceiptError(f"the URL's port is not a number: {redact(url)}") from None
+    env: dict[str, str] = {}
+    if parts.hostname:
+        env["PGHOST"] = parts.hostname
+    if port is not None:
+        env["PGPORT"] = str(port)
+    if parts.username:
+        env["PGUSER"] = unquote(parts.username)
+    if parts.password is not None:
+        env["PGPASSWORD"] = unquote(parts.password)
+    name = unquote(parts.path.lstrip("/"))
+    if name:
+        env["PGDATABASE"] = name
+    for key, value in parse_qsl(parts.query, keep_blank_values=True, strict_parsing=bool(parts.query)):
+        if key not in LIBPQ_PARAMETERS:
+            raise ReceiptError(f"the URL carries `{key}`, which no libpq variable carries: {redact(url)}")
+        env[LIBPQ_PARAMETERS[key]] = value
+    for variable, value in env.items():
+        if "\n" in value or "\0" in value:
+            raise ReceiptError(f"{variable} would hold a newline or NUL: {redact(url)}")
+    return env
+
+
+def url_from(variable: str) -> str:
+    """The URL held by an environment variable, named rather than passed."""
+    url = os.environ.get(variable, "")
+    if not url:
+        raise ReceiptError(f"{variable} is not set")
+    return url
+
+
+def database_identity(url: str) -> tuple[str, int, str]:
+    """(host, port, database) as written — the comparison `guard_restore_target`
+    makes. Literal: `localhost` and `127.0.0.1` differ, which is why the target
+    must also be EMPTY."""
+    env = libpq_environment(url)
+    return (env.get("PGHOST", "").lower(), int(env.get("PGPORT", "5432")), env.get("PGDATABASE", ""))
+
+
+def guard_restore_target(environ: dict[str, str]) -> None:
+    """Refuse a restore target that names the live database (`DATABASE_URL`)."""
+    target = environ.get("RESTORE_DATABASE_URL", "")
+    if not target:
+        raise ReceiptError("RESTORE_DATABASE_URL is not set")
+    live = environ.get("DATABASE_URL", "")
+    if live and database_identity(target) == database_identity(live):
+        raise ReceiptError(
+            f"RESTORE_DATABASE_URL names the live database ({redact(target)}, the same as "
+            "DATABASE_URL); the restore test restores into an ISOLATED database, never the live one"
+        )
 
 
 def write_json(path: Path, body: dict) -> None:
@@ -153,11 +262,20 @@ def main(argv: list[str]) -> int:
             print(f"restore: {receipt['dump']} matches its receipt "
                   f"(sha256 {receipt['sha256'][:12]}…)")
         elif command == "write-restore" and len(args) == 3:
-            body = write_restore(Path(args[0]), args[1], int(args[2]))
+            body = write_restore(Path(args[0]), url_from(args[1]), int(args[2]))
             print(f"restore: receipt {body['dump']}{RESTORE_SUFFIX} "
                   f"({body['migrations']} migrations in {body['target_database']})")
         elif command == "redact" and len(args) == 1:
             print(redact(args[0]))
+        elif command == "redact-env" and len(args) == 1:
+            print(redact(url_from(args[0])))
+        elif command == "pg-env" and len(args) == 1:
+            for variable, value in libpq_environment(url_from(args[0])).items():
+                print(f"{variable}={value}")
+        elif command == "pg-names" and not args:
+            print("\n".join(sorted(LIBPQ_PARAMETERS.values())))
+        elif command == "guard-restore-target" and not args:
+            guard_restore_target(dict(os.environ))
         else:
             print(__doc__, file=sys.stderr)
             return 2

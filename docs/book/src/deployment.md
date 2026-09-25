@@ -1912,12 +1912,28 @@ never took:
 | step | what it checks | what it writes |
 | --- | --- | --- |
 | `backup.sh` | `pg_dump` succeeded; it refuses to overwrite an existing dump | `<dump>.backup.json`: size, SHA-256, time taken, database name |
-| `restore.sh` | **before restoring**, the dump matches its receipt byte for byte (a truncated or altered dump is refused); **after**, the restored database carries the applied migrations | `<dump>.restore.json`: time restored, target database, migrations present |
+| `restore.sh` | **before restoring**, the dump matches its receipt byte for byte (a truncated or altered dump is refused), the target is not the live database, and the target is **empty**; **after**, the restored database carries the applied migrations | `<dump>.restore.json`: time restored, target database, migrations present |
 
 `BACKUP_DIR` chooses the directory (default `target/backups/`). ⛔ Neither a
 receipt nor the scripts' own output contains a password: a database URL is
 reduced to its database name, and printed without its user information.
 `backup.sh` used to print `$DATABASE_URL` verbatim.
+
+⛔ **The restore test restores only into a database made for it**
+(`SIGNOFF-REPAIR.11.3.2`). It runs `pg_restore --clean`, which drops what it
+restores over, and until 2026-09-26 it would do that to whatever database
+`RESTORE_DATABASE_URL` named, the live one included. It now refuses, before
+anything is dropped, a target that names the same host, port and database as
+`DATABASE_URL`, and any target that already holds a table, view or sequence.
+Neither refusal has an override: a restore into a database that already holds
+data is not a restore test. Create the target with `createdb` first, as above.
+The comparison with `DATABASE_URL` is literal, so `localhost` and `127.0.0.1`
+count as different hosts; the emptiness check is what catches that case.
+
+The restore script also keeps the target's URL off every command line, where
+any local user could read the password in the process list: it passes the
+connection to `pg_restore` and `psql` through libpq's own environment
+variables, after clearing any that were already set.
 
 Start the server with the same directory, `rb-server --backup-dir <dir>`, and a
 tenant administrator can read the status:

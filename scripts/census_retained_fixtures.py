@@ -175,6 +175,18 @@ POPULATIONS = {
         payload=["data/*"],
         require_state="stopped",
     ),
+    # `crates/reasonbraid-server/tests/support/browser.rs` (`SIGNOFF-REPAIR.
+    # 11.1.1`): the console's browser controls keep their Chrome workspace when
+    # a control fails or the browser's cleanup is unconfirmed. `browser.json`
+    # names the process group, `chrome.stderr` is Chrome's own account, and
+    # `crashes/` holds any real dump; all three stay.
+    "console": Population(
+        name="console",
+        root="target/console-browser",
+        prefix="run-",
+        receipt="browser.json",
+        payload=["profile", "cache", "config", "data", "state", "tmp"],
+    ),
 }
 
 
@@ -264,6 +276,8 @@ class Fixture:
         for key in ("pid", "postgres_pid", "command_pid"):
             if key in self.receipt:
                 add("pid", self.receipt[key], f"{self.population.receipt}:{key}")
+        if "browser_group" in self.receipt:
+            add("group", self.receipt["browser_group"], f"{self.population.receipt}:browser_group")
 
         stderr = self.path / "stderr.log"
         if stderr.is_file():
@@ -486,6 +500,7 @@ def self_test() -> int:
     failures: list[str] = []
     browser = POPULATIONS["browser"]
     pg = POPULATIONS["pg"]
+    console = POPULATIONS["console"]
 
     def build(
         name: str,
@@ -511,6 +526,12 @@ def self_test() -> int:
                 (path / "stderr.log").write_text(
                     "browser ownership: " + json.dumps({"browser_group": group}) + "\n"
                 )
+        elif population.name == "console":
+            (path / "profile" / "deep").mkdir(parents=True)
+            (path / "profile" / "deep" / "model.bin").write_bytes(b"x" * payload_bytes)
+            (path / "crashes").mkdir()
+            (path / "crashes" / "dump.txt").write_text("a real crash dump is evidence\n")
+            (path / "chrome.stderr").write_text("DevTools listening on ws://127.0.0.1:9/\n")
         else:
             (path / "data" / "base").mkdir(parents=True)
             (path / "data" / "base" / "1").write_bytes(b"x" * payload_bytes)
@@ -551,6 +572,16 @@ def self_test() -> int:
             "a live worker pid",
             build("livepid", browser, {"pid": os.getpid()}),
             fragment=f"pid {os.getpid()}",
+        )
+        expect(
+            "a clean, aged, uncited console fixture",
+            build("cleanconsole", console, {"state": "failed", "browser_group": 1}),
+            fragment=None,
+        )
+        expect(
+            "a live console browser group, named by its own receipt",
+            build("liveconsole", console, {"state": "failed", "browser_group": os.getpgrp()}),
+            fragment=f"group {os.getpgrp()}",
         )
         expect(
             "a live postmaster",
@@ -661,6 +692,17 @@ def self_test() -> int:
         if (pgsubject.path / "data" / "base").exists():
             failures.append("pg reduction: PGDATA cluster storage survived")
 
+        # A console fixture keeps its receipt, Chrome's stderr and any dump.
+        consolesubject = build(
+            "reduceconsole", console, {"state": "failed", "browser_group": 1}, payload_bytes=60_000
+        )
+        _, console_dropped = reduce_fixture(consolesubject)
+        for kept in ("browser.json", "chrome.stderr", "crashes/dump.txt"):
+            if not (consolesubject.path / kept).is_file():
+                failures.append(f"console reduction: {kept} was evidence and it is gone")
+        if (consolesubject.path / "profile").exists() or console_dropped < 60_000:
+            failures.append("console reduction: the Chrome profile payload survived")
+
         # ── The re-check: a fixture that goes LIVE between census and --confirm ──
         # The census below finds nothing to refuse. The fixture then acquires a
         # live browser group, exactly as a real one does when a human takes a
@@ -695,9 +737,10 @@ def self_test() -> int:
     if failures:
         return 1
     print(
-        "self-test: 9 refusal arms, both liveness branches (EPERM injected and, where the "
+        "self-test: 11 refusal arms, both liveness branches (EPERM injected and, where the "
         "machine allows, a real unsignalable pid), the citation guard's two directions, a "
-        "browser and a pg reduction that kept every receipt and dropped every payload byte, "
+        "browser, a pg and a console reduction that kept every receipt and dropped every "
+        "payload byte, "
         "the kept-tree guard seen refusing a destroyed keeper, a fixture that went live "
         "between census and retirement left whole, and a live fixture untouched"
     )

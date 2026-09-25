@@ -8,7 +8,8 @@
 // XSS discipline: every datum renders through `el()`/`textContent` — HTML is
 // never assembled from data. Thread content, evidence URIs, and provider text
 // are untrusted; they stay inert text. JSON bodies render inside <pre> text
-// nodes.
+// nodes. `tests/console_browser.rs` runs this page in the pinned Chrome and
+// checks both halves: every view renders, and markup in data stays text.
 
 const IDENTITY_KEY = "reasonbraid-console-identity";
 
@@ -27,6 +28,15 @@ function $id(id) {
   return document.getElementById(id);
 }
 
+// A child that is not already a DOM node renders as TEXT: a number or boolean as
+// its string, a structured value as its JSON. Nothing a view passes can become
+// markup, and nothing throws. Until SIGNOFF-REPAIR.11.1.1 only strings were
+// converted, so the Timeline's numeric `aggregate_version` reached
+// `appendChild` and every thread with an event showed "client error".
+function textOf(value) {
+  return typeof value === "object" ? JSON.stringify(value) : String(value);
+}
+
 function el(tag, attrs, ...children) {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(attrs || {})) {
@@ -38,7 +48,7 @@ function el(tag, attrs, ...children) {
   for (const child of children) {
     if (child === null || child === undefined) continue;
     node.appendChild(
-      typeof child === "string" ? document.createTextNode(child) : child,
+      child instanceof Node ? child : document.createTextNode(textOf(child)),
     );
   }
   return node;

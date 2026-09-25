@@ -11,7 +11,7 @@ Three GitHub Actions workflows fire on every push and pull request:
 | Workflow | Purpose | Local equivalent |
 | --- | --- | --- |
 | `rust` (job `check`) | local pinned compiler, required Chrome, strict format/lint, locked workspace worker build and tests; database suites skip here and run live in pg-tests | worker build + `make check` |
-| `rust` (job `pg-tests`) | all Python controls, then the full owned PostgreSQL 16 collection and required crash/reconnect demonstration | Python unittest discovery + `bash scripts/run_pg_tests.sh --demo` |
+| `rust` (job `pg-tests`) | all Python controls, then the full owned PostgreSQL 16 collection and required crash/reconnect demonstration, run through the pinned-browser launcher so the console's browser controls (`console_browser`, which need both) run rather than skip | Python unittest discovery + `python3 -B scripts/ci_browser.py -- bash scripts/run_pg_tests.sh --demo` |
 | `rust` (job `book`) | pinned mdBook 0.5.4 installation in local stores and book build | `make book` with the matching installed renderer |
 | `doctrines` | the 13-doctrine enforcer (same as the pre-commit hook) | `make gate` |
 | `supply-chain` | `cargo deny` (advisories/bans/licenses/sources) + `gitleaks` secret scan | `make deny` / `make secret-scan` |

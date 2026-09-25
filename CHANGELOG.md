@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-25 — The web console's Timeline works again, and a real browser now checks the console (`SIGNOFF-REPAIR.11.1.1`)
+
+`REASONBRAID-REPAIR-0513`.
+
+- 🔴 **Before:** the Timeline view showed only an error for every conversation that had any events. A number reached a piece of the page that only accepted text, and no test ever opened the console in a browser, so nothing noticed.
+- ✅ **Now:** every value on the page is shown as text. A new check opens the console in the pinned test browser against a real server and database, clicks through it the way an operator does, and compares what the page shows with what the server returned. It also puts HTML in a conversation's title and confirms it stays text and never runs. The check failed on the old page with the exact error an operator saw, and three deliberately broken versions of the repair each fail it.
+- 🔎 **Found on the way:** the browser used by the web-page reading tool (off unless switched on) contacts Google services by itself: time, accounts, updates and a messaging registration. The book now says so, and `.7.3.7` owns the fix.
+
 ## 2026-09-25 — The web console checked point by point: no security hole, but one view is broken (`SIGNOFF-REPAIR.11.1`)
 
 `REASONBRAID-DOC-0180`.

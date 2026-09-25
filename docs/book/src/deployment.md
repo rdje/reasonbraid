@@ -2520,6 +2520,14 @@ written. Each is now defined from what the code does:
 - **`egress_class: "listed"`** — the list is the §12.4 destination **classes**,
   not a list of hosts. The pack classifies every dial (public only; loopback,
   private, link-local and reserved refused) rather than consulting an allowlist.
+  ⚠️ **For R3 this holds for the page's requests, not the browser's own.**
+  Measured on 2026-09-25 (`SIGNOFF-REPAIR.7.3.7`): Chrome, left on a blank page
+  under the worker's flags, connected to Google's time, accounts, component
+  update and messaging services within 20 seconds. The worker's own retained
+  runs show the messaging registration too. Those requests come from the
+  browser process, so the page-level `Fetch` gate never sees them, the render
+  receipt does not list them, and no destination class is applied. They reach
+  only Google's public services. R3 is off unless `RB_ENABLE_R5R3RX=1`.
 - **`javascript_policy: "allow-bounded"` (R3)** — inline script runs, under four
   bounds: external script subresources are refused at the browser's `Fetch`
   domain, a wall-clock budget and a step budget bound the interaction, the

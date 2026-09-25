@@ -28,6 +28,22 @@ console's check now parses the panel's query with the route's own extractor,
 and compares every field the panel reads with the fields the server writes, so
 the panel and the server cannot drift apart unnoticed again.
 
+⚠️ **The Timeline did not render until `SIGNOFF-REPAIR.11.1.1`.** For every
+thread with at least one event it showed only this:
+
+```text
+HTTP 0: client error: TypeError: Failed to execute 'appendChild' on 'Node':
+parameter 1 is not of type 'Node'.
+```
+
+The event's version number went into a table cell as a number, and the page's
+rendering helper passed anything that was not a string to the browser as if it
+were a page element. Every check the console had read `app.js` as text, and
+none of them ran it, so nothing noticed. The helper now turns any value that is
+not already a page element into text: a number or `true`/`false` as written, a
+structured value as its JSON. A browser control now runs the page (see
+[How the console is checked](#how-the-console-is-checked)).
+
 The four thread reads give **one answer** for a thread the caller cannot see:
 `404 scope_hidden`, whether the id belongs to another tenant or to no thread at
 all (`SIGNOFF-REPAIR.17`). Until that repair the timeline answered an absent
@@ -55,11 +71,18 @@ the CLI prints; a role without `tenant_admin` cannot open the inbox view.
 - **Read-only by construction.** The page performs no write: no POST, no
   command envelope. Anything that mutates state happens through the CLI (or
   the API directly).
-- **Text-safe rendering.** Every datum renders through `textContent`; HTML is
-  never assembled from thread content or evidence text, which stays inert
-  untrusted data. The offline test suite enforces this mechanically (the page
-  references only the documented GET surfaces, names no write verb, and never
-  assembles HTML from data).
+- **Text-safe rendering.** Every datum renders as text; HTML is never
+  assembled from thread content or evidence text, which stays inert untrusted
+  data. The offline test suite enforces this mechanically (the page references
+  only the documented GET surfaces, names no write verb, and never assembles
+  HTML from data), and the browser control below checks it in a real browser.
+- **A slow view can land under a later one** (open, `SIGNOFF-REPAIR.11.1.2`).
+  Each view clears the page, then fetches, then draws. Nothing stops an earlier
+  view's answer from drawing after you have clicked another view, or changed
+  identity. On a slow server, clicking Timeline and then Audit can show the
+  timeline's rows under the Audit heading. The page is read-only, so nothing
+  is changed by it, but it can show one thread's data as another's. Until the
+  repair, wait for a view to finish before clicking the next.
 - **Dev-profile trust.** The header is trusted (the Phase 0/1 dev stance) —
   the page adds nothing on top of it; workload identity is Phase 2 (ADR-006/
   ADR-007).
@@ -67,3 +90,36 @@ the CLI prints; a role without `tenant_admin` cannot open the inbox view.
 Try it: start the server (`make demo` does, or
 `rb-server --database-url …`), open `http://127.0.0.1:4310/`, enter the
 principal and tenant ids you enrolled, and click **Load**.
+
+## How the console is checked
+
+Two kinds of check, because they catch different things:
+
+- **Reading the page's code** (`crates/reasonbraid-server/src/ui.rs`, offline):
+  the page names only the documented read routes, never writes `innerHTML`,
+  never sends a write, and the inbox panel's query and fields match the
+  server's own types.
+- **Running the page in a real browser**
+  (`crates/reasonbraid-server/tests/console_browser.rs`): the real API and
+  console run over a throwaway PostgreSQL, and the pinned Chrome for Testing
+  build walks through the page the way an operator does: type the principal
+  and tenant, click **Load**, open the thread, click **Timeline**, then
+  **Audit**. Each view is compared cell by cell with what the server returned
+  for the same read. A second run puts markup in a thread's subject and
+  objective, for example `<img src=x onerror=…>`, and checks that the Threads,
+  Thread and Timeline views show it as text, build no element from it, and run
+  none of it.
+
+Run the browser check locally with:
+
+```bash
+python3 -B scripts/ci_browser.py -- bash scripts/run_pg_tests.sh console_browser
+```
+
+`ci_browser.py` downloads and verifies the pinned browser; `run_pg_tests.sh`
+starts a throwaway database. Without the browser the check skips and prints a
+`SKIP (R3_BROWSER_BIN unset)` line even when the run passes; without a database
+it skips as every database suite does. In CI it runs in the `pg-tests` job, the one with a database, which
+runs its suites through `ci_browser.py` for this reason. The browser is kept
+off the network: no hostname resolves, and the console is reached by address
+(`127.0.0.1`).

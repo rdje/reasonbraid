@@ -72,8 +72,20 @@ jobs:
           export PG_BIN="$(pg_config --bindir)"
           python3 -B -c 'import os,sys; sys.path.insert(0,"scripts"); import run_pg_tests as r; r.pg_tools(dict(os.environ))'
           python3 -B -m unittest discover -s scripts/tests -p 'test_*.py' -v
-          bash scripts/run_pg_tests.sh --demo
+          # The console's browser controls (SIGNOFF-REPAIR.11.1.1) need a
+          # database AND the pinned Chrome, and this is the job with the
+          # database: without the browser they would skip in both jobs.
+          python3 -B scripts/ci_browser.py --timeout 5400 -- bash scripts/run_pg_tests.sh --demo
           CHECKS
+      - name: Retain console browser evidence on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: console-browser-evidence
+          path: |
+            target/ci-browser/*/browser.json
+            target/console-browser/**
+          if-no-files-found: ignore
 
   book:
     runs-on: ubuntu-24.04

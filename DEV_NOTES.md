@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-25 — The web console's Timeline works again, and a real browser now checks the console (`SIGNOFF-REPAIR.11.1.1`)
+
+`REASONBRAID-REPAIR-0513`.
+
+- 🔴 **Root cause:** `app.js`'s `el()` converted only STRING children to text nodes and passed everything else to `appendChild`. `viewEvents` hands it `aggregate_version`, a number, so every thread with an event threw `TypeError: Failed to execute 'appendChild' on 'Node': parameter 1 is not of type 'Node'` and `render()` showed *client error*. The console's only controls read `app.js` as text.
+- ✅ **Fix:** `el()` appends a `Node` as itself and anything else as a text node, a structured value as its JSON (`textOf`).
+- ✅ **Control:** `crates/reasonbraid-server/tests/console_browser.rs` drives the pinned Chrome over CDP (`chromiumoxide`, a new dev-dependency already in the lock) against `api_router` + `ui_router` over a `run_pg_tests.sh` database. The browse worker could not be used: its deny-policies refuse `app.js` and every `fetch`. Chrome runs in its own process group with its stderr pipe as the exit detector, and a resolver rule that resolves no hostname, since `--disable-background-networking` still let it open six connections to Google in 20 s. A failed run keeps its workspace with a `browser.json` receipt, which `census_retained_fixtures.py` now reads as a fourth population.
+- ⭐ RED in the real browser with the exact operator-visible error; GREEN 3/3; 3 hand mutants of the fix (JavaScript is outside `cargo-mutants`) all caught. CI: `pg-tests` runs its suites through `ci_browser.py`.
+
 ## 2026-09-25 — The web console checked point by point: no security hole, but one view is broken (`SIGNOFF-REPAIR.11.1`)
 
 `REASONBRAID-DOC-0180`.

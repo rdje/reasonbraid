@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-25 — Changing an assessment is refused instead of silently ignored (`SIGNOFF-REPAIR.7.4.8`)
+
+`REASONBRAID-REPAIR-0518`.
+
+- 🔴 **Root cause:** `claims::submit`'s replay pre-check selected only `assessment_id` by the six-column key and returned it; the body was never compared.
+- ✅ **Fix:** the pre-check reads the seven body fields; identical replays, different is `ReplayMismatch { assessment_id, differs }` → `409 idempotency_mismatch` on the route, a named `400` in the `assess` step (whose command has its own key).
+- ⭐ RED on both writers; 9 tool-listed mutants (hand-applied through the live suite) + 1 hand mutant (a field dropped from the comparison) caught. Stated gap: concurrent first submissions still race the pre-check (pre-existing, `.9.2.2`'s shape).
+
 ## 2026-09-25 — An assessment's author is whoever submitted it (`SIGNOFF-REPAIR.7.4.7`)
 
 `REASONBRAID-REPAIR-0517`.

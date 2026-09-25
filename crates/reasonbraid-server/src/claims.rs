@@ -177,6 +177,15 @@ pub enum AssessmentError {
         reason: Option<String>,
     },
     ExcerptAbsent,
+    /// The same key — claim, snapshot, kind, author, namespace and tenant —
+    /// already holds an assessment whose body differs (`SIGNOFF-REPAIR.7.4.8`).
+    /// Returning its id would report the resubmission as stored while keeping
+    /// none of it, so the fields that differ are named instead. The row is the
+    /// caller's own: the key carries its author and tenant.
+    ReplayMismatch {
+        assessment_id: String,
+        differs: Vec<&'static str>,
+    },
     /// The store itself failed. A database fault does not prove anything
     /// about the caller's input, and must never be reported as though it did.
     Storage(sqlx::Error),
@@ -208,6 +217,15 @@ impl std::fmt::Display for AssessmentError {
                 "the cited snapshot is tombstoned ({}) and must not be relied upon; \
                  acquire the evidence again for a live snapshot",
                 reason.as_deref().unwrap_or("no reason recorded")
+            ),
+            Self::ReplayMismatch {
+                assessment_id,
+                differs,
+            } => write!(
+                f,
+                "this claim, snapshot and kind already carry your assessment `{assessment_id}`, \
+                 and this one differs in {}; a changed assessment is not stored over it",
+                differs.join(", ")
             ),
             Self::ExcerptAbsent => write!(
                 f,
@@ -321,8 +339,23 @@ where
     if excerpt.is_empty() || !bytes.windows(excerpt.len()).any(|window| window == excerpt) {
         return Err(AssessmentError::ExcerptAbsent);
     }
-    let existing: Option<String> = sqlx::query_scalar(
-        "SELECT assessment_id FROM claim_assessments \
+    // ⛔ The replay compares the BODY too (`SIGNOFF-REPAIR.7.4.8`). It used to
+    // return the key's id whatever was submitted, so a changed excerpt,
+    // selector or rationale was reported as accepted and silently dropped.
+    type Existing = (
+        String,
+        String,
+        Option<String>,
+        String,
+        String,
+        String,
+        String,
+        String,
+    );
+    let existing: Option<Existing> = sqlx::query_as(
+        "SELECT assessment_id, excerpt, selector, rationale, source_authority, freshness, \
+                independence, uncertainty \
+         FROM claim_assessments \
          WHERE claim_id = $1 AND snapshot_id = $2 AND assessment = $3 AND author = $4 \
            AND claim_namespace = $5 AND authored_by_tenant = $6 LIMIT 1",
     )
@@ -335,8 +368,40 @@ where
     .fetch_optional(&mut *executor)
     .await
     .map_err(AssessmentError::Storage)?;
-    if let Some(existing) = existing {
-        return Ok(existing);
+    if let Some((
+        assessment_id,
+        excerpt,
+        selector,
+        rationale,
+        source_authority,
+        freshness,
+        independence,
+        uncertainty,
+    )) = existing
+    {
+        let differs: Vec<&'static str> = [
+            ("excerpt", excerpt == submission.excerpt),
+            ("selector", selector == submission.selector),
+            ("rationale", rationale == submission.rationale),
+            (
+                "source_authority",
+                source_authority == submission.source_authority,
+            ),
+            ("freshness", freshness == submission.freshness),
+            ("independence", independence == submission.independence),
+            ("uncertainty", uncertainty == submission.uncertainty),
+        ]
+        .into_iter()
+        .filter(|(_, same)| !same)
+        .map(|(field, _)| field)
+        .collect();
+        if differs.is_empty() {
+            return Ok(assessment_id);
+        }
+        return Err(AssessmentError::ReplayMismatch {
+            assessment_id,
+            differs,
+        });
     }
     let assessment_id = crate::snapshots::evidence_id("asn");
     sqlx::query(

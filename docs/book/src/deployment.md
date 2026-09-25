@@ -648,6 +648,27 @@ for example (captured from the control):
 The route's other body refusals keep their HTTP status and gain the same `code`:
 `413` for a body over the size limit, `415` for one not sent as JSON.
 
+**Resubmitting an assessment** (`SIGNOFF-REPAIR.7.4.8`). The same claim,
+snapshot, kind and author name one assessment. Sending it again unchanged
+returns the same `assessment_id`. Sending it again with anything else changed
+(`excerpt`, `selector`, `rationale`, or one of the four quality indicators) is
+refused, naming what differs, and the stored row is left as it was:
+
+```json
+{
+  "code": "idempotency_mismatch",
+  "message": "this claim, snapshot and kind already carry your assessment `asn_…`, and this one differs in excerpt, rationale; a changed assessment is not stored over it"
+}
+```
+
+That is `409` on `POST /v1/assessments`, the code a reused key with a different
+payload gets everywhere in the API. In a thread's `assess` step the
+contribution is refused with `400 invalid_command` and the same sentence,
+because there the command has its own idempotency key and `idempotency_mismatch`
+would read as that key's. Until the repair both writers answered as if the
+change had been stored: the route with the first row's id, the step with a
+contribution event carrying an excerpt the row never held.
+
 A **verifier** is not recorded at all. ROADMAP §12.7 has an assessment record its
 author and verifier, and §12.8 describes the verifier as *a second authorized
 verifier*: a different party's act. Nothing here performs one yet

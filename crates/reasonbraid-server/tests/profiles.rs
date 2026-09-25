@@ -10122,6 +10122,158 @@ async fn an_assessment_is_attributed_to_the_principal_that_submitted_it() {
     );
 }
 
+/// Register `locator` and file `bytes` as its snapshot, as `principal`; the
+/// snapshot's id.
+async fn acquire(
+    client: &reqwest::Client,
+    base: &str,
+    principal: &str,
+    locator: &str,
+    bytes: &[u8],
+) -> String {
+    let (status, reference) = post(
+        client,
+        base,
+        "/v1/resources",
+        principal,
+        &json!({ "original_locator": locator, "scheme": "https" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{reference}");
+    let (status, snapshot) = post(
+        client,
+        base,
+        "/v1/snapshots",
+        principal,
+        &json!({
+            "reference_id": reference["resource_id"],
+            "original_locator": locator,
+            "final_locator": locator,
+            "resolver_id": "r0-https-fetcher",
+            "resolver_version": "0.1.0",
+            "raw_digest": reasonbraid_server::fetcher::digest_sha256_hex(bytes),
+            "byte_length": bytes.len(),
+            "media_type": "text/plain",
+            "bytes_base64": base64_std(bytes),
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "{snapshot}");
+    snapshot["snapshot_id"].as_str().unwrap().to_string()
+}
+
+/// `SIGNOFF-REPAIR.7.4.8`: resubmitting an assessment under the same key
+/// (claim, snapshot, kind and author) returned the FIRST row's id and stored
+/// none of the resubmission — a changed excerpt, selector or rationale was
+/// reported as accepted and silently dropped. An identical resubmission still
+/// replays; a different one is refused, naming what differs, the command API's
+/// own rule for a reused key with a different payload.
+#[tokio::test]
+async fn a_resubmitted_assessment_replays_or_is_refused_never_dropped() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, who) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "assessment-resubmitter" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{who}");
+    let principal = who["principal_id"].as_str().unwrap().to_string();
+    let snapshot_id = acquire(
+        &client,
+        &base,
+        &principal,
+        "https://example.org/resubmitted-evidence",
+        b"the ledger balanced to the cent in every quarter",
+    )
+    .await;
+    let body = |excerpt: &str, rationale: &str, selector: Option<&str>| {
+        json!({
+            "claim_id": "clm_resubmitted",
+            "snapshot_id": snapshot_id,
+            "assessment": "supports",
+            "excerpt": excerpt,
+            "rationale": rationale,
+            "selector": selector,
+        })
+    };
+
+    let first = body("balanced to the cent", "the ledger says so", None);
+    let (status, accepted) = post(&client, &base, "/v1/assessments", &principal, &first).await;
+    assert_eq!(status, 200, "{accepted}");
+    let (status, replayed) = post(&client, &base, "/v1/assessments", &principal, &first).await;
+    assert_eq!(status, 200, "an identical resubmission replays: {replayed}");
+    assert_eq!(replayed["assessment_id"], accepted["assessment_id"]);
+
+    for (label, changed, differs) in [
+        (
+            "a changed excerpt and rationale",
+            body("in every quarter", "every quarter balanced", None),
+            vec!["excerpt", "rationale"],
+        ),
+        (
+            "a changed selector",
+            body("balanced to the cent", "the ledger says so", Some("line 1")),
+            vec!["selector"],
+        ),
+        (
+            "changed quality indicators",
+            {
+                let mut changed = body("balanced to the cent", "the ledger says so", None);
+                for field in [
+                    "source_authority",
+                    "freshness",
+                    "independence",
+                    "uncertainty",
+                ] {
+                    changed[field] = json!("revised");
+                }
+                changed
+            },
+            vec![
+                "source_authority",
+                "freshness",
+                "independence",
+                "uncertainty",
+            ],
+        ),
+    ] {
+        let (status, refused) = post(&client, &base, "/v1/assessments", &principal, &changed).await;
+        assert_eq!(status, 409, "{label} is refused: {refused}");
+        assert_eq!(
+            refused["code"],
+            json!("idempotency_mismatch"),
+            "{label}: {refused}"
+        );
+        let message = refused["message"].as_str().unwrap_or_default();
+        for field in differs {
+            assert!(
+                message.contains(field),
+                "{label}: the refusal names `{field}`: {refused}"
+            );
+        }
+    }
+
+    // The row is the first submission's, whole: nothing was half-applied.
+    let (status, read) = get(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{snapshot_id}/assessments"),
+        &principal,
+    )
+    .await;
+    assert_eq!(status, 200, "{read}");
+    assert_eq!(read.as_array().map(Vec::len), Some(1), "one row: {read}");
+    assert_eq!(read[0]["excerpt"], json!("balanced to the cent"), "{read}");
+    assert_eq!(read[0]["rationale"], json!("the ledger says so"), "{read}");
+    assert_eq!(read[0]["selector"], Value::Null, "{read}");
+}
+
 /// Standard base64, for test bodies only — the API's decoder is under test.
 fn base64_std(bytes: &[u8]) -> String {
     const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -12005,6 +12157,28 @@ async fn the_assess_step_records_an_assessment_against_the_thread() {
     assert_eq!(
         status, 400,
         "the unknown assessment kind refuses: {refused}"
+    );
+
+    // The same claim, snapshot and kind with a DIFFERENT excerpt is refused by
+    // name (`SIGNOFF-REPAIR.7.4.8`): it used to return the accepted row's id,
+    // so the contribution's event carried an excerpt the row never stored.
+    let (status, refused) = command(
+        "as-changed-excerpt".into(),
+        "thread.contribute",
+        assessment_body(
+            &claim_digest,
+            &snapshot_id,
+            "the migration preserved every row",
+        ),
+    )
+    .await;
+    assert_eq!(status, 400, "a changed resubmission refuses: {refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("excerpt"),
+        "the refusal names what differs: {refused}"
     );
 
     // A contributor cannot name a verifier (`SIGNOFF-REPAIR.7.4.7`): §12.8's

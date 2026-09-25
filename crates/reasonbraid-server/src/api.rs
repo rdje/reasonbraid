@@ -5579,6 +5579,15 @@ async fn submit_assessment(
         Err(crate::claims::AssessmentError::Storage(cause)) => {
             Err(storage_failure(cause, "claim assessment storage failed"))
         }
+        // A reused key with a different payload: the command API's own rule
+        // and code (`SIGNOFF-REPAIR.7.4.8`).
+        Err(error @ crate::claims::AssessmentError::ReplayMismatch { .. }) => {
+            Err(ControlApiError {
+                status: StatusCode::CONFLICT,
+                code: "idempotency_mismatch",
+                message: error.to_string(),
+            })
+        }
         Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
     }
 }

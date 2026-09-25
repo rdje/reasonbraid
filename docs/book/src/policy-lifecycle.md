@@ -514,8 +514,8 @@ register a target cannot use the refusals to learn which principals are enrolled
 `GET /v1/deployment-targets` shows each target's `reporter`.
 
 A publication does not reach a target by itself. `POST /v1/deployments` assigns
-one publication to one target in a **canary wave**, recording the *desired* pair
-— the ref and its digest. Both come from the publication; the caller names them
+one publication to one target in a **wave**, recording the *desired* pair — the
+ref and its digest. Both come from the publication; the caller names them
 and the server checks them against it:
 
 ```bash
@@ -530,6 +530,16 @@ curl -s -X POST localhost:4310/v1/deployments \
         "desired_digest": "sha256:…"
       }'
 ```
+
+⚠️ **The wave is a label, not a sequencer.** It is a number the caller chooses to
+group targets (a first, small wave of canaries, then the rest), stored with the
+assignment and returned by every read. Nothing orders, holds back or pauses a
+rollout by it: a wave-2 assignment is recorded the moment it is made, whatever
+wave 1's receipts say. That is because the server does not carry out a deployment
+at all yet; it records what should run and what each target reports. Ordering
+by wave arrives with the first code that applies an assignment
+(`SIGNOFF-REPAIR.9.3.3.4.1`,
+`docs/decisions/2026-09-26_the-deployment-wave-is-a-label.md`).
 
 The target must be registered — `/v1/deployment-targets`, in
 [Authority](authority.md) — the

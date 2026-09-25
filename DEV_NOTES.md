@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — The book no longer implies deployments roll out in stages (`SIGNOFF-REPAIR.9.3.3.4`)
+
+`REASONBRAID-DOC-0182`.
+
+- 🔎 **Census:** `wave` is declared, bound and selected back, never compared; nothing acts on `deployment_assignments` beyond recording and reading.
+- ✅ **Decided:** a LABEL (`docs/decisions/2026-09-26_the-deployment-wave-is-a-label.md`); the sequencer is `.9.3.3.4.1`, deferred until the first code path acts on an assignment. The book's *canary wave* became *wave* with the limit stated.
+- 🔎 Found `R-33-35-1` clause 2 (`assign` checks no authority over the target) attached to `.9.3` and owned by no child: opened `.9.3.3.7` (blocking, class 2).
+
 ## 2026-09-26 — A target's reports are kept, not overwritten (`SIGNOFF-REPAIR.9.3.3.3`)
 
 `REASONBRAID-REPAIR-0527`.

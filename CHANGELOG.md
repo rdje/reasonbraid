@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-26 — The book no longer implies deployments roll out in stages (`SIGNOFF-REPAIR.9.3.3.4`)
+
+`REASONBRAID-DOC-0182`.
+
+- 🔴 **Before:** the book said a publication is assigned to a target in a "canary wave", which reads as a staged rollout where a failing first group stops the rest. Nothing does that: the wave number is only stored, and the system does not carry out deployments at all yet.
+- ✅ **Now:** the book says the wave is a label you choose to group targets, and that nothing holds a later wave back. Rollout ordering is tracked for when the system first carries out a deployment itself.
+- 🔎 **Found and tracked:** assigning a publication to a target checks no authority over that target (`.9.3.3.7`, next).
+
 ## 2026-09-26 — A target's reports are kept, not overwritten (`SIGNOFF-REPAIR.9.3.3.3`)
 
 `REASONBRAID-REPAIR-0527`.

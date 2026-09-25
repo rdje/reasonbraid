@@ -9853,7 +9853,6 @@ async fn a_tombstoned_snapshot_is_relied_on_by_nothing_new() {
             "claim_id": "clm_retired",
             "snapshot_id": snapshot_id,
             "assessment": "supports",
-            "author": principal,
             "excerpt": "the budget is exhausted",
             "rationale": "the evidence states the exhaustion",
         })
@@ -9994,6 +9993,132 @@ async fn a_tombstoned_snapshot_is_relied_on_by_nothing_new() {
     assert_eq!(
         status, 200,
         "the new acquisition supports an assessment: {assessed}"
+    );
+}
+
+/// `SIGNOFF-REPAIR.7.4.7`: an assessment's `author` and `verifier` were whatever
+/// the caller wrote, so any principal could attribute an assessment to anyone.
+/// The author is now the principal that submitted it, recorded by the server;
+/// a body naming an author or a verifier is refused as an unknown field, because
+/// §12.8's verifier is a SECOND party's act and a verification act does not exist.
+#[tokio::test]
+async fn an_assessment_is_attributed_to_the_principal_that_submitted_it() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, who) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "assessment-author" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{who}");
+    let principal = who["principal_id"].as_str().unwrap().to_string();
+
+    const LOCATOR: &str = "https://example.org/attributed-evidence";
+    let (status, reference) = post(
+        &client,
+        &base,
+        "/v1/resources",
+        &principal,
+        &json!({ "original_locator": LOCATOR, "scheme": "https" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{reference}");
+    let bytes = b"the ledger balanced to the cent";
+    let (status, snapshot) = post(
+        &client,
+        &base,
+        "/v1/snapshots",
+        &principal,
+        &json!({
+            "reference_id": reference["resource_id"],
+            "original_locator": LOCATOR,
+            "final_locator": LOCATOR,
+            "resolver_id": "r0-https-fetcher",
+            "resolver_version": "0.1.0",
+            "raw_digest": reasonbraid_server::fetcher::digest_sha256_hex(bytes),
+            "byte_length": bytes.len(),
+            "media_type": "text/plain",
+            "bytes_base64": base64_std(bytes),
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "{snapshot}");
+    let snapshot_id = snapshot["snapshot_id"].as_str().unwrap().to_string();
+    let body = |extra: Value| {
+        let mut body = json!({
+            "claim_id": "clm_attributed",
+            "snapshot_id": snapshot_id,
+            "assessment": "supports",
+            "excerpt": "balanced to the cent",
+            "rationale": "the ledger says so",
+        });
+        for (key, value) in extra.as_object().expect("an object") {
+            body[key] = value.clone();
+        }
+        body
+    };
+
+    // Naming someone else as the author, or naming a verifier, is refused and
+    // writes nothing.
+    for (field, extra) in [
+        ("author", json!({ "author": "hpr_someone-else" })),
+        ("verifier", json!({ "verifier": "hpr_an-auditor" })),
+    ] {
+        let (status, refused) =
+            post(&client, &base, "/v1/assessments", &principal, &body(extra)).await;
+        assert_eq!(
+            status, 400,
+            "a body naming its `{field}` is refused: {refused}"
+        );
+        assert!(
+            refused["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains(field),
+            "the refusal names the field: {refused}"
+        );
+        eprintln!("a body naming `{field}`: {refused}");
+    }
+    let written: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM claim_assessments WHERE snapshot_id = $1")
+            .bind(&snapshot_id)
+            .fetch_one(&pool)
+            .await
+            .expect("count the snapshot's assessments");
+    assert_eq!(written, 0, "the refused bodies wrote nothing");
+
+    // Without either field, the server records the submitting principal.
+    let (status, accepted) = post(
+        &client,
+        &base,
+        "/v1/assessments",
+        &principal,
+        &body(json!({})),
+    )
+    .await;
+    assert_eq!(status, 200, "{accepted}");
+    let (status, read) = get(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{snapshot_id}/assessments"),
+        &principal,
+    )
+    .await;
+    assert_eq!(status, 200, "{read}");
+    assert_eq!(
+        read[0]["author"],
+        json!(principal),
+        "the author is the submitter: {read}"
+    );
+    assert_eq!(
+        read[0]["verifier"],
+        Value::Null,
+        "no verifier is asserted: {read}"
     );
 }
 
@@ -10244,7 +10369,6 @@ async fn the_claim_assessments_validate_the_citation() {
             "claim_id": "clm_budget",
             "snapshot_id": snapshot_id,
             "assessment": "supports",
-            "author": human_id,
             "excerpt": excerpt,
             "rationale": "the evidence states the exhaustion",
             "source_authority": "primary",
@@ -10301,7 +10425,6 @@ async fn the_claim_assessments_validate_the_citation() {
             "claim_id": "clm_budget",
             "snapshot_id": snapshot_id,
             "assessment": "proves",
-            "author": human_id,
             "excerpt": "the budget is exhausted",
             "rationale": "nope",
         }))
@@ -10765,7 +10888,6 @@ async fn the_evidence_reads_are_bound_to_the_citing_tenant() {
             "claim_id": "clm_beta",
             "snapshot_id": beta_snapshot,
             "assessment": "supports",
-            "author": beta_id,
             "excerpt": "beta tenant evidence",
             "rationale": "the excerpt appears in the acquired bytes",
         }),
@@ -11354,7 +11476,6 @@ async fn an_assessment_is_read_by_the_tenant_that_authored_it() {
                         "claim_id": guessable,
                         "snapshot_id": snapshot,
                         "assessment": "supports",
-                        "author": principal,
                         "excerpt": excerpt,
                         "rationale": rationale,
                     }),
@@ -11886,6 +12007,38 @@ async fn the_assess_step_records_an_assessment_against_the_thread() {
         "the unknown assessment kind refuses: {refused}"
     );
 
+    // A contributor cannot name a verifier (`SIGNOFF-REPAIR.7.4.7`): §12.8's
+    // verifier is a second party's act, and no step performs one.
+    let (status, refused) = command(
+        "as-verifier".into(),
+        "thread.contribute",
+        json!({
+            "tenant_id": tenant_id,
+            "content": "an assessment naming its own verifier",
+            "kind": "assessment",
+            "assessment": {
+                "claim_digest": claim_digest,
+                "snapshot_id": snapshot_id,
+                "assessment": "supports",
+                "excerpt": "preserved every row",
+                "rationale": "the verifier is asserted, not performed",
+                "verifier": "hpr_an-auditor",
+            },
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "a payload naming a verifier refuses: {refused}"
+    );
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("verifier"),
+        "the refusal names the field: {refused}"
+    );
+
     // A snapshot the site TOMBSTONED supports nothing new (`SIGNOFF-REPAIR.7.4.6`),
     // not even the assessment this step accepted while it was live: the step
     // reaches the same store, and the contribution is refused naming the tombstone.
@@ -12118,7 +12271,6 @@ async fn the_two_assessment_writers_are_two_namespaces() {
             "claim_id": claim_digest,
             "snapshot_id": snapshot_id,
             "assessment": "supports",
-            "author": human_id,
             "excerpt": "balanced to the cent",
             "rationale": "asserted outside the deliberation",
         }),
@@ -12199,7 +12351,6 @@ async fn the_two_assessment_writers_are_two_namespaces() {
             "claim_id": claim_digest,
             "snapshot_id": snapshot_id,
             "assessment": "supports",
-            "author": human_id,
             "excerpt": "balanced to the cent",
             "rationale": "asserted outside the deliberation",
         }),
@@ -12283,8 +12434,10 @@ async fn the_two_assessment_writers_are_two_namespaces() {
         "the same locator and digest replay to ONE shared snapshot"
     );
 
-    // Every field is the first tenant's, `author` included.
-    let (status, forged) = post(
+    // Every field is the first tenant's. `author` was one of them until
+    // `SIGNOFF-REPAIR.7.4.7`; the body can no longer name it, and the stranger
+    // presenting the first tenant's principal as its author is refused outright.
+    let (status, refused) = post(
         &client,
         &base,
         "/v1/assessments",
@@ -12294,6 +12447,24 @@ async fn the_two_assessment_writers_are_two_namespaces() {
             "snapshot_id": snapshot_id,
             "assessment": "supports",
             "author": human_id,
+            "excerpt": "balanced to the cent",
+            "rationale": "asserted outside the deliberation",
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "a body naming its author is refused: {refused}"
+    );
+    let (status, forged) = post(
+        &client,
+        &base,
+        "/v1/assessments",
+        &stranger_id,
+        &json!({
+            "claim_id": claim_digest,
+            "snapshot_id": snapshot_id,
+            "assessment": "supports",
             "excerpt": "balanced to the cent",
             "rationale": "asserted outside the deliberation",
         }),
@@ -12451,7 +12622,6 @@ async fn the_standalone_assessment_route_is_bound_to_the_citing_tenant() {
                     "claim_id": "clm_citation_gate",
                     "snapshot_id": snapshot,
                     "assessment": "supports",
-                    "author": principal,
                     "excerpt": excerpt,
                     "rationale": "the probe",
                 }),
@@ -13082,7 +13252,6 @@ async fn the_g4_hostile_suite_names_every_refusal() {
             "claim_id": "clm_g4",
             "snapshot_id": "snp_missing",
             "assessment": "proves",
-            "author": human_id,
             "excerpt": "x",
             "rationale": "nope",
         }))

@@ -22,16 +22,21 @@ pub const ASSESSMENT_KINDS: [&str; 5] = [
     "unverifiable",
 ];
 
-/// The typed assessment submission.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+/// The standalone route's request body (`POST /v1/assessments`).
+///
+/// ⛔ It names no author and no verifier (`SIGNOFF-REPAIR.7.4.7`). Both used to
+/// be fields of the store's own input, which was also this body, so whatever
+/// the caller wrote was recorded as who authored the assessment and who
+/// verified it. The author is the principal the server authenticated
+/// ([`AssessmentRequest::authored_by`]); a verifier is a SECOND party's act
+/// (ROADMAP §12.8) that nothing here performs. A body naming either is refused
+/// as an unknown field rather than silently re-attributed.
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
-pub struct AssessmentSubmission {
+pub struct AssessmentRequest {
     pub claim_id: String,
     pub snapshot_id: String,
     pub assessment: String,
-    pub author: String,
-    #[serde(default)]
-    pub verifier: Option<String>,
     pub excerpt: String,
     #[serde(default)]
     pub selector: Option<String>,
@@ -43,6 +48,43 @@ pub struct AssessmentSubmission {
     #[serde(default = "unassessed")]
     pub independence: String,
     #[serde(default = "unassessed")]
+    pub uncertainty: String,
+}
+
+impl AssessmentRequest {
+    /// The store's submission, authored by the principal the server
+    /// authenticated for this request.
+    pub fn authored_by(self, author: &str) -> AssessmentSubmission {
+        AssessmentSubmission {
+            claim_id: self.claim_id,
+            snapshot_id: self.snapshot_id,
+            assessment: self.assessment,
+            author: author.to_owned(),
+            excerpt: self.excerpt,
+            selector: self.selector,
+            rationale: self.rationale,
+            source_authority: self.source_authority,
+            freshness: self.freshness,
+            independence: self.independence,
+            uncertainty: self.uncertainty,
+        }
+    }
+}
+
+/// What the store records: a request plus the author the SERVER supplies. Built
+/// by the two writers, never deserialized from a caller.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AssessmentSubmission {
+    pub claim_id: String,
+    pub snapshot_id: String,
+    pub assessment: String,
+    pub author: String,
+    pub excerpt: String,
+    pub selector: Option<String>,
+    pub rationale: String,
+    pub source_authority: String,
+    pub freshness: String,
+    pub independence: String,
     pub uncertainty: String,
 }
 
@@ -299,17 +341,16 @@ where
     let assessment_id = crate::snapshots::evidence_id("asn");
     sqlx::query(
         "INSERT INTO claim_assessments \
-         (assessment_id, claim_id, snapshot_id, assessment, author, verifier, excerpt, \
+         (assessment_id, claim_id, snapshot_id, assessment, author, excerpt, \
           selector, rationale, source_authority, freshness, independence, uncertainty, \
           authored_by_tenant, claim_namespace) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
     )
     .bind(&assessment_id)
     .bind(&submission.claim_id)
     .bind(&submission.snapshot_id)
     .bind(&submission.assessment)
     .bind(&submission.author)
-    .bind(&submission.verifier)
     .bind(&submission.excerpt)
     .bind(&submission.selector)
     .bind(&submission.rationale)

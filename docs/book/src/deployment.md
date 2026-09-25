@@ -631,9 +631,28 @@ and not the other's. Their `derivations` of it remain shared, because a
 derivation is content-addressed in the way a snapshot is — that half is open
 under the same leaf family.
 
-⛔ `author` and `verifier` on an assessment are still unauthenticated caller
-labels. The authorization never reads them; it reads the server-recorded tenant.
-Making those fields trustworthy is open under `SIGNOFF-REPAIR.7.4`.
+**An assessment's author is the principal that submitted it**
+(`SIGNOFF-REPAIR.7.4.7`). Until that repair `author` and `verifier` were fields
+of the request body, so any principal could attribute an assessment to anyone.
+Neither route takes them now: the server records the authenticated principal as
+`author`, and a body naming `author` or `verifier` is refused as an unknown field,
+for example (captured from the control):
+
+```json
+{
+  "code": "invalid_command",
+  "message": "Failed to deserialize the JSON body into the target type: author: unknown field `author`, expected one of `claim_id`, `snapshot_id`, `assessment`, `excerpt`, `selector`, `rationale`, `source_authority`, `freshness`, `independence`, `uncertainty` at line 1 column 33"
+}
+```
+
+The route's other body refusals keep their HTTP status and gain the same `code`:
+`413` for a body over the size limit, `415` for one not sent as JSON.
+
+A **verifier** is not recorded at all. ROADMAP §12.7 has an assessment record its
+author and verifier, and §12.8 describes the verifier as *a second authorized
+verifier*: a different party's act. Nothing here performs one yet
+(`SIGNOFF-REPAIR.7.4.13`), so `verifier` reads `null` on every new row. Rows
+written before the repair keep the `author` and `verifier` their callers wrote.
 
 Two limits are published rather than implied:
 
@@ -1409,8 +1428,9 @@ worth stating once:
 > assert. A caller-set column is safe only where the key space is already
 > partitioned by something the server sets.
 
-`author` on the standalone route is a caller-supplied string — the authorization
-never reads it — so before those two columns it could be aimed, twice over:
+`author` on the standalone route was a caller-supplied string until
+`SIGNOFF-REPAIR.7.4.7` — the authorization never read it — so before those two
+columns it could be aimed, twice over:
 
 | What a caller supplied | What it was handed back | Closed by |
 | --- | --- | --- |
@@ -1419,11 +1439,9 @@ never reads it — so before those two columns it could be aimed, twice over:
 
 Both now write their own row and read their own id back.
 
-⚠️ One case is left open and stated rather than implied: **two principals inside
-one tenant can still alias each other** on the standalone route. That is not a
-disclosure — the authoring gate already admits both of them to that row — so it
-is a deduplication question. Making `author` itself trustworthy is open under
-`SIGNOFF-REPAIR.7.4`.
+The last case, **two principals inside one tenant aliasing each other**, closed
+with `SIGNOFF-REPAIR.7.4.7`: `author` is now the submitting principal, so two
+principals never share a replay key.
 
 Both namespaces ride `GET /v1/claims/{claim_id}/assessments`, labelled. Nothing
 is filtered out: a read that returned only `thread` rows would make the
@@ -1482,9 +1500,9 @@ content probe, and leaving the oracle published — are in
 ⚠️ Two limits stay open and are stated rather than implied. A caller that HAS
 cited the snapshot still gets `the cited snapshot does not exist` and `the
 excerpt does not appear …` as separate answers, which is deliberate: the
-diagnosis is owed to a caller entitled to the bytes. And **two principals inside
-one tenant can still alias each other** on this route, which the citation gate
-does not touch — `SIGNOFF-REPAIR.7.4` owns making `author` trustworthy.
+diagnosis is owed to a caller entitled to the bytes. Two principals inside one
+tenant aliasing each other on this route, which the citation gate does not
+touch, closed with `SIGNOFF-REPAIR.7.4.7` (the author is the submitter).
 
 Run the control in the owned disposable PostgreSQL environment:
 
@@ -1493,9 +1511,12 @@ RB_DEMO=0 bash scripts/run_pg_tests.sh profiles
 ```
 
 `the_two_assessment_writers_are_two_namespaces` drives both writers onto one
-claim digest, then drives a **second tenant** onto the first tenant's row by
-presenting its `author` label. Three labelled rows where two aliased ones used to
-be.
+claim digest, then drives a **second tenant** at the first tenant's row: naming
+the first tenant's principal as `author` is refused, and copying every field the
+body still takes writes the second tenant's own row. Three labelled rows where
+two aliased ones used to be.
+`an_assessment_is_attributed_to_the_principal_that_submitted_it` is the
+attribution control.
 
 ## Public repository and publication checks
 

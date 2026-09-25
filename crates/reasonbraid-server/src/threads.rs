@@ -761,8 +761,9 @@ pub struct AssessmentInput {
     pub rationale: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selector: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub verifier: Option<String>,
+    // ⛔ No `verifier` (`SIGNOFF-REPAIR.7.4.7`): the contributor used to name one,
+    // and ROADMAP §12.8's verifier is a second party's act, which no step
+    // performs. A payload naming one is refused as an unknown field.
     #[serde(default = "unassessed")]
     pub source_authority: String,
     #[serde(default = "unassessed")]
@@ -2385,7 +2386,6 @@ where
                     snapshot_id: input.snapshot_id.clone(),
                     assessment: input.assessment.clone(),
                     author: principal.to_owned(),
-                    verifier: input.verifier.clone(),
                     excerpt: input.excerpt.clone(),
                     selector: input.selector.clone(),
                     rationale: input.rationale.clone(),

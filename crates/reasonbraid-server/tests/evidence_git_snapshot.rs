@@ -603,7 +603,6 @@ async fn an_excerpt_against_a_byteless_snapshot_is_told_what_it_hit() {
             "claim_id": "clm_git_evidence",
             "snapshot_id": filed.snapshot_id,
             "assessment": "supports",
-            "author": citer.principal,
             "excerpt": "anything at all",
             "rationale": "the excerpt cannot be checked against a repository this store does not hold",
         }))

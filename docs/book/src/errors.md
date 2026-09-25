@@ -9,6 +9,14 @@ message is for a person, and it may change.
 { "code": "quota_exceeded", "message": "the tenant's monthly call quota is exhausted" }
 ```
 
+⚠️ **One class of refusal does not keep that promise yet** (`SIGNOFF-REPAIR.11.36`):
+a request body that is not valid JSON for the route, including one with an
+unknown or missing field. Most routes still answer it with the web framework's
+default, `422` and a plain-text sentence with no `code`. Routes repaired so far
+answer `400 invalid_command` with the same sentence as the `message`
+(`POST /v1/assessments`, and the site acts, whose message is fixed). Branch on
+the status as well as the code until the repair lands.
+
 ## Two lists, and why both exist
 
 `ROADMAP.md` §9.8 publishes a **stable registry** of 20 codes, mirrored in

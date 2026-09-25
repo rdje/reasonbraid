@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-25 — An assessment's author is whoever submitted it (`SIGNOFF-REPAIR.7.4.7`)
+
+`REASONBRAID-REPAIR-0517`.
+
+- 🔴 **Root cause:** `claims::AssessmentSubmission` was both the route's `Json` body and the store input, so the body's `author`/`verifier` went into the row; `threads::AssessmentInput` carried `verifier` the same way.
+- ✅ **Fix:** `AssessmentRequest` (wire, no author/verifier, `deny_unknown_fields`) → `authored_by(principal.id_string())`; the store input is not deserializable and has no `verifier`; `api::json_body` maps a body rejection to `400 invalid_command` with serde's sentence, keeping `413`/`415`.
+- ⚠️ A live `413` arm was flaky (the server closes a connection it did not read; the next pooled request broke) and became `api::json_bodies` unit tests.
+- ⭐ RED live; 2 tool + 5 hand mutants caught. Opened `.11.36` (53 bare-`Json` routes) and `.7.4.13` (verification act, deferred).
+
 ## 2026-09-25 — The two-host demonstration passes again (`SIGNOFF-REPAIR.4.4.2.2.1`)
 
 `REASONBRAID-REPAIR-0516`.

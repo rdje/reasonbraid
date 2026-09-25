@@ -5544,12 +5544,20 @@ async fn mark_policy_review_done(
 /// (`SIGNOFF-REPAIR.11.14.3.8`). The gate is `claims::submit`'s, so it cannot
 /// be reached around; the compatibility break is recorded in
 /// `docs/decisions/2026-09-17_the-standalone-assessment-is-citation-bound.md`.
+///
+/// ⛔ The author is the authenticated principal, and the body names none
+/// (`SIGNOFF-REPAIR.7.4.7`): it used to be a body string, so any principal
+/// could attribute an assessment to anyone.
 async fn submit_assessment(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(submission): Json<crate::claims::AssessmentSubmission>,
+    request: Result<
+        Json<crate::claims::AssessmentRequest>,
+        axum::extract::rejection::JsonRejection,
+    >,
 ) -> Result<Json<serde_json::Value>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
+    let submission = json_body(request)?.authored_by(&principal.id_string());
     let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
         return Err(ControlApiError::unauthorized(
             "an unenrolled principal submits no assessment",
@@ -10592,6 +10600,31 @@ fn site_receipt_response(
 
 // Do not echo malformed caller input or driver diagnostics. Keep body-size and
 // media-type refusal statuses; normalize JSON syntax/schema errors to typed 400.
+/// A JSON body, or the `400 invalid_command` refusal that says what was wrong
+/// with it in serde's own words, which name an unknown or missing field
+/// (`SIGNOFF-REPAIR.7.4.7`).
+///
+/// ⚠️ A route taking a bare `Json<T>` answers the same body with axum's default,
+/// `422` and a plain-text body carrying no `code`, against the errors chapter's
+/// promise that every refusal carries one. `SIGNOFF-REPAIR.11.36` owns the
+/// routes still doing so.
+fn json_body<T>(
+    request: Result<Json<T>, axum::extract::rejection::JsonRejection>,
+) -> Result<T, ControlApiError> {
+    request.map(|Json(value)| value).map_err(|rejection| {
+        let status = match rejection.status() {
+            StatusCode::PAYLOAD_TOO_LARGE => StatusCode::PAYLOAD_TOO_LARGE,
+            StatusCode::UNSUPPORTED_MEDIA_TYPE => StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            _ => StatusCode::BAD_REQUEST,
+        };
+        ControlApiError {
+            status,
+            code: "invalid_command",
+            message: rejection.body_text(),
+        }
+    })
+}
+
 fn site_request<T>(
     request: Result<Json<T>, axum::extract::rejection::JsonRejection>,
 ) -> Result<T, ControlApiError> {
@@ -11232,5 +11265,69 @@ mod storage_failures {
         }
         let lost = storage_failure(sqlx::Error::PoolTimedOut, "a store");
         assert_eq!(lost.status.as_u16(), 500);
+    }
+}
+
+#[cfg(test)]
+mod json_bodies {
+    //! `json_body` (`SIGNOFF-REPAIR.7.4.7`) over the rejections axum's `Json`
+    //! extractor produces. Each is produced BY the extractor, so the statuses
+    //! are axum's own. They are tested here rather than over the wire because an
+    //! oversized body is answered before it is read, and the connection that
+    //! carried it is closed under a client still writing: measured, a live run
+    //! then failed its NEXT request with a broken pipe.
+    use super::{json_body, ControlApiError};
+    use crate::claims::AssessmentRequest;
+    use axum::extract::{FromRequest, Request};
+    use axum::Json;
+
+    async fn extract(
+        content_type: Option<&str>,
+        body: Vec<u8>,
+    ) -> Result<AssessmentRequest, ControlApiError> {
+        let mut request = Request::builder().method("POST").uri("/v1/assessments");
+        if let Some(content_type) = content_type {
+            request = request.header("content-type", content_type);
+        }
+        let request = request
+            .body(axum::body::Body::from(body))
+            .expect("a request");
+        json_body(Json::<AssessmentRequest>::from_request(request, &()).await)
+    }
+
+    #[tokio::test]
+    async fn an_unknown_field_is_a_400_that_names_it() {
+        let refused = extract(Some("application/json"), br#"{"author":"x"}"#.to_vec())
+            .await
+            .unwrap_err();
+        assert_eq!(
+            (refused.status.as_u16(), refused.code),
+            (400, "invalid_command")
+        );
+        assert!(
+            refused.message.contains("unknown field `author`"),
+            "{}",
+            refused.message
+        );
+    }
+
+    #[tokio::test]
+    async fn a_body_that_is_not_json_keeps_its_415() {
+        let refused = extract(None, b"{}".to_vec()).await.unwrap_err();
+        assert_eq!(
+            (refused.status.as_u16(), refused.code),
+            (415, "invalid_command")
+        );
+    }
+
+    #[tokio::test]
+    async fn an_oversized_body_keeps_its_413() {
+        let refused = extract(Some("application/json"), vec![b' '; 3 * 1024 * 1024])
+            .await
+            .unwrap_err();
+        assert_eq!(
+            (refused.status.as_u16(), refused.code),
+            (413, "invalid_command")
+        );
     }
 }

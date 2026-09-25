@@ -349,6 +349,79 @@ async fn the_git_snapshot_is_an_external_reference_keyed_on_its_commit() {
     assert_eq!(rows, 2, "three acquisitions, two commits, two rows");
 }
 
+/// `SIGNOFF-REPAIR.7.4.6`: a commit whose acquisition was TOMBSTONED, acquired
+/// again, is a new row — the replay used to hand back the dead one, and the
+/// unique identity index (`0080`) would have forced it to. A third acquisition
+/// then replays onto the NEW row, so identity still holds among live rows.
+#[tokio::test]
+async fn a_tombstoned_commit_acquired_again_is_a_new_row() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else {
+        return;
+    };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let citer = citizen(&client, &base, "git-evidence-retired").await;
+    let reference_id = reference(&client, &base, &citer, LOCATOR, None).await;
+
+    let first = snapshots::submit_external(
+        &pool,
+        &submission(&reference_id, LOCATOR, COMMIT, "sha256:aa", 6857),
+        chrono::Utc::now(),
+        &citer,
+    )
+    .await
+    .expect("the first acquisition files a snapshot");
+    const REASON: &str = "the remote was force-pushed";
+    assert!(
+        snapshots::tombstone(&pool, &first.snapshot_id, REASON)
+            .await
+            .expect("tombstone the acquisition"),
+        "the first acquisition is tombstoned"
+    );
+
+    let again = snapshots::submit_external(
+        &pool,
+        &submission(&reference_id, LOCATOR, COMMIT, "sha256:bb", 10071),
+        chrono::Utc::now(),
+        &citer,
+    )
+    .await
+    .expect("the commit acquired again files a snapshot");
+    assert!(!again.replay, "not a replay of the tombstoned row");
+    assert_ne!(
+        again.snapshot_id, first.snapshot_id,
+        "a new acquisition never re-cites the tombstoned row"
+    );
+    let retired = snapshots::get_for_tenant(&pool, &first.snapshot_id, &citer.tenant_id)
+        .await
+        .expect("the read succeeds")
+        .expect("the citer still reads the tombstoned row");
+    assert!(retired.deleted_at.is_some(), "the tombstone stands");
+
+    let third = snapshots::submit_external(
+        &pool,
+        &submission(&reference_id, LOCATOR, COMMIT, "sha256:cc", 7000),
+        chrono::Utc::now(),
+        &citer,
+    )
+    .await
+    .expect("a third acquisition succeeds");
+    assert!(third.replay, "identity holds among live rows");
+    assert_eq!(third.snapshot_id, again.snapshot_id);
+
+    let rows: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM evidence_snapshots WHERE reference_id = $1 AND storage_class = $2",
+    )
+    .bind(&reference_id)
+    .bind(EXTERNAL_REFERENCE)
+    .fetch_one(&pool)
+    .await
+    .expect("count the reference's snapshots");
+    assert_eq!(rows, 2, "one retired row and one live row for the commit");
+}
+
 /// The shape is the DATABASE's rule, not the writer's good manners — and the
 /// inline surface refuses the class by name rather than by constraint fault.
 #[tokio::test]

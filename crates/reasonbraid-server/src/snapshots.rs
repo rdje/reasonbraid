@@ -417,9 +417,13 @@ pub async fn submit(
     .execute(pool)
     .await
     .map_err(SnapshotError::Storage)?;
+    // ⛔ A LIVE row only (`SIGNOFF-REPAIR.7.4.6`). A tombstone retires one
+    // acquisition, so the same bytes acquired again are a NEW acquisition with
+    // their own provenance and retention clock. Matching the tombstoned row
+    // re-cited evidence the site had retired and reported it as a replay.
     let existing: Option<String> = sqlx::query_scalar(
         "SELECT snapshot_id FROM evidence_snapshots \
-         WHERE reference_id = $1 AND raw_digest = $2 LIMIT 1",
+         WHERE reference_id = $1 AND raw_digest = $2 AND deleted_at IS NULL LIMIT 1",
     )
     .bind(&submission.reference_id)
     .bind(&submission.raw_digest)
@@ -547,7 +551,7 @@ pub async fn submit_external(
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NULL, $12, 0, $13, \
                  $14, $15, NULL, 'none', '[]'::jsonb, '{}'::jsonb, NULL, NULL) \
          ON CONFLICT (reference_id, immutable_source_version) \
-           WHERE storage_class = 'external-reference' DO NOTHING",
+           WHERE storage_class = 'external-reference' AND deleted_at IS NULL DO NOTHING",
     )
     .bind(&snapshot_id)
     .bind(&submission.reference_id)
@@ -587,7 +591,9 @@ pub async fn submit_external(
 }
 
 /// This class's replay key, in ONE place so the SELECT and the index's
-/// inference clause cannot drift apart.
+/// inference clause cannot drift apart. Live rows only, as the index is since
+/// `migrations/0112` (`SIGNOFF-REPAIR.7.4.6`): a tombstoned acquisition of a
+/// commit is not what a new acquisition of it replays onto.
 async fn external_identity(
     pool: &PgPool,
     submission: &ExternalSnapshotSubmission,
@@ -595,6 +601,7 @@ async fn external_identity(
     sqlx::query_scalar(
         "SELECT snapshot_id FROM evidence_snapshots \
          WHERE reference_id = $1 AND storage_class = $2 AND immutable_source_version = $3 \
+           AND deleted_at IS NULL \
          LIMIT 1",
     )
     .bind(&submission.reference_id)

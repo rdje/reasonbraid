@@ -9788,6 +9788,215 @@ async fn one_tenant_does_not_tombstone_evidence_another_tenant_cites() {
     );
 }
 
+/// `SIGNOFF-REPAIR.7.4.6`: a tombstone says the row *must not be relied upon by
+/// anyone* — the book's own sentence for the site act — and three writers still
+/// relied on it. A derivation was filed against it, an assessment verified an
+/// excerpt against its bytes, and re-acquiring the same bytes re-cited the dead
+/// row as a replay. Now the first two are refused by name, and the third is a
+/// NEW acquisition, which then accepts both: the refusal is about the retired
+/// row, not about the content.
+#[tokio::test]
+async fn a_tombstoned_snapshot_is_relied_on_by_nothing_new() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, who) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "tombstone-reliance" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{who}");
+    let principal = who["principal_id"].as_str().unwrap().to_string();
+
+    const LOCATOR: &str = "https://example.org/retired-evidence";
+    let (status, reference) = post(
+        &client,
+        &base,
+        "/v1/resources",
+        &principal,
+        &json!({ "original_locator": LOCATOR, "scheme": "https" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{reference}");
+    let reference_id = reference["resource_id"].as_str().unwrap().to_string();
+
+    let bytes = b"the budget is exhausted, the operator later retired this";
+    let snapshot = json!({
+        "reference_id": reference_id,
+        "original_locator": LOCATOR,
+        "final_locator": LOCATOR,
+        "resolver_id": "r0-https-fetcher",
+        "resolver_version": "0.1.0",
+        "raw_digest": reasonbraid_server::fetcher::digest_sha256_hex(bytes),
+        "byte_length": bytes.len(),
+        "media_type": "text/plain",
+        "bytes_base64": base64_std(bytes),
+    });
+    let (status, first) = post(&client, &base, "/v1/snapshots", &principal, &snapshot).await;
+    assert_eq!(status, 200, "{first}");
+    let retired = first["snapshot_id"].as_str().unwrap().to_string();
+
+    let derivation = |parent: &str, content: &str| {
+        json!({
+            "parent_snapshot_id": parent,
+            "derived_kind": "chunk",
+            "derived_digest": reasonbraid_server::fetcher::digest_sha256_hex(content.as_bytes()),
+            "content": content,
+        })
+    };
+    let assessment = |snapshot_id: &str| {
+        json!({
+            "claim_id": "clm_retired",
+            "snapshot_id": snapshot_id,
+            "assessment": "supports",
+            "author": principal,
+            "excerpt": "the budget is exhausted",
+            "rationale": "the evidence states the exhaustion",
+        })
+    };
+    // Live, the row takes a derivation: the refusal below is about the tombstone.
+    let (status, before) = post(
+        &client,
+        &base,
+        "/v1/derivations",
+        &principal,
+        &derivation(&retired, "the budget is exhausted"),
+    )
+    .await;
+    assert_eq!(status, 200, "a live snapshot takes a derivation: {before}");
+
+    site_fixture::provision(
+        &pool,
+        &principal,
+        &[reasonbraid_server::site_authority::Action::EvidenceExpire],
+    )
+    .await;
+    const REASON: &str = "the publisher retracted the report";
+    let (status, receipt) = post(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{retired}/tombstone"),
+        &principal,
+        &json!({ "reason": REASON }),
+    )
+    .await;
+    assert_eq!(status, 200, "{receipt}");
+    assert_eq!(receipt["tombstoned"], json!(true), "{receipt}");
+
+    // 1. A derivation — new, or the replay of the one filed while it was live.
+    for (label, content) in [
+        ("new", "the operator later retired this"),
+        ("replay", "the budget is exhausted"),
+    ] {
+        let (status, refused) = post(
+            &client,
+            &base,
+            "/v1/derivations",
+            &principal,
+            &derivation(&retired, content),
+        )
+        .await;
+        assert_eq!(
+            status, 400,
+            "a {label} derivation of a tombstoned snapshot: {refused}"
+        );
+        let message = refused["message"].as_str().unwrap_or_default();
+        assert!(
+            message.contains("tombstoned") && message.contains(REASON),
+            "the refusal names the tombstone and its reason: {refused}"
+        );
+    }
+
+    // 2. An assessment verified against the retired bytes.
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/assessments",
+        &principal,
+        &assessment(&retired),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "an assessment against a tombstoned snapshot: {refused}"
+    );
+    let message = refused["message"].as_str().unwrap_or_default();
+    assert!(
+        message.contains("tombstoned") && message.contains(REASON),
+        "the refusal names the tombstone and its reason: {refused}"
+    );
+
+    // 3. The same bytes acquired again: a new acquisition, never the dead row.
+    let (status, again) = post(&client, &base, "/v1/snapshots", &principal, &snapshot).await;
+    assert_eq!(status, 200, "{again}");
+    assert_eq!(
+        again["replay"],
+        json!(false),
+        "not a replay of a tombstoned row: {again}"
+    );
+    let fresh = again["snapshot_id"].as_str().unwrap().to_string();
+    assert_ne!(
+        fresh, retired,
+        "a re-acquisition never re-cites the tombstoned row"
+    );
+    let (status, old) = get(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{retired}"),
+        &principal,
+    )
+    .await;
+    assert_eq!(status, 200, "{old}");
+    assert_eq!(
+        old["deletion_reason"],
+        json!(REASON),
+        "the tombstone stands: {old}"
+    );
+    let (status, new) = get(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{fresh}"),
+        &principal,
+    )
+    .await;
+    assert_eq!(status, 200, "{new}");
+    assert_eq!(
+        new["deleted_at"],
+        Value::Null,
+        "the new acquisition is live: {new}"
+    );
+
+    // And the new acquisition takes what the tombstoned row refused.
+    let (status, derived) = post(
+        &client,
+        &base,
+        "/v1/derivations",
+        &principal,
+        &derivation(&fresh, "the budget is exhausted"),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the new acquisition takes a derivation: {derived}"
+    );
+    let (status, assessed) = post(
+        &client,
+        &base,
+        "/v1/assessments",
+        &principal,
+        &assessment(&fresh),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the new acquisition supports an assessment: {assessed}"
+    );
+}
+
 /// Standard base64, for test bodies only — the API's decoder is under test.
 fn base64_std(bytes: &[u8]) -> String {
     const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -11677,6 +11886,38 @@ async fn the_assess_step_records_an_assessment_against_the_thread() {
         "the unknown assessment kind refuses: {refused}"
     );
 
+    // A snapshot the site TOMBSTONED supports nothing new (`SIGNOFF-REPAIR.7.4.6`),
+    // not even the assessment this step accepted while it was live: the step
+    // reaches the same store, and the contribution is refused naming the tombstone.
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::EvidenceExpire],
+    )
+    .await;
+    const TOMBSTONE_REASON: &str = "the incident report was withdrawn";
+    let (status, receipt) = post(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{snapshot_id}/tombstone"),
+        &human_id,
+        &json!({ "reason": TOMBSTONE_REASON }),
+    )
+    .await;
+    assert_eq!(status, 200, "{receipt}");
+    let (status, refused) = command(
+        "as-tombstoned".into(),
+        "thread.contribute",
+        assessment_body(&claim_digest, &snapshot_id, "preserved every row"),
+    )
+    .await;
+    assert_eq!(status, 400, "the tombstoned snapshot refuses: {refused}");
+    let message = refused["message"].as_str().unwrap_or_default();
+    assert!(
+        message.contains("tombstoned") && message.contains(TOMBSTONE_REASON),
+        "the refusal names the tombstone and its reason: {refused}"
+    );
+
     // Nothing the refusals attempted was written.
     let total: i64 = sqlx::query_scalar("SELECT count(*) FROM claim_assessments")
         .fetch_one(&pool)
@@ -11684,7 +11925,7 @@ async fn the_assess_step_records_an_assessment_against_the_thread() {
         .expect("count the assessments");
     assert_eq!(total, 1, "only the accepted assessment exists");
     eprintln!(
-        "assess step: the shipped evidence_review profile records an assessment keyed by a minted claim digest over a cited snapshot; forged digest, uncited snapshot, fake excerpt, misplaced payload, wrong step and unknown kind each refused by name; {total} row written"
+        "assess step: the shipped evidence_review profile records an assessment keyed by a minted claim digest over a cited snapshot; forged digest, uncited snapshot, fake excerpt, misplaced payload, wrong step, unknown kind and a tombstoned snapshot each refused by name; {total} row written"
     );
 }
 

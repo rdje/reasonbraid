@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-25 — Deleted evidence can no longer be built on, and fetching it again makes fresh evidence (`SIGNOFF-REPAIR.7.4.6`)
+
+`REASONBRAID-REPAIR-0515`.
+
+- 🔴 **Root cause:** four reads of `evidence_snapshots` decided reliance without `deleted_at`: `derivations::submit`'s parent probe, `claims::submit`'s byte read (both assessment writers), `snapshots::submit`'s replay lookup and `external_identity`, the last backed by `0080`'s unique index, which covered tombstoned rows too.
+- ✅ **Fix:** the probe and the byte read return the tombstone and refuse (`ParentTombstoned`, `SnapshotTombstoned`; `400 invalid_command` naming the reason) before any replay lookup; both replay lookups read live rows; `migrations/0112` re-creates the external identity index partial on `deleted_at IS NULL`, and the `ON CONFLICT` inference names the same predicate.
+- ⚖️ **Decision** (`docs/decisions/2026-09-25_a-tombstone-retires-an-acquisition-not-content.md`): a tombstone retires the row; re-acquired content is a new row. Refusal was rejected because the retention sweep writes the same tombstone.
+- ⭐ RED on every path by reverting its own site; 2 tool-listed + 5 hand mutants caught; broad live run (a migration is a shared primitive; it also closes the three-leaf batch).
+
 ## 2026-09-25 — The web console no longer shows a late answer under the wrong view (`SIGNOFF-REPAIR.11.1.2`)
 
 `REASONBRAID-REPAIR-0514`.

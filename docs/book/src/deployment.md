@@ -545,7 +545,9 @@ through both finite expiries and the later observation.
 
 A tombstone retains the snapshot metadata and records its deletion reason.
 The existing same-content replay updates refreshed_at while retaining created_at;
-it does not reset retention age. Freshness horizons are a separate field. The
+it does not reset retention age. A replay only ever lands on a live row: the same
+content acquired after its row was tombstoned is a new row, with a new retention
+age (see *What a tombstoned snapshot refuses*). Freshness horizons are a separate field. The
 focused fixture preserves its freshness-list, license and replay assertions and
 checks exact rows/counts at expiry boundaries.
 
@@ -705,6 +707,40 @@ alternatives leak:
 The tombstone remains irreversible — nothing clears `deleted_at` — but it is now
 reachable only through an authorized, audited site act. What a tenant can do is
 fully reversible.
+
+#### What a tombstoned snapshot refuses
+
+A tombstoned row stays readable, with its reason, to every tenant that cites it.
+Nothing new may rest on it (`SIGNOFF-REPAIR.7.4.6`):
+
+| Request | On a tombstoned snapshot |
+| --- | --- |
+| `POST /v1/derivations` naming it as the parent | `400 invalid_command`, even to re-file a derivation made while it was live |
+| `POST /v1/assessments`, or an `assess` step, citing it | `400 invalid_command`; in a thread, the contribution is refused |
+| `POST /v1/snapshots` (or an R1 git acquisition) of the same content | `200`, `"replay": false`, and a **new** `snapshot_id` |
+| `GET /v1/snapshots/{id}` and its derivation and assessment reads | unchanged: the row, `deleted_at` and `deletion_reason` |
+
+Both refusals name the tombstone and the operator's reason, for example:
+
+```json
+{
+  "code": "invalid_command",
+  "message": "the parent snapshot is tombstoned (the publisher retracted the report) and must not be relied upon; acquire the evidence again for a live snapshot"
+}
+```
+
+Until this repair all three writers relied on the deleted row: a derivation was
+filed against it, an assessment's excerpt was checked against its bytes, and
+acquiring the same bytes again answered `"replay": true` with the deleted row's
+id.
+
+⚠️ **A tombstone retires one acquisition, not the content.** The retention sweep
+writes the same tombstone as the operator, and it is the common case: refusing
+to acquire the same bytes again would turn a one-day or thirty-day expiry into a
+permanent ban. So the new acquisition is a new row, with its own provenance and
+its own retention clock, and it is live until that row is tombstoned too.
+Refusing content wherever it is acquired is §12.6's quarantine status, whose
+gate does not exist yet (`SIGNOFF-REPAIR.7.4.10`).
 
 `one_tenant_does_not_tombstone_evidence_another_tenant_cites` drives the whole
 sequence: two tenants cite one row, A withdraws, B's read stays live and

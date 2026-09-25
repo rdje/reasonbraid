@@ -103,4 +103,7 @@ Retention is unchanged by the storage class. A snapshot expires by its
 evidence stays addressable for the charter's audit period), and expiry writes a
 **tombstone** — `deleted_at` and `deletion_reason` on the same row — rather than
 removing it. See [Site authority](site-authority.md) for who may invoke the
-sweep and how it is audited.
+sweep and how it is audited. A tombstoned row stays readable and nothing new may
+rest on it: no derivation, no assessment, and a re-acquisition of the same
+content makes a new row rather than re-citing it (see
+[What a tombstoned snapshot refuses](deployment.md#what-a-tombstoned-snapshot-refuses)).

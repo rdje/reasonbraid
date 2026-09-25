@@ -55,6 +55,13 @@ pub enum DerivationError {
         actual: String,
     },
     ParentMissing,
+    /// The caller cites the parent, and it is TOMBSTONED (`SIGNOFF-REPAIR.7.4.6`):
+    /// it must not be relied upon, so nothing new is derived from it. Named
+    /// rather than folded into `ParentMissing`, because every citer already
+    /// reads the tombstone and its reason on the row.
+    ParentTombstoned {
+        reason: Option<String>,
+    },
     /// The store itself failed. A database fault does not prove anything
     /// about the caller's input, and must never be reported as though it did.
     Storage(sqlx::Error),
@@ -74,6 +81,12 @@ impl std::fmt::Display for DerivationError {
             Self::ParentMissing => write!(
                 f,
                 "the parent snapshot does not exist, or this tenant did not cite it"
+            ),
+            Self::ParentTombstoned { reason } => write!(
+                f,
+                "the parent snapshot is tombstoned ({}) and must not be relied upon; \
+                 acquire the evidence again for a live snapshot",
+                reason.as_deref().unwrap_or("no reason recorded")
             ),
         }
     }
@@ -116,19 +129,27 @@ pub async fn submit(
     // success, attach a derivation to a snapshot another tenant acquired —
     // invisibly, because `GET /v1/snapshots/{id}/derivations` is citation-bound
     // and would not show it back.
-    let parent_cited: bool = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM evidence_snapshots s \
+    //
+    // ⛔ And the cited parent must be LIVE (`SIGNOFF-REPAIR.7.4.6`). The probe
+    // returns the tombstone rather than filtering on it, so a citer is told why
+    // — before this, a tombstoned parent passed and took derivations. It runs
+    // before the replay lookup, so re-filing a derivation made while the parent
+    // was live is refused too: a replay is a caller relying on it again.
+    let parent: Option<(bool, Option<String>)> = sqlx::query_as(
+        "SELECT s.deleted_at IS NOT NULL, s.deletion_reason FROM evidence_snapshots s \
          JOIN evidence_citations c ON c.snapshot_id = s.snapshot_id AND c.tenant_id = $2 \
            AND c.withdrawn_at IS NULL \
-         WHERE s.snapshot_id = $1)",
+         WHERE s.snapshot_id = $1",
     )
     .bind(&submission.parent_snapshot_id)
     .bind(citer_tenant)
-    .fetch_one(pool)
+    .fetch_optional(pool)
     .await
     .map_err(DerivationError::Storage)?;
-    if !parent_cited {
-        return Err(DerivationError::ParentMissing);
+    match parent {
+        None => return Err(DerivationError::ParentMissing),
+        Some((true, reason)) => return Err(DerivationError::ParentTombstoned { reason }),
+        Some((false, _)) => {}
     }
     let existing: Option<String> = sqlx::query_scalar(
         "SELECT derivation_id FROM derivations \

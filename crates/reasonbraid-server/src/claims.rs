@@ -127,6 +127,13 @@ pub enum AssessmentError {
     SnapshotHoldsNoBytes {
         storage_class: String,
     },
+    /// The cited snapshot is TOMBSTONED (`SIGNOFF-REPAIR.7.4.6`): an excerpt is
+    /// not verified against evidence that must not be relied upon. Like the
+    /// storage class above, the tombstone is a fact the citation gate has
+    /// already entitled this caller to.
+    SnapshotTombstoned {
+        reason: Option<String>,
+    },
     ExcerptAbsent,
     /// The store itself failed. A database fault does not prove anything
     /// about the caller's input, and must never be reported as though it did.
@@ -153,6 +160,12 @@ impl std::fmt::Display for AssessmentError {
                 f,
                 "the cited snapshot is stored as `{storage_class}` and this store holds none \
                  of its bytes — an excerpt cannot be checked against it"
+            ),
+            Self::SnapshotTombstoned { reason } => write!(
+                f,
+                "the cited snapshot is tombstoned ({}) and must not be relied upon; \
+                 acquire the evidence again for a live snapshot",
+                reason.as_deref().unwrap_or("no reason recorded")
             ),
             Self::ExcerptAbsent => write!(
                 f,
@@ -238,8 +251,15 @@ where
     // snapshot records a verifiable pointer to evidence this store does not
     // hold. Reporting that as `SnapshotMissing` would tell a tenant its own
     // cited evidence does not exist.
-    let held: Option<(String, Option<Vec<u8>>)> = sqlx::query_as(
-        "SELECT s.storage_class, o.bytes FROM evidence_snapshots s \
+    //
+    // ⛔ And the tombstone comes back with it (`SIGNOFF-REPAIR.7.4.6`): a
+    // tombstoned snapshot kept its bytes, so this read verified excerpts against
+    // evidence the site had retired. It is checked before the bytes, and before
+    // the replay lookup, so no assessment — new or replayed — rests on it.
+    type Held = (String, Option<Vec<u8>>, bool, Option<String>);
+    let held: Option<Held> = sqlx::query_as(
+        "SELECT s.storage_class, o.bytes, s.deleted_at IS NOT NULL, s.deletion_reason \
+         FROM evidence_snapshots s \
          LEFT JOIN snapshot_objects o ON o.digest = s.raw_digest \
          WHERE s.snapshot_id = $1",
     )
@@ -247,7 +267,11 @@ where
     .fetch_optional(&mut *executor)
     .await
     .map_err(AssessmentError::Storage)?;
-    let (storage_class, bytes) = held.ok_or(AssessmentError::SnapshotMissing)?;
+    let (storage_class, bytes, tombstoned, reason) =
+        held.ok_or(AssessmentError::SnapshotMissing)?;
+    if tombstoned {
+        return Err(AssessmentError::SnapshotTombstoned { reason });
+    }
     let Some(bytes) = bytes else {
         return Err(AssessmentError::SnapshotHoldsNoBytes { storage_class });
     };

@@ -96,6 +96,10 @@ vendors change this often, so it is checked again before the work starts.
   security first and no exceptions. That does not by itself meet the Internet gate:
   an independent threat-model review and penetration test are still required, and
   [Blockers](blockers.md) says step by step how they are obtained.
+- **Owner-only first.** The first Internet version admits only the director and
+  their own agents. It is gated by our own complete testing and a tested owner-only
+  sign-in; the independent review and penetration test are required before anyone
+  else is let in.
 
 Recorded in `docs/decisions/2026-09-25_the-director-greenlights-internet-exposure-security-first.md`.
 

@@ -90,6 +90,15 @@ Two things follow, and one does not:
   `docs/runbooks/external-security-review.md`. Nothing is served publicly before
   the director signs the G6 gate record.
 
+**Owner-only first, decided the same day**
+(`docs/decisions/2026-09-25_the-internet-gate-opens-owner-only-first.md`). The first
+Internet profile admits only the director and their own agents, with no one else's
+data on the server. It is gated by the eight §16.12 lines this project can produce,
+a full internal test programme (correctness, robustness, stability, security) and a
+tested refusal of every identity not on the owner's list. The independent review and
+the penetration test gate the next step: opening to anyone else, which the director
+wants done *"with extrem care"*.
+
 ## Deferred, by director instruction of 2026-09-18
 
 > *"The internet exposure is not high priority right now. It needs to fully work

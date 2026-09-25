@@ -13,6 +13,12 @@ none has engaged twelve weeks after the freeze.
 Written 2026-09-25, after the director greenlit Internet exposure over HTTPS with
 OAuth sign-in (`docs/decisions/2026-09-25_the-director-greenlights-internet-exposure-security-first.md`).
 
+⚖️ **When this runbook applies:** before ReasonBraid is opened to ANY person or
+organisation other than its owner. The director chose, the same day, to go
+owner-only first (`docs/decisions/2026-09-25_the-internet-gate-opens-owner-only-first.md`):
+that profile is gated by the eight §16.12 lines this project produces, an internal
+test programme and a tested owner allowlist, and does not wait for this review.
+
 ## What is already done
 
 - ✅ **The vulnerability channel is live.** GitHub private vulnerability reporting is

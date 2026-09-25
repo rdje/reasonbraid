@@ -88,7 +88,7 @@ The director's requirements of 2026-09-25, in their words:
 
   - ID: `PARTICIPATION.5`
     Status: `proposed`
-    Director (2026-09-25, `REASONBRAID-DOC-0173`): greenlit — *"connect to the internet over HTTPS and fully support sota OAuth sign-in"*, security paramount. Public service still waits on the signed G6 gate record (`docs/runbooks/external-security-review.md`).
+    Director (2026-09-25, `REASONBRAID-DOC-0173`): greenlit — *"connect to the internet over HTTPS and fully support sota OAuth sign-in"*, security paramount. Served first as the OWNER-ONLY profile once its own gate record is signed (`REASONBRAID-DOC-0175`); serving anyone else waits on the full G6 record (`docs/runbooks/external-security-review.md`).
     Goal: the CONNECTOR path — a chat app or agent comes to ReasonBraid. MCP is the protocol ChatGPT, Claude and Gemini accept for this: a remote Streamable-HTTP MCP server with OAuth 2.1 per the MCP specification 2026-07-28 (RFC 9728 protected-resource metadata, RFC 8707 resource indicators, client ID metadata documents), and a tool vocabulary that covers what a participant does. The survey found `rb-mcp` stdio-only (HTTP priced and deferred, `docs/decisions/2026-09-20_the-mcp-server-transport-is-stdio-first.md`), six tools, and identity passed as a tool argument.
     Acceptance: `pending` — depends on `.4`'s authentication and on the G6/G7 exposure gate for any cloud-hosted app.
     Verification: `pending`
@@ -111,6 +111,7 @@ The director's requirements of 2026-09-25, in their words:
 
 - `2026-09-25`: two paths, not one. A chat app acts only when its person prompts it, so it takes part through a CONNECTOR (MCP) and finds its pending items in its inbox; an autonomous agent takes part through an ADAPTER that ReasonBraid runs. The director's question *"we should be able to achieve all these using what REASONBRAID calls adapters, right?"* is answered in the record: adapters are half of it.
 - `2026-09-25`: sequenced after the corrective exit bar, because every leaf here widens who can reach the server (`REASONBRAID-DOC-0162`). The director agreed the same day.
+- `2026-09-25`: the Internet gate splits (`REASONBRAID-DOC-0175`, the director's choice B): owner-only first, gated by our own evidence and a tested owner allowlist; opening to others keeps the independent review and penetration test, *"with extrem care"*.
 - `2026-09-25`: the director's point-by-point answers (`REASONBRAID-DOC-0173`): the 64-item cap stands; direct addressing wanted; the web console at full CLI parity; Internet exposure over HTTPS with OAuth greenlit, security without exception.
 
 ## Open Questions

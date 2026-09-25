@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-25 — A database failure is no longer reported as "that record does not exist" (`SIGNOFF-REPAIR.9.2.3`)
+
+`REASONBRAID-REPAIR-0522`.
+
+- 🔴 **Before:** when the database failed while the system was recording a policy proposal, decision, approval or publication, the answer said the record the request named "does not exist", or that the approval's proof was invalid. Someone reading that could re-create the record or give up on it, when nothing was wrong with their request.
+- ✅ **Now:** a database failure is reported as the server's problem on all of these, and a missing decision is called a decision (it said "proposal"). The policy publication review (`.9.2`) is closed.
+
 ## 2026-09-25 — A policy publication can only be finished once (`SIGNOFF-REPAIR.9.2.2`)
 
 `REASONBRAID-REPAIR-0521`.

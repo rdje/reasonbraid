@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-25 — A database failure is no longer reported as "that record does not exist" (`SIGNOFF-REPAIR.9.2.3`)
+
+`REASONBRAID-REPAIR-0522`.
+
+- 🔴 **Root cause:** 15 lookups (`lifecycle.rs` 11, `publications::stage` 4) were `.map_err(|_| <not-found>)`; `record_approval` answered a `grant_held_by` store error as an invalid proof; one stored-projection decode answered as a missing thread.
+- ✅ **Fix:** `LifecycleError::{Storage, UnrepresentableInput, UnknownDecision}` + `LifecycleError::storage`; `api::lifecycle_refusal` (`Storage` → `500`); `publication_refusal` on `stage`; a source guard (`lifecycle::store_fault_classification`) refuses the pattern in both modules.
+- ⭐ RED by renaming a table away for one request (sequential suite, restored before asserting); 5 hand mutants caught.
+
 ## 2026-09-25 — A policy publication can only be finished once (`SIGNOFF-REPAIR.9.2.2`)
 
 `REASONBRAID-REPAIR-0521`.

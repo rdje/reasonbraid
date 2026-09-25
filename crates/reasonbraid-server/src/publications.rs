@@ -524,7 +524,7 @@ pub async fn stage(
     .bind(&input.proposal_id)
     .fetch_optional(pool)
     .await
-    .map_err(|_| PublicationError::UnknownProposal(input.proposal_id.clone()))?;
+    .map_err(PublicationError::storage)?;
     let Some((status, proposal_tenant, approved_policy_id, approved_policy_version)) = proposal
     else {
         return Err(PublicationError::UnknownProposal(input.proposal_id.clone()));
@@ -545,7 +545,7 @@ pub async fn stage(
             .bind(&input.decision_id)
             .fetch_optional(pool)
             .await
-            .map_err(|_| PublicationError::UnknownDecision(input.decision_id.clone()))?;
+            .map_err(PublicationError::storage)?;
     match decision_proposal {
         None => return Err(PublicationError::UnknownDecision(input.decision_id.clone())),
         Some(proposal) if proposal != input.proposal_id => {
@@ -562,7 +562,7 @@ pub async fn stage(
             .bind(&input.approval_id)
             .fetch_optional(pool)
             .await
-            .map_err(|_| PublicationError::UnknownApproval(input.approval_id.clone()))?;
+            .map_err(PublicationError::storage)?;
     match approval_proposal {
         None => return Err(PublicationError::UnknownApproval(input.approval_id.clone())),
         Some(proposal) if proposal != input.proposal_id => {
@@ -593,7 +593,7 @@ pub async fn stage(
     .bind(tenant_id)
     .fetch_optional(pool)
     .await
-    .map_err(|_| PublicationError::UnknownProjection(input.projection_id.clone()))?;
+    .map_err(PublicationError::storage)?;
     let Some((projection_digest, resolved_policies)) = projection else {
         return Err(PublicationError::UnknownProjection(
             input.projection_id.clone(),

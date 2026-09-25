@@ -4648,7 +4648,7 @@ async fn register_policy_proposal(
     };
     match crate::lifecycle::register_proposal(&state.pool, &tenant_id, &input).await {
         Ok(row) => Ok(Json(row)),
-        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+        Err(error) => Err(lifecycle_refusal(error)),
     }
 }
 
@@ -4687,7 +4687,7 @@ async fn record_policy_decision(
     };
     match crate::lifecycle::record_decision(&state.pool, &tenant_id, &input).await {
         Ok(row) => Ok(Json(row)),
-        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+        Err(error) => Err(lifecycle_refusal(error)),
     }
 }
 
@@ -4727,7 +4727,7 @@ async fn record_policy_approval(
     };
     match crate::lifecycle::record_approval(&state.pool, &principal, &tenant_id, &input).await {
         Ok(row) => Ok(Json(row)),
-        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+        Err(error) => Err(lifecycle_refusal(error)),
     }
 }
 
@@ -4832,7 +4832,7 @@ async fn stage_publication(
     held_publication_grant(&state, &principal, &input.owning_authority).await?;
     match crate::publications::stage(&state.pool, &caller_tenant, &input).await {
         Ok(row) => Ok(Json(row)),
-        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+        Err(error) => Err(publication_refusal(error)),
     }
 }
 
@@ -4903,6 +4903,19 @@ async fn mark_publication_effective(
     {
         Ok(row) => Ok(Json(row)),
         Err(error) => Err(publication_refusal(error)),
+    }
+}
+
+/// A governance record's error on the wire: a store fault is the server's
+/// (`500`, logged), never a missing record (`SIGNOFF-REPAIR.9.2.3`).
+fn lifecycle_refusal(error: crate::lifecycle::LifecycleError) -> ControlApiError {
+    match error {
+        crate::lifecycle::LifecycleError::Storage(detail) => {
+            eprintln!("control api: the governance store failed: {detail}");
+            ControlApiError::internal()
+        }
+        crate::lifecycle::LifecycleError::UnrepresentableInput => unrepresentable(),
+        refusal => ControlApiError::invalid_command(refusal.to_string()),
     }
 }
 
@@ -11354,8 +11367,28 @@ mod publication_refusals {
     //! `publication_refusal` (`SIGNOFF-REPAIR.9.2.2`): the transition verbs used
     //! to answer a store fault as the caller's `400`. No live control can make
     //! the store fail on cue, so the mapping is pinned here.
-    use super::publication_refusal;
+    use super::{lifecycle_refusal, publication_refusal};
+    use crate::lifecycle::LifecycleError;
     use crate::publications::PublicationError;
+
+    /// `SIGNOFF-REPAIR.9.2.3`: the governance records' mapping, and the
+    /// decision named as a decision rather than as a proposal.
+    #[test]
+    fn a_governance_store_fault_is_the_servers_and_a_missing_decision_is_named() {
+        let fault = lifecycle_refusal(LifecycleError::Storage("relation gone".into()));
+        assert_eq!(fault.status.as_u16(), 500);
+        assert!(
+            !fault.message.contains("relation gone"),
+            "{}",
+            fault.message
+        );
+        let missing = lifecycle_refusal(LifecycleError::UnknownDecision("dec-1".into()));
+        assert_eq!(
+            (missing.status.as_u16(), missing.code),
+            (400, "invalid_command")
+        );
+        assert_eq!(missing.message, "decision `dec-1` does not exist");
+    }
 
     #[test]
     fn a_store_fault_is_the_servers_and_a_wrong_stage_is_the_callers() {

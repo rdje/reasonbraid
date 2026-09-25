@@ -102,6 +102,16 @@ used to say *proposal*, and a failure of the database during a transition is
 the server's `500`, where it used to be answered as though the publication did
 not exist.
 
+The same correction reaches every governance record (`SIGNOFF-REPAIR.9.2.3`).
+Registering a proposal, recording a decision or an approval, and staging a
+publication each look records up before writing, and each of those lookups used
+to answer a database failure as *"… does not exist"* or *"… is not registered"*
+for the record it was reading, and the approval's authority check as an invalid
+proof. A caller told that could fairly re-create the record or give up on it. A
+database failure is now `500 dependency_unavailable` everywhere on these routes,
+and a missing decision is named as one (*"decision `…` does not exist"*, where it
+read *"proposal `decision `…`` does not exist"*).
+
 ⚠️ **The impact map is the one site-level read.** `policy_versions` carries no
 tenant column: the policy register is a deployment-wide register whose rows are
 owned by an `owning_authority`, not by a tenant. `GET

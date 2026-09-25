@@ -9894,3 +9894,99 @@ async fn the_reconciler_recovers_what_it_may_and_reports_the_rest() {
 
     let _ = std::fs::remove_dir_all(&repo_root);
 }
+
+/// `SIGNOFF-REPAIR.9.2.3`: the governance records answered a DATABASE failure as
+/// a missing record, so a caller was told its policy, proposal or decision does
+/// not exist when the store had failed. The failure is produced on cue: the
+/// table a handler reads is renamed away for one request (this suite runs its
+/// tests one at a time) and restored before anything is asserted.
+#[tokio::test]
+async fn a_governance_store_failure_is_the_servers_not_a_missing_record() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "gv-store-failure" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let grant_id = format!("grt_{human_id}");
+
+    for (table, path, body) in [
+        (
+            "policy_versions",
+            "/v1/policy-proposals",
+            json!({
+                "proposal_id": "gv-prop",
+                "policy_id": "gv-policy",
+                "policy_version": "1.0.0",
+                "thread_id": "thr_gv",
+            }),
+        ),
+        (
+            "policy_proposals",
+            "/v1/policy-decisions",
+            json!({
+                "decision_id": "gv-dec",
+                "proposal_id": "gv-prop",
+                "rule": "owner_decides",
+                "electorate": { "participants": [human_id], "denominator": 1, "abstentions": [] },
+            }),
+        ),
+        (
+            "policy_proposals",
+            "/v1/policy-approvals",
+            json!({
+                "approval_id": "gv-app",
+                "proposal_id": "gv-prop",
+                "decision_id": "gv-dec",
+                "approver": human_id,
+                "grant_id": grant_id,
+                "quorum": { "participants": [human_id], "denominator": 1, "abstentions": [] },
+            }),
+        ),
+        (
+            "policy_proposals",
+            "/v1/policy-publications",
+            json!({
+                "publication_id": "gv-pub",
+                "proposal_id": "gv-prop",
+                "decision_id": "gv-dec",
+                "approval_id": "gv-app",
+                "projection_id": "gv-proj",
+                "owning_authority": grant_id,
+            }),
+        ),
+    ] {
+        sqlx::raw_sql(&format!("ALTER TABLE {table} RENAME TO {table}_withheld"))
+            .execute(&pool)
+            .await
+            .expect("withhold the table");
+        let (status, answered) = post(&client, &base, path, &human_id, &body).await;
+        sqlx::raw_sql(&format!("ALTER TABLE {table}_withheld RENAME TO {table}"))
+            .execute(&pool)
+            .await
+            .expect("restore the table");
+        assert_eq!(
+            status, 500,
+            "{path} with `{table}` unreadable is the server's failure: {answered}"
+        );
+        assert_eq!(
+            answered["code"],
+            json!("dependency_unavailable"),
+            "{answered}"
+        );
+        assert!(
+            !answered["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("does not exist"),
+            "{path}: a store failure is not reported as a missing record: {answered}"
+        );
+    }
+}

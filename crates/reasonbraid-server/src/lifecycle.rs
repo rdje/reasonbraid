@@ -85,6 +85,10 @@ pub enum LifecycleError {
     UnknownPolicy(String),
     UnknownThread(String),
     UnknownProposal(String),
+    /// The named decision does not exist. ⛔ Until `SIGNOFF-REPAIR.9.2.3` it was
+    /// built as `UnknownProposal("decision `…`")`, so it read *"proposal
+    /// `decision `…`` does not exist"*.
+    UnknownDecision(String),
     WrongStage {
         proposal_id: String,
         status: String,
@@ -105,6 +109,15 @@ pub enum LifecycleError {
         asserted: String,
         derived: String,
     },
+    /// The store itself failed (`SIGNOFF-REPAIR.9.2.3`). ⛔ Every lookup here
+    /// used to map ANY store error to the not-found variant for the record it
+    /// was reading, so a caller was told its policy, proposal or decision did
+    /// not exist when the database had failed; `.7.4.2` and `.8.2.2` had
+    /// repaired the same mapping in the evidence and evaluation stores.
+    Storage(String),
+    /// The caller's input holds a character the store cannot represent
+    /// (U+0000): the caller's, and permanent (`SIGNOFF-REPAIR.4.4.10.1.2`).
+    UnrepresentableInput,
 }
 
 impl std::fmt::Display for LifecycleError {
@@ -118,6 +131,13 @@ impl std::fmt::Display for LifecycleError {
             }
             LifecycleError::UnknownProposal(p) => {
                 write!(f, "proposal `{p}` does not exist")
+            }
+            LifecycleError::UnknownDecision(d) => {
+                write!(f, "decision `{d}` does not exist")
+            }
+            LifecycleError::Storage(_) => write!(f, "the governance store is unavailable"),
+            LifecycleError::UnrepresentableInput => {
+                write!(f, "the input holds a character the store cannot represent")
             }
             LifecycleError::WrongStage {
                 proposal_id,
@@ -175,7 +195,7 @@ pub async fn register_proposal(
     .bind(&input.policy_version)
     .fetch_one(pool)
     .await
-    .map_err(|_| LifecycleError::UnknownPolicy(input.policy_id.clone()))?;
+    .map_err(LifecycleError::storage)?;
     if !policy.unwrap_or(false) {
         return Err(LifecycleError::UnknownPolicy(input.policy_id.clone()));
     }
@@ -207,7 +227,7 @@ pub async fn register_proposal(
         })
     })
     .await
-    .map_err(|_| LifecycleError::UnknownThread(input.thread_id.clone()))?;
+    .map_err(LifecycleError::storage)?;
     if !thread.unwrap_or(false) {
         return Err(LifecycleError::UnknownThread(input.thread_id.clone()));
     }
@@ -264,7 +284,7 @@ pub async fn record_decision(
     .bind(tenant_id)
     .fetch_optional(pool)
     .await
-    .map_err(|_| LifecycleError::UnknownProposal(input.proposal_id.clone()))?;
+    .map_err(LifecycleError::storage)?;
     let Some((thread_id, status)) = proposal else {
         return Err(LifecycleError::UnknownProposal(input.proposal_id.clone()));
     };
@@ -321,7 +341,7 @@ pub async fn record_decision(
             })
         })
         .await
-        .map_err(|_| LifecycleError::UnknownVerdict(named.clone()))?;
+        .map_err(LifecycleError::storage)?;
         if !verdict.unwrap_or(false) {
             return Err(LifecycleError::UnknownVerdict(named));
         }
@@ -353,7 +373,7 @@ pub async fn record_decision(
         .bind(&input.proposal_id)
         .execute(pool)
         .await
-        .map_err(|_| LifecycleError::UnknownProposal(input.proposal_id.clone()))?;
+        .map_err(LifecycleError::storage)?;
     Ok(StoredDecision {
         decision_id: input.decision_id.clone(),
         proposal_id: input.proposal_id.clone(),
@@ -402,12 +422,18 @@ async fn derive_decision(
     .bind(tenant_id)
     .fetch_optional(pool)
     .await
-    .map_err(|_| LifecycleError::UnknownThread(thread_id.to_owned()))?;
+    .map_err(LifecycleError::storage)?;
     let Some(state) = state else {
         return Err(LifecycleError::UnknownThread(thread_id.to_owned()));
     };
-    let projection: crate::threads::ThreadProjection = serde_json::from_value(state)
-        .map_err(|_| LifecycleError::UnknownThread(thread_id.to_owned()))?;
+    let projection: crate::threads::ThreadProjection =
+        serde_json::from_value(state).map_err(|error| {
+            // A stored projection that does not decode is the server's fault,
+            // not a thread that does not exist (`SIGNOFF-REPAIR.9.2.3`).
+            LifecycleError::Storage(format!(
+                "thread `{thread_id}`'s stored state is unreadable: {error}"
+            ))
+        })?;
     if projection.state != reasonbraid_core::ThreadState::Closed {
         return Err(refuse(format!(
             "it is `{}`, not closed",
@@ -595,7 +621,16 @@ pub struct StoredApproval {
 
 impl LifecycleError {
     fn unknown_decision(decision_id: &str) -> Self {
-        LifecycleError::UnknownProposal(format!("decision `{decision_id}`"))
+        LifecycleError::UnknownDecision(decision_id.to_owned())
+    }
+    /// A store error: the server's, unless it is the caller's own
+    /// unrepresentable input.
+    fn storage(error: sqlx::Error) -> Self {
+        if crate::api::unrepresentable_input(&error) {
+            Self::UnrepresentableInput
+        } else {
+            Self::Storage(error.to_string())
+        }
     }
     fn foreign_decision(decision_id: &str, proposal_id: &str) -> Self {
         LifecycleError::UnknownVerdict(format!(
@@ -633,7 +668,7 @@ pub async fn record_approval(
     .bind(tenant_id)
     .fetch_optional(pool)
     .await
-    .map_err(|_| LifecycleError::UnknownProposal(input.proposal_id.clone()))?;
+    .map_err(LifecycleError::storage)?;
     let Some((thread_id, status)) = proposal else {
         return Err(LifecycleError::UnknownProposal(input.proposal_id.clone()));
     };
@@ -676,7 +711,7 @@ pub async fn record_approval(
     .bind(tenant_id)
     .fetch_one(pool)
     .await
-    .map_err(|_| LifecycleError::UnknownProposal(input.proposal_id.clone()))?;
+    .map_err(LifecycleError::storage)?;
     if !owned.unwrap_or(false) {
         return Err(LifecycleError::UnknownProposal(input.proposal_id.clone()));
     }
@@ -692,7 +727,7 @@ pub async fn record_approval(
     .bind(&input.decision_id)
     .fetch_optional(pool)
     .await
-    .map_err(|_| LifecycleError::unknown_decision(&input.decision_id))?;
+    .map_err(LifecycleError::storage)?;
     let Some((decision_proposal, electorate, derivation)) = decision else {
         return Err(LifecycleError::unknown_decision(&input.decision_id));
     };
@@ -747,7 +782,7 @@ pub async fn record_approval(
         reasonbraid_core::GrantAction::PolicyProposalApprove,
     )
     .await
-    .map_err(|_| LifecycleError::invalid_proof(&input.grant_id, &input.approver))?;
+    .map_err(LifecycleError::storage)?;
     if !proof {
         return Err(LifecycleError::invalid_proof(
             &input.grant_id,
@@ -780,7 +815,7 @@ pub async fn record_approval(
         .bind(&input.proposal_id)
         .execute(pool)
         .await
-        .map_err(|_| LifecycleError::UnknownProposal(input.proposal_id.clone()))?;
+        .map_err(LifecycleError::storage)?;
     Ok(StoredApproval {
         approval_id: input.approval_id.clone(),
         proposal_id: input.proposal_id.clone(),
@@ -821,4 +856,30 @@ pub async fn list_approvals(
             },
         )
         .collect())
+}
+
+#[cfg(test)]
+mod store_fault_classification {
+    /// `SIGNOFF-REPAIR.9.2.3`: no lookup in the governance records maps a store
+    /// error to a not-found answer. Fifteen did — each `.map_err(|_| …Unknown…)`
+    /// discarded the error and named a missing record — and a live control can
+    /// reach only the first lookup of each route, so the pattern itself is
+    /// refused here, in both modules that carried it.
+    #[test]
+    fn no_lookup_maps_a_store_error_to_a_missing_record() {
+        for (module, source) in [
+            ("lifecycle.rs", include_str!("lifecycle.rs")),
+            ("publications.rs", include_str!("publications.rs")),
+        ] {
+            let offending: Vec<&str> = source
+                .lines()
+                .filter(|line| line.contains("map_err(|_|"))
+                .filter(|line| line.contains("::Unknown") || line.contains("unknown_"))
+                .collect();
+            assert!(
+                offending.is_empty(),
+                "{module} maps a store error to a not-found answer: {offending:?}"
+            );
+        }
+    }
 }

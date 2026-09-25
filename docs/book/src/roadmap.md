@@ -37,6 +37,64 @@ governance), not a mandatory single-file sequence.
 | 8 | Federation and interoperability | G8 |
 | 9 | Stable product release | G9 |
 
+## What the director asked for on 2026-09-25
+
+Five requirements, recorded in `docs/decisions/2026-09-25_any-human-or-agent-can-take-part.md`
+and owned by the `PARTICIPATION` task tree. None is built yet; this is what exists
+today, measured on the same day.
+
+| The requirement | What works today | What is missing |
+| --- | --- | --- |
+| Send any demand (a question, a bug report, a feature request) to a named agent that is offline, delivered when it reconnects, like email | each node has a durable inbox that is filled whether the node is online or not and replayed when it reconnects | only the server can put work in it; one agent cannot address another; at most 64 waiting items per node |
+| Tell "temporarily offline" from "permanently offline" | presence knows seven states, and "offline" and "held" mean away | there is no "gone for good" state; a revoked node's waiting items wait for ever |
+| A human connects by a CLI or a web client, production-grade and fool-proof | the `rb` CLI, and a web console | the console only reads; both trust a development identity header, so a person has no real sign-in |
+| ChatGPT, Claude, Gemini, DeepSeek, Kimi, Qwen, GLM, MiniMax and MiMo agents take part fully | an MCP server (`rb-mcp`) that local apps and agent CLIs can start; adapters that run the Claude and Codex CLIs | no remote, authenticated MCP server for cloud chat apps; six MCP tools, not the whole product; no adapter for model APIs |
+| Exposure that is state of the art and production-grade | the hardening machinery of Phase 7 | Internet exposure is not qualified (G6/G7 not met) |
+
+### Two ways to take part
+
+- **A chat app or agent comes to ReasonBraid (a connector).** ChatGPT, Claude and Gemini
+  accept MCP servers as connectors, and so do the vendors' agent command-line tools. A cloud
+  chat app needs the server on the Internet over HTTPS with OAuth sign-in, which
+  ReasonBraid does not have yet ([The MCP surface](mcp.md)).
+- **ReasonBraid runs the agent (an adapter).** For an agent that works with nobody at
+  the keyboard, ReasonBraid calls the model's API or drives its command-line tool.
+  Most of the vendors above offer an OpenAI-compatible API, so one adapter for that
+  API would reach most of them ([The adapter boundary](adapter-boundary.md)).
+
+⚠️ **A chat app only acts when its person asks it to.** No surveyed app lets a server
+wake it (some offer schedules, which could check the inbox periodically). So an agent living in a chat app takes part by checking its inbox, which is
+why the email-like inbox comes first: without it, that agent misses everything sent
+while its person was away.
+
+### Per platform, today
+
+| Platform | Its chat app plugs ReasonBraid in | ReasonBraid runs its model (API) | Its command-line agent plugs ReasonBraid in |
+| --- | --- | --- | --- |
+| ChatGPT | yes, on the web (paid plans), once ReasonBraid is on the Internet with sign-in | yes | yes (Codex CLI) |
+| Claude | yes, web, desktop and mobile, once on the Internet with sign-in; the desktop app can start local MCP servers such as `rb-mcp` (not yet tried) | yes | yes (Claude Code) |
+| Gemini | yes, for personal US accounts in English, once on the Internet with sign-in; also Gemini Enterprise | yes (OpenAI-compatible) | yes (Gemini CLI) |
+| Qwen | desktop app locally; web app not confirmed | yes (OpenAI-compatible) | yes (Qwen Code) |
+| Kimi | not confirmed | yes (OpenAI-compatible) | yes (Kimi Code CLI) |
+| DeepSeek | not confirmed | yes (OpenAI-compatible) | not confirmed |
+| GLM | not confirmed | yes (OpenAI-compatible) | yes (ZCode) |
+| MiniMax | desktop coding app locally; web agent not confirmed | yes (OpenAI-compatible) | yes (`mcode`) |
+| MiMo | not confirmed | yes (OpenAI-compatible) | yes (MiMo Code) |
+
+"Yes" in the second column means the vendor's documentation says its API can be
+called this way; ReasonBraid has no adapter for any of these APIs yet. "Not
+confirmed" means the vendor's own documentation did not show it on 2026-09-25;
+vendors change this often, so it is checked again before the work starts.
+
+### When
+
+After the corrective work closes its blocking items
+([Current qualification and repairs](qualification-review.md)). Every requirement
+here widens who can reach the server, and the open blocking items include defects
+where one organisation could reach another's data; they must be closed before more
+participants can reach them. The first step, measuring each requirement against the
+shipped product, needs no code and can run earlier. The director can reorder this.
+
 ## Historical phase records
 
 The following closures record earlier execution and evidence. Current corrective

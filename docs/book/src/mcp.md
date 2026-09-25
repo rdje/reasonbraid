@@ -130,6 +130,15 @@ surface even while the deployment is down.
 
 ### What is not served
 
+⚠️ **A cloud chat app cannot reach this server today.** ChatGPT (developer mode,
+web) and Claude (custom connectors, every surface) connect to a REMOTE MCP server
+over HTTPS, and the MCP specification 2026-07-28 asks such a server for OAuth 2.1
+with protected-resource metadata. `rb-mcp` serves stdio only, so the clients that
+can use it are local ones: desktop apps and agent CLIs that spawn an MCP server
+(Claude Desktop, Claude Code, Codex CLI, and the MCP-capable CLIs other vendors
+ship). The remote, authenticated connector is `PARTICIPATION.5`, and a publicly
+reachable one waits on the Internet-exposure gate ([Blockers](blockers.md)).
+
 ⛔ **There is no HTTP transport.** The Streamable-HTTP server profile was priced
 and deferred: it adds three crates, one of which is a second major of `base64`,
 and this workspace's supply-chain policy denies duplicate versions outright.

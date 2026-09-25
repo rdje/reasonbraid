@@ -141,6 +141,13 @@ No ADR is approved merely because the roadmap names a candidate technology.
 `docs/parking-lot.md`. The tree measures the scenario against the shipped system;
 §26 gains a Demonstration C at v0.5.0 only if that measurement justifies one.
 
+`PARTICIPATION` is the second director-requested track (2026-09-25): who can take
+part and how — email-like delivery to an offline participant, temporarily vs
+permanently offline, production CLI and web clients for humans, and any chat app
+or agent joining through a connector (MCP) or an adapter. It is off the frozen
+roadmap for the same reason and is the director's named input to v0.5.0; it runs
+after the corrective exit bar (`REASONBRAID-DOC-0162`).
+
 ## Task Tree
 
 - ID: `PROGRAM`

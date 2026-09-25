@@ -15,6 +15,7 @@
 ## Active task-trees
 
 - [`BOOTSTRAP.md`](docs/tasks/BOOTSTRAP.md)
+- [`PARTICIPATION.md`](docs/tasks/PARTICIPATION.md)
 - [`PEER-COLLAB.md`](docs/tasks/PEER-COLLAB.md)
 - [`PHASE-0.md`](docs/tasks/PHASE-0.md)
 - [`PHASE-1.md`](docs/tasks/PHASE-1.md)
@@ -275,6 +276,7 @@
 - [`2026-09-24_nul-in-provider-output-is-replaced-visibly.md`](docs/decisions/2026-09-24_nul-in-provider-output-is-replaced-visibly.md)
 - [`2026-09-24_the-ca-rotates-itself-with-an-overlapping-trust-set.md`](docs/decisions/2026-09-24_the-ca-rotates-itself-with-an-overlapping-trust-set.md)
 - [`2026-09-24_the-server-outbox-has-a-producer-and-no-consumer.md`](docs/decisions/2026-09-24_the-server-outbox-has-a-producer-and-no-consumer.md)
+- [`2026-09-25_any-human-or-agent-can-take-part.md`](docs/decisions/2026-09-25_any-human-or-agent-can-take-part.md)
 - [`2026-09-25_registering-a-resolver-is-a-site-act.md`](docs/decisions/2026-09-25_registering-a-resolver-is-a-site-act.md)
 - [`2026-09-25_the-corrective-tree-ends-at-a-bug-bar.md`](docs/decisions/2026-09-25_the-corrective-tree-ends-at-a-bug-bar.md)
 - [`2026-09-25_verification-is-scoped-to-the-change-and-broad-at-batch-boundaries.md`](docs/decisions/2026-09-25_verification-is-scoped-to-the-change-and-broad-at-batch-boundaries.md)

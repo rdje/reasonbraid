@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-25 — A policy publication can only be finished once (`SIGNOFF-REPAIR.9.2.2`)
+
+`REASONBRAID-REPAIR-0521`.
+
+- 🔴 **Before:** a policy publication ends either "in force" or "failed". If both answers arrived at the same moment, both were accepted, the second overwrote the first, and the record could end up "in force" while still carrying the failure's reason. Both senders were told they had succeeded.
+- ✅ **Now:** the first to arrive wins and the other is refused with a message saying what state it found. A missing publication is now called a publication in the error (it said "proposal"), and a database failure is reported as the server's problem rather than as "does not exist".
+- 🔎 **Found and tracked:** the same "database failure reported as does not exist" mistake in 14 places of the proposal, decision and approval records (`.9.2.3`, next).
+
 ## 2026-09-25 — A refused conversation leaves no trace in the routing log (`SIGNOFF-REPAIR.8.2.7`)
 
 `REASONBRAID-REPAIR-0520`.

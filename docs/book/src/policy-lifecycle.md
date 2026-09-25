@@ -79,6 +79,29 @@ publication effective or failed* require an `owning_authority` the caller holds
 (`SIGNOFF-REPAIR.9.2.1.2`). So this trail records what a tenant decided — it is
 not itself the authority to put a policy into force.
 
+**A publication leaves `staged` exactly once** (`SIGNOFF-REPAIR.9.2.2`). Marking
+it `effective` and marking it `failed` are both terminal, and each write now
+carries the condition that the publication is still `staged`. When two arrive
+together, the first to reach the row wins and the other is refused with the
+stage it found:
+
+```json
+{
+  "code": "invalid_command",
+  "message": "publication `pb-2` is at stage `effective` — the transition does not apply"
+}
+```
+
+Until the repair each verb read the stage, checked it, and then wrote without
+that condition, so both could pass the check and the second overwrote the first.
+Measured before the repair: both callers were told they had won, and the row
+ended `effective` while still carrying the failed transition's reason. Two
+related answers were corrected with it: a publication that does not exist (or
+is another tenant's) is refused as *"publication `…` does not exist"*, where it
+used to say *proposal*, and a failure of the database during a transition is
+the server's `500`, where it used to be answered as though the publication did
+not exist.
+
 ⚠️ **The impact map is the one site-level read.** `policy_versions` carries no
 tenant column: the policy register is a deployment-wide register whose rows are
 owned by an `owning_authority`, not by a tenant. `GET

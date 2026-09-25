@@ -164,6 +164,11 @@ pub struct StoredPublication {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PublicationError {
     UnknownProposal(String),
+    /// The named publication does not exist, or belongs to another tenant: one
+    /// answer for both (`SIGNOFF-REPAIR.6.1.5.2.1`'s binding). ⛔ Until
+    /// `SIGNOFF-REPAIR.9.2.2` a missing publication was answered as
+    /// *"proposal `pb-…` does not exist"*, naming the wrong kind of record.
+    UnknownPublication(String),
     UnknownDecision(String),
     UnknownApproval(String),
     UnknownProjection(String),
@@ -250,6 +255,9 @@ impl std::fmt::Display for PublicationError {
         match self {
             PublicationError::UnknownProposal(p) => {
                 write!(f, "proposal `{p}` does not exist")
+            }
+            PublicationError::UnknownPublication(p) => {
+                write!(f, "publication `{p}` does not exist")
             }
             PublicationError::UnknownDecision(d) => {
                 write!(f, "decision `{d}` does not exist")
@@ -468,10 +476,10 @@ pub async fn owned_by(
             .bind(publication_id)
             .fetch_optional(pool)
             .await
-            .map_err(|_| PublicationError::UnknownProposal(publication_id.to_string()))?;
+            .map_err(PublicationError::storage)?;
     match owner.flatten() {
         Some(owner) if owner == tenant_id => Ok(()),
-        _ => Err(PublicationError::UnknownProposal(
+        _ => Err(PublicationError::UnknownPublication(
             publication_id.to_string(),
         )),
     }
@@ -710,7 +718,7 @@ pub async fn record_git_operation(
     .await
     .map_err(PublicationError::storage)?;
     let Some((state, prior_repository, prior_expected)) = recorded else {
-        return Err(PublicationError::UnknownProposal(
+        return Err(PublicationError::UnknownPublication(
             publication_id.to_string(),
         ));
     };
@@ -760,9 +768,9 @@ pub async fn mark_effective(
     .bind(publication_id)
     .fetch_optional(pool)
     .await
-    .map_err(|_| PublicationError::UnknownProposal(publication_id.to_string()))?;
+    .map_err(PublicationError::storage)?;
     let Some((state, _)) = row else {
-        return Err(PublicationError::UnknownProposal(
+        return Err(PublicationError::UnknownPublication(
             publication_id.to_string(),
         ));
     };
@@ -789,15 +797,23 @@ pub async fn mark_effective(
     if !missing.is_empty() {
         return Err(PublicationError::UnknownObjects(missing));
     }
-    sqlx::query(
+    // ⛔ The stage read above is a fast refusal, not the guard
+    // (`SIGNOFF-REPAIR.9.2.2`). The write carries the stage itself: two terminal
+    // transitions used to both pass that read and then both write, so the
+    // second overwrote the first — an EFFECTIVE publication could become FAILED
+    // (and measured, keep the other's reason), with both callers told they won.
+    let written = sqlx::query(
         "UPDATE policy_publications SET state = 'effective', git_object_ids = $2 \
-         WHERE publication_id = $1",
+         WHERE publication_id = $1 AND state = 'staged'",
     )
     .bind(publication_id)
     .bind(serde_json::to_value(&git_object_ids).expect("the object ids serialize"))
     .execute(pool)
     .await
-    .map_err(|_| PublicationError::UnknownProposal(publication_id.to_string()))?;
+    .map_err(PublicationError::storage)?;
+    if written.rows_affected() == 0 {
+        return Err(lost_transition(pool, publication_id).await);
+    }
     load(pool, publication_id).await
 }
 
@@ -815,9 +831,9 @@ pub async fn mark_failed(
             .bind(publication_id)
             .fetch_optional(pool)
             .await
-            .map_err(|_| PublicationError::UnknownProposal(publication_id.to_string()))?;
+            .map_err(PublicationError::storage)?;
     let Some(state) = row else {
-        return Err(PublicationError::UnknownProposal(
+        return Err(PublicationError::UnknownPublication(
             publication_id.to_string(),
         ));
     };
@@ -827,16 +843,39 @@ pub async fn mark_failed(
             state,
         });
     }
-    sqlx::query(
+    // The same conditional write as `mark_effective` (`SIGNOFF-REPAIR.9.2.2`).
+    let written = sqlx::query(
         "UPDATE policy_publications SET state = 'failed', failed_reason = $2 \
-         WHERE publication_id = $1",
+         WHERE publication_id = $1 AND state = 'staged'",
     )
     .bind(publication_id)
     .bind(reason)
     .execute(pool)
     .await
-    .map_err(|_| PublicationError::UnknownProposal(publication_id.to_string()))?;
+    .map_err(PublicationError::storage)?;
+    if written.rows_affected() == 0 {
+        return Err(lost_transition(pool, publication_id).await);
+    }
     load(pool, publication_id).await
+}
+
+/// A terminal transition whose conditional write matched no row: another
+/// transition took the publication off `staged` between this one's stage read
+/// and its write (`SIGNOFF-REPAIR.9.2.2`). Answered as the stage it found.
+async fn lost_transition(pool: &PgPool, publication_id: &str) -> PublicationError {
+    let found: Result<Option<String>, sqlx::Error> =
+        sqlx::query_scalar("SELECT state FROM policy_publications WHERE publication_id = $1")
+            .bind(publication_id)
+            .fetch_optional(pool)
+            .await;
+    match found {
+        Ok(Some(state)) => PublicationError::WrongStage {
+            publication_id: publication_id.to_string(),
+            state,
+        },
+        Ok(None) => PublicationError::UnknownPublication(publication_id.to_string()),
+        Err(error) => PublicationError::storage(error),
+    }
 }
 
 /// Load one publication row (pub — the `.4.3.2` publish verb reads it).
@@ -856,9 +895,9 @@ pub async fn load(
     .bind(publication_id)
     .fetch_optional(pool)
     .await
-    .map_err(|_| PublicationError::UnknownProposal(publication_id.to_string()))?;
+    .map_err(PublicationError::storage)?;
     row.map(from_row)
-        .ok_or_else(|| PublicationError::UnknownProposal(publication_id.to_string()))
+        .ok_or_else(|| PublicationError::UnknownPublication(publication_id.to_string()))
 }
 
 /// The publications, newest first.

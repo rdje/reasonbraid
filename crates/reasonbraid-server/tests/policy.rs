@@ -2302,6 +2302,131 @@ async fn the_publication_stages_and_marks_its_typed_state() {
         derived_digest("pb-pub-asserted"),
         "{asserted}"
     );
+
+    // 7. `SIGNOFF-REPAIR.9.2.2`: the two TERMINAL transitions race. Each used to
+    // read the stage, test it in Rust, then UPDATE with no stage predicate, so
+    // both passed the check and the second overwrote the first — measured, a
+    // publication answered EFFECTIVE while carrying the failed transition's
+    // reason — and both callers were told they had won. A transaction holds the
+    // row; the FIRST verb is sent and observed queued on it, then the SECOND
+    // (observed in `pg_stat_activity`, never assumed from a sleep), so the row is
+    // granted in that order when it is released. Both orders run, one per staged
+    // publication, so each verb's own stage check is what refuses the loser.
+    let (status, staged) = post(
+        &client,
+        &base,
+        "/v1/policy-publications",
+        &human_id,
+        &json!({
+            "publication_id": "pb-pub-race",
+            "proposal_id": "pb-prop",
+            "decision_id": "pb-dec",
+            "approval_id": "pb-app",
+            "projection_id": "pb-proj",
+            "owning_authority": grant_id,
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "a second staged publication for the race: {staged}"
+    );
+    let body_for = |verb: &str| match verb {
+        "effective" => json!({
+            "git_object_ids": object_ids.clone(), "repo_path": "live", "owning_authority": grant_id,
+        }),
+        _ => json!({ "reason": "the race's other side", "owning_authority": grant_id }),
+    };
+    for (publication, first, second) in [
+        ("pb-pub-asserted", "failed", "effective"),
+        ("pb-pub-race", "effective", "failed"),
+    ] {
+        let mut holder = pool.begin().await.expect("begin the holder");
+        sqlx::query("SELECT 1 FROM policy_publications WHERE publication_id = $1 FOR UPDATE")
+            .bind(publication)
+            .execute(&mut *holder)
+            .await
+            .expect("hold the publication row");
+        let holder_pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+            .fetch_one(&mut *holder)
+            .await
+            .expect("the holder's backend");
+        let send = |verb: &str| {
+            let client = client.clone();
+            let base = base.clone();
+            let human_id = human_id.clone();
+            let path = format!("/v1/policy-publications/{publication}/{verb}");
+            let body = body_for(verb);
+            tokio::spawn(async move { post(&client, &base, &path, &human_id, &body).await })
+        };
+        // ⚠️ Counted by the table, not by `pg_blocking_pids(pid) ∋ holder`: the
+        // second waiter queues behind the FIRST (PostgreSQL's tuple-lock queue),
+        // so only one of them names the holder as its blocker.
+        let queued = |expected: i64| {
+            let pool = pool.clone();
+            async move {
+                let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+                loop {
+                    let queued: i64 = sqlx::query_scalar(
+                        "SELECT count(*) FROM pg_stat_activity \
+                         WHERE datname = current_database() AND wait_event_type = 'Lock' \
+                           AND query LIKE '%policy_publications%' AND pid <> $1",
+                    )
+                    .bind(holder_pid)
+                    .fetch_one(&pool)
+                    .await
+                    .expect("pg_stat_activity");
+                    if queued == expected {
+                        return;
+                    }
+                    assert!(
+                        tokio::time::Instant::now() < deadline,
+                        "{expected} transition(s) queue on the held row"
+                    );
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                }
+            }
+        };
+        let first_request = send(first);
+        queued(1).await;
+        let second_request = send(second);
+        queued(2).await;
+        holder.commit().await.expect("release the row");
+        let won = first_request.await.expect("the first request");
+        let lost = second_request.await.expect("the second request");
+        assert_eq!(
+            won.0, 200,
+            "{publication}: `{first}`, queued first, wins: {won:?}"
+        );
+        assert_eq!(won.1["state"], json!(first), "{publication}: {won:?}");
+        assert_eq!(
+            lost.0, 400,
+            "{publication}: `{second}` is refused: {lost:?}"
+        );
+        assert!(
+            lost.1["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains(&format!("is at stage `{first}`")),
+            "{publication}: the refusal names the stage the winner left: {lost:?}"
+        );
+        let stored: (String, Option<String>) = sqlx::query_as(
+            "SELECT state, failed_reason FROM policy_publications WHERE publication_id = $1",
+        )
+        .bind(publication)
+        .fetch_one(&pool)
+        .await
+        .expect("the stored stage");
+        assert_eq!(
+            stored.0, first,
+            "{publication}: the row holds the winner's stage"
+        );
+        assert_eq!(
+            stored.1.is_some(),
+            first == "failed",
+            "{publication}: a failure reason only on a failed row: {stored:?}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -2940,7 +3065,7 @@ async fn the_publish_verb_stays_inside_the_configured_repository_root() {
         refused["message"]
             .as_str()
             .unwrap()
-            .contains("does not exist"),
+            .contains("publication `pc-absent` does not exist"),
         "an inside location must be refused by the RECORD, not by containment: {refused}"
     );
 
@@ -2990,7 +3115,7 @@ async fn the_publish_verb_stays_inside_the_configured_repository_root() {
             answered["message"]
                 .as_str()
                 .unwrap()
-                .contains("does not exist"),
+                .contains("publication `pc-absent` does not exist"),
             "{label} must reach the record once the declared root contains it: {answered}"
         );
     }

@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-25 — A policy publication can only be finished once (`SIGNOFF-REPAIR.9.2.2`)
+
+`REASONBRAID-REPAIR-0521`.
+
+- 🔴 **Root cause:** `mark_effective`/`mark_failed` read the stage, checked it in Rust, then wrote `WHERE publication_id = $1`; measured, both racing answers were `200` and the row ended `effective` with a `failed_reason`.
+- ✅ **Fix:** `AND state = 'staged'` on both writes, zero rows → `lost_transition` (`WrongStage` with the found stage); store errors on the path (`owned_by`, reads, writes, `load`) → `storage`; `UnknownPublication`; `api::publication_refusal` (`Storage` → `500`) for both transitions and publish.
+- ⭐ Ordered race control (queue one verb, observe it, then the other) so each verb's check is load-bearing; the original and 5 hand mutants caught. `.9.2.3` opened for 14 more store-fault-as-missing sites.
+
 ## 2026-09-25 — A refused conversation leaves no trace in the routing log (`SIGNOFF-REPAIR.8.2.7`)
 
 `REASONBRAID-REPAIR-0520`.

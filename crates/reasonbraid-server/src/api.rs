@@ -4902,7 +4902,21 @@ async fn mark_publication_effective(
     .await
     {
         Ok(row) => Ok(Json(row)),
-        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+        Err(error) => Err(publication_refusal(error)),
+    }
+}
+
+/// A publication transition's error on the wire: a store fault is the server's
+/// (`500`, logged), never a refusal of the caller's request, which is how both
+/// transition verbs used to answer it (`SIGNOFF-REPAIR.9.2.2`, `.7.4.2`'s rule).
+fn publication_refusal(error: crate::publications::PublicationError) -> ControlApiError {
+    match error {
+        crate::publications::PublicationError::Storage(detail) => {
+            eprintln!("control api: the publication store failed: {detail}");
+            ControlApiError::internal()
+        }
+        crate::publications::PublicationError::UnrepresentableInput => unrepresentable(),
+        refusal => ControlApiError::invalid_command(refusal.to_string()),
     }
 }
 
@@ -4938,7 +4952,7 @@ async fn mark_publication_failed(
         .await
     {
         Ok(row) => Ok(Json(row)),
-        Err(error) => Err(ControlApiError::invalid_command(error.to_string())),
+        Err(error) => Err(publication_refusal(error)),
     }
 }
 
@@ -5175,14 +5189,7 @@ async fn publish_publication(
         input.expected_effective.as_deref(),
     )
     .await
-    .map_err(|e| match e {
-        crate::publications::PublicationError::Storage(detail) => {
-            eprintln!("control api: the publication store failed: {detail}");
-            ControlApiError::internal()
-        }
-        crate::publications::PublicationError::UnrepresentableInput => unrepresentable(),
-        refusal => ControlApiError::invalid_command(refusal.to_string()),
-    })?;
+    .map_err(publication_refusal)?;
     let refs = crate::publisher::publish(
         repo_path.path(),
         &publication_id,
@@ -11339,5 +11346,34 @@ mod json_bodies {
             (refused.status.as_u16(), refused.code),
             (413, "invalid_command")
         );
+    }
+}
+
+#[cfg(test)]
+mod publication_refusals {
+    //! `publication_refusal` (`SIGNOFF-REPAIR.9.2.2`): the transition verbs used
+    //! to answer a store fault as the caller's `400`. No live control can make
+    //! the store fail on cue, so the mapping is pinned here.
+    use super::publication_refusal;
+    use crate::publications::PublicationError;
+
+    #[test]
+    fn a_store_fault_is_the_servers_and_a_wrong_stage_is_the_callers() {
+        let fault = publication_refusal(PublicationError::Storage("connection reset".into()));
+        assert_eq!(fault.status.as_u16(), 500);
+        assert!(
+            !fault.message.contains("connection reset"),
+            "{}",
+            fault.message
+        );
+        let refused = publication_refusal(PublicationError::WrongStage {
+            publication_id: "pb".into(),
+            state: "effective".into(),
+        });
+        assert_eq!(
+            (refused.status.as_u16(), refused.code),
+            (400, "invalid_command")
+        );
+        assert!(refused.message.contains("is at stage `effective`"));
     }
 }

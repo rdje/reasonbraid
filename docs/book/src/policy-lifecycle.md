@@ -489,7 +489,8 @@ nothing ever read it back.
 
 A publication does not reach a target by itself. `POST /v1/deployments` assigns
 one publication to one target in a **canary wave**, recording the *desired* pair
-— the ref and its digest:
+— the ref and its digest. Both come from the publication; the caller names them
+and the server checks them against it:
 
 ```bash
 curl -s -X POST localhost:4310/v1/deployments \
@@ -499,7 +500,7 @@ curl -s -X POST localhost:4310/v1/deployments \
         "target_id": "gateway-v2",
         "publication_id": "pub_0192…",
         "wave": 1,
-        "desired_ref": "refs/heads/main",
+        "desired_ref": "b45ef6f…",
         "desired_digest": "sha256:…"
       }'
 ```
@@ -509,6 +510,22 @@ The target must be registered — `/v1/deployment-targets`, in
 publication must exist, and — the one that matters — **the publication must be
 effective**. Assigning one that is not is refused; a target is never pointed at
 something the deployment has not put into force.
+
+**The desired pair must be the publication's own** (ADR-021). `desired_digest`
+must equal the digest of the publication's projection, and `desired_ref` must be
+one of the Git object ids the publication recorded when it became effective.
+`GET /v1/policy-publications` gives both halves: `git_object_ids` and
+`projection_id`, whose `digest` `GET /v1/policy-projections` returns. Anything
+else is refused with `400`, and the message names the field:
+
+```json
+{"code": "invalid_command",
+ "message": "desired_digest `sha256:aaa…` is not the publication's projection digest `sha256:3f1…` — a target is assigned what its publication deploys"}
+```
+
+Until 2026-09-25 only the digest's *shape* was checked, so a target could be
+assigned content its publication never had, and drift then compared what the
+target reported against a value nobody published (`SIGNOFF-REPAIR.9.3.3.1`).
 
 The target then reports back. `POST
 /v1/deployments/{target_id}/{publication_id}/receipt` is the **attestation**: the
@@ -533,7 +550,7 @@ made is refused, as is a malformed digest.
     "target_id": "gateway-v2",
     "publication_id": "pub_0192…",
     "wave": 1,
-    "desired_ref": "refs/heads/main",
+    "desired_ref": "b45ef6f…",
     "desired_digest": "sha256:aaa…",
     "observed_digest": "sha256:bbb…",
     "observed_state": "applied"

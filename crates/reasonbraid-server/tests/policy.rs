@@ -4452,7 +4452,48 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
     .await;
     assert_eq!(status, 400, "the unknown type refuses: {refused}");
 
-    // 2. The assignment rides the EFFECTIVE publication (the desired pair).
+    // 2. The assignment rides the EFFECTIVE publication, and its desired pair
+    // IS that publication's (`SIGNOFF-REPAIR.9.3.3.1`, ADR-021: *the effective
+    // publication's ref id + the attested projection digest*). A digest the
+    // projection does not have, or a ref the publication never recorded, used
+    // to be accepted on its shape alone.
+    for (label, desired_ref, desired_digest, named) in [
+        (
+            "another digest",
+            object_ids[0].as_str(),
+            DIGEST,
+            "desired_digest",
+        ),
+        (
+            "an unrecorded ref",
+            "abc123",
+            projection_digest.as_str(),
+            "desired_ref",
+        ),
+    ] {
+        let (status, refused) = post(
+            &client,
+            &base,
+            "/v1/deployments",
+            &human_id,
+            &json!({
+                "target_id": "dp-target",
+                "publication_id": "dp-pub-1",
+                "wave": 1,
+                "desired_ref": desired_ref,
+                "desired_digest": desired_digest,
+            }),
+        )
+        .await;
+        assert_eq!(status, 400, "{label} is refused: {refused}");
+        assert!(
+            refused["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains(named),
+            "{label}: the refusal names `{named}`: {refused}"
+        );
+    }
     let (status, assignment) = post(
         &client,
         &base,
@@ -4462,7 +4503,7 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
             "target_id": "dp-target",
             "publication_id": "dp-pub-1",
             "wave": 1,
-            "desired_ref": "abc123",
+            "desired_ref": object_ids[0],
             "desired_digest": projection_digest,
         }),
     )
@@ -4499,7 +4540,7 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
             "target_id": "ghost-target",
             "publication_id": "dp-pub-1",
             "wave": 1,
-            "desired_ref": "abc123",
+            "desired_ref": object_ids[0],
             "desired_digest": projection_digest,
         }),
     )
@@ -4514,7 +4555,7 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
             "target_id": "dp-target",
             "publication_id": "dp-pub-1",
             "wave": 2,
-            "desired_ref": "abc123",
+            "desired_ref": object_ids[0],
             "desired_digest": "not-a-digest",
         }),
     )
@@ -4775,6 +4816,7 @@ async fn the_drift_corrections_and_outcomes_ride_the_records() {
     )
     .await;
     assert_eq!(status, 200, "the target registers");
+    let (desired_ref, desired_digest) = desired_pair(&pool, "cr-pub-1").await;
     let (status, _) = post(
         &client,
         &base,
@@ -4784,8 +4826,8 @@ async fn the_drift_corrections_and_outcomes_ride_the_records() {
             "target_id": "cr-target",
             "publication_id": "cr-pub-1",
             "wave": 1,
-            "desired_ref": "abc123",
-            "desired_digest": DIGEST,
+            "desired_ref": desired_ref,
+            "desired_digest": desired_digest,
         }),
     )
     .await;
@@ -6602,6 +6644,7 @@ async fn the_lifecycle_row_carries_the_tenant_that_owns_it() {
     )
     .await;
     assert_eq!(status, 200, "the target registers");
+    let (desired_ref, desired_digest) = desired_pair(&pool, "lto-pub").await;
     let (status, _) = post(
         &client,
         &base,
@@ -6609,7 +6652,7 @@ async fn the_lifecycle_row_carries_the_tenant_that_owns_it() {
         &alice_id,
         &json!({
             "target_id": "lto-target", "publication_id": "lto-pub", "wave": 1,
-            "desired_ref": "live", "desired_digest": DIGEST,
+            "desired_ref": desired_ref, "desired_digest": desired_digest,
         }),
     )
     .await;
@@ -7126,9 +7169,10 @@ async fn the_lifecycle_verbs_refuse_another_tenants_publication() {
     )
     .await;
     assert_eq!(status, 200, "the target registers");
+    let (desired_ref, desired_digest) = desired_pair(&pool, &pub1).await;
     let assignment = json!({
         "target_id": "gtn-target", "publication_id": pub1, "wave": 1,
-        "desired_ref": "live", "desired_digest": DIGEST,
+        "desired_ref": desired_ref, "desired_digest": desired_digest,
     });
     let (status, refused) = post(&client, &base, "/v1/deployments", &mallory_id, &assignment).await;
     assert_eq!(status, 400, "a foreign tenant deploys nothing: {refused}");
@@ -7368,6 +7412,7 @@ async fn every_lifecycle_read_is_bound_to_its_own_tenant() {
     let chain = |who: String, tenant: String, tag: &'static str| {
         let client = client.clone();
         let base = base.clone();
+        let pool = pool.clone();
         let object_ids = object_ids.clone();
         async move {
             let grant = format!("grt_{who}");
@@ -7488,6 +7533,7 @@ async fn every_lifecycle_read_is_bound_to_its_own_tenant() {
             )
             .await;
             assert_eq!(status, 200, "{tag}: effective — {out}");
+            let (desired_ref, desired_digest) = desired_pair(&pool, &ids("pub")).await;
             for (path, body) in [
                 (
                     "/v1/deployment-targets".to_string(),
@@ -7499,7 +7545,7 @@ async fn every_lifecycle_read_is_bound_to_its_own_tenant() {
                     "/v1/deployments".to_string(),
                     json!({
                     "target_id": ids("target"), "publication_id": ids("pub"), "wave": 1,
-                    "desired_ref": "live", "desired_digest": DIGEST }),
+                    "desired_ref": desired_ref, "desired_digest": desired_digest }),
                 ),
                 (
                     format!("/v1/deployments/{}/{}/receipt", ids("target"), ids("pub")),
@@ -9379,6 +9425,22 @@ async fn the_policy_register_capability_still_registers_and_resolves() {
 /// registration is direct because the site gate is `.11.4.7.2.1.2.1`'s
 /// control, not this suite's; the boundary rebind is what a site operator's
 /// reissue does.
+/// The publication's own desired pair, `(ref, digest)` — ADR-021: its first
+/// recorded Git object id and the digest of its projection. A fixture deploys
+/// what its publication deploys (`SIGNOFF-REPAIR.9.3.3.1`), never a value
+/// typed into the test.
+async fn desired_pair(pool: &PgPool, publication_id: &str) -> (String, String) {
+    sqlx::query_as(
+        "SELECT p.git_object_ids->>0, pr.digest FROM policy_publications p \
+         JOIN policy_projections pr ON pr.projection_id = p.projection_id \
+         WHERE p.publication_id = $1",
+    )
+    .bind(publication_id)
+    .fetch_one(pool)
+    .await
+    .expect("an effective publication has a desired pair")
+}
+
 async fn allow_owner_decides(pool: &PgPool, tenant: &str) {
     allow_rules(pool, tenant, &["owner_decides"]).await;
 }

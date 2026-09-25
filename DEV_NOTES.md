@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-25 — A deployment must deploy what its publication published (`SIGNOFF-REPAIR.9.3.3.1`)
+
+`REASONBRAID-REPAIR-0525`.
+
+- 🔴 **Root cause:** `deployments::assign` validated `desired_digest`'s shape only and never read the projection digest or `git_object_ids`; ADR-021 defines the desired pair as the publication's.
+- ✅ **Fix:** the existing publication read LEFT JOINs `policy_projections`; `DeploymentError::{DesiredDigestNotProjection, DesiredRefNotRecorded}` refuse by name. Six fixture sites re-seeded through a `desired_pair` test helper, not relaxed. RED first live; 5 of 5 mutants caught (3 from `cargo mutants --list`, 2 hand SQL).
+- 🔎 Opened `.9.3.3.5` (`record_drift` stores a caller-declared desired digest) and `.9.3.3.6` (14 store sites in `deployments.rs`/`corrections.rs` answered as the caller's).
+
 ## 2026-09-25 — A commit check no longer mistakes a setting's name for a waiver (`SIGNOFF-REPAIR.11.2.10`)
 
 `REASONBRAID-REPAIR-0524`.

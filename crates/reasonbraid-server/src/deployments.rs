@@ -66,6 +66,15 @@ pub enum DeploymentError {
     UnknownPublication(String),
     NotEffective(String),
     MalformedDigest(String),
+    /// The declared digest is not the digest of the publication's projection
+    /// (`SIGNOFF-REPAIR.9.3.3.1`, ADR-021: the desired pair IS the publication's).
+    DesiredDigestNotProjection {
+        declared: String,
+        projection: String,
+    },
+    /// The declared ref is none of the Git object ids the publication recorded
+    /// when it became effective.
+    DesiredRefNotRecorded(String),
     UnknownState(String),
     UnknownAssignment {
         target_id: String,
@@ -98,6 +107,19 @@ impl std::fmt::Display for DeploymentError {
             DeploymentError::MalformedDigest(d) => {
                 write!(f, "digest `{d}` is not the ADR-011 `sha256:<64 hex>` shape")
             }
+            DeploymentError::DesiredDigestNotProjection {
+                declared,
+                projection,
+            } => write!(
+                f,
+                "desired_digest `{declared}` is not the publication's projection digest \
+                 `{projection}` — a target is assigned what its publication deploys"
+            ),
+            DeploymentError::DesiredRefNotRecorded(r) => write!(
+                f,
+                "desired_ref `{r}` is not a Git object id the publication recorded when it \
+                 became effective"
+            ),
             DeploymentError::UnknownState(s) => {
                 write!(
                     f,
@@ -204,14 +226,21 @@ pub async fn assign(
     // another tenant's effective publication to a site target. ⚠️ A foreign
     // publication answers exactly as an absent one; the reasoning is recorded
     // once, at `publications::owned_by`.
-    let publication: Option<(String, Option<String>)> = sqlx::query_as(
-        "SELECT state, tenant_id FROM policy_publications WHERE publication_id = $1",
-    )
-    .bind(&input.publication_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|_| DeploymentError::UnknownPublication(input.publication_id.clone()))?;
-    let Some((state, owner)) = publication else {
+    //
+    // The same read carries the publication's desired pair (`.9.3.3.1`, below),
+    // so the check adds no second lookup that could disagree with this one.
+    let publication: Option<(String, Option<String>, serde_json::Value, Option<String>)> =
+        sqlx::query_as(
+            "SELECT p.state, p.tenant_id, p.git_object_ids, pr.digest \
+             FROM policy_publications p \
+             LEFT JOIN policy_projections pr ON pr.projection_id = p.projection_id \
+             WHERE p.publication_id = $1",
+        )
+        .bind(&input.publication_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|_| DeploymentError::UnknownPublication(input.publication_id.clone()))?;
+    let Some((state, owner, recorded, projection)) = publication else {
         return Err(DeploymentError::UnknownPublication(
             input.publication_id.clone(),
         ));
@@ -223,6 +252,26 @@ pub async fn assign(
     }
     if state != "effective" {
         return Err(DeploymentError::NotEffective(input.publication_id.clone()));
+    }
+    // ⛔ The desired pair is the PUBLICATION's (`SIGNOFF-REPAIR.9.3.3.1`). ADR-021
+    // defines it as *the effective publication's ref id + the attested
+    // projection digest*; only the digest's shape was checked, so a target could
+    // be assigned content its publication never had, and the drift record then
+    // compared an observation against a value nobody published. A publication
+    // whose projection row is absent has no digest to deploy, so nothing matches.
+    if projection.as_deref() != Some(input.desired_digest.as_str()) {
+        return Err(DeploymentError::DesiredDigestNotProjection {
+            declared: input.desired_digest.clone(),
+            projection: projection.unwrap_or_else(|| "none recorded".to_string()),
+        });
+    }
+    let recorded_ref = recorded
+        .as_array()
+        .is_some_and(|ids| ids.iter().any(|id| id.as_str() == Some(&input.desired_ref)));
+    if !recorded_ref {
+        return Err(DeploymentError::DesiredRefNotRecorded(
+            input.desired_ref.clone(),
+        ));
     }
     let inserted = sqlx::query(
         "INSERT INTO deployment_assignments \

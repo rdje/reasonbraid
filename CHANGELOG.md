@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-25 — The web console checked point by point: no security hole, but one view is broken (`SIGNOFF-REPAIR.11.1`)
+
+`REASONBRAID-DOC-0180`.
+
+- ✅ The feared problem, other people's data running as code in an administrator's browser, is not possible with how the console builds its pages.
+- 🔴 To fix: the Timeline view fails for every conversation that has any events (a number reaches a piece of code that only accepts text), and no test ever opens the console in a real browser, which is why nobody noticed. Also, a slow view can appear under the heading of the view you switched to.
+
 ## 2026-09-25 — A cancelled Claude or Codex request is no longer recorded as a definite failure (`SIGNOFF-REPAIR.10.1.4`)
 
 `REASONBRAID-REPAIR-0512`.

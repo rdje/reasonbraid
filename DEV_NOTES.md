@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — The review page no longer lists problems that were already fixed (`SIGNOFF-REPAIR.11.37`)
+
+`REASONBRAID-REPAIR-0531`.
+
+- 🔴 **Root cause:** nothing compared `qualification-review.md`'s owner cells with the tree's statuses; 24 open rows had only `done` owners.
+- ✅ **Fix:** each row read against its owner's record and the code (21 repaired, 1 refuted, 1 repaired+decided, 1 partial → `.4.4.11` deferred); `QUALIFICATION-CURRENCY` (`scripts/check_qualification_currency.py`, project slot, 0.03 s, `--self-test`) refuses an open row whose owners are all done or name no leaf.
+- ⭐ The first hand census said 11: its regex read a leaf's Status only within four lines of the heading and silently skipped every other leaf.
+
 ## 2026-09-26 — Deployment records no longer blame database failures on the caller (`SIGNOFF-REPAIR.9.3.3.6`)
 
 `REASONBRAID-REPAIR-0530`.

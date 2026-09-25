@@ -477,4 +477,17 @@ if ! python3 -B scripts/census_operator_surfaces.py --check >/dev/null 2>&1; the
     exit 1
 fi
 
+# QUALIFICATION-CURRENCY (`SIGNOFF-REPAIR.11.37`): a limitation row on the
+# qualification review may not stay open once every leaf it names is done. One
+# row stated a defect repaired at REPAIR-0184 until REPAIR-0528, and the census
+# that followed found 24 such rows; the page is where a reader looks for what is
+# still wrong, so a stale row there is a false claim in the pessimistic
+# direction, which is why nothing noticed. It judges ownership, not wording: a
+# closed row's text and an open row owned by a live leaf still need reading.
+# ⚠️ Priced before registering: 0.03 s over three runs.
+if ! python3 -B scripts/check_qualification_currency.py --check >/dev/null 2>&1; then
+    python3 -B scripts/check_qualification_currency.py --check >&2
+    exit 1
+fi
+
 exit 0

@@ -515,6 +515,33 @@ VERDICTS = ("contained", "database_clock", "normalized", "value_granularity",
             "input_echo", "triage_false_positive")
 
 ADJUDICATION: dict[tuple[str, str, str], tuple[str, str, str, str]] = {
+    # ── six sites added after `.11.31.1` and judged at `SIGNOFF-REPAIR.11.31.2`
+    #    (2026-09-25): this census's `--check` ran in no gate, so they arrived
+    #    unjudged, two of them in the budget ledger. None escapes.
+    ("reasonbraid-server/src/authority/federation_admin.rs",
+     "propose_direction_in_one_transaction", "federation_agreements.expires_at"):
+        ("caller_supplied", "contained", "contained",
+         "the request's expiry is written and never read back into Rust; its one comparison, `IS DISTINCT FROM EXCLUDED.expires_at`, runs inside the database between two values already truncated to microseconds"),
+    ("reasonbraid-server/src/authority/node_admin.rs",
+     "adjudicate_ambiguous_attempt_in_one_transaction", "node_ambiguous_attempts.adjudicated_at"):
+        ("database_clock", "reaches_return", "database_clock",
+         "`at` is tx.database_now() in the same transaction"),
+    ("reasonbraid-server/src/authority/node_admin.rs",
+     "replay_command_with_possible_duplicate_in_one_transaction", "node_inbox.decided_at"):
+        ("database_clock", "reaches_return", "database_clock",
+         "`at` is tx.database_now() in the same transaction"),
+    ("reasonbraid-server/src/authority/profile_admin.rs",
+     "import_after_admission", "card_imports.imported_at"):
+        ("caller_supplied", "contained", "contained",
+         "written and never read back: the caller binds `at` from tx.database_now(), and CardImportResult carries no instant"),
+    ("reasonbraid-server/src/budget.rs",
+     "hold_for_unknown_outcome_in_tx", "budget_reservations.outcome_unknown_at"):
+        ("caller_supplied", "contained", "contained",
+         "bound from the caller's Utc::now() and never read back: the function returns only whether the hold was taken, and the column is otherwise consulted only for NULL"),
+    ("reasonbraid-server/src/budget.rs",
+     "settle_adjudicated_hold_in_tx", "budget_reservations.settled_at"):
+        ("caller_supplied", "contained", "contained",
+         "bound from the caller's Utc::now() and never read back: the function returns the reservation id alone, and the settlement it also writes is judged at settle_reservation_in_tx"),
     ("reasonbraid-server/src/api.rs",
      "apply_node_result_in_tx", "node_inbox.quarantined_at"):
         ("rust_clock", "contained", "contained",

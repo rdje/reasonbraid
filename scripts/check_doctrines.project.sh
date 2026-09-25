@@ -226,6 +226,19 @@ if ! python3 -B scripts/census_registry_read_reach.py --check >/dev/null 2>&1; t
     exit 1
 fi
 
+# Every Rust instant bound into a TIMESTAMPTZ column is judged
+# (`SIGNOFF-REPAIR.11.31.2`): PostgreSQL keeps microseconds, so a Rust copy that
+# escapes and is compared with the stored value disagrees by up to 999 ns on a
+# nanosecond clock (`.11.30`: the budget ledger re-lent capacity that way). This
+# host's clock is microsecond-granular, so no local run can reproduce the class;
+# the census over the source is the only instrument that sees it from here.
+# `.11.31.1` judged 43 sites and nothing re-ran the check, so six more arrived
+# unjudged, two of them in the budget ledger.
+if ! python3 -B scripts/census_bound_instants.py --check >/dev/null 2>&1; then
+    python3 -B scripts/census_bound_instants.py --check >&2
+    exit 1
+fi
+
 # A positional source reference must name a file a reader can find
 # (`SIGNOFF-REPAIR.11.17`). `CLAIM_VERIFICATION.md` §4.1 grades a NAMED INSTANCE
 # as exact with no tolerance band, and a BARE BASENAME is exact only when it

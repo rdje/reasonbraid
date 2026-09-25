@@ -999,10 +999,24 @@ say the document was acquired while nothing was stored.
 reported `evidence_unstored` since `SIGNOFF-REPAIR.7.4.2`; the R0 and R5 arms
 discarded the store's answer and set the receipt regardless.
 
+#### The resolver that acts is the first one this server can execute
+
+The ranked resolver that acts is the first one this server can execute
+(`SIGNOFF-REPAIR.7.1.3`). The built-in packs always can, and the gated packs
+(R3, R5, RX) can while their gate is open. Any other row cannot, including one a
+tenant administrator registered through `POST /v1/resolvers`. Such a row may
+still rank; it is skipped, named in `unexecutable`, and the next executable
+resolver acquires. Before this, one foreign row advertised as fast ranked first
+and made every tenant's resolution an empty success, with neither an
+acquisition nor an error, because the registry is site-global. When nothing
+ranked can act, the answer is the named
+`acquisition_error.kind: no_executable_resolver`. Who may add a row at all is
+`SIGNOFF-REPAIR.7.1.3.1`.
+
 #### Every refused resolution is recorded, and an operator can list them
 
-A resolve request can be refused in three ways. The first-ranked pack can refuse
-by name (`acquisition_error.kind`). No pack may be eligible at all
+A resolve request can be refused in three ways. The first executable ranked pack
+can refuse by name (`acquisition_error.kind`). No pack may be eligible at all
 (`unresolvable_now`). Or a quota can refuse the attempt (`429 quota_exceeded`,
 `503 quota_unconfigured`). Until `SIGNOFF-REPAIR.4.6.1.2` each of these reached
 only the caller: the quota denial was counted in `quota_events`, which names

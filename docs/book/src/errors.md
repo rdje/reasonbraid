@@ -127,6 +127,7 @@ the table above is held.
 | `media_type_refused` | R0 fetch | the media type is outside the accept set for this resolver |
 | `missing_redirect_location` | R0 fetch | a redirect status carried no `Location` header |
 | `no_addresses` | R0 fetch | the destination name resolved to no addresses |
+| `no_executable_resolver` | resolver | every ranked resolver is one this server has no executor for, such as a tenant-registered row (`SIGNOFF-REPAIR.7.1.3`); the message lists them, and the answer's `unexecutable` names them too |
 | `no_head_ref` | R1 git | the remote advertised no `HEAD` |
 | `no_host` | R0 fetch · R1 git | the URL has no host |
 | `port_not_allowed` | R0 fetch · R1 git | the port is not allowed by the policy |

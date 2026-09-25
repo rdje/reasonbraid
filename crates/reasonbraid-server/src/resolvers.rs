@@ -131,6 +131,54 @@ pub struct ResolutionOutcome {
     /// — present when the agent-mediated resolver ranks.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub acquisition_call: Option<crate::mediated::AcquisitionCall>,
+    /// The ranked resolvers this server has no executor for, in rank order
+    /// (`SIGNOFF-REPAIR.7.1.3`). They are skipped: the first EXECUTABLE ranked
+    /// resolver acquires. Before this, one such row ranked first made the
+    /// answer an empty success, and the registry is site-global.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unexecutable: Vec<String>,
+}
+
+/// Can this server EXECUTE the resolver `resolver_id`? The built-in packs can;
+/// the gated packs (R3, R5, RX) only while the gate is open. Any other row,
+/// such as one a tenant administrator registered, has no executor here
+/// (`SIGNOFF-REPAIR.7.1.3`). This is the one list the resolve path's execution
+/// `match` must agree with.
+pub fn executable(resolver_id: &str, gated_enabled: bool) -> bool {
+    match resolver_id {
+        R0_RESOLVER_ID | R1_RESOLVER_ID | R2_RESOLVER_ID => true,
+        R3_RESOLVER_ID | R5_RESOLVER_ID | RX_RESOLVER_ID => gated_enabled,
+        _ => false,
+    }
+}
+
+impl ResolutionOutcome {
+    /// Record which ranked resolvers cannot be executed here, and return the
+    /// first one that can (`SIGNOFF-REPAIR.7.1.3`). When none can, the answer
+    /// carries a NAMED refusal, never an empty success.
+    pub fn select_executable(&mut self, gated_enabled: bool) -> Option<String> {
+        self.unexecutable = self
+            .resolvers
+            .iter()
+            .filter(|id| !executable(id, gated_enabled))
+            .cloned()
+            .collect();
+        let chosen = self
+            .resolvers
+            .iter()
+            .find(|id| executable(id, gated_enabled))
+            .cloned();
+        if chosen.is_none() && !self.resolvers.is_empty() {
+            self.acquisition_error = Some(AcquisitionError {
+                kind: "no_executable_resolver".to_owned(),
+                message: format!(
+                    "every ranked resolver ({}) is one this server has no executor for",
+                    self.resolvers.join(", ")
+                ),
+            });
+        }
+        chosen
+    }
 }
 
 /// Resolve a reference: the scheme + the ADR-018 isolation filters FIRST
@@ -243,6 +291,7 @@ pub async fn resolve(
         acquisition: None,
         acquisition_error: None,
         acquisition_call: None,
+        unexecutable: Vec::new(),
     })
 }
 
@@ -399,4 +448,76 @@ fn gated_advertises() -> Vec<ResolverAdvertise> {
             }),
         },
     ]
+}
+
+#[cfg(test)]
+mod executable_selection {
+    use super::*;
+
+    fn ranked(ids: &[&str]) -> ResolutionOutcome {
+        ResolutionOutcome {
+            resolvers: ids.iter().map(|id| id.to_string()).collect(),
+            unresolvable_now: ids.is_empty(),
+            acquisition: None,
+            acquisition_error: None,
+            acquisition_call: None,
+            unexecutable: Vec::new(),
+        }
+    }
+
+    /// `SIGNOFF-REPAIR.7.1.3` — the built-ins always execute, the gated packs
+    /// only while the gate is open, and any other row never.
+    #[test]
+    fn only_the_packs_this_server_runs_are_executable() {
+        for id in [R0_RESOLVER_ID, R1_RESOLVER_ID, R2_RESOLVER_ID] {
+            assert!(executable(id, false) && executable(id, true), "{id}");
+        }
+        for id in [R3_RESOLVER_ID, R5_RESOLVER_ID, RX_RESOLVER_ID] {
+            assert!(!executable(id, false) && executable(id, true), "{id}");
+        }
+        assert!(!executable("a-tenants-own-resolver", true));
+    }
+
+    /// The first EXECUTABLE ranked resolver acts; everything unexecutable is
+    /// named in rank order; and when nothing can act the answer is a named
+    /// refusal rather than an empty success.
+    #[test]
+    fn the_first_executable_ranked_resolver_acts_and_the_rest_are_named() {
+        let mut outcome = ranked(&[
+            "foreign-fast",
+            R3_RESOLVER_ID,
+            R0_RESOLVER_ID,
+            "foreign-slow",
+        ]);
+        assert_eq!(
+            outcome.select_executable(false).as_deref(),
+            Some(R0_RESOLVER_ID)
+        );
+        assert_eq!(
+            outcome.unexecutable,
+            ["foreign-fast", R3_RESOLVER_ID, "foreign-slow"],
+            "every unexecutable ranked row, in rank order"
+        );
+        assert!(outcome.acquisition_error.is_none(), "an executor was found");
+
+        let mut gated = ranked(&["foreign-fast", R3_RESOLVER_ID, R0_RESOLVER_ID]);
+        assert_eq!(
+            gated.select_executable(true).as_deref(),
+            Some(R3_RESOLVER_ID)
+        );
+        assert_eq!(gated.unexecutable, ["foreign-fast"]);
+
+        let mut none = ranked(&["foreign-fast", "foreign-slow"]);
+        assert_eq!(none.select_executable(true), None);
+        let error = none.acquisition_error.expect("a named refusal");
+        assert_eq!(error.kind, "no_executable_resolver");
+        assert!(error.message.contains("foreign-fast, foreign-slow"));
+
+        let mut empty = ranked(&[]);
+        assert_eq!(empty.select_executable(true), None);
+        assert!(
+            empty.acquisition_error.is_none(),
+            "nothing ranked is `unresolvable_now`, not this refusal"
+        );
+    }
 }

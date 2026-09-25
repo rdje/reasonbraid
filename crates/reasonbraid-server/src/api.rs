@@ -2826,7 +2826,7 @@ async fn resolve_resource(
             )));
         }
     }
-    let outcome = crate::resolvers::resolve(
+    let mut outcome = crate::resolvers::resolve(
         &state.pool,
         &reference.scheme,
         reference.media_type_hint.as_deref(),
@@ -2835,6 +2835,9 @@ async fn resolve_resource(
         &req.required_egress,
     )
     .await?;
+    // The resolver that ACTS is the first ranked one this server can execute
+    // (`SIGNOFF-REPAIR.7.1.3`); the bounds below and the execution count it.
+    let executing = outcome.select_executable(state.r5r3rx_enabled);
     // §16.11's acquisition bounds (`SIGNOFF-REPAIR.11.14.3.14`). This is the
     // surface the section names as "resolver abuse" and "scraping", and until
     // this leaf it carried no quota, no storm control and no breaker while
@@ -2850,7 +2853,7 @@ async fn resolve_resource(
     // deliberate: the bound is on ATTEMPTS, and an attempt is what a caller can
     // repeat. ⚠️ A locator with no host takes the resolver bound only — there is
     // no destination to bound, and no pack can fetch such a locator anyway.
-    if let Some(ranked) = outcome.resolvers.first().cloned() {
+    if let Some(ranked) = executing.clone() {
         let host = url::Url::parse(&reference.original_locator)
             .ok()
             .and_then(|parsed| parsed.host_str().map(str::to_owned));
@@ -3112,8 +3115,14 @@ fn refusal_answered(
         ));
     }
     outcome.acquisition_error.as_ref().map(|error| {
+        // The refusing resolver is the one that ACTED: the first ranked one not
+        // named unexecutable (`SIGNOFF-REPAIR.7.1.3`), or none when none could.
         (
-            outcome.resolvers.first().cloned(),
+            outcome
+                .resolvers
+                .iter()
+                .find(|id| !outcome.unexecutable.contains(id))
+                .cloned(),
             error.kind.clone(),
             error.message.clone(),
         )
@@ -3291,10 +3300,18 @@ async fn acquire_ranked(
     reference: &crate::resources::ResourceReference,
     mut outcome: crate::resolvers::ResolutionOutcome,
 ) -> Result<crate::resolvers::ResolutionOutcome, ControlApiError> {
-    // The built-in packs execute when they rank first: the acquisition
-    // runs under the pack's own ceilings + the `.2.1` policy; a refusal is
-    // the NAMED error, and the reference stays submitted either way.
-    match outcome.resolvers.first().map(String::as_str) {
+    // The built-in packs execute when they are the first EXECUTABLE ranked
+    // resolver (`SIGNOFF-REPAIR.7.1.3`): a ranked row this server has no
+    // executor for is skipped and named in `unexecutable`, never allowed to
+    // turn the answer into an empty success. The acquisition runs under the
+    // pack's own ceilings + the `.2.1` policy; a refusal is the NAMED error,
+    // and the reference stays submitted either way.
+    let executing = outcome
+        .resolvers
+        .iter()
+        .find(|id| crate::resolvers::executable(id, state.r5r3rx_enabled))
+        .cloned();
+    match executing.as_deref() {
         Some(crate::resolvers::R0_RESOLVER_ID) => {
             match state.fetcher.fetch(&reference.original_locator).await {
                 Ok(document) => {

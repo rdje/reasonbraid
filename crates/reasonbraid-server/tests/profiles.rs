@@ -7035,6 +7035,110 @@ async fn a_replace_is_complete_and_the_http_verb_does_not_perform_one() {
 /// built-in packs' (`SIGNOFF-REPAIR.11.9.1.1.1`, owned by `.7.1`), and
 /// widening the upsert would have handed that unbound principal eleven more
 /// columns. The verb refuses instead, by name.
+/// `SIGNOFF-REPAIR.7.1.3` — a resolver the server cannot EXECUTE never turns a
+/// resolution into a silent nothing, whoever registered it.
+///
+/// `resolver_capabilities` is site-global, and any tenant administrator may add
+/// a row. Tenant A registers an `https` resolver advertised faster than the
+/// built-in `r0`; nothing in the server executes it. Tenant B then resolves an
+/// `https` reference: before this leaf the answer ranked A's resolver first
+/// and carried NO acquisition and NO error, so B's fetch silently did nothing.
+/// Now execution goes to the first ranked resolver the server CAN execute,
+/// and the unexecutable one is named in the answer.
+#[tokio::test]
+async fn an_unexecutable_resolver_never_silences_another_tenants_resolution() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let principal = |name: &'static str| {
+        let (client, base) = (client.clone(), base.clone());
+        async move {
+            let (status, human) =
+                enroll(&client, &base, json!({ "kind": "human", "name": name })).await;
+            assert_eq!(status, 200, "enrolls: {human}");
+            human["principal_id"].as_str().unwrap().to_string()
+        }
+    };
+    sqlx::query("DELETE FROM resolver_capabilities WHERE resolver_id = 'hijack-https-fast'")
+        .execute(&pool)
+        .await
+        .expect("a clean registry");
+    let tenant_a = principal("hijack-a").await;
+    let tenant_b = principal("hijack-b").await;
+
+    let response = client
+        .post(format!("{base}/v1/resolvers"))
+        .header(PRINCIPAL_HEADER, &tenant_a)
+        .json(&json!({
+            "resolver_id": "hijack-https-fast",
+            "schemes": ["https"],
+            "egress_class": "listed",
+            "sandbox_level": "none",
+            "latency_range_ms": { "min": 1, "max": 1 },
+            "version": "0.1.0",
+        }))
+        .send()
+        .await
+        .expect("register request");
+    assert_eq!(
+        response.status().as_u16(),
+        200,
+        "tenant A may add a resolver today"
+    );
+
+    let submitted: Value = client
+        .post(format!("{base}/v1/resources"))
+        .header(PRINCIPAL_HEADER, &tenant_b)
+        .json(&json!({ "original_locator": "https://127.0.0.1/guidance", "scheme": "https" }))
+        .send()
+        .await
+        .expect("submit")
+        .json()
+        .await
+        .expect("json");
+    let resource_id = submitted["resource_id"]
+        .as_str()
+        .expect("resource")
+        .to_string();
+    let resolved: Value = client
+        .post(format!("{base}/v1/resources/{resource_id}/resolve"))
+        .header(PRINCIPAL_HEADER, &tenant_b)
+        .json(&json!({ "required_sandbox": "none", "required_egress": "listed" }))
+        .send()
+        .await
+        .expect("resolve")
+        .json()
+        .await
+        .expect("json");
+    // The row is SITE-GLOBAL: left behind, it silences every later `https`
+    // resolution in this suite, which is the defect itself (measured: four
+    // other controls failed exactly so on the first run). Removed BEFORE any
+    // assertion, so a failing run cleans up too.
+    sqlx::query("DELETE FROM resolver_capabilities WHERE resolver_id = 'hijack-https-fast'")
+        .execute(&pool)
+        .await
+        .expect("remove the foreign resolver");
+
+    assert_eq!(
+        resolved["resolvers"][0],
+        json!("hijack-https-fast"),
+        "the foreign resolver does rank first: {resolved}"
+    );
+    assert_eq!(
+        resolved["acquisition_error"]["kind"],
+        json!("destination_refused"),
+        "the built-in r0 EXECUTED (refusing the loopback literal by name), so B's \
+         resolution was not silenced: {resolved}"
+    );
+    assert_eq!(
+        resolved["unexecutable"],
+        json!(["hijack-https-fast"]),
+        "the resolver the server could not execute is named: {resolved}"
+    );
+}
+
 #[tokio::test]
 async fn the_resolver_verb_refuses_to_replace_an_existing_advertise() {
     let _guard = guard().await;

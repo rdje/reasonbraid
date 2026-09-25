@@ -60,6 +60,17 @@ pub struct StoredAssignment {
     pub observed_state: String,
 }
 
+/// One kept receipt (`SIGNOFF-REPAIR.9.3.3.3`): who filed it, what it
+/// reported, and when, by the database's clock.
+#[derive(Debug, Clone, Serialize)]
+pub struct StoredReceipt {
+    pub receipt_id: String,
+    pub reporter: String,
+    pub observed_digest: String,
+    pub observed_state: String,
+    pub recorded_at: chrono::DateTime<chrono::Utc>,
+}
+
 /// The typed refusal reasons.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeploymentError {
@@ -99,6 +110,21 @@ pub enum DeploymentError {
     /// The store could not answer: the server's fault, never the caller's
     /// (`api::deployment_refusal` answers it `500`).
     Storage(String),
+    /// The caller's input holds a character the store cannot represent
+    /// (`api::unrepresentable_input`): the caller's, and permanent.
+    UnrepresentableInput,
+}
+
+impl DeploymentError {
+    /// A store error, classified while its SQLSTATE is still readable: the
+    /// server's, unless it is the caller's own unrepresentable input.
+    fn storage(error: sqlx::Error) -> Self {
+        if crate::api::unrepresentable_input(&error) {
+            Self::UnrepresentableInput
+        } else {
+            Self::Storage(error.to_string())
+        }
+    }
 }
 
 impl std::fmt::Display for DeploymentError {
@@ -155,6 +181,9 @@ impl std::fmt::Display for DeploymentError {
                 )
             }
             DeploymentError::Storage(detail) => write!(f, "the deployment store failed: {detail}"),
+            DeploymentError::UnrepresentableInput => {
+                write!(f, "the input holds a character the store cannot represent")
+            }
             DeploymentError::MalformedReporter(r) => write!(
                 f,
                 "reporter `{r}` is not a principal id (expected hpr_… | rol_…)"
@@ -231,7 +260,7 @@ pub async fn register_target(
         .ok_or_else(|| DeploymentError::MalformedReporter(input.reporter.clone()))?;
     let enrolled = crate::api::reader_tenant(pool, &reporter)
         .await
-        .map_err(|error| DeploymentError::Storage(error.to_string()))?;
+        .map_err(DeploymentError::storage)?;
     if enrolled.is_none() {
         return Err(DeploymentError::UnenrolledReporter(input.reporter.clone()));
     }
@@ -386,22 +415,27 @@ pub async fn record_receipt(
     // got; a caller of the right tenant that the target does not name is refused
     // by name. The owner is deliberately not enough: ADR-021's receipt is what the
     // target OBSERVED, and the operator who assigned the desired pair is the hope.
-    let reporter: Option<Option<String>> = sqlx::query_scalar(
-        "SELECT t.reporter FROM deployment_assignments a \
+    //
+    // ⛔ `SIGNOFF-REPAIR.9.3.3.3`: a receipt is KEPT. It is a row of its own and
+    // the assignment's observed pair becomes the latest one, both in this
+    // transaction and under a lock on the assignment, so two receipts filed at
+    // once are ordered and the pair is always the last row. A receipt used to
+    // overwrite the pair in place, destroying the one before it.
+    let mut tx = pool.begin().await.map_err(DeploymentError::storage)?;
+    let found: Option<(Option<String>, String)> = sqlx::query_as(
+        "SELECT t.reporter, p.tenant_id FROM deployment_assignments a \
          JOIN policy_publications p ON p.publication_id = a.publication_id \
          JOIN deployment_targets t ON t.target_id = a.target_id \
-         WHERE a.target_id = $1 AND a.publication_id = $2 AND p.tenant_id = $3",
+         WHERE a.target_id = $1 AND a.publication_id = $2 AND p.tenant_id = $3 \
+         FOR UPDATE OF a",
     )
     .bind(target_id)
     .bind(publication_id)
     .bind(tenant_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await
-    .map_err(|_| DeploymentError::UnknownAssignment {
-        target_id: target_id.to_string(),
-        publication_id: publication_id.to_string(),
-    })?;
-    let Some(reporter) = reporter else {
+    .map_err(DeploymentError::storage)?;
+    let Some((reporter, owner)) = found else {
         return Err(DeploymentError::UnknownAssignment {
             target_id: target_id.to_string(),
             publication_id: publication_id.to_string(),
@@ -417,49 +451,42 @@ pub async fn record_receipt(
         });
     }
     sqlx::query(
+        "INSERT INTO deployment_receipts \
+         (receipt_id, target_id, publication_id, tenant_id, reporter, observed_digest, \
+          observed_state) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+    )
+    .bind(crate::snapshots::evidence_id("drc"))
+    .bind(target_id)
+    .bind(publication_id)
+    .bind(&owner)
+    .bind(&reporter)
+    .bind(&input.observed_digest)
+    .bind(&input.observed_state)
+    .execute(&mut *tx)
+    .await
+    .map_err(DeploymentError::storage)?;
+    let row: AssignmentRow = sqlx::query_as(
         "UPDATE deployment_assignments SET observed_digest = $3, observed_state = $4 \
-         WHERE target_id = $1 AND publication_id = $2",
+         WHERE target_id = $1 AND publication_id = $2 \
+         RETURNING target_id, publication_id, wave, desired_ref, desired_digest, \
+             observed_digest, observed_state",
     )
     .bind(target_id)
     .bind(publication_id)
     .bind(&input.observed_digest)
     .bind(&input.observed_state)
-    .execute(pool)
+    .fetch_one(&mut *tx)
     .await
-    .map_err(|_| DeploymentError::UnknownAssignment {
-        target_id: target_id.to_string(),
-        publication_id: publication_id.to_string(),
-    })?;
-    load_assignment(pool, target_id, publication_id).await
+    .map_err(DeploymentError::storage)?;
+    tx.commit().await.map_err(DeploymentError::storage)?;
+    Ok(stored_assignment(row))
 }
 
 /// The stored assignment row shape (the query tuple).
 type AssignmentRow = (String, String, i64, String, String, Option<String>, String);
 
-/// ⚠️ `load_assignment` stays UNBOUND, deliberately, and this is one of the
-/// reads `SIGNOFF-REPAIR.6.1.5.3` NAMES rather than binds: its only caller is
-/// `record_receipt`, whose own join has already refused an assignment whose
-/// publication is not the caller's. A predicate here would be a second copy of
-/// that fact, and a second copy is what drifts.
-async fn load_assignment(
-    pool: &PgPool,
-    target_id: &str,
-    publication_id: &str,
-) -> Result<StoredAssignment, DeploymentError> {
-    let row: Option<AssignmentRow> = sqlx::query_as(
-        "SELECT target_id, publication_id, wave, desired_ref, desired_digest, \
-             observed_digest, observed_state \
-             FROM deployment_assignments WHERE target_id = $1 AND publication_id = $2",
-    )
-    .bind(target_id)
-    .bind(publication_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|_| DeploymentError::UnknownAssignment {
-        target_id: target_id.to_string(),
-        publication_id: publication_id.to_string(),
-    })?;
-    let Some((
+fn stored_assignment(row: AssignmentRow) -> StoredAssignment {
+    let (
         target_id,
         publication_id,
         wave,
@@ -467,22 +494,82 @@ async fn load_assignment(
         desired_digest,
         observed_digest,
         observed_state,
-    )) = row
-    else {
+    ) = row;
+    StoredAssignment {
+        target_id,
+        publication_id,
+        wave,
+        desired_ref,
+        desired_digest,
+        observed_digest,
+        observed_state,
+    }
+}
+
+/// One assignment's receipts, in the order they were filed
+/// (`SIGNOFF-REPAIR.9.3.3.3`). Bound like the list: an assignment whose
+/// publication is not the caller's tenant answers as an absent one does. An
+/// assignment that exists and was never reported answers an empty history. The
+/// rows are read by their own `tenant_id` too, copied from the publication when
+/// each was written, so the history's read carries its own predicate.
+///
+/// ⚠️ A pair reported before `migrations/0115` has no row: that history was
+/// already gone when the table was created.
+pub async fn list_receipts(
+    pool: &PgPool,
+    tenant_id: &str,
+    target_id: &str,
+    publication_id: &str,
+) -> Result<Vec<StoredReceipt>, DeploymentError> {
+    let mut tx = pool.begin().await.map_err(DeploymentError::storage)?;
+    let owned: Option<bool> = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM deployment_assignments a \
+         JOIN policy_publications p ON p.publication_id = a.publication_id \
+         WHERE a.target_id = $1 AND a.publication_id = $2 AND p.tenant_id = $3)",
+    )
+    .bind(target_id)
+    .bind(publication_id)
+    .bind(tenant_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(DeploymentError::storage)?;
+    if !owned.unwrap_or(false) {
         return Err(DeploymentError::UnknownAssignment {
             target_id: target_id.to_string(),
             publication_id: publication_id.to_string(),
         });
-    };
-    Ok(StoredAssignment {
-        target_id,
-        publication_id,
-        wave,
-        desired_ref,
-        desired_digest,
-        observed_digest,
-        observed_state,
-    })
+    }
+    let rows: Vec<(
+        String,
+        String,
+        String,
+        String,
+        chrono::DateTime<chrono::Utc>,
+    )> = sqlx::query_as(
+        "SELECT receipt_id, reporter, observed_digest, observed_state, recorded_at \
+             FROM deployment_receipts \
+             WHERE target_id = $1 AND publication_id = $2 AND tenant_id = $3 \
+             ORDER BY recorded_at, receipt_id",
+    )
+    .bind(target_id)
+    .bind(publication_id)
+    .bind(tenant_id)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(DeploymentError::storage)?;
+    tx.commit().await.map_err(DeploymentError::storage)?;
+    Ok(rows
+        .into_iter()
+        .map(
+            |(receipt_id, reporter, observed_digest, observed_state, recorded_at)| StoredReceipt {
+                receipt_id,
+                reporter,
+                observed_digest,
+                observed_state,
+                recorded_at,
+            },
+        )
+        .collect())
 }
 
 /// The assignments, newest first.
@@ -510,28 +597,5 @@ pub async fn list_assignments(
     .bind(tenant_id)
     .fetch_all(pool)
     .await?;
-    Ok(rows
-        .into_iter()
-        .map(
-            |(
-                target_id,
-                publication_id,
-                wave,
-                desired_ref,
-                desired_digest,
-                observed_digest,
-                observed_state,
-            )| {
-                StoredAssignment {
-                    target_id,
-                    publication_id,
-                    wave,
-                    desired_ref,
-                    desired_digest,
-                    observed_digest,
-                    observed_state,
-                }
-            },
-        )
-        .collect())
+    Ok(rows.into_iter().map(stored_assignment).collect())
 }

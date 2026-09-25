@@ -54,6 +54,7 @@ async fn pool() -> Option<PgPool> {
             "policy_outcomes",
             "policy_corrections",
             "policy_drift",
+            "deployment_receipts",
             "deployment_assignments",
             "deployment_targets",
             "policy_publications",
@@ -4791,6 +4792,280 @@ async fn the_deployment_rides_the_effective_publication_per_target() {
     assert_eq!(deployments[0]["observed_digest"], Value::Null);
     assert_eq!(deployments[1]["desired_digest"], json!(projection_digest));
     assert_eq!(deployments[1]["observed_digest"], json!(projection_digest));
+
+    // 5. A second receipt does not erase the first (`SIGNOFF-REPAIR.9.3.3.3`,
+    // §12.9's *never a silent disappearance*): every receipt is a row naming its
+    // reporter, in the order filed, and the assignment's pair is the latest. The
+    // single observed pair used to be overwritten in place.
+    let (status, second) = post(
+        &client,
+        &base,
+        "/v1/deployments/dp-target/dp-pub-1/receipt",
+        &reporter_id,
+        &json!({ "observed_digest": DIGEST, "observed_state": "rejected" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the second receipt records: {second}");
+    assert_eq!(second["observed_digest"], json!(DIGEST), "{second}");
+    let (status, history) = get(
+        &client,
+        &base,
+        "/v1/deployments/dp-target/dp-pub-1/receipts",
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the receipt history reads: {history}");
+    let history = history.as_array().expect("the history is a list");
+    assert_eq!(history.len(), 2, "both receipts are kept: {history:?}");
+    assert_eq!(history[0]["observed_digest"], json!(projection_digest));
+    assert_eq!(history[0]["observed_state"], json!("applied"));
+    assert_eq!(history[1]["observed_digest"], json!(DIGEST));
+    assert_eq!(history[1]["observed_state"], json!("rejected"));
+    for row in history {
+        assert_eq!(row["reporter"], json!(reporter_id), "{row}");
+    }
+    // Each kept row carries the PUBLICATION's tenant, and the history reads by
+    // it: a row for the same pair under another tenant is not this tenant's.
+    let owners: Vec<String> = sqlx::query_scalar(
+        "SELECT DISTINCT tenant_id FROM deployment_receipts \
+         WHERE target_id = 'dp-target' AND publication_id = 'dp-pub-1'",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("the owners read");
+    assert_eq!(
+        owners,
+        vec![tenant_id.clone()],
+        "a receipt carries its publication's tenant"
+    );
+    sqlx::query(
+        "INSERT INTO deployment_receipts (receipt_id, target_id, publication_id, tenant_id, \
+         reporter, observed_digest, observed_state) \
+         VALUES ('drc_foreign', 'dp-target', 'dp-pub-1', 'tnt_elsewhere', $1, $2, 'applied')",
+    )
+    .bind(&reporter_id)
+    .bind(DIGEST)
+    .execute(&pool)
+    .await
+    .expect("a foreign-tenant row seeds");
+    let (status, history) = get(
+        &client,
+        &base,
+        "/v1/deployments/dp-target/dp-pub-1/receipts",
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "{history}");
+    assert_eq!(
+        history.as_array().map(Vec::len),
+        Some(2),
+        "a row under another tenant is not in this tenant's history: {history}"
+    );
+    // An assignment never reported has an empty history, and one that does not
+    // exist is refused like any absent assignment.
+    let (status, empty) = get(
+        &client,
+        &base,
+        "/v1/deployments/dp-legacy/dp-pub-1/receipts",
+        &human_id,
+    )
+    .await;
+    assert_eq!(status, 200, "a never-reported assignment reads: {empty}");
+    assert_eq!(empty, json!([]), "{empty}");
+    let (status, refused) = get(
+        &client,
+        &base,
+        "/v1/deployments/dp-target/dp-pub-2/receipts",
+        &human_id,
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "an absent assignment has no history: {refused}"
+    );
+    // ⛔ The database refuses to rewrite a kept receipt.
+    let rewritten = sqlx::query(
+        "UPDATE deployment_receipts SET observed_state = 'applied' \
+         WHERE target_id = 'dp-target' AND observed_state = 'rejected'",
+    )
+    .execute(&pool)
+    .await;
+    assert!(
+        rewritten
+            .as_ref()
+            .is_err_and(|e| e.to_string().contains("never rewritten")),
+        "a receipt is never rewritten: {rewritten:?}"
+    );
+    // ⛔ The row and the pair are ONE write: with the history unwritable for one
+    // request, the receipt is the server's `500` and the assignment's pair is
+    // unchanged, never updated without its row. Restored before asserting.
+    sqlx::raw_sql("ALTER TABLE deployment_receipts RENAME TO deployment_receipts_withheld")
+        .execute(&pool)
+        .await
+        .expect("withhold the table");
+    let (status, answered) = post(
+        &client,
+        &base,
+        "/v1/deployments/dp-target/dp-pub-1/receipt",
+        &reporter_id,
+        &json!({ "observed_digest": projection_digest, "observed_state": "applied" }),
+    )
+    .await;
+    sqlx::raw_sql("ALTER TABLE deployment_receipts_withheld RENAME TO deployment_receipts")
+        .execute(&pool)
+        .await
+        .expect("restore the table");
+    assert_eq!(
+        status, 500,
+        "an unwritable history is the server's failure: {answered}"
+    );
+    assert_eq!(
+        answered["code"],
+        json!("dependency_unavailable"),
+        "{answered}"
+    );
+    let pair: (Option<String>, String) = sqlx::query_as(
+        "SELECT observed_digest, observed_state FROM deployment_assignments \
+         WHERE target_id = 'dp-target' AND publication_id = 'dp-pub-1'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("the pair reads");
+    assert_eq!(
+        pair,
+        (Some(DIGEST.to_string()), "rejected".to_string()),
+        "a failed receipt leaves the pair as the last kept receipt"
+    );
+    // …and the other direction: with the PAIR unwritable for one request (a
+    // trigger injected on the assignment, dropped before asserting), the row the
+    // receipt already wrote is rolled back with it — no kept receipt names a pair
+    // the assignment never took.
+    let kept = |pool: PgPool| async move {
+        sqlx::query_scalar::<_, i64>(
+            "SELECT count(*) FROM deployment_receipts \
+             WHERE target_id = 'dp-target' AND publication_id = 'dp-pub-1'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("the history counts")
+    };
+    let before = kept(pool.clone()).await;
+    sqlx::raw_sql(
+        "CREATE FUNCTION dp_refuse_pair() RETURNS trigger LANGUAGE plpgsql AS \
+         $$ BEGIN RAISE EXCEPTION 'the pair is withheld'; END; $$; \
+         CREATE TRIGGER dp_refuse_pair BEFORE UPDATE ON deployment_assignments \
+         FOR EACH ROW EXECUTE FUNCTION dp_refuse_pair();",
+    )
+    .execute(&pool)
+    .await
+    .expect("withhold the pair");
+    let (status, answered) = post(
+        &client,
+        &base,
+        "/v1/deployments/dp-target/dp-pub-1/receipt",
+        &reporter_id,
+        &json!({ "observed_digest": projection_digest, "observed_state": "applied" }),
+    )
+    .await;
+    sqlx::raw_sql(
+        "DROP TRIGGER dp_refuse_pair ON deployment_assignments; DROP FUNCTION dp_refuse_pair();",
+    )
+    .execute(&pool)
+    .await
+    .expect("restore the pair");
+    assert_eq!(
+        status, 500,
+        "an unwritable pair is the server's failure: {answered}"
+    );
+    assert_eq!(
+        kept(pool.clone()).await,
+        before,
+        "the receipt's row is rolled back with the pair it could not set"
+    );
+    // ⛔ Receipts to one assignment are taken ONE AT A TIME, so "the latest row"
+    // and "the assignment's pair" are the same receipt: a receipt waits for the
+    // assignment's lock BEFORE it writes its row. Observed by holding the lock,
+    // waiting until the receipt is queued on it, and releasing at a known
+    // database instant: the kept row must be recorded AFTER that instant. A
+    // receipt that wrote its row first and queued only for the pair would record
+    // it before, and two such receipts could leave the pair on the older one.
+    // ⚠️ Such a receipt queues on the row's INSERT, not on the assignment: the
+    // foreign key's check takes a share lock on the held assignment row. The
+    // wait is therefore watched on both tables, or that receipt would never be
+    // seen queued and the ordering assertion below would never be reached.
+    let mut holder = pool.begin().await.expect("the holder begins");
+    sqlx::query(
+        "SELECT 1 FROM deployment_assignments \
+         WHERE target_id = 'dp-target' AND publication_id = 'dp-pub-1' FOR UPDATE",
+    )
+    .execute(&mut *holder)
+    .await
+    .expect("the holder locks the assignment");
+    let queued = tokio::spawn({
+        let (client, base, reporter_id) = (client.clone(), base.clone(), reporter_id.clone());
+        let digest = projection_digest.clone();
+        async move {
+            post(
+                &client,
+                &base,
+                "/v1/deployments/dp-target/dp-pub-1/receipt",
+                &reporter_id,
+                &json!({ "observed_digest": digest, "observed_state": "applied" }),
+            )
+            .await
+        }
+    });
+    let mut waiting = 0_i64;
+    for _ in 0..500 {
+        waiting = sqlx::query_scalar(
+            "SELECT count(*) FROM pg_stat_activity WHERE wait_event_type = 'Lock' \
+             AND (query LIKE '%deployment_assignments%' OR query LIKE '%deployment_receipts%')",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("the wait reads");
+        if waiting > 0 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    assert_eq!(waiting, 1, "the receipt queues on the assignment's lock");
+    let released: chrono::DateTime<chrono::Utc> = sqlx::query_scalar("SELECT clock_timestamp()")
+        .fetch_one(&mut *holder)
+        .await
+        .expect("the release instant reads");
+    holder.commit().await.expect("the holder releases");
+    let (status, filed) = queued.await.expect("the queued receipt joins");
+    assert_eq!(
+        status, 200,
+        "the queued receipt records once released: {filed}"
+    );
+    let recorded: chrono::DateTime<chrono::Utc> = sqlx::query_scalar(
+        "SELECT max(recorded_at) FROM deployment_receipts \
+         WHERE target_id = 'dp-target' AND publication_id = 'dp-pub-1'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("the latest receipt reads");
+    assert!(
+        recorded > released,
+        "the receipt's row is written after the lock is released ({recorded} > {released})"
+    );
+    // Input the store cannot hold is the caller's, and permanent.
+    let (status, answered) = post(
+        &client,
+        &base,
+        "/v1/deployments/dp%00target/dp-pub-1/receipt",
+        &reporter_id,
+        &json!({ "observed_digest": projection_digest, "observed_state": "applied" }),
+    )
+    .await;
+    assert_eq!(status, 400, "a NUL in the path is the caller's: {answered}");
+    assert_eq!(
+        answered["code"],
+        json!("unrepresentable_input"),
+        "{answered}"
+    );
 }
 
 #[tokio::test]
@@ -7385,6 +7660,24 @@ async fn the_lifecycle_verbs_refuse_another_tenants_publication() {
     assert_eq!(status, 400, "a foreign tenant files no receipt: {refused}");
     let (status, filed) = post(&client, &base, &receipt_path, &alice_id, &receipt).await;
     assert_eq!(status, 200, "the owner still files a receipt: {filed}");
+    // `SIGNOFF-REPAIR.9.3.3.3`: the history is read by the publication's tenant,
+    // and another tenant gets the answer an absent assignment gets.
+    let history_path = format!("/v1/deployments/gtn-target/{pub1}/receipts");
+    let (status, refused) = get(&client, &base, &history_path, &mallory_id).await;
+    assert_eq!(status, 400, "a foreign tenant reads no receipts: {refused}");
+    let absent_path = format!("/v1/deployments/gtn-target-absent/{pub1}/receipts");
+    let (status, absent) = get(&client, &base, &absent_path, &mallory_id).await;
+    assert_eq!(status, 400, "{absent}");
+    assert_eq!(
+        absent["message"]
+            .as_str()
+            .map(|m| m.replace("gtn-target-absent", "gtn-target")),
+        refused["message"].as_str().map(str::to_string),
+        "a foreign tenant cannot tell a deployed pair from an absent one: {absent} vs {refused}"
+    );
+    let (status, history) = get(&client, &base, &history_path, &alice_id).await;
+    assert_eq!(status, 200, "the owner reads the history: {history}");
+    assert_eq!(history.as_array().map(Vec::len), Some(1), "{history}");
 
     // ── ARMS 7, 8 and 9: drift, correction and outcome.
     let drift = json!({

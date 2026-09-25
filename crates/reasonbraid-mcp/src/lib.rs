@@ -572,6 +572,7 @@ mod tests {
                 "policy_outcomes",
                 "policy_corrections",
                 "policy_drift",
+                "deployment_receipts",
                 "deployment_assignments",
                 "deployment_targets",
                 "policy_publications",

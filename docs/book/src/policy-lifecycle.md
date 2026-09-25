@@ -50,6 +50,7 @@ GET    /v1/policy-bundles/{manifest_digest}        a published bundle, verified 
 POST   /v1/deployments                             assign a publication to a target
 GET    /v1/deployments                             the assignments, desired vs observed
 POST   /v1/deployments/{target_id}/{publication_id}/receipt   attest the observed digest
+GET    /v1/deployments/{target_id}/{publication_id}/receipts  every receipt, in the order filed
 POST   /v1/policy-drift                            record one drift observation
 GET    /v1/policy-drift                            the drift observations
 POST   /v1/policy-outcomes                         record one outcome
@@ -578,6 +579,39 @@ an existing target; that is deferred until a target needs one
 (`SIGNOFF-REPAIR.9.3.3.2.1`). Until 2026-09-25 any principal of the owning tenant
 could file a receipt (`SIGNOFF-REPAIR.9.3.3.2`,
 `docs/decisions/2026-09-25_a-target-names-its-reporter.md`).
+
+**Every receipt is kept.** Each is its own row, naming its reporter and the
+database's time, and the assignment's observed pair is always the latest one:
+the row and the pair are written together, and receipts to one assignment are
+taken one at a time, so the two cannot disagree. A kept receipt is never
+rewritten; the database refuses it. `GET
+/v1/deployments/{target_id}/{publication_id}/receipts` returns them oldest first,
+to the tenant that owns the assignment's publication (another tenant gets the
+answer an absent assignment gets):
+
+```json
+[
+  {
+    "receipt_id": "drc_0192…",
+    "reporter": "rol_0192…",
+    "observed_digest": "sha256:aaa…",
+    "observed_state": "applied",
+    "recorded_at": "2026-09-25T21:40:02.118Z"
+  },
+  {
+    "receipt_id": "drc_0192…",
+    "reporter": "rol_0192…",
+    "observed_digest": "sha256:ccc…",
+    "observed_state": "rejected",
+    "recorded_at": "2026-09-25T21:44:30.372Z"
+  }
+]
+```
+
+An assignment never reported has an empty history. ⚠️ A pair reported before
+`migrations/0115` (2026-09-25) has no row: each receipt used to overwrite the one
+before it, so that history was already gone, and the server does not invent a row
+naming a reporter nobody recorded (`SIGNOFF-REPAIR.9.3.3.3`).
 
 `GET /v1/deployments` returns the assignments with **both halves side by side**:
 

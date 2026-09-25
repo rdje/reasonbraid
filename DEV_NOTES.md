@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — A target's reports are kept, not overwritten (`SIGNOFF-REPAIR.9.3.3.3`)
+
+`REASONBRAID-REPAIR-0527`.
+
+- 🔴 **Root cause:** `record_receipt` overwrote `deployment_assignments.observed_*` in place, outside a transaction; there was nowhere to keep a second receipt.
+- ✅ **Fix:** `migrations/0115` `deployment_receipts` (tenant copied from the publication, `BEFORE UPDATE` trigger refuses rewrites, FK to the assignment); `record_receipt` is one transaction under `FOR UPDATE OF a` (insert the row, `UPDATE … RETURNING` the pair; `load_assignment` retired); `GET /v1/deployments/{t}/{p}/receipts`; `DeploymentError::storage` + `UnrepresentableInput`.
+- ⭐ The first ordering control was blind: without the lock the receipt queued on its INSERT's FK share lock, not on a statement naming the assignment. Watch widened; the lock mutant now fails on the ordering assertion. 13 of 13 viable mutants caught.
+
 ## 2026-09-25 — Only the principal a target names can report what it runs (`SIGNOFF-REPAIR.9.3.3.2`)
 
 `REASONBRAID-REPAIR-0526`.

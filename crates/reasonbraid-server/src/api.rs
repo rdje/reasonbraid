@@ -909,6 +909,10 @@ fn api_router_with_state(state: Arc<ApiState>) -> Router {
             post(record_deployment_receipt),
         )
         .route(
+            "/v1/deployments/{target_id}/{publication_id}/receipts",
+            get(list_deployment_receipts),
+        )
+        .route(
             "/v1/policy-drift",
             post(record_policy_drift).get(list_policy_drift),
         )
@@ -4926,15 +4930,18 @@ fn lifecycle_refusal(error: crate::lifecycle::LifecycleError) -> ControlApiError
 }
 
 /// A deployment verb's error on the wire: a store fault is the server's (`500`,
-/// logged), never a refusal of the caller's request. ⚠️ Only the reporter lookup
-/// (`SIGNOFF-REPAIR.9.3.3.2`) produces `Storage` today; the module's older store
-/// sites still answer as refusals and are `.9.3.3.6`'s.
+/// logged), never a refusal of the caller's request; input the store cannot
+/// represent is the caller's `400 unrepresentable_input`. ⚠️ The reporter lookup
+/// (`SIGNOFF-REPAIR.9.3.3.2`), the receipt write and the receipt history
+/// (`.9.3.3.3`) classify through `DeploymentError::storage`; the module's older
+/// store sites still answer as refusals and are `.9.3.3.6`'s.
 fn deployment_refusal(error: crate::deployments::DeploymentError) -> ControlApiError {
     match error {
         crate::deployments::DeploymentError::Storage(detail) => {
             eprintln!("control api: the deployment store failed: {detail}");
             ControlApiError::internal()
         }
+        crate::deployments::DeploymentError::UnrepresentableInput => unrepresentable(),
         refusal => ControlApiError::invalid_command(refusal.to_string()),
     }
 }
@@ -5373,6 +5380,26 @@ async fn record_deployment_receipt(
         Ok(row) => Ok(Json(row)),
         Err(error) => Err(deployment_refusal(error)),
     }
+}
+
+/// `GET /v1/deployments/{target_id}/{publication_id}/receipts` — one
+/// assignment's receipts in the order filed (`SIGNOFF-REPAIR.9.3.3.3`): read by
+/// the tenant that owns the assignment's publication, as `GET /v1/deployments` is.
+async fn list_deployment_receipts(
+    State(state): State<Arc<ApiState>>,
+    Path((target_id, publication_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<crate::deployments::StoredReceipt>>, ControlApiError> {
+    let principal = resolve_principal(&headers)?;
+    let Some(caller_tenant) = reader_tenant(&state.pool, &principal).await? else {
+        return Err(ControlApiError::unauthorized(
+            "an unenrolled principal reads no receipts",
+        ));
+    };
+    crate::deployments::list_receipts(&state.pool, &caller_tenant, &target_id, &publication_id)
+        .await
+        .map(Json)
+        .map_err(deployment_refusal)
 }
 
 /// `POST /v1/policy-drift` — record one drift observation (`.5.3`): the

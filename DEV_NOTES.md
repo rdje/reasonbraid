@@ -1,5 +1,11 @@
 # DEV_NOTES.md
 
+## 2026-09-25 — Three finished items formally closed (`SIGNOFF-REPAIR.11.4.5`, `.3.3.4.3.3.3.3.2.3`, `.11.4.3.1.7`)
+
+`REASONBRAID-DOC-0167`–`0169`. Closing checks; no code changed.
+
+- ✅ Each had all its work done and verified, and had simply never been marked closed. Each closure names the commits and the tests that prove it.
+
 ## 2026-09-25 — Policy publication checked: one problem found (`SIGNOFF-REPAIR.9.2`)
 
 `REASONBRAID-DOC-0166`. A closing check; no code changed.

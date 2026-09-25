@@ -572,9 +572,10 @@ stated something false and counted them as an authorization denial.
 `400` with an `audit_id` means the caller held it and the act was refused on its
 own terms. The ordering that closes the oracle is unchanged.
 
-The six rules that ask only about the *document* — the digest shape, that a
+The seven rules that ask only about the *document* — the digest shape, that a
 declared digest is the document's own, the version shape, the lifecycle
-vocabulary, a non-empty clause list and clause identifiers that do not repeat —
+vocabulary, a non-empty clause list, clause identifiers that do not repeat, and
+selectors that are exactly `{"layer": …, "target": …}` —
 still answer `400` to anyone, because each is a rule over the submission itself
 or a constant this book publishes.
 

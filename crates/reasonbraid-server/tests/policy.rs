@@ -8182,6 +8182,183 @@ async fn the_books_projection_example_runs() {
         .expect("drop the fixture rows");
 }
 
+/// `SIGNOFF-REPAIR.9.1.5`: a selector that does not say what it selects is
+/// REFUSED, never read as a wildcard.
+///
+/// The resolver read `layer` and `target` with `.unwrap_or("*")`, so a missing
+/// field, a non-string field, a misspelt key or a bare string all matched EVERY
+/// target: an applicability typo applied a policy everywhere, and a
+/// non-applicability typo removed it everywhere. A selector is now exactly
+/// `{"layer": …, "target": …}`, both non-empty strings, with `"*"` written out.
+/// Registration refuses anything else, and a stored selector that does not
+/// parse fails the resolution closed, naming its policy.
+#[tokio::test]
+async fn a_malformed_selector_is_refused_not_widened() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "selector-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "the human enrols: {human}");
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    site_fixture::provision(
+        &pool,
+        &human_id,
+        &[reasonbraid_server::site_authority::Action::PolicyRegister],
+    )
+    .await;
+    let grant_id = format!("grt_{human_id}");
+    let document = |policy_id: &str, field: &str, selectors: Value| {
+        let mut body = json!({
+            "policy_id": policy_id,
+            "version": "1.0.0",
+            "lifecycle": "active",
+            "title": "the selector control",
+            "owning_authority": grant_id,
+            "clauses": [ { "id": format!("{policy_id}-c1"), "statement": "every thread declares its objective" } ],
+        });
+        body[field] = selectors;
+        body
+    };
+
+    // Legs 1–5, THE REFUSALS: each malformed form, in each selector list.
+    for (label, selectors) in [
+        ("a missing target", json!([ { "layer": "organization" } ])),
+        ("a bare string", json!(["tenant:*"])),
+        (
+            "a misspelt key",
+            json!([ { "layr": "organization", "target": "*" } ]),
+        ),
+        (
+            "a non-string field",
+            json!([ { "layer": 5, "target": "*" } ]),
+        ),
+        ("an empty field", json!([ { "layer": "", "target": "*" } ])),
+    ] {
+        for field in ["applicability", "non_applicability"] {
+            let (status, refused) = register_policy(
+                &client,
+                &base,
+                &human_id,
+                &document("sel-refused", field, selectors.clone()),
+            )
+            .await;
+            assert_eq!(
+                status, 400,
+                "{label} in {field} is refused, not read as a wildcard: {refused}"
+            );
+            assert!(
+                refused["message"]
+                    .as_str()
+                    .is_some_and(|m| m.contains(field) && m.contains("selector")),
+                "the refusal names the list and the rule: {refused}"
+            );
+        }
+    }
+
+    // Leg 6, the matched positive: a well-formed selector still selects, and a
+    // non-applicability excludes only the target it names.
+    let (status, registered) = register_policy(
+        &client,
+        &base,
+        &human_id,
+        &json!({
+            "policy_id": "sel-good",
+            "version": "1.0.0",
+            "lifecycle": "active",
+            "title": "the selector control",
+            "owning_authority": grant_id,
+            "clauses": [ { "id": "sel-good-c1", "statement": "every thread declares its objective" } ],
+            "applicability": [ { "layer": "organization", "target": "*" } ],
+            "non_applicability": [ { "layer": "organization", "target": "eu-restricted" } ],
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "a well-formed selector registers: {registered}"
+    );
+    let resolve_for = |target: &str| {
+        json!({
+            "policies": [ { "policy_id": "sel-good", "version": "1.0.0" } ],
+            "target": { "layer": "organization", "target": target },
+        })
+    };
+    let (status, applies) = post(
+        &client,
+        &base,
+        "/v1/policies/resolve",
+        &human_id,
+        &resolve_for("org-acme"),
+    )
+    .await;
+    assert_eq!(status, 200, "{applies}");
+    assert_eq!(
+        applies["resolved"].as_array().unwrap().len(),
+        1,
+        "{applies}"
+    );
+    let (status, excluded) = post(
+        &client,
+        &base,
+        "/v1/policies/resolve",
+        &human_id,
+        &resolve_for("eu-restricted"),
+    )
+    .await;
+    assert_eq!(status, 200, "{excluded}");
+    assert_eq!(excluded["resolved"], json!([]), "{excluded}");
+
+    // Leg 7: a stored selector that does not parse (a row written before the
+    // rule) fails the resolution closed and names its policy, rather than
+    // silently excluding it from every target.
+    sqlx::query(
+        "INSERT INTO policy_versions (policy_id, version, digest, lifecycle, title, \
+         owning_authority, clauses, non_applicability) \
+         VALUES ('sel-legacy', '1.0.0', $1, 'active', 'a legacy row', $2, \
+         '[{\"id\": \"sel-legacy-c1\", \"statement\": \"stored before the rule\"}]'::jsonb, \
+         '[\"region:eu-restricted\"]'::jsonb)",
+    )
+    .bind(DIGEST)
+    .bind(&grant_id)
+    .execute(&pool)
+    .await
+    .expect("the legacy row inserts");
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policies/resolve",
+        &human_id,
+        &json!({
+            "policies": [ { "policy_id": "sel-legacy", "version": "1.0.0" } ],
+            "target": { "layer": "organization", "target": "org-acme" },
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "a stored malformed selector fails closed: {refused}"
+    );
+    assert!(
+        refused["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("sel-legacy") && m.contains("selector")),
+        "the refusal names the policy: {refused}"
+    );
+
+    sqlx::query("DELETE FROM policy_versions WHERE policy_id IN ('sel-good', 'sel-legacy')")
+        .execute(&pool)
+        .await
+        .expect("drop the fixture rows");
+}
+
 /// The POSITIVE arm, without which the repair above is indistinguishable from
 /// deleting the route: a `policy_register` holder still registers, the receipt
 /// is audited, the document is REACHABLE through every read, and the same grant

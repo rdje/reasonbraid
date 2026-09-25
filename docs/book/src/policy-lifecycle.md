@@ -107,13 +107,22 @@ curl -s "localhost:4310/v1/policies/pol_retention/2.1.0/impact" \
   {
     "clause_id": "c1",
     "statement": "evidence is retained for 90 days",
-    "applicability": ["tenant:*", "resource_kind:evidence"],
-    "non_applicability": ["region:eu-restricted"]
+    "applicability": [{"layer": "organization", "target": "*"}],
+    "non_applicability": [{"layer": "organization", "target": "eu-restricted"}]
   }
 ]
 ```
 
-⚠️ **The selectors above are written as strings, and the resolver does not read that form.** It reads each selector as an object with `layer` and `target` fields, and anything else, a bare string included, matches every target. So this example's non-applicability would remove the policy from every target. The selector form is being decided and validated under `SIGNOFF-REPAIR.9.1.5`; until then the impact map shows what was declared, not what resolution will do with it.
+A selector is exactly `{"layer": …, "target": …}`, both non-empty strings, and it
+matches a resolution target whose layer and target equal its own; `"*"` is the
+wildcard, written out per field. An empty applicability list means the policy
+applies everywhere. Registration refuses any other shape, such as a missing
+field, a bare string, an unknown key, a non-string or an empty value, and names
+the list and the entry. A version stored before that rule, whose selector does
+not parse, makes a resolution that names it fail with `400`, naming the policy
+(`SIGNOFF-REPAIR.9.1.5`). A malformed selector used to be read as a wildcard, so
+a typo in an applicability applied a policy everywhere and a typo in a
+non-applicability removed it everywhere.
 
 ⛔ **This is derivable coverage, never an achievement claim.** It is the clauses
 multiplied by what the version *declares* it applies to. It does not say the

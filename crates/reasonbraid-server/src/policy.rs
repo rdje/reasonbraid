@@ -31,6 +31,46 @@ pub struct ClauseStatement {
     pub statement: String,
 }
 
+/// One applicability or non-applicability selector (`SIGNOFF-REPAIR.9.1.5`):
+/// exactly a `layer` and a `target`, both non-empty strings, `"*"` written out
+/// where every value is meant. It mirrors [`ResolutionTarget`], which is what
+/// it is matched against.
+///
+/// ⛔ The lists stay `Vec<Value>` on the document and in storage, so a digest
+/// and a stored row are unchanged by this type. It is the RULE a selector must
+/// pass: [`validate`] refuses a submission any entry of which does not parse,
+/// and [`resolve`] fails closed on a stored one that does not. A reader used
+/// to take a missing field as `"*"`, which made every typo a wildcard.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Selector {
+    pub layer: String,
+    pub target: String,
+}
+
+impl Selector {
+    fn matches(&self, target: &ResolutionTarget) -> bool {
+        (self.layer == "*" || self.layer == target.layer)
+            && (self.target == "*" || self.target == target.target)
+    }
+}
+
+/// Parse one selector list, or say which entry fails and why.
+fn parse_selectors(values: &[Value]) -> Result<Vec<Selector>, String> {
+    values
+        .iter()
+        .enumerate()
+        .map(|(index, value)| {
+            let selector: Selector = serde_json::from_value(value.clone())
+                .map_err(|e| format!("entry {index} (`{value}`) is not a selector: {e}"))?;
+            if selector.layer.is_empty() || selector.target.is_empty() {
+                return Err(format!("entry {index} (`{value}`) has an empty field"));
+            }
+            Ok(selector)
+        })
+        .collect()
+}
+
 /// The policy-version submission (`.1.2`, ADR-019): the §15.1 fields. The
 /// server DERIVES the ADR-011 digest from the canonical document
 /// ([`document_digest`], `SIGNOFF-REPAIR.9.1.3`); a declared `digest` is
@@ -113,7 +153,19 @@ pub struct RegisteredPolicy {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PolicyError {
     MalformedDigest(String),
-    DigestMismatch { declared: String, derived: String },
+    DigestMismatch {
+        declared: String,
+        derived: String,
+    },
+    MalformedSelector {
+        field: &'static str,
+        detail: String,
+    },
+    MalformedStoredSelector {
+        policy_id: String,
+        version: String,
+        detail: String,
+    },
     MalformedVersion(String),
     UnknownLifecycle(String),
     DuplicateClause(String),
@@ -128,6 +180,20 @@ impl std::fmt::Display for PolicyError {
             PolicyError::MalformedDigest(d) => {
                 write!(f, "digest `{d}` is not the ADR-011 `sha256:<64 hex>` shape")
             }
+            PolicyError::MalformedSelector { field, detail } => write!(
+                f,
+                "`{field}` {detail}: a selector is exactly {{\"layer\": …, \"target\": …}}, \
+                 both non-empty strings, with \"*\" written out where every value is meant"
+            ),
+            PolicyError::MalformedStoredSelector {
+                policy_id,
+                version,
+                detail,
+            } => write!(
+                f,
+                "policy `{policy_id}` version {version} stores a selector that does not parse \
+                 ({detail}), so the resolution fails closed rather than read it as a wildcard"
+            ),
             PolicyError::DigestMismatch { declared, derived } => write!(
                 f,
                 "the declared digest `{declared}` is not the document's digest `{derived}`: \
@@ -346,6 +412,14 @@ pub fn validate(input: &PolicyVersionInput) -> Result<(), PolicyError> {
     }
     if input.clauses.is_empty() {
         return Err(PolicyError::EmptyClauses);
+    }
+    // `SIGNOFF-REPAIR.9.1.5`: every selector is exactly `{layer, target}`.
+    for (field, selectors) in [
+        ("applicability", &input.applicability),
+        ("non_applicability", &input.non_applicability),
+    ] {
+        parse_selectors(selectors)
+            .map_err(|detail| PolicyError::MalformedSelector { field, detail })?;
     }
     let mut seen = std::collections::BTreeSet::new();
     for clause in &input.clauses {
@@ -776,39 +850,33 @@ pub async fn resolve(
     // applicability selector matches the target AND NO non-applicability
     // selector matches. The empty applicability matches everything (the
     // baseline policy).
-    let selector_matches = |selector: &Value| -> bool {
-        let layer = selector
-            .get("layer")
-            .and_then(|v| v.as_str())
-            .unwrap_or("*");
-        let target = selector
-            .get("target")
-            .and_then(|v| v.as_str())
-            .unwrap_or("*");
-        (layer == "*" || layer == request.target.layer)
-            && (target == "*" || target == request.target.target)
-    };
-    let selectors: Vec<Vec<Value>> = loaded
-        .iter()
-        .map(|row| {
-            serde_json::from_value::<Vec<Value>>(row.applicability.clone())
-                .expect("the applicability parses")
-        })
-        .collect();
-    let non_selectors: Vec<Vec<Value>> = loaded
-        .iter()
-        .map(|row| {
-            serde_json::from_value::<Vec<Value>>(row.non_applicability.clone())
-                .expect("the non-applicability parses")
-        })
-        .collect();
+    // ⛔ `SIGNOFF-REPAIR.9.1.5`: a stored selector that does not parse FAILS
+    // CLOSED, naming its policy. The reader used to take a missing or
+    // non-string field as `"*"`, so every typo was a wildcard: in the
+    // applicability it applied a policy to every target, and in the
+    // non-applicability it removed it from every target.
+    let mut selectors: Vec<(Vec<Selector>, Vec<Selector>)> = Vec::with_capacity(loaded.len());
+    for row in &loaded {
+        let parse = |stored: &Value| {
+            serde_json::from_value::<Vec<Value>>(stored.clone())
+                .map_err(|e| format!("the list does not parse: {e}"))
+                .and_then(|values| parse_selectors(&values))
+                .map_err(|detail| PolicyError::MalformedStoredSelector {
+                    policy_id: row.policy_id.clone(),
+                    version: row.version.clone(),
+                    detail,
+                })
+        };
+        selectors.push((parse(&row.applicability)?, parse(&row.non_applicability)?));
+    }
     let applicable: Vec<bool> = loaded
         .iter()
-        .enumerate()
-        .map(|(i, row)| {
-            let positive = selectors[i].is_empty() || selectors[i].iter().any(selector_matches);
-            let negative = non_selectors[i].iter().any(selector_matches);
-            positive && !negative && row.lifecycle != "suspended" && row.lifecycle != "retracted"
+        .zip(&selectors)
+        .map(|(row, (positive, negative))| {
+            let applies =
+                positive.is_empty() || positive.iter().any(|s| s.matches(&request.target));
+            let excluded = negative.iter().any(|s| s.matches(&request.target));
+            applies && !excluded && row.lifecycle != "suspended" && row.lifecycle != "retracted"
         })
         .collect();
     explanation.push(format!(
@@ -1075,6 +1143,77 @@ mod tests {
         assert_ne!(base, changed, "a changed clause changes the digest");
         let versioned = document_digest(&submission(json!({ "version": "1.0.1" })));
         assert_ne!(base, versioned, "the coordinate is content");
+    }
+
+    /// `SIGNOFF-REPAIR.9.1.5`: a selector is exactly `{layer, target}`, both
+    /// non-empty strings; each other shape is refused, never widened.
+    #[test]
+    fn a_selector_is_exactly_a_layer_and_a_target() {
+        let good = json!({ "layer": "organization", "target": "*" });
+        assert_eq!(
+            parse_selectors(std::slice::from_ref(&good)),
+            Ok(vec![Selector {
+                layer: "organization".into(),
+                target: "*".into()
+            }])
+        );
+        assert_eq!(parse_selectors(&[]), Ok(vec![]));
+        for bad in [
+            json!({ "layer": "organization" }),
+            json!("tenant:*"),
+            json!({ "layr": "organization", "target": "*" }),
+            json!({ "layer": 5, "target": "*" }),
+            json!({ "layer": "", "target": "*" }),
+            json!({ "layer": "organization", "target": "" }),
+            json!({ "layer": "organization", "target": "*", "extra": 1 }),
+        ] {
+            assert!(
+                parse_selectors(&[good.clone(), bad.clone()]).is_err(),
+                "{bad} must be refused"
+            );
+        }
+    }
+
+    /// `validate` applies the selector rule to BOTH lists, naming the list.
+    #[test]
+    fn validate_refuses_a_malformed_selector_in_either_list() {
+        for field in ["applicability", "non_applicability"] {
+            let refused = validate(&submission(
+                json!({ field: [ { "layer": "organization" } ] }),
+            ));
+            assert!(
+                matches!(&refused, Err(PolicyError::MalformedSelector { field: named, .. }) if *named == field),
+                "{field}: {refused:?}"
+            );
+        }
+        let good = json!([ { "layer": "organization", "target": "*" } ]);
+        assert_eq!(
+            validate(&submission(
+                json!({ "applicability": good.clone(), "non_applicability": good })
+            )),
+            Ok(())
+        );
+    }
+
+    /// `"*"` is the only wildcard, per field.
+    #[test]
+    fn a_selector_matches_its_layer_and_target_or_an_explicit_wildcard() {
+        let target = ResolutionTarget {
+            layer: "project".into(),
+            target: "prj-x".into(),
+        };
+        let selector = |layer: &str, target: &str| Selector {
+            layer: layer.into(),
+            target: target.into(),
+        };
+        assert!(selector("project", "prj-x").matches(&target));
+        assert!(selector("*", "prj-x").matches(&target));
+        assert!(selector("project", "*").matches(&target));
+        assert!(selector("*", "*").matches(&target));
+        assert!(!selector("organization", "prj-x").matches(&target));
+        assert!(!selector("project", "prj-y").matches(&target));
+        assert!(!selector("organization", "*").matches(&target));
+        assert!(!selector("*", "prj-y").matches(&target));
     }
 
     /// A declared digest is optional; when present it must be the derived one.

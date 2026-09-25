@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-25 — Evidence checked: four real problems found (`SIGNOFF-REPAIR.7.4`)
+
+`REASONBRAID-DOC-0163`. A closing check; no code changed.
+
+- 🔴 **Must be fixed:** evidence that was deleted can still be built on, still supports assessments, and is quietly cited again if the same content is fetched again (`.7.4.6`). Anyone can sign an assessment with someone else's name (`.7.4.7`). Resubmitting an assessment with a different quote silently keeps the first one (`.7.4.8`). Fetching evidence again does not renew its "fresh until" date, although the book says it does (`.7.4.9`).
+- ⏸️ **Deferred with a trigger:** evidence quarantine (the book already says it does not exist), unchecked derivation labels, and a write order that can leave an unused stored file behind.
+- ✅ **Holds:** a quoted excerpt must really appear in the evidence; deletion uses the server's clock; one organisation cannot delete evidence another relies on.
+
 ## 2026-09-25 — The repair work now has a finish line (`SIGNOFF-REPAIR.12`)
 
 `REASONBRAID-DOC-0162`. Decisions taken at the director's request; no product code changed.

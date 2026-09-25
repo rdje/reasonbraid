@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — The operational scripts reviewed: six problems to fix (`SIGNOFF-REPAIR.11.3`)
+
+`REASONBRAID-DOC-0183`.
+
+- 🔎 **Census:** 6 artifacts (backup.sh, restore.sh, backup_receipt.py, dev.sh, load_harness.sh, demo_two_host.sh) + `tests/backup_restore.rs`; every goal-line and attached clause mapped to lines. Split `.11.3.1`–`.6` by script.
+- 🔴 Live: `restore.sh` `--clean`s any target; the DB URL is argv everywhere and verbatim in the demo's `evidence/env.txt`; `backup.sh` writes the final name directly under the ambient umask; four readiness probes accept any listener on the port; `PER_WORKER` rounds up; 34 residue directories from the backup test.
+
 ## 2026-09-26 — The review page no longer lists problems that were already fixed (`SIGNOFF-REPAIR.11.37`)
 
 `REASONBRAID-REPAIR-0531`.

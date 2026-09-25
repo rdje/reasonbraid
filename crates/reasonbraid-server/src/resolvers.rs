@@ -326,16 +326,32 @@ pub async fn resolve(
             eligible.push((resolver_id, (min + max) / 2.0));
         }
     }
-    eligible.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-    let unresolvable_now = eligible.is_empty();
+    let resolvers = rank_eligible(eligible);
+    let unresolvable_now = resolvers.is_empty();
     Ok(ResolutionOutcome {
-        resolvers: eligible.into_iter().map(|(id, _)| id).collect(),
+        resolvers,
         unresolvable_now,
         acquisition: None,
         acquisition_error: None,
         acquisition_call: None,
         unexecutable: Vec::new(),
     })
+}
+
+/// Rank the eligible resolvers, each paired with its latency midpoint: the
+/// fastest advertised midpoint first, and a tie broken by `resolver_id`, the
+/// registry's primary key, so the order is TOTAL (`SIGNOFF-REPAIR.7.1.5`).
+///
+/// ⛔ It used to sort on `partial_cmp(..).unwrap_or(Equal)` alone, over rows a
+/// `SELECT` returned with no `ORDER BY`. A tie kept whatever order PostgreSQL
+/// returned, and since `.7.1.3` the FIRST executable ranked resolver is the one
+/// that acquires, so two identical requests could fetch through different
+/// packs. Every row with no `latency_range_ms` shares one default midpoint,
+/// which makes a tie the common case rather than a corner. `total_cmp` also
+/// orders a midpoint that is not a number, which `partial_cmp` cannot.
+fn rank_eligible(mut eligible: Vec<(String, f64)>) -> Vec<String> {
+    eligible.sort_by(|a, b| a.1.total_cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+    eligible.into_iter().map(|(id, _)| id).collect()
 }
 
 /// The media types a registered resolver advertises, as its own registry row
@@ -491,6 +507,77 @@ fn gated_advertises() -> Vec<ResolverAdvertise> {
             }),
         },
     ]
+}
+
+#[cfg(test)]
+mod ranking {
+    use super::*;
+
+    fn ids(ranked: &[&str]) -> Vec<String> {
+        ranked.iter().map(|id| id.to_string()).collect()
+    }
+
+    /// `SIGNOFF-REPAIR.7.1.5` — a tie is broken by `resolver_id`, so the rank is
+    /// the same whatever order the rows arrived in. Since `.7.1.3` the first
+    /// executable ranked resolver is the one that acquires, so an order that
+    /// followed the rows could change which pack fetched a tenant's evidence
+    /// between two identical requests.
+    #[test]
+    fn a_tie_is_broken_by_the_resolver_id_in_either_arrival_order() {
+        let tied = |first: &str, second: &str| {
+            rank_eligible(vec![
+                (first.to_owned(), 30_500.0),
+                (second.to_owned(), 30_500.0),
+            ])
+        };
+        assert_eq!(tied("tie-b", "tie-a"), ids(&["tie-a", "tie-b"]));
+        assert_eq!(tied("tie-a", "tie-b"), ids(&["tie-a", "tie-b"]));
+    }
+
+    /// The midpoint still decides first: a faster resolver outranks a slower one
+    /// whatever their ids and whatever order they arrived in.
+    #[test]
+    fn the_latency_midpoint_decides_before_the_id() {
+        let fast_named_last = ("zzz-fast".to_owned(), 150.0);
+        let slow_named_first = ("aaa-slow".to_owned(), 5_500.0);
+        assert_eq!(
+            rank_eligible(vec![slow_named_first.clone(), fast_named_last.clone()]),
+            ids(&["zzz-fast", "aaa-slow"])
+        );
+        assert_eq!(
+            rank_eligible(vec![fast_named_last, slow_named_first]),
+            ids(&["zzz-fast", "aaa-slow"])
+        );
+    }
+
+    /// The order is TOTAL even over a midpoint that is not a number. These three
+    /// rows are chosen because `partial_cmp(..).unwrap_or(Equal)` then the id
+    /// makes a CYCLE of them (`a < b` and `b < c` by id, since the NaN compares
+    /// equal, but `c < a` by midpoint), so a sort over that comparator depends
+    /// on the arrival order; `total_cmp` places the NaN after every number.
+    #[test]
+    fn a_midpoint_that_is_not_a_number_still_ranks_totally() {
+        let rows = [
+            ("b".to_owned(), f64::NAN),
+            ("a".to_owned(), 10.0),
+            ("c".to_owned(), 5.0),
+        ];
+        for permutation in [
+            [0, 1, 2],
+            [0, 2, 1],
+            [1, 0, 2],
+            [1, 2, 0],
+            [2, 0, 1],
+            [2, 1, 0],
+        ] {
+            let arrived: Vec<_> = permutation.iter().map(|&i| rows[i].clone()).collect();
+            assert_eq!(
+                rank_eligible(arrived),
+                ids(&["c", "a", "b"]),
+                "{permutation:?}"
+            );
+        }
+    }
 }
 
 #[cfg(test)]

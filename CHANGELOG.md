@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-25 — The choice of fetcher no longer depends on storage order (`SIGNOFF-REPAIR.7.1.5`)
+
+`REASONBRAID-REPAIR-0499`.
+
+- 🔴 **Before:** when two fetchers were equally fast on paper, which one fetched a page depended on the order the database happened to return them in, so two identical requests could fetch the same page in different ways.
+- ✅ **Now:** a tie is broken by the fetcher's name, so the same request always picks the same fetcher. The book now explains how the choice is made.
+- ✅ Tested: the new tests failed on the old code and pass now; deliberate faults were each caught.
+
 ## 2026-09-25 — Citing a web address no longer reveals that another organisation cited it (`SIGNOFF-REPAIR.7.1.4.1`)
 
 `REASONBRAID-REPAIR-0498`.

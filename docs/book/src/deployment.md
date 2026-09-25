@@ -999,6 +999,19 @@ say the document was acquired while nothing was stored.
 reported `evidence_unstored` since `SIGNOFF-REPAIR.7.4.2`; the R0 and R5 arms
 discarded the store's answer and set the receipt regardless.
 
+#### How the eligible resolvers are ranked
+
+A resolution first filters the registry (the scheme, the media-type hint, the
+credential binding, the required sandbox floor and egress ceiling), then ranks
+what is left by the **midpoint of each resolver's advertised latency range**,
+fastest first. A resolver that advertises no range counts as 1000–60000 ms.
+**A tie is broken by `resolver_id`**, so the ranking is the same for the same
+registry whatever order the rows are stored in (`SIGNOFF-REPAIR.7.1.5`). Until
+that repair a tie kept whatever order the database returned, and because every
+resolver without a range shares one midpoint, ties were common; since the first
+executable ranked resolver is the one that fetches, two identical requests could
+acquire through different packs.
+
 #### The resolver that acts is the first one this server can execute
 
 The ranked resolver that acts is the first one this server can execute

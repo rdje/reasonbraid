@@ -43,11 +43,6 @@ cd "$ROOT" || exit 1
 # here because two of them are created inside loops.
 SCRATCH="$ROOT/target/doctrine_scratch"; mkdir -p "$SCRATCH"
 
-# Staged task-tree files only. No staged set (e.g. a manual run) => nothing to judge.
-staged="$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null \
-          | grep -E '^docs/tasks/.*\.md$' || true)"
-[ -n "$staged" ] || exit 0
-
 # Waiver / inapplicability language. Kept tight and phrase-anchored so it fires on a real claim
 # ("the signatures do not apply") and not on incidental prose containing the words separately.
 # ⚠️ SCOPE-vs-CAPABILITY, and the sweep is what forced the distinction. The first draft triggered
@@ -56,10 +51,55 @@ staged="$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null \
 # the gate is behaving exactly as designed. The signal worth routing is narrower and sharper — a
 # claim that the gate DOES apply but its SIGNATURE SURFACE cannot express the author's evidence.
 # That narrower claim is the only thing this doctrine binds.
-WAIVER_RE='(^|[^-[:alnum:]])[Ww]aiver note|[A-Z][A-Z0-9_]*_WAIVER|(signature|signatures|diagnosis.toolbox|diagnosis tool|diagnosis-tool)s? (do|does) not apply|no (signature|diagnosis) (family|group) (fits|matches|models|exists)|cannot be (satisfied|expressed) by (the|any) (gate|check|signature)|exempt from (the|this) (gate|check)'
+# ⛔ A `…_WAIVER` token must END there (`SIGNOFF-REPAIR.11.2.10`): unbounded, it matched any
+# identifier CONTAINING `_WAIVER`, and the policy constant `REPEATED_WAIVER_THRESHOLD` refused a
+# correct commit as an unrouted gate waiver.
+WAIVER_RE='(^|[^-[:alnum:]])[Ww]aiver note|[A-Z][A-Z0-9_]*_WAIVER([^A-Z0-9_]|$)|(signature|signatures|diagnosis.toolbox|diagnosis tool|diagnosis-tool)s? (do|does) not apply|no (signature|diagnosis) (family|group) (fits|matches|models|exists)|cannot be (satisfied|expressed) by (the|any) (gate|check|signature)|exempt from (the|this) (gate|check)'
 
 # An owning leaf id (TREE.4 / TREE.4.2 / TREE.10.4b) or a work-unit id (PREFIX-FAMILY-0001).
 OWNER_RE='`?[A-Z][A-Z0-9-]+\.[0-9]+[0-9a-z.]*`?|[A-Z][A-Z0-9]+-[A-Z0-9-]+-[0-9]{4}'
+
+# --self-test (`SIGNOFF-REPAIR.11.2.10`): the patterns against sentences whose verdict is known.
+# Until this arm nothing pinned them, and a policy constant, `REPEATED_WAIVER_THRESHOLD`, was
+# read as a waiver token and refused a correct commit.
+if [ "${1:-}" = "--self-test" ]; then
+  failures=0
+  expect() {
+    local want="$1" pattern="$2" text="$3" got=no
+    printf '%s\n' "$text" | grep -qE "$pattern" && got=yes
+    if [ "$got" != "$want" ]; then
+      echo "waiver-routing self-test: expected match=$want, got $got: $text" >&2
+      failures=$((failures + 1))
+    fi
+  }
+  for text in \
+    "GATE_WAIVER: the check does not fit this slice" \
+    "a SIGNATURE_WAIVER applies here" \
+    "the diagnosis-toolbox signatures do not apply" \
+    "Waiver note: the gate cannot model this" \
+    "this leaf is exempt from the gate"; do
+    expect yes "$WAIVER_RE" "$text"
+  done
+  for text in \
+    "the constant REPEATED_WAIVER_THRESHOLD is 2" \
+    "REPEATED_WAIVER_WINDOW_DAYS = 90" \
+    "a waiver was recorded against the publication" \
+    "the \`repeated_waiver\` trigger" \
+    "this slice is pure-docs, so the code-change gate does not apply"; do
+    expect no "$WAIVER_RE" "$text"
+  done
+  expect yes "$OWNER_RE" "(gate gap owned by SIGNOFF-REPAIR.11.2.10)"
+  expect yes "$OWNER_RE" "work unit REASONBRAID-REPAIR-0524"
+  expect no "$OWNER_RE" "owned by nobody in particular"
+  [ "$failures" -eq 0 ] || exit 1
+  echo "waiver-routing self-test: 13 verdicts hold"
+  exit 0
+fi
+
+# Staged task-tree files only. No staged set (e.g. a manual run) => nothing to judge.
+staged="$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null \
+          | grep -E '^docs/tasks/.*\.md$' || true)"
+[ -n "$staged" ] || exit 0
 
 fail=0
 for file in $staged; do

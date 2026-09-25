@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-25 — A commit check no longer mistakes a setting's name for a waiver (`SIGNOFF-REPAIR.11.2.10`)
+
+`REASONBRAID-REPAIR-0524`.
+
+- 🔴 **Root cause:** `WAIVER_RE`'s `[A-Z][A-Z0-9_]*_WAIVER` had no right boundary, so `REPEATED_WAIVER_THRESHOLD` matched and WAIVER-ROUTING refused REPAIR-0523.
+- ✅ **Fix:** `…_WAIVER([^A-Z0-9_]|$)`, and the gate's first `--self-test` (5 must-match, 5 must-not-match, 3 owner verdicts), discovered and run by `check_self_tests.sh`. RED against the old pattern; the drop-the-alternative mutant caught.
+
 ## 2026-09-25 — A policy can be reviewed more than once (`SIGNOFF-REPAIR.9.3.2`)
 
 `REASONBRAID-REPAIR-0523`.

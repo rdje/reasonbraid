@@ -181,7 +181,8 @@ against codex-cli 0.153.4). The JSONL stream maps onto the contract:
 | `thread.started` | `ProviderRequestId` (the thread id — attached to the attempt as the proof handle) |
 | `item.completed` | `OutputChunk` (the streamed reply, verbatim) |
 | `turn.completed` | `Completed { usage }` (exact token receipt) |
-| non-zero exit | `FailedKnown` (definitive, with the stderr tail) |
+| non-zero exit CODE | `FailedKnown` (definitive, with the stderr tail) |
+| exit by SIGNAL (a cancel included) | no terminal event: `outcome_unknown` (`SIGNOFF-REPAIR.10.1.4`) |
 
 The real harness exercises the contract's honest legs: **status lookup is
 genuinely unsupported** (no first-class query for a past attempt), so a lost
@@ -234,6 +235,15 @@ every child it had ever started for its whole lifetime, so an abandoned attempt'
 provider ran on. When two attempts share an operation id, dropping one releases only
 its own child, so `cancel` still reaches the other.
 
+**A cancelled attempt has no verdict** (`SIGNOFF-REPAIR.10.1.4`). `cancel` kills the
+child, and a process ended by a signal says nothing about what the provider did,
+whether the signal was our cancel, an external kill, an out-of-memory kill or a
+crash. So an exit by signal ends the stream with no terminal event, which the
+contract reads as `outcome_unknown`, and retrying it needs the duplicate-risk
+authorization that implies. Only an exit CODE is the CLI itself reporting a failure,
+and stays `FailedKnown`. An exit status that cannot be read is also unknown. The
+adapters used to report a cancelled attempt as a definitive provider failure.
+
 The live qualification test is deliberately not run by default — it dispatches
 to the real harness and spends a few tokens:
 
@@ -261,7 +271,8 @@ as a child process — the `.4.2` mirror, qualified against Claude Code 2.1.263
 | `assistant` message text blocks | `OutputChunk` per text block (thinking blocks are skipped — the reply is the text) |
 | `result` (`is_error:false`; `usage`, `total_cost_usd`) | `Completed { usage }` — exact tokens AND money (Claude reports cost; Codex reports tokens only) |
 | `result` (`is_error:true`) | `FailedKnown` (the provider's own message) |
-| non-zero exit | `FailedKnown` (with the stderr tail) |
+| non-zero exit CODE | `FailedKnown` (with the stderr tail) |
+| exit by SIGNAL (a cancel included) | no terminal event: `outcome_unknown` (`SIGNOFF-REPAIR.10.1.4`) |
 
 `--restricted` removes the code-running tools and WebFetch, and `--tools ''`
 disables all tools — the boundary is content-only. `--verbose` is not optional:

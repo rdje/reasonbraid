@@ -354,17 +354,26 @@ async fn cancel_kills_the_child_and_reports_best_effort() {
         CancellationOutcome::BestEffort
     );
 
-    // The killed child yields a definitive failure (signal exit), then the stream ends.
-    let terminal = tokio::time::timeout(Duration::from_secs(5), async {
-        let mut last = None;
+    // `SIGNOFF-REPAIR.10.1.4`: a child killed by a SIGNAL (here our own cancel)
+    // says nothing about what the provider did, so the stream ends with NO
+    // terminal event: the contract's `outcome_unknown`. ⛔ This test used to
+    // assert a definitive `FailedKnown` here, encoding the defect it now guards.
+    let rest = tokio::time::timeout(Duration::from_secs(5), async {
+        let mut rest = Vec::new();
         while let Some(event) = handle.next().await {
-            last = Some(event);
+            rest.push(event);
         }
-        last
+        rest
     })
     .await
     .expect("the killed child must terminate promptly");
-    assert!(matches!(terminal, Some(AttemptEvent::FailedKnown { .. })));
+    assert!(
+        rest.iter().all(|e| !matches!(
+            e,
+            AttemptEvent::FailedKnown { .. } | AttemptEvent::Completed { .. }
+        )),
+        "a cancelled attempt has no verdict, only an unknown outcome: {rest:?}"
+    );
 }
 
 /// The real honesty leg: status lookup is Unsupported on this boundary.

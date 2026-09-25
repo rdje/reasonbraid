@@ -310,15 +310,22 @@ impl ClaudeHandle {
                     self.finished = true;
                     return match status {
                         Some(s) if s.success() => None, // no result seen: lost response
+                        // `SIGNOFF-REPAIR.10.1.4`: an exit by SIGNAL is not a
+                        // provider verdict. Our own `cancel` is a SIGKILL, and an
+                        // external kill, an out-of-memory kill or a crash says just
+                        // as little about what the provider did, so the stream ends
+                        // with no terminal event: the contract's `outcome_unknown`.
+                        // Only an exit CODE is the CLI reporting a failure.
+                        Some(s) if s.code().is_none() => None,
                         Some(s) => Some(AttemptEvent::FailedKnown {
                             reason: format!(
                                 "claude exited with {s}; stderr tail: {}",
                                 stderr_tail.trim()
                             ),
                         }),
-                        None => Some(AttemptEvent::FailedKnown {
-                            reason: "claude child vanished without an exit status".to_string(),
-                        }),
+                        // An exit status that could not be read is evidence of
+                        // nothing either (`SIGNOFF-REPAIR.10.1.4`).
+                        None => None,
                     };
                 }
                 // A line that is not UTF-8 cannot be a JSONL event, and is

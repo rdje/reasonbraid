@@ -1,5 +1,14 @@
 # DEV_NOTES.md
 
+## 2026-09-25 — The web console no longer shows a late answer under the wrong view (`SIGNOFF-REPAIR.11.1.2`)
+
+`REASONBRAID-REPAIR-0514`.
+
+- 🔴 **Root cause:** `render()` cleared the one `#output` element and awaited the renderer, which appended into that same element after its fetch; nothing told an earlier fetch that the operator had moved on. The presence and inbox buttons appended after their own fetch with the same race between two clicks.
+- ✅ **Fix:** each render creates its own container and swaps it into `#output` at once (the heading still shows while loading); a stale renderer draws into a detached container. The container's identity is the generation, so no counter can drift from it. `latestOnly()` gives each panel a click counter and drops an answer that is not the latest click's.
+- ✅ **Control:** the test router gains a middleware that HOLDS one named request until the test releases it, and `received()` waits for the page's resource-timing entry before reading, so the race is produced on demand, not timed. Four controls: view switch, identity change, presence, inbox (a seeded queued command tells the two answers apart). The node router joins the test server for presence.
+- ⭐ RED 3 of 3 mechanisms; GREEN 7/7; 6 hand mutants caught, each by exactly its controls.
+
 ## 2026-09-25 — The web console's Timeline works again, and a real browser now checks the console (`SIGNOFF-REPAIR.11.1.1`)
 
 `REASONBRAID-REPAIR-0513`.

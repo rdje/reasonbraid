@@ -129,6 +129,18 @@ function jsonPre(value) {
   );
 }
 
+// A panel's button keeps only its LATEST click's answer. Two clicks share the
+// view's container, so without this an earlier answer that arrived after a
+// later one replaced it (SIGNOFF-REPAIR.11.1.2).
+function latestOnly() {
+  let latest = 0;
+  return async (request, show) => {
+    const click = ++latest;
+    const answer = await request;
+    if (click === latest) show(answer);
+  };
+}
+
 function empty(text) {
   return el("p", { class: "muted" }, text);
 }
@@ -343,6 +355,7 @@ async function viewBudget(out) {
 
 async function viewPresence(out) {
   out.appendChild(el("h2", null, "Node presence"));
+  const showLatest = latestOnly();
   const row = el("div", { class: "views-row" });
   const input = el("input", {
     type: "text",
@@ -351,22 +364,24 @@ async function viewPresence(out) {
   row.appendChild(input);
   row.appendChild(
     el("button", {
-      onclick: async () => {
+      onclick: () => {
         const nodeId = input.value.trim();
         if (!nodeId) return;
-        const { status, body } = await api(
+        const request = api(
           "/v1/nodes/presence?node_id=" + encodeURIComponent(nodeId),
         );
-        out.querySelectorAll(".presence-result").forEach((n) => n.remove());
-        if (status === 200) {
-          out.appendChild(
-            el("div", { class: "presence-result" }, jsonPre(body)),
-          );
-        } else {
-          out.appendChild(
-            el("div", { class: "presence-result" }, showError(status, body)),
-          );
-        }
+        showLatest(request, ({ status, body }) => {
+          out.querySelectorAll(".presence-result").forEach((n) => n.remove());
+          if (status === 200) {
+            out.appendChild(
+              el("div", { class: "presence-result" }, jsonPre(body)),
+            );
+          } else {
+            out.appendChild(
+              el("div", { class: "presence-result" }, showError(status, body)),
+            );
+          }
+        });
       },
     }, "Check presence"),
   );
@@ -378,6 +393,7 @@ async function viewPresence(out) {
 
 async function viewInbox(out) {
   out.appendChild(el("h2", null, "Node inbox (tenant_admin)"));
+  const showLatest = latestOnly();
   const row = el("div", { class: "views-row" });
   const input = el("input", {
     type: "text",
@@ -386,42 +402,44 @@ async function viewInbox(out) {
   row.appendChild(input);
   row.appendChild(
     el("button", {
-      onclick: async () => {
+      onclick: () => {
         const nodeId = input.value.trim();
         if (!nodeId) return;
-        const { status, body } = await api(
+        const request = api(
           "/v1/nodes/inbox?node_id=" +
             encodeURIComponent(nodeId) +
             "&" +
             tenantQuery(),
         );
-        out.querySelectorAll(".inbox-result").forEach((n) => n.remove());
-        if (status === 200) {
-          const rows = (body && body.rows) || [];
-          out.appendChild(
-            el(
-              "div",
-              { class: "inbox-result" },
-              table(
-                ["command", "state", "result", "quarantine"],
-                rows.map((r) => [
-                  r.command_id,
-                  r.delivery_state,
-                  r.result_refusal
-                    ? `refused: ${r.result_refusal.code} — ${r.result_refusal.message}`
-                    : "—",
-                  r.quarantined_at
-                    ? `${r.quarantined_at} — ${r.quarantine_reason || ""}`
-                    : "—",
-                ]),
+        showLatest(request, ({ status, body }) => {
+          out.querySelectorAll(".inbox-result").forEach((n) => n.remove());
+          if (status === 200) {
+            const rows = (body && body.rows) || [];
+            out.appendChild(
+              el(
+                "div",
+                { class: "inbox-result" },
+                table(
+                  ["command", "state", "result", "quarantine"],
+                  rows.map((r) => [
+                    r.command_id,
+                    r.delivery_state,
+                    r.result_refusal
+                      ? `refused: ${r.result_refusal.code} — ${r.result_refusal.message}`
+                      : "—",
+                    r.quarantined_at
+                      ? `${r.quarantined_at} — ${r.quarantine_reason || ""}`
+                      : "—",
+                  ]),
+                ),
               ),
-            ),
-          );
-        } else {
-          out.appendChild(
-            el("div", { class: "inbox-result" }, showError(status, body)),
-          );
-        }
+            );
+          } else {
+            out.appendChild(
+              el("div", { class: "inbox-result" }, showError(status, body)),
+            );
+          }
+        });
       },
     }, "Inspect inbox"),
   );
@@ -448,9 +466,15 @@ function openThread(threadId) {
   render("thread");
 }
 
+// Each render draws into a container of its own, attached at once so its
+// heading shows while it fetches. A later render replaces it, so a view whose
+// answer arrives after the operator moved on (another view, another thread,
+// another identity) draws into a container that is no longer on the page
+// (SIGNOFF-REPAIR.11.1.2). The container's identity is the render's
+// generation, so there is no counter to fall out of step with it.
 async function render(view) {
-  const out = $id("output");
-  out.replaceChildren();
+  const out = el("div", { class: "view" });
+  $id("output").replaceChildren(out);
   try {
     await renderers[view](out);
   } catch (error) {

@@ -76,13 +76,15 @@ the CLI prints; a role without `tenant_admin` cannot open the inbox view.
   data. The offline test suite enforces this mechanically (the page references
   only the documented GET surfaces, names no write verb, and never assembles
   HTML from data), and the browser control below checks it in a real browser.
-- **A slow view can land under a later one** (open, `SIGNOFF-REPAIR.11.1.2`).
-  Each view clears the page, then fetches, then draws. Nothing stops an earlier
-  view's answer from drawing after you have clicked another view, or changed
-  identity. On a slow server, clicking Timeline and then Audit can show the
-  timeline's rows under the Audit heading. The page is read-only, so nothing
-  is changed by it, but it can show one thread's data as another's. Until the
-  repair, wait for a view to finish before clicking the next.
+- **What you see is what you last asked for.** Each view draws into a space
+  of its own that replaces the previous view the moment you click, so its
+  heading shows while it loads. An answer that arrives after you moved on (to
+  another view, another thread, or another identity) is dropped instead of
+  drawn. The presence and inbox panels keep only the answer to your latest
+  click. Until `SIGNOFF-REPAIR.11.1.2` a slow answer was drawn wherever you
+  were by then: clicking Timeline and then Audit on a slow server could put
+  the timeline's rows under the Audit heading, and saving a new identity could
+  show the previous tenant's threads under it.
 - **Dev-profile trust.** The header is trusted (the Phase 0/1 dev stance) —
   the page adds nothing on top of it; workload identity is Phase 2 (ADR-006/
   ADR-007).
@@ -108,7 +110,18 @@ Two kinds of check, because they catch different things:
   for the same read. A second run puts markup in a thread's subject and
   objective, for example `<img src=x onerror=…>`, and checks that the Threads,
   Thread and Timeline views show it as text, build no element from it, and run
-  none of it.
+  none of it. A third hands the page's rendering helper every kind of value
+  (numbers, `true`/`false`, objects, lists, text that looks like HTML) and
+  checks that each becomes plain text.
+- **Late answers** (same file). The test server can hold back one chosen
+  request until the test releases it, so a slow answer is made on demand
+  rather than hoped for. Four runs use it: the Timeline held while the
+  operator opens the Audit; tenant A's thread list held while the operator
+  saves tenant B's identity; and, in the presence and inbox panels, a first
+  check held while a second one answers. Each releases the held answer, waits
+  until the page has received it, and checks that nothing on screen changed.
+  The inbox run also checks that a queued command shows with the delivery
+  state the server reports.
 
 Run the browser check locally with:
 

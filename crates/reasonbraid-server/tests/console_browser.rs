@@ -13,10 +13,11 @@
 //!
 //! Run with
 //! `python3 -B scripts/ci_browser.py -- bash scripts/run_pg_tests.sh console_browser`.
-//! Without `R3_BROWSER_BIN` they skip and say so; the two that need a server's
+//! Without `R3_BROWSER_BIN` they skip and say so; those that need a server's
 //! data skip without `DATABASE_URL` too, as every database suite does. Each of
-//! those enrolls its own tenant and reads only inside it, so the suite asserts
-//! over no shared table and needs no cleanup plan.
+//! those enrolls its own tenant and reads only inside it (the inbox control
+//! seeds one row, in its own tenant), so the suite asserts over no shared table
+//! and needs no cleanup plan.
 
 #[path = "support/mod.rs"]
 mod pg_test_support;
@@ -25,15 +26,20 @@ mod pg_test_support;
 mod browser_support;
 
 use std::net::SocketAddr;
-use std::sync::OnceLock;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
+use axum::extract::{Request, State};
+use axum::middleware::{from_fn_with_state, Next};
+use axum::response::Response;
 use browser_support::{browser_binary, skip_without_browser, Chrome};
 use chromiumoxide::Page;
 use reasonbraid_core::{ClientContext, CommandEnvelope, RequestId, PROTOCOL_VERSION};
-use reasonbraid_server::{api_router, ui_router, PRINCIPAL_HEADER};
+use reasonbraid_server::ca::ensure_server_ca;
+use reasonbraid_server::{api_router, node_router, ui_router, PRINCIPAL_HEADER};
 use serde_json::{json, Value};
 use sqlx::PgPool;
+use tokio::sync::oneshot;
 
 /// A view is given this long to finish rendering after its button is clicked.
 const RENDER: Duration = Duration::from_secs(15);
@@ -55,11 +61,12 @@ async fn pool() -> Option<PgPool> {
     Some(pool)
 }
 
-/// The console and the API it reads, on one loopback origin — what `rb-server`
-/// serves at `/` and `/v1/`.
+/// The console and the routes it reads, on one loopback origin — what
+/// `rb-server` serves at `/`, `/v1/` and `/v1/nodes/presence`.
 struct Console {
     addr: SocketAddr,
     handle: tokio::task::JoinHandle<()>,
+    hold: Hold,
 }
 
 impl Console {
@@ -68,16 +75,83 @@ impl Console {
             .await
             .expect("bind ephemeral loopback port");
         let addr = listener.local_addr().expect("local address");
-        let app = api_router(pool.clone()).merge(ui_router());
+        let ca = Arc::new(ensure_server_ca(pool).await.expect("server CA"));
+        let hold = Hold::default();
+        let app = api_router(pool.clone())
+            .merge(node_router(pool.clone(), ca))
+            .merge(ui_router())
+            .layer(from_fn_with_state(hold.clone(), held));
         let handle = tokio::spawn(async move {
             axum::serve(listener, app).await.expect("serve");
         });
-        Self { addr, handle }
+        Self { addr, handle, hold }
     }
 
     fn base(&self) -> String {
         format!("http://{}", self.addr)
     }
+}
+
+/// One request the test holds back, so a slow answer is produced on demand
+/// rather than hoped for: the next request whose path and query contain the
+/// armed text announces itself and waits until the test releases it.
+#[derive(Clone, Default)]
+struct Hold(Arc<Mutex<Option<Armed>>>);
+
+struct Armed {
+    needle: String,
+    parked: oneshot::Sender<()>,
+    release: oneshot::Receiver<()>,
+}
+
+/// The test's two ends of a held request.
+struct Held {
+    parked: oneshot::Receiver<()>,
+    release: oneshot::Sender<()>,
+}
+
+impl Hold {
+    fn arm(&self, needle: &str) -> Held {
+        let (parked, parked_rx) = oneshot::channel();
+        let (release_tx, release) = oneshot::channel();
+        *self.0.lock().expect("the hold") = Some(Armed {
+            needle: needle.to_owned(),
+            parked,
+            release,
+        });
+        Held {
+            parked: parked_rx,
+            release: release_tx,
+        }
+    }
+}
+
+impl Held {
+    async fn parked(&mut self) {
+        tokio::time::timeout(RENDER, &mut self.parked)
+            .await
+            .expect("the held request arrives")
+            .expect("the hold announces it");
+    }
+}
+
+async fn held(State(hold): State<Hold>, request: Request, next: Next) -> Response {
+    let target = request
+        .uri()
+        .path_and_query()
+        .map_or_else(String::new, |target| target.as_str().to_owned());
+    let armed = {
+        let mut slot = hold.0.lock().expect("the hold");
+        match slot.as_ref() {
+            Some(armed) if target.contains(&armed.needle) => slot.take(),
+            _ => None,
+        }
+    };
+    if let Some(armed) = armed {
+        let _ = armed.parked.send(());
+        let _ = armed.release.await;
+    }
+    next.run(request).await
 }
 
 impl Drop for Console {
@@ -158,6 +232,8 @@ async fn read(base: &str, who: &Operator, path: &str) -> Value {
 /// What `#output` holds once a view has rendered.
 #[derive(Debug, serde::Deserialize)]
 struct Rendered {
+    headings: Vec<String>,
+    tables: usize,
     errors: Vec<String>,
     rows: Vec<Vec<String>>,
     text: String,
@@ -167,19 +243,22 @@ struct Rendered {
     ran: Option<String>,
 }
 
-/// Wait until `#output` shows `heading` and something beneath it, then read it.
+/// Wait until `#output` shows `heading` and something beside it, then read it.
 ///
 /// Every view appends its heading before its one `await` and everything else
 /// after it, in one synchronous run, and `render()` appends its error the same
-/// way. So a second child under the expected heading means the view has
-/// finished, whichever way it ended.
+/// way. So a second child beside the expected heading means the view has
+/// finished, whichever way it ended. The count is taken in the heading's own
+/// parent, which is `#output` itself or the view's container inside it.
 async fn rendered(page: &Page, heading: &str) -> Rendered {
     const SNAPSHOT: &str = r#"(() => {
         const out = document.getElementById("output");
         const h2 = out.querySelector("h2");
         return JSON.stringify({
             heading: h2 ? h2.textContent : "",
-            children: out.children.length,
+            children: h2 ? h2.parentElement.children.length : 0,
+            headings: [...out.querySelectorAll("h2")].map((h) => h.textContent),
+            tables: out.querySelectorAll("table").length,
             errors: [...out.querySelectorAll(".error")].map((e) => e.textContent),
             rows: [...out.querySelectorAll("tbody tr")].map((tr) =>
                 [...tr.cells].map((td) => td.textContent)),
@@ -203,6 +282,73 @@ async fn rendered(page: &Page, heading: &str) -> Rendered {
         assert!(
             tokio::time::Instant::now() < deadline,
             "`{heading}` did not render within {RENDER:?}; the page shows {value}"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+/// Wait until the page has RECEIVED the response to a request naming `needle`
+/// (its resource-timing entry is complete), then give its handlers a moment.
+///
+/// ⭐ This is what makes a stale-view control able to fail: reading the page
+/// before the late answer arrives would pass whether or not it is dropped. The
+/// wait is proven long enough by the RED, where the same wait sees the stale
+/// rows land.
+async fn received(page: &Page, needle: &str) {
+    let probe = format!(
+        "performance.getEntriesByType('resource').some((e) => e.name.includes({}) && e.responseEnd > 0)",
+        serde_json::to_string(needle).expect("a JS string")
+    );
+    let deadline = tokio::time::Instant::now() + RENDER;
+    loop {
+        let done: bool = page
+            .evaluate(probe.as_str())
+            .await
+            .expect("read the page's resource timing")
+            .into_value()
+            .expect("a boolean");
+        if done {
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the page never received the response to `{needle}`"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    tokio::time::sleep(Duration::from_millis(500)).await;
+}
+
+/// Replace a text field's content the way an operator does: clear, then type.
+async fn refill(page: &Page, selector: &str, value: &str) {
+    page.evaluate(format!(
+        "document.querySelector({}).value = ''",
+        serde_json::to_string(selector).expect("a JS string")
+    ))
+    .await
+    .expect("clear the field");
+    page.find_element(selector)
+        .await
+        .expect("the field")
+        .click()
+        .await
+        .expect("focus the field")
+        .type_str(value)
+        .await
+        .expect("type into the field");
+}
+
+/// Read the view under `heading` once its text contains `needle`.
+async fn showing(page: &Page, heading: &str, needle: &str) -> Rendered {
+    let deadline = tokio::time::Instant::now() + RENDER;
+    loop {
+        let view = rendered(page, heading).await;
+        if view.text.contains(needle) {
+            return view;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "`{heading}` never showed `{needle}`: {view:?}"
         );
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
@@ -431,4 +577,235 @@ async fn the_rendering_helper_turns_every_value_into_text() {
     page.close().await.expect("close the page");
     chrome.finish().await;
     server.abort();
+}
+
+// ── A slow answer never lands in a later view (`SIGNOFF-REPAIR.11.1.2`) ──────
+//
+// Each control HOLDS one of the page's requests at the server, makes the
+// operator move on, then releases it and waits for the page to receive it. The
+// late answer must change nothing on screen. Before the repair every view drew
+// into the one `#output` element after its fetch returned, whichever view was
+// showing by then.
+
+/// The Timeline is slow; the operator opens the Audit; the Timeline's answer
+/// arrives. The Audit is all that shows.
+#[tokio::test]
+async fn a_slow_view_never_lands_under_a_later_one() {
+    let Some(binary) = browser_binary() else {
+        skip_without_browser("the console's view switching");
+        return;
+    };
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let console = Console::start(&pool).await;
+    let base = console.base();
+    let who = operator(&base, "console-switch", "switch probe", "hold the timeline").await;
+
+    let root = pg_test_support::repository_root().expect("the repository root");
+    let chrome = Chrome::launch(&binary, &root).await;
+    let page = chrome.open(&base).await;
+    sign_in_and_open_thread(&page, &who).await;
+
+    let mut timeline = console.hold.arm("/events?");
+    click(&page, "button[data-view=events]").await;
+    timeline.parked().await;
+    click(&page, "button[data-view=audit]").await;
+    let audit = rendered(&page, "Audit (authorization records)").await;
+    assert!(audit.errors.is_empty(), "{audit:?}");
+    assert!(!audit.rows.is_empty(), "{audit:?}");
+
+    let _ = timeline.release.send(());
+    received(&page, "/events?").await;
+    let after = rendered(&page, "Audit (authorization records)").await;
+    assert_eq!(
+        after.headings,
+        ["Audit (authorization records)"],
+        "{after:?}"
+    );
+    assert_eq!(after.tables, 1, "only the Audit's table shows: {after:?}");
+    assert_eq!(
+        after.rows, audit.rows,
+        "the late Timeline changed the Audit"
+    );
+
+    page.close().await.expect("close the page");
+    chrome.finish().await;
+}
+
+/// Tenant A's thread list is slow; the operator switches to tenant B's
+/// identity; A's list arrives. Only B's threads show.
+#[tokio::test]
+async fn a_changed_identity_never_shows_the_old_identitys_threads() {
+    let Some(binary) = browser_binary() else {
+        skip_without_browser("the console's identity change");
+        return;
+    };
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let console = Console::start(&pool).await;
+    let base = console.base();
+    let first = operator(&base, "console-identity-a", "tenant A's thread", "held").await;
+    let second = operator(&base, "console-identity-b", "tenant B's thread", "shown").await;
+
+    let root = pg_test_support::repository_root().expect("the repository root");
+    let chrome = Chrome::launch(&binary, &root).await;
+    let page = chrome.open(&base).await;
+
+    let held_list = format!("tenant_id={}", first.tenant);
+    let mut threads = console.hold.arm(&held_list);
+    refill(&page, "#principal", &first.principal).await;
+    refill(&page, "#tenant", &first.tenant).await;
+    click(&page, "#auth-form button[type=submit]").await;
+    threads.parked().await;
+    refill(&page, "#principal", &second.principal).await;
+    refill(&page, "#tenant", &second.tenant).await;
+    click(&page, "#auth-form button[type=submit]").await;
+    let shown = showing(&page, "Threads", &second.thread).await;
+    assert!(shown.errors.is_empty(), "{shown:?}");
+
+    let _ = threads.release.send(());
+    received(&page, &held_list).await;
+    let after = rendered(&page, "Threads").await;
+    assert_eq!(after.headings, ["Threads"], "{after:?}");
+    assert!(
+        !after.text.contains(&first.thread),
+        "tenant A's thread shows under tenant B's identity: {after:?}"
+    );
+    assert_eq!(after.rows, shown.rows, "the late list changed the view");
+
+    page.close().await.expect("close the page");
+    chrome.finish().await;
+}
+
+/// Two presence checks: the first is slow, the second answers, then the first
+/// arrives. The panel keeps the answer to the check the operator made last.
+/// The server's refusal names the node it was asked about, which is what tells
+/// the two answers apart.
+#[tokio::test]
+async fn two_presence_checks_show_only_the_later_answer() {
+    let Some(binary) = browser_binary() else {
+        skip_without_browser("the console's presence panel");
+        return;
+    };
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let console = Console::start(&pool).await;
+    let base = console.base();
+    let who = operator(&base, "console-presence", "presence probe", "two checks").await;
+
+    let root = pg_test_support::repository_root().expect("the repository root");
+    let chrome = Chrome::launch(&binary, &root).await;
+    let page = chrome.open(&base).await;
+    sign_in_and_open_thread(&page, &who).await;
+    click(&page, "button[data-view=presence]").await;
+    rendered(&page, "Node presence").await;
+
+    let mut earlier = console.hold.arm("node_id=nod-earlier-check");
+    refill(&page, "#output input", "nod-earlier-check").await;
+    click(&page, "#output button").await;
+    earlier.parked().await;
+    refill(&page, "#output input", "nod-later-check").await;
+    click(&page, "#output button").await;
+    let shown = showing(&page, "Node presence", "nod-later-check").await;
+
+    let _ = earlier.release.send(());
+    received(&page, "node_id=nod-earlier-check").await;
+    let after = rendered(&page, "Node presence").await;
+    assert!(
+        after.text.contains("nod-later-check") && !after.text.contains("nod-earlier-check"),
+        "the panel shows the earlier check's answer: {after:?}"
+    );
+    assert_eq!(after.text, shown.text, "the late answer changed the panel");
+
+    page.close().await.expect("close the page");
+    chrome.finish().await;
+}
+
+/// The inbox panel under the same race, with answers told apart by content: the
+/// held check is for a node with one queued command, the later one for a node
+/// with none. Then the queued command, checked on its own, renders.
+#[tokio::test]
+async fn two_inbox_checks_show_only_the_later_answer() {
+    let Some(binary) = browser_binary() else {
+        skip_without_browser("the console's inbox panel");
+        return;
+    };
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let console = Console::start(&pool).await;
+    let base = console.base();
+    let who = operator(&base, "console-inbox", "inbox probe", "two checks").await;
+    // One queued command for a node of the operator's own tenant, seeded as the
+    // inbox suites seed theirs.
+    let queued = format!("nod-console-{}", uuid::Uuid::now_v7());
+    sqlx::query(
+        "INSERT INTO node_inbox (node_id, cursor, command_id, tenant_id, thread_id, payload) \
+         VALUES ($1, 1, 'cmd-console-queued', $2, $3, '{}'::jsonb)",
+    )
+    .bind(&queued)
+    .bind(&who.tenant)
+    .bind(&who.thread)
+    .execute(&pool)
+    .await
+    .expect("seed a queued command");
+
+    let root = pg_test_support::repository_root().expect("the repository root");
+    let chrome = Chrome::launch(&binary, &root).await;
+    let page = chrome.open(&base).await;
+    sign_in_and_open_thread(&page, &who).await;
+    click(&page, "button[data-view=inbox]").await;
+    let heading = "Node inbox (tenant_admin)";
+    rendered(&page, heading).await;
+
+    let held_check = format!("node_id={queued}");
+    let mut earlier = console.hold.arm(&held_check);
+    refill(&page, "#output input", &queued).await;
+    click(&page, "#output button").await;
+    earlier.parked().await;
+    refill(&page, "#output input", "nod-console-empty").await;
+    click(&page, "#output button").await;
+    // The column header appears once the later answer's table is drawn.
+    let shown = showing(&page, heading, "quarantine").await;
+    assert!(
+        shown.rows.is_empty(),
+        "the later node has no commands: {shown:?}"
+    );
+
+    let _ = earlier.release.send(());
+    received(&page, &held_check).await;
+    let after = rendered(&page, heading).await;
+    assert_eq!(after.tables, 1, "{after:?}");
+    assert!(
+        after.rows.is_empty(),
+        "the panel shows the earlier check's answer: {after:?}"
+    );
+
+    // Checked on its own, the queued command renders with its delivery state.
+    let inbox: Value = reqwest::Client::new()
+        .get(format!(
+            "{base}/v1/nodes/inbox?node_id={queued}&tenant_id={}",
+            who.tenant
+        ))
+        .header(PRINCIPAL_HEADER, &who.principal)
+        .send()
+        .await
+        .expect("read the inbox")
+        .json()
+        .await
+        .expect("inbox json");
+    let state = inbox["rows"][0]["delivery_state"]
+        .as_str()
+        .unwrap_or_else(|| panic!("the seeded row: {inbox}"))
+        .to_owned();
+    refill(&page, "#output input", &queued).await;
+    click(&page, "#output button").await;
+    let queued_view = showing(&page, heading, "cmd-console-queued").await;
+    assert_eq!(
+        queued_view.rows,
+        [["cmd-console-queued", state.as_str(), "—", "—"]],
+        "the panel shows the server's row"
+    );
+
+    page.close().await.expect("close the page");
+    chrome.finish().await;
 }

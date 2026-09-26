@@ -191,6 +191,10 @@ remote_quote() { # remote_quote <word>
 
 cli() { "$BIN_CLI" --server "$SERVER_BASE" "$@"; }
 
+# `absent` (a negative check that requires its command to succeed first) and
+# `fetch` (an evidence capture that fails on a non-2xx status): SIGNOFF-REPAIR.11.3.7.
+. "$ROOT/scripts/lib/demo_checks.sh"
+
 # The bash -c probes run `cli`/`node_journal` as exported functions; their
 # captured variables must be exported with them.
 export BIN_CLI BIN_JOURNAL NODE_HOST SERVER_BASE WORK
@@ -385,9 +389,11 @@ probe_poll() {
     [ -n "$tok" ] || return 1
     epoch="$(lease_field lease_epoch)"
     [ -n "$epoch" ] || return 1
-    curl -s -o /dev/null -X POST -H 'content-type: application/json' \
+    # An AUTHENTICATED poll answers 200; any answer used to count, a 401 included
+    # (SIGNOFF-REPAIR.11.3.7).
+    [ "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' \
         -d "{\"channel_version\":5,\"node_id\":\"$ROLE_A\",\"after_cursor\":0,\"fencing_token\":\"$tok\",\"lease_epoch\":$epoch}" \
-        "$SERVER_BASE/v1/nodes/poll"
+        "$SERVER_BASE/v1/nodes/poll")" = "200" ]
 }
 export -f probe_poll
 
@@ -458,8 +464,9 @@ check "the contribution carries its round (round 1)" bash -c "[ '$CONTRIB_ROUND'
 
 # The `.1.2.2` presence surface: the enrolled + handshaked node is observably
 # ONLINE through the channel API (a derived fact of its live lease).
-curl -s -H "x-reasonbraid-principal: $HUMAN" \
-    "$SERVER_BASE/v1/nodes/presence?node_id=$ROLE_A" > "$EVIDENCE/presence-a-online.json"
+fetch "$EVIDENCE/presence-a-online.json" -H "x-reasonbraid-principal: $HUMAN" \
+    "$SERVER_BASE/v1/nodes/presence?node_id=$ROLE_A" \
+    || fail "the presence-a-online.json capture answered 2xx"
 check "node A's presence is observable ONLINE through the channel API" \
     grep -q '"online":true' "$EVIDENCE/presence-a-online.json"
 
@@ -483,9 +490,10 @@ DUP_BODY="$(printf '%s' "$EVENTS_JSON" | jq -c --arg n "$ROLE_A" --arg f "$FENCE
       fencing_token: $f,
       lease_epoch: $e }')"
 log "duplicating the delivery: re-POSTing $(printf '%s' "$DUP_BODY" | jq -r .event_id) verbatim"
-curl -s -X POST "$SERVER_BASE/v1/nodes/events" \
+fetch "$EVIDENCE/duplicate-delivery.json" -X POST "$SERVER_BASE/v1/nodes/events" \
     -H 'content-type: application/json' \
-    -d "$DUP_BODY" > "$EVIDENCE/duplicate-delivery.json"
+    -d "$DUP_BODY" \
+    || fail "the duplicate-delivery.json capture answered 2xx"
 check "the duplicate transport is refused (accepted:false)" \
     grep -q '"accepted":false' "$EVIDENCE/duplicate-delivery.json"
 CONTRIBUTIONS="$(cli inspect thread "$THREAD_A" --as organizer --tenant "$TENANT" --json \
@@ -509,8 +517,9 @@ server_ready 2 || exit 1
 wait_for "server answers authenticated node polls after the restart" 30 probe_poll
 check "every accepted command survived the restart" bash -c \
     "cli inspect thread '$THREAD_A' --as organizer --tenant '$TENANT' --json | grep -q 'thread.created' && cli inspect thread '$THREAD_A' --as organizer --tenant '$TENANT' --json | grep -q 'participant_invited'"
-curl -s -H "x-reasonbraid-principal: $HUMAN" \
-    "$SERVER_BASE/v1/nodes/presence?node_id=$ROLE_A" > "$EVIDENCE/presence-a-after-restart.json"
+fetch "$EVIDENCE/presence-a-after-restart.json" -H "x-reasonbraid-principal: $HUMAN" \
+    "$SERVER_BASE/v1/nodes/presence?node_id=$ROLE_A" \
+    || fail "the presence-a-after-restart.json capture answered 2xx"
 check "node A's durable lease + presence survived the server restart" \
     grep -q '"online":true' "$EVIDENCE/presence-a-after-restart.json"
 
@@ -573,8 +582,8 @@ check "the ambiguous attempt is visible with its boundary history" \
 check "the revise attempt was NOT silently retried (exactly one ambiguous attempt)" \
     grep -q 'outcome_unknown=1' <(node_journal "$NODE_A_DIR" inspect node.db)
 sleep 1
-check "no revision entered the thread (the ambiguous attempt produced no effect)" bash -c \
-    "! cli inspect thread '$THREAD_A' --as organizer --tenant '$TENANT' --json | grep -q revision_submitted"
+check "no revision entered the thread (the ambiguous attempt produced no effect)" \
+    absent revision_submitted cli inspect thread "$THREAD_A" --as organizer --tenant "$TENANT" --json
 
 # ── 8. budget exhaustion on thread B ────────────────────────────────────────────
 
@@ -612,8 +621,8 @@ wait_for "node B's budget gate refuses the unreserved dispatch" 30 bash -c \
     'node_journal "$1" inspect node.db | grep -q "failed_before_dispatch=1"' _ "$NODE_B_DIR"
 check "the denial is journaled BEFORE any provider contact (failed_before_dispatch)" \
     grep -q 'failed_before_dispatch=1' <(node_journal "$NODE_B_DIR" inspect node.db)
-check "no revision entered thread B" bash -c \
-    "! cli inspect thread '$THREAD_B' --as organizer --tenant '$TENANT' --json | grep -q revision_submitted"
+check "no revision entered thread B" \
+    absent revision_submitted cli inspect thread "$THREAD_B" --as organizer --tenant "$TENANT" --json
 
 # The `.1.5.3` honest outcome: thread B is genuinely inconclusive — the budget
 # gate blocked the revision and the challenge stands. Close it INCONCLUSIVELY
@@ -642,13 +651,15 @@ check "closure preserved the unresolved challenge" bash -c \
 # The page is served BY the server the demo already runs — the same binary that
 # owns the API. curl is the browser stand-in: the page's rendering is JS, so the
 # beat asserts the SHELL and the exact data the page fetches (no browser needed).
-curl -s "$SERVER_BASE/" > "$EVIDENCE/console-index.html"
+fetch "$EVIDENCE/console-index.html" "$SERVER_BASE/" \
+    || fail "the console-index.html capture answered 2xx"
 check "the inspection console is served at / (the embedded shell)" bash -c \
     "grep -q 'inspection console' '$EVIDENCE/console-index.html'"
 check "the shell loads its assets from the same origin" bash -c \
     "grep -q '/app.js' '$EVIDENCE/console-index.html' && grep -q '/style.css' '$EVIDENCE/console-index.html'"
 
-curl -s "$SERVER_BASE/app.js" > "$EVIDENCE/console-app.js"
+fetch "$EVIDENCE/console-app.js" "$SERVER_BASE/app.js" \
+    || fail "the console-app.js capture answered 2xx"
 # The SERVED page names each documented read surface. This is a presence check
 # over the page the demo's own server serves; the stronger checks are elsewhere:
 # `ui.rs` parses the inbox query with the route's own extractor, and
@@ -657,17 +668,19 @@ curl -s "$SERVER_BASE/app.js" > "$EVIDENCE/console-app.js"
 # failed from that commit until SIGNOFF-REPAIR.4.4.2.2.1.
 check "the page names every documented read surface" bash -c \
     "for p in '/v1/threads?' '/v1/threads/' '/events?' '/audit?' '/budget?' '/v1/nodes/presence?node_id=' '/v1/nodes/inbox?node_id='; do grep -qF \"\$p\" '$EVIDENCE/console-app.js' || exit 1; done"
-check "the page is read-only (no write verb)" bash -c \
-    "! grep -q 'POST' '$EVIDENCE/console-app.js'"
+check "the page is read-only (no write verb)" \
+    absent POST cat "$EVIDENCE/console-app.js"
 
 # One live same-origin fetch with the dev header — the exact data the page
 # renders when the user opens THREAD_A (the header the identity form sends).
-curl -s -H "x-reasonbraid-principal: $HUMAN" \
-    "$SERVER_BASE/v1/threads/$THREAD_A?tenant_id=$TENANT" > "$EVIDENCE/console-thread-a.json"
+fetch "$EVIDENCE/console-thread-a.json" -H "x-reasonbraid-principal: $HUMAN" \
+    "$SERVER_BASE/v1/threads/$THREAD_A?tenant_id=$TENANT" \
+    || fail "the console-thread-a.json capture answered 2xx"
 check "the page's data source returns the demo's thread (the live fetch)" bash -c \
     "grep -q 'is the claim justified?' '$EVIDENCE/console-thread-a.json'"
-curl -s -H "x-reasonbraid-principal: $HUMAN" \
-    "$SERVER_BASE/v1/threads/$THREAD_A/budget?tenant_id=$TENANT" > "$EVIDENCE/console-budget-a.json"
+fetch "$EVIDENCE/console-budget-a.json" -H "x-reasonbraid-principal: $HUMAN" \
+    "$SERVER_BASE/v1/threads/$THREAD_A/budget?tenant_id=$TENANT" \
+    || fail "the console-budget-a.json capture answered 2xx"
 check "the page's budget view returns the ledger facts (.1.6.1)" bash -c \
     "grep -q '\"ceiling\"' '$EVIDENCE/console-budget-a.json'"
 
@@ -680,14 +693,18 @@ check "the page's budget view returns the ledger facts (.1.6.1)" bash -c \
 # authorized against the TENANT scope (the thread does not exist yet — its
 # audit row is tenant-scoped, the `.6.1` shape the command_api suite asserts);
 # the create command is still visible in the timeline check above.
-curl -s -H "x-reasonbraid-principal: $HUMAN" \
-    "$SERVER_BASE/v1/threads/$THREAD_A/audit?tenant_id=$TENANT" > "$EVIDENCE/audit-a.json"
-curl -s -H "x-reasonbraid-principal: $HUMAN" \
-    "$SERVER_BASE/v1/threads/$THREAD_A/events?tenant_id=$TENANT" > "$EVIDENCE/events-a.json"
-curl -s -H "x-reasonbraid-principal: $HUMAN" \
-    "$SERVER_BASE/v1/threads/$THREAD_B/audit?tenant_id=$TENANT" > "$EVIDENCE/audit-b.json"
-curl -s -H "x-reasonbraid-principal: $HUMAN" \
-    "$SERVER_BASE/v1/threads/$THREAD_B/budget?tenant_id=$TENANT" > "$EVIDENCE/budget-b.json"
+fetch "$EVIDENCE/audit-a.json" -H "x-reasonbraid-principal: $HUMAN" \
+    "$SERVER_BASE/v1/threads/$THREAD_A/audit?tenant_id=$TENANT" \
+    || fail "the audit-a.json capture answered 2xx"
+fetch "$EVIDENCE/events-a.json" -H "x-reasonbraid-principal: $HUMAN" \
+    "$SERVER_BASE/v1/threads/$THREAD_A/events?tenant_id=$TENANT" \
+    || fail "the events-a.json capture answered 2xx"
+fetch "$EVIDENCE/audit-b.json" -H "x-reasonbraid-principal: $HUMAN" \
+    "$SERVER_BASE/v1/threads/$THREAD_B/audit?tenant_id=$TENANT" \
+    || fail "the audit-b.json capture answered 2xx"
+fetch "$EVIDENCE/budget-b.json" -H "x-reasonbraid-principal: $HUMAN" \
+    "$SERVER_BASE/v1/threads/$THREAD_B/budget?tenant_id=$TENANT" \
+    || fail "the budget-b.json capture answered 2xx"
 
 check "A's audit records reconstruct the thread-scoped authority (invite → accept → contribute → close)" bash -c \
     "jq -e '[.records[].action] | contains([\"thread_invite\",\"thread_invitation_respond\",\"thread_contribute\",\"thread_close\"])' '$EVIDENCE/audit-a.json' >/dev/null"
@@ -708,8 +725,9 @@ check "B's audit records the close authority (the stop reason rides the thread s
 # acceptance facts above are untouched. The next handshake would be refused (the
 # suite proves it); presence reads suspended (the live lease, if any, is not cut).
 cli node revoke --node "$ROLE_B" --reason "demonstration complete" --as organizer --tenant "$TENANT" >/dev/null
-curl -s -H "x-reasonbraid-principal: $HUMAN" \
-    "$SERVER_BASE/v1/nodes/presence?node_id=$ROLE_B" > "$EVIDENCE/presence-b-suspended.json"
+fetch "$EVIDENCE/presence-b-suspended.json" -H "x-reasonbraid-principal: $HUMAN" \
+    "$SERVER_BASE/v1/nodes/presence?node_id=$ROLE_B" \
+    || fail "the presence-b-suspended.json capture answered 2xx"
 check "the revoked node reads suspended through the channel API (.1.3.1)" bash -c \
     "grep -q '\"suspended\":true' '$EVIDENCE/presence-b-suspended.json'"
 

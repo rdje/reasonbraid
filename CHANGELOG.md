@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-26 — The demonstration's "this did not happen" checks can no longer pass by accident (`SIGNOFF-REPAIR.11.3.7`)
+
+`REASONBRAID-REPAIR-0537`.
+
+- 🔴 **Before:** three of the demonstration's checks that something did NOT happen would also pass if the tool doing the checking failed, and the responses it keeps as evidence were kept without noticing when a request had failed.
+- ✅ **Now:** each of those checks first requires the tool to have worked, a failed request in the evidence is reported as a failure, and the check that the restarted server accepts a node requires a genuine acceptance.
+
 ## 2026-09-26 — The load test measures exactly what it was asked to (`SIGNOFF-REPAIR.11.3.4`)
 
 `REASONBRAID-REPAIR-0536`.

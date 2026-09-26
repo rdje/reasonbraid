@@ -109,6 +109,17 @@ against it. The database URL reaches no command line: `rb-server` reads it from
 its environment and `psql` from libpq's own variables. The bundle's `env.txt`
 records the URL without user information or query.
 
+**A check that something did NOT happen needs the command to have worked.** Its
+three negative checks (no revision entered thread A, none entered thread B, the
+console page issues no write) used to be a negated pipeline, which also passes
+when the inspecting command fails and prints nothing, so a broken server
+satisfied all three. Each now requires its command to succeed and produce output
+before judging the absence. The twelve responses the run keeps as evidence are
+still kept whatever they say, but a capture that did not answer `2xx` is now a
+recorded failure rather than silent. And the probe that the restarted server
+accepts the node's authenticated poll now requires a `200`, where any answer
+used to count (`SIGNOFF-REPAIR.11.3.7`).
+
 ## Honest boundaries (Phase 1)
 
 - The dev profile has no directory: **a node id is the agent role wire id it

@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — The demonstration's "this did not happen" checks can no longer pass by accident (`SIGNOFF-REPAIR.11.3.7`)
+
+`REASONBRAID-REPAIR-0537`.
+
+- 🔴 **Root cause:** `! cmd | grep -q x` judges only grep; `curl -s > file` ignores the status; `probe_poll` accepted any answer.
+- ✅ **Fix:** `scripts/lib/demo_checks.sh`: `absent` (command must succeed with output) and `fetch` (2xx or fail, body kept); 3 negative checks, 12 captures and the poll probe converted; a shape guard keeps the old forms out.
+- ⭐ A mutant ignoring the command's status survived: the test's failing command was silent, so the no-output rule masked it. A failing-but-printing command is now its own control.
+
 ## 2026-09-26 — The load test measures exactly what it was asked to (`SIGNOFF-REPAIR.11.3.4`)
 
 `REASONBRAID-REPAIR-0536`.

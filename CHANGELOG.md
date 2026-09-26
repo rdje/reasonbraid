@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-26 — What is left of the command-line tool's enrollment recovery, measured (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.4`)
+
+`REASONBRAID-DOC-0185`.
+
+- 🔍 **Found:** the task list expected old recovery code to remove, and there is none. What is left: the command-line guide still says the tool cannot recover a lost enrollment, which it has done for weeks; ordinary enrollment and thread creation save the server's reply without checking it against the request.
+- 📋 **Next:** the reply check first, then the guide. A smaller display issue (a missing list printed as "0") is deferred, with its trigger named in the qualification chapter.
+
 ## 2026-09-26 — Every malformed request now gets a reason code (`SIGNOFF-REPAIR.11.36`)
 
 `REASONBRAID-REPAIR-0539`.

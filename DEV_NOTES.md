@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — `.2.4` censused: no obsolete recovery path; two ordinary writers take the reply on trust (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.4`)
+
+`REASONBRAID-DOC-0185`.
+
+- 🔍 **Census:** 3 request consumers, 3 state writers (4 open sites), 0 dead or deprecated CLI paths. `StateFile::save` has no production caller. The unkeyed server bootstrap is live (load harness), so it is not obsolete.
+- 🔴 **Opened:** `.2.4.1` (class 2): `crates/reasonbraid-cli/src/lib.rs:683/687/857` record `principal_id`/`tenant_id`/`thread_id` via `unwrap_or_default()` and never compare the tenant with `--tenant`. `.2.4.2` (class 3): `cli.md` says keyed recovery is "not implemented yet"; it has been since REPAIR-0031. `.11.38` (deferred): 19 display-only defaults.
+- ⭐ DOC-0162 classified this leaf from its Owns line ("obsolete recovery paths … remain"). Measured, that half was empty and the real residue was elsewhere. A classification made from a leaf's wording is a hypothesis until its census.
+
 ## 2026-09-26 — Every malformed request now gets a reason code (`SIGNOFF-REPAIR.11.36`)
 
 `REASONBRAID-REPAIR-0539`.

@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — `.8.1.1.6` closed by census: every narrow reading holds (`SIGNOFF-REPAIR.8.1.1.6`)
+
+`REASONBRAID-DOC-0190`.
+
+- ✅ **Census:** no recusal code (`git grep -il recus` → 0); ballots filed under the AUTHENTICATED caller (`crates/reasonbraid-server/src/api.rs:9069`/`:9706`), delegation included; finality refused and controlled (`crates/reasonbraid-server/tests/profiles.rs:18291`). Mechanisms deferred as `.8.1.1.6.1`.
+- ⭐ When the book already states the limit, a class-3 leaf asks whether the stated fallback is TRUE, not whether the feature exists.
+
 ## 2026-09-26 — `role_weighted`/`human_committee` stay refused until designed (`SIGNOFF-REPAIR.8.1.1.4`)
 
 `REASONBRAID-REPAIR-0548`.

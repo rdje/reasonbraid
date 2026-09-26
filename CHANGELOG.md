@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-26 — The voting guide's "not built yet" list is true to the code (`SIGNOFF-REPAIR.8.1.1.6`)
+
+`DOC-0190`.
+
+- ✅ **Checked:** four voting refinements (stepping aside, replacing a voter, tracking which model version voted, changing a vote) are not built, and the guide says so and describes what happens instead. Each of those descriptions was checked against the code and holds; nothing needed fixing. The four are recorded as future work with a named trigger.
+
 ## 2026-09-26 — Two voting rules stay switched off until they are designed (`SIGNOFF-REPAIR.8.1.1.4`)
 
 `REASONBRAID-REPAIR-0548`.

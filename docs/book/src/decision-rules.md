@@ -211,7 +211,8 @@ and each rule currently takes the narrowest honest reading:
 
 - **Recusals** — no member is recused.
 - **Role replacement** and **changed incarnations** — a ballot belongs to the
-  principal ID that cast it. §13.3 asks for the role's incarnation, and a principal
+  principal ID that cast it, which under delegation is the caster, not the
+  principal it acts for. §13.3 asks for the role's incarnation, and a principal
   ID is not one.
 - **Amendments after voting starts** — a ballot is final.
 

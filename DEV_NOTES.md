@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — Keyed bootstrap recovery qualified across a server restart (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.3.1`)
+
+`REASONBRAID-REPAIR-0542`.
+
+- ✅ **Qualified:** `bootstrap_recovery_survives_a_server_restart`: outage resend fails and keeps the key; a fresh `ApiState` on the same pool and address replays the original IDs; counts `(1, 1, 2)` unchanged. Server and harness hand mutants each caught.
+- ⭐ My own limit text one commit earlier said filesystem failure was untested; `publication_failures_keep_complete_snapshots_and_recover_reserved_work` injects faults at all five replacement checkpoints. A census that lists controls by name is what caught it; a limit written from memory drifted within one commit.
+
 ## 2026-09-26 — `.3` censused: 6 of 9 clauses held; restart, inherited descriptor and mid-publication kills open (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.3`)
 
 `REASONBRAID-DOC-0186`.

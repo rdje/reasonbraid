@@ -128,9 +128,15 @@ struct TestServer {
 
 impl TestServer {
     async fn start(pool: &PgPool) -> Self {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        Self::start_at(pool, "127.0.0.1:0".parse().unwrap()).await
+    }
+
+    /// A fresh router and application state on `addr`: after `finish`, the same
+    /// address is a restarted server as the CLI's recovery sees it.
+    async fn start_at(pool: &PgPool, addr: SocketAddr) -> Self {
+        let listener = tokio::net::TcpListener::bind(addr)
             .await
-            .expect("bind ephemeral loopback port");
+            .expect("bind loopback port");
         let addr = listener.local_addr().unwrap();
         let router = api_router(pool.clone());
         let handle = tokio::spawn(async move {
@@ -843,5 +849,99 @@ async fn bootstrap_recovery_matches_server_outcomes_and_preserves_fresh_intent()
     );
     eprintln!("real bootstrap recovery: one original tenant/request after server+local recovery; two distinct tenants/requests after fresh intent; original outcome unchanged");
     server.finish().await;
+    pool.close().await;
+}
+
+/// `SIGNOFF-REPAIR.3.3.4.3.3.3.3.3.1`: the recovery guarantee holds across a server
+/// restart. The server keeps nothing between requests but its database and its
+/// `ApiState`; its one process-global is a telemetry counter. So a new router on
+/// the same database and address, with fresh application state, is the restart
+/// as the recovery protocol sees it.
+#[tokio::test]
+async fn bootstrap_recovery_survives_a_server_restart() {
+    use reasonbraid_cli::{BootstrapRecovery, StateFile};
+
+    let _guard = e2e_guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let addr = server.addr;
+    let base = format!("http://{addr}");
+    let fixture = CliStateFixture::new("restart");
+    let restored_fixture = CliStateFixture::new("restart-restored");
+    let rb = Rb::new(&base, fixture.0.clone());
+    let restored_rb = Rb::new(&base, restored_fixture.0.clone());
+    let first = rb.json(&["enroll", "human", "alice", "--json"]).await;
+    let tenant = first["tenant_id"].as_str().unwrap().to_owned();
+    let role = rb
+        .json(&["enroll", "role", "reviewer", "--tenant", &tenant, "--json"])
+        .await;
+    // The completed request, restored as pending: the state a CLI is left in when
+    // the server committed and the answer never arrived.
+    let completed = StateFile::load(&fixture.0)
+        .unwrap()
+        .bootstrap
+        .unwrap()
+        .completed
+        .unwrap();
+    StateFile {
+        version: 2,
+        bootstrap: Some(BootstrapRecovery {
+            pending: Some(completed.request.clone()),
+            completed: None,
+        }),
+        ..StateFile::default()
+    }
+    .save(&restored_fixture.0)
+    .unwrap();
+    let counts = || async {
+        sqlx::query_as::<_, (i64, i64, i64)>(
+            "SELECT (SELECT count(*) FROM tenants), (SELECT count(*) FROM tenant_bootstrap_requests), \
+             (SELECT count(*) FROM enrollments)",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+    };
+    let before = counts().await;
+
+    server.finish().await;
+    // During the outage the resend fails as transport and keeps its key.
+    let (ok, _, stderr) = restored_rb
+        .run(&["enroll", "human", "alice", "--json"])
+        .await;
+    assert!(!ok && stderr.contains("transport error"), "{stderr}");
+    let kept = StateFile::load(&restored_fixture.0)
+        .unwrap()
+        .bootstrap
+        .unwrap();
+    assert_eq!(kept.pending.unwrap(), completed.request);
+
+    let restarted = TestServer::start_at(&pool, addr).await;
+    assert_eq!(restarted.addr, addr);
+    let replay = restored_rb
+        .json(&["enroll", "human", "alice", "--json"])
+        .await;
+    assert_eq!(replay["recovery_source"], "server");
+    assert_eq!(replay["replayed"], true);
+    for field in [
+        "bootstrap_request_id",
+        "principal_id",
+        "tenant_id",
+        "boundary_id",
+        "grant_id",
+    ] {
+        assert_eq!(replay[field], first[field], "{field}");
+    }
+    let again = rb
+        .json(&["enroll", "role", "reviewer", "--tenant", &tenant, "--json"])
+        .await;
+    assert_eq!(again["replayed"], true);
+    assert_eq!(again["principal_id"], role["principal_id"]);
+    assert_eq!(counts().await, before);
+    let recovered = StateFile::load(&restored_fixture.0).unwrap();
+    assert_eq!(recovered.principals["alice"].id, first["principal_id"]);
+    assert!(recovered.bootstrap.unwrap().pending.is_none());
+    eprintln!("server restart: outage kept the key; restarted server replayed the original outcome; counts {before:?} unchanged");
+    restarted.finish().await;
     pool.close().await;
 }

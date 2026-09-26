@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-26 — Enrollment recovery survives a server restart (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.3.1`)
+
+`REASONBRAID-REPAIR-0542`.
+
+- ✅ **Checked:** if the server restarts after an enrollment whose answer was lost, retrying fails while the server is down (keeping its key), then returns the original person and organisation once it is back, with no duplicate. Nothing needed fixing.
+- 📝 **Corrected:** the guide said write failures were untested; they are tested at every step of a save. It now lists exactly what is and is not tested.
+
 ## 2026-09-26 — What is left of testing the tool's recovery under interruption, measured (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.3`)
 
 `REASONBRAID-DOC-0186`.

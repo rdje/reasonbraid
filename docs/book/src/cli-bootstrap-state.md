@@ -7,10 +7,18 @@ recent completed receipt when its output was lost. Other state writers refuse to
 run while a bootstrap is pending, before they send anything. The requests are
 bounded in time and reply size ([bounded transport](cli-state.md#bounded-transport)).
 
-Qualification under interruption is partial. Killing the CLI while it waits for
-the server, or while its output is unread, is tested: the saved request survives
-and the store is released. Process death at the other points of the flow, a
-server restart and a filesystem failure are not yet tested.
+Qualification under interruption is partial. Tested:
+
+- killing the CLI while it waits for the server, or while its output is unread:
+  the saved request survives and the store is released;
+- a server restart between a lost answer and the retry: while the server is down
+  the retry fails and keeps its key, and the restarted server returns the
+  original outcome;
+- a failed write at each step of a state replacement: the earlier snapshot stays,
+  or the new one is reported as unconfirmed.
+
+Not yet tested: a real process death between the CLI's own writes, and a killed
+writer whose child process still holds the store's lock.
 
 ## Versions and compatibility
 

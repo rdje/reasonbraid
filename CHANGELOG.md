@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-26 — Every malformed request now gets a reason code (`SIGNOFF-REPAIR.11.36`)
+
+`REASONBRAID-REPAIR-0539`.
+
+- 🔴 **Before:** on 52 of the server's routes, a request whose body was not valid for the route got back a plain sentence with no reason code, although the error reference promises every refusal a code a program can act on.
+- ✅ **Now:** every such refusal carries the code `invalid_command` and a message naming the problem field, on both the main API and the node channel. The status numbers stay as they were: 422 means the body has the wrong shape, 400 that it is not JSON at all.
+
 ## 2026-09-26 — Tests no longer leave empty folders behind, and the scripts review is complete (`SIGNOFF-REPAIR.11.3.6`)
 
 `REASONBRAID-REPAIR-0538`.

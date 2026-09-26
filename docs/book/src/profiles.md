@@ -68,7 +68,8 @@ attestation verb below.
 An unknown field anywhere in the body is rejected rather than silently dropped,
 and the answer is **`422`** — the body failed to deserialize into the typed
 profile, so the request never reached the handler. The rejection names the field
-it did not recognise. Refusals the handler itself produces are `400`; the two
+it did not recognise, in `{"code": "invalid_command", "message": …}` (see
+[Errors](errors.md)). Refusals the handler itself produces are `400`; the two
 are distinguishable, and a client that treats every rejection as `400` will
 mis-handle the typed ones.
 

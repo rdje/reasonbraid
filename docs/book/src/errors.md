@@ -9,13 +9,30 @@ message is for a person, and it may change.
 { "code": "quota_exceeded", "message": "the tenant's monthly call quota is exhausted" }
 ```
 
-⚠️ **One class of refusal does not keep that promise yet** (`SIGNOFF-REPAIR.11.36`):
-a request body that is not valid JSON for the route, including one with an
-unknown or missing field. Most routes still answer it with the web framework's
-default, `422` and a plain-text sentence with no `code`. Routes repaired so far
-answer `400 invalid_command` with the same sentence as the `message`
-(`POST /v1/assessments`, and the site acts, whose message is fixed). Branch on
-the status as well as the code until the repair lands.
+**A request body that does not deserialize** is refused before the handler runs,
+and its status says which way it failed; the code is `invalid_command` either
+way, and the `message` is the parser's own sentence, which names an unknown,
+missing or mistyped field:
+
+| status | the body | example |
+| --- | --- | --- |
+| `422` | parses, but is not the route's declared shape | an unknown field, a missing one, a string where a number goes |
+| `400` | does not parse as JSON at all | `{` |
+| `413` | is larger than the route accepts | |
+| `415` | is not declared as JSON | no `content-type: application/json` |
+
+```json
+{ "code": "invalid_command",
+  "message": "Failed to deserialize the JSON body into the target type: author: unknown field `author`, expected one of `claim_id`, … at line 1 column 33" }
+```
+
+A `400 invalid_command` produced by the HANDLER itself is a different level: the
+body was the right shape and the request is still wrong. The site acts are the
+one exception: they answer every malformed body `400` with a fixed message,
+because an operator surface does not echo malformed input. Until 2026-09-26
+fifty-two routes answered a malformed body with the web framework's default, a
+plain-text sentence with no `code` (`SIGNOFF-REPAIR.11.36`,
+`docs/decisions/2026-09-26_a-body-refusal-keeps-its-status-and-gains-a-code.md`).
 
 ## Two lists, and why both exist
 
@@ -47,7 +64,7 @@ after §9.8 was published.
 | `unauthenticated` | 401 | §9.8 | No principal was presented, or the header was malformed. |
 | `unauthorized` | 401 / 403 | §9.8 | A principal was presented and is not permitted this action on this resource. |
 | `scope_hidden` | 404 | §9.8 | The resource may exist, but naming that is outside the caller's scope. Existence is never leaked across a tenant boundary. |
-| `invalid_command` | 400 / 409 | §9.8 | The request is structurally wrong, or names something the command cannot accept. |
+| `invalid_command` | 400 / 409; 413 / 415 / 422 for a body | §9.8 | The request is structurally wrong, or names something the command cannot accept. A body that does not deserialize keeps its own status (see above). |
 | `invalid_transition` | 409 | §9.8 | The aggregate cannot make this move from the state it is in. |
 | `version_conflict` | 409 | §9.8 | An optimistic-concurrency check failed; re-read and retry. |
 | `idempotency_mismatch` | 409 | §9.8 | The idempotency key was reused with a different payload. |

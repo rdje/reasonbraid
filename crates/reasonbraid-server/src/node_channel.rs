@@ -663,6 +663,37 @@ impl std::fmt::Display for ApiError {
 
 impl std::error::Error for ApiError {}
 
+/// A node-channel request body (`SIGNOFF-REPAIR.11.36`): axum's `Json`, its
+/// rejection answered as the channel's own `ApiError` — `400 invalid_command`
+/// with the parser's sentence (413 and 415 kept), through the mapping the control
+/// API shares (`api::json_rejection`) — instead of axum's plain-text default.
+pub(crate) struct NodeJson<T>(pub(crate) T);
+
+impl<T, S> axum::extract::FromRequest<S> for NodeJson<T>
+where
+    T: serde::de::DeserializeOwned + Send,
+    S: Send + Sync,
+{
+    type Rejection = ApiError;
+
+    async fn from_request(
+        request: axum::extract::Request,
+        state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        match <Json<T> as axum::extract::FromRequest<S>>::from_request(request, state).await {
+            Ok(Json(value)) => Ok(NodeJson(value)),
+            Err(rejection) => {
+                let (status, message) = crate::api::json_rejection(&rejection);
+                Err(ApiError {
+                    status,
+                    code: "invalid_command",
+                    message,
+                })
+            }
+        }
+    }
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         (
@@ -2106,7 +2137,7 @@ fn check_version(version: u32) -> Result<(), ApiError> {
 
 async fn handshake(
     State(state): State<Arc<NodeChannelState>>,
-    Json(req): Json<HandshakeRequest>,
+    NodeJson(req): NodeJson<HandshakeRequest>,
 ) -> Result<Json<HandshakeResponse>, ApiError> {
     check_version(req.channel_version)?;
     // Authentication FIRST: a handshake without a valid certificate proof is
@@ -2223,7 +2254,7 @@ async fn handshake(
 /// session is never cut; the fresh identity rides the NEXT handshake.
 async fn rotate(
     State(state): State<Arc<NodeChannelState>>,
-    Json(req): Json<RotateRequest>,
+    NodeJson(req): NodeJson<RotateRequest>,
 ) -> Result<Json<RotateResponse>, ApiError> {
     check_version(req.channel_version)?;
 
@@ -2304,7 +2335,7 @@ async fn rotate(
 
 async fn events(
     State(state): State<Arc<NodeChannelState>>,
-    Json(req): Json<EventSubmission>,
+    NodeJson(req): NodeJson<EventSubmission>,
 ) -> Result<Json<EventReceipt>, ApiError> {
     check_version(req.channel_version)?;
     state
@@ -2413,7 +2444,7 @@ async fn events(
 /// and cut that tail, reversing a decision this leaf does not own.
 async fn ack(
     State(state): State<Arc<NodeChannelState>>,
-    Json(req): Json<AckRequest>,
+    NodeJson(req): NodeJson<AckRequest>,
 ) -> Result<Json<AckResponse>, ApiError> {
     check_version(req.channel_version)?;
     state
@@ -2442,7 +2473,7 @@ async fn ack(
 
 async fn poll(
     State(state): State<Arc<NodeChannelState>>,
-    Json(req): Json<PollRequest>,
+    NodeJson(req): NodeJson<PollRequest>,
 ) -> Result<Json<PollResponse>, ApiError> {
     check_version(req.channel_version)?;
     if req.node_id.is_empty() {
@@ -2481,7 +2512,7 @@ async fn poll(
 /// statement later.
 async fn heartbeat(
     State(state): State<Arc<NodeChannelState>>,
-    Json(req): Json<HeartbeatRequest>,
+    NodeJson(req): NodeJson<HeartbeatRequest>,
 ) -> Result<Json<HeartbeatResponse>, ApiError> {
     check_version(req.channel_version)?;
     state
@@ -2660,7 +2691,7 @@ struct EnrollmentTokenRow {
 /// used — ONE transaction. A refused attempt commits only its audit row.
 async fn enroll(
     State(state): State<Arc<NodeChannelState>>,
-    Json(req): Json<NodeEnrollRequest>,
+    NodeJson(req): NodeJson<NodeEnrollRequest>,
 ) -> Result<Json<NodeEnrollResponse>, ApiError> {
     if !is_valid_node_identity(&req.node_id) {
         return Err(ApiError::bad_request(format!(

@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — Every malformed request now gets a reason code (`SIGNOFF-REPAIR.11.36`)
+
+`REASONBRAID-REPAIR-0539`.
+
+- 🔴 **Root cause:** 52 handlers destructured axum's `Json<T>`, whose rejection is plain text with no `code`.
+- ✅ **Fix:** `api::ApiJson` / `node_channel::NodeJson` extractors over one `api::json_rejection` (axum's status kept, `{code: invalid_command, message}`); a source guard over every file; `json_body`'s lone `400` becomes `422`.
+- ⭐ My first cut flattened `422` to `400`, reversing `.9.2.1.2.3`'s recorded two-level convention — the knowledge note that already records this mistake. The corpus refused it at once.
+
 ## 2026-09-26 — Tests no longer leave empty folders behind, and the scripts review is complete (`SIGNOFF-REPAIR.11.3.6`)
 
 `REASONBRAID-REPAIR-0538`.

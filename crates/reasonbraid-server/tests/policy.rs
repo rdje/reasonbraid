@@ -105,6 +105,10 @@ async fn pool() -> Option<PgPool> {
             "claim_assessments",
             "derivations",
             "evidence_snapshots",
+            // `SIGNOFF-REPAIR.11.36`: the malformed-body control posts to
+            // `/v1/snapshots`. Refused before any write, but the plan purges what
+            // the suite's routes can reach, not what one request happened to do.
+            "snapshot_objects",
             "reference_registrations",
             "resource_references",
             "quota_events",
@@ -10325,6 +10329,65 @@ async fn the_policy_register_capability_still_registers_and_resolves() {
 /// registration is direct because the site gate is `.11.4.7.2.1.2.1`'s
 /// control, not this suite's; the boundary rebind is what a site operator's
 /// reissue does.
+/// `SIGNOFF-REPAIR.11.36` — a request body that does not deserialize is refused
+/// with a reason code, on every surface. `errors.md` promises every refusal a
+/// stable `code`, and 52 handlers took a bare `Json<T>`, whose rejection is axum's
+/// default: a plain-text `422` for a body of the wrong shape and a plain-text
+/// `400` for one that does not parse, neither carrying a `code`. ⭐ The STATUSES
+/// stay (the `422` is the strict wire boundary's deliberate level, `.9.2.1.2.3`);
+/// the body gains `{code, message}`. The sample spans
+/// the control API (enrolment, threads, deployments, profiles, evidence) and the
+/// node channel; the guard `api::json_extraction::no_handler_takes_a_bare_json`
+/// holds every other handler to the same shape.
+#[tokio::test]
+async fn a_malformed_body_is_refused_with_a_reason_code() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let routes = [
+        (reqwest::Method::POST, "/v1/enrollments"),
+        (reqwest::Method::POST, "/v1/threads"),
+        (reqwest::Method::POST, "/v1/deployments"),
+        (
+            reqwest::Method::PUT,
+            "/v1/profiles/rol_00000000-0000-7000-8000-000000000036",
+        ),
+        (reqwest::Method::POST, "/v1/snapshots"),
+        (reqwest::Method::POST, "/v1/nodes/events"),
+        (reqwest::Method::POST, "/v1/nodes/heartbeat"),
+    ];
+    for (method, path) in routes {
+        for (shape, body, expected) in [
+            ("the wrong shape", "[]", 422_u16),
+            ("no JSON at all", "{", 400_u16),
+        ] {
+            let response = client
+                .request(method.clone(), format!("{base}{path}"))
+                .header("content-type", "application/json")
+                .body(body)
+                .send()
+                .await
+                .expect("the request is sent");
+            let status = response.status().as_u16();
+            let text = response.text().await.expect("the body reads");
+            let answer: Value =
+                serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }));
+            assert_eq!(status, expected, "{method} {path} with {shape}: {answer}");
+            assert_eq!(
+                answer["code"],
+                json!("invalid_command"),
+                "{method} {path} with {shape}: {answer}"
+            );
+            assert!(
+                answer["message"].as_str().is_some_and(|m| !m.is_empty()),
+                "{method} {path} with {shape}: the parser's own sentence rides the message: {answer}"
+            );
+        }
+    }
+}
+
 /// The publication's own desired pair, `(ref, digest)` — ADR-021: its first
 /// recorded Git object id and the digest of its projection. A fixture deploys
 /// what its publication deploys (`SIGNOFF-REPAIR.9.3.3.1`), never a value

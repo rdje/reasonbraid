@@ -1131,7 +1131,7 @@ pub(crate) fn dev_grant(
 
 async fn enroll(
     State(state): State<Arc<ApiState>>,
-    Json(req): Json<EnrollRequest>,
+    ApiJson(req): ApiJson<EnrollRequest>,
 ) -> Result<Json<EnrollResponse>, ControlApiError> {
     let kind = match req.kind.as_str() {
         "human" => "human",
@@ -1463,7 +1463,7 @@ pub struct IssueNodeTokenResponse {
 async fn issue_node_enroll_token(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(req): Json<IssueNodeTokenRequest>,
+    ApiJson(req): ApiJson<IssueNodeTokenRequest>,
 ) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     if !crate::node_channel::is_valid_node_identity(&req.node_id) {
@@ -1637,7 +1637,7 @@ pub struct ReplayResponse {
 async fn replay_command(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(req): Json<ReplayRequest>,
+    ApiJson(req): ApiJson<ReplayRequest>,
 ) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     if req.allow_possible_duplicate {
@@ -1770,7 +1770,7 @@ pub struct QuarantineResponse {
 async fn quarantine_command(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(req): Json<QuarantineRequest>,
+    ApiJson(req): ApiJson<QuarantineRequest>,
 ) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     let quarantine = authority::quarantine_command_in_one_transaction(
@@ -2008,7 +2008,7 @@ pub struct PruneInboxResponse {
 async fn prune_node_inbox(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(req): Json<PruneInboxRequest>,
+    ApiJson(req): ApiJson<PruneInboxRequest>,
 ) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     let prune = authority::prune_node_inbox_in_one_transaction(
@@ -2110,7 +2110,7 @@ pub struct RevokeNodeResponse {
 async fn revoke_node(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(req): Json<RevokeNodeRequest>,
+    ApiJson(req): ApiJson<RevokeNodeRequest>,
 ) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     let revocation = authority::revoke_node_in_one_transaction(
@@ -2196,7 +2196,7 @@ pub struct FederationAgreementRequest {
 async fn propose_federation_agreement(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(req): Json<FederationAgreementRequest>,
+    ApiJson(req): ApiJson<FederationAgreementRequest>,
 ) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     if req.expires_at.is_some_and(|at| at <= Utc::now()) {
@@ -2253,7 +2253,7 @@ pub struct FederationAgreementAction {
 async fn accept_federation_agreement(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(req): Json<FederationAgreementAction>,
+    ApiJson(req): ApiJson<FederationAgreementAction>,
 ) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     let acceptance = authority::accept_direction_in_one_transaction(
@@ -2300,7 +2300,7 @@ async fn accept_federation_agreement(
 async fn revoke_federation_agreement(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(req): Json<FederationAgreementAction>,
+    ApiJson(req): ApiJson<FederationAgreementAction>,
 ) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     let revocation = authority::revoke_direction_in_one_transaction(
@@ -2451,7 +2451,7 @@ pub struct AdjudicateAttemptResponse {
 async fn adjudicate_ambiguous_attempt(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(req): Json<AdjudicateAttemptRequest>,
+    ApiJson(req): ApiJson<AdjudicateAttemptRequest>,
 ) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     let outcome = authority::adjudicate_ambiguous_attempt_in_one_transaction(
@@ -2769,7 +2769,7 @@ async fn resolve_resource(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(resource_id): Path<String>,
-    Json(req): Json<ResolveRequest>,
+    ApiJson(req): ApiJson<ResolveRequest>,
 ) -> Result<Json<crate::resolvers::ResolutionOutcome>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
@@ -4448,7 +4448,7 @@ async fn list_routing_rules(
 async fn resolve_routing_class(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(body): Json<serde_json::Value>,
+    ApiJson(body): ApiJson<serde_json::Value>,
 ) -> Result<Json<crate::routing::ResolvedRoute>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
@@ -4498,7 +4498,7 @@ async fn list_routing_resolutions(
 async fn record_routing_recommendation(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(submission): Json<crate::routing::RecommendationSubmission>,
+    ApiJson(submission): ApiJson<crate::routing::RecommendationSubmission>,
 ) -> Result<Json<serde_json::Value>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
@@ -4601,7 +4601,7 @@ async fn list_policies(
 async fn resolve_policies(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(request): Json<crate::policy::ResolutionRequest>,
+    ApiJson(request): ApiJson<crate::policy::ResolutionRequest>,
 ) -> Result<Json<crate::policy::Resolution>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
@@ -4648,7 +4648,7 @@ async fn policy_impact(
 async fn register_policy_proposal(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(input): Json<crate::lifecycle::ProposalInput>,
+    ApiJson(input): ApiJson<crate::lifecycle::ProposalInput>,
 ) -> Result<Json<crate::lifecycle::StoredProposal>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     let Some(tenant_id) = reader_tenant(&state.pool, &principal).await? else {
@@ -4687,7 +4687,7 @@ async fn list_policy_proposals(
 async fn record_policy_decision(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(input): Json<crate::lifecycle::DecisionInput>,
+    ApiJson(input): ApiJson<crate::lifecycle::DecisionInput>,
 ) -> Result<Json<crate::lifecycle::StoredDecision>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     let Some(tenant_id) = reader_tenant(&state.pool, &principal).await? else {
@@ -4727,7 +4727,7 @@ async fn list_policy_decisions(
 async fn record_policy_approval(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(input): Json<crate::lifecycle::ApprovalInput>,
+    ApiJson(input): ApiJson<crate::lifecycle::ApprovalInput>,
 ) -> Result<Json<crate::lifecycle::StoredApproval>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     let Some(tenant_id) = reader_tenant(&state.pool, &principal).await? else {
@@ -4767,7 +4767,7 @@ async fn list_policy_approvals(
 async fn project_policies(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(request): Json<crate::projections::ProjectionRequest>,
+    ApiJson(request): ApiJson<crate::projections::ProjectionRequest>,
 ) -> Result<Json<crate::projections::StoredProjection>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     // `SIGNOFF-REPAIR.6.1.5.2`: the tenant is BOUND, not tested with `is_some()`
@@ -4822,7 +4822,7 @@ async fn list_policy_projections(
 async fn stage_publication(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(input): Json<crate::publications::PublicationInput>,
+    ApiJson(input): ApiJson<crate::publications::PublicationInput>,
 ) -> Result<Json<crate::publications::StoredPublication>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     // `SIGNOFF-REPAIR.6.1.5.2.1`: the tenant is BOUND, not tested with
@@ -4879,7 +4879,7 @@ async fn mark_publication_effective(
     State(state): State<Arc<ApiState>>,
     Path(publication_id): Path<String>,
     headers: HeaderMap,
-    Json(input): Json<crate::publications::MarkEffectiveInput>,
+    ApiJson(input): ApiJson<crate::publications::MarkEffectiveInput>,
 ) -> Result<Json<crate::publications::StoredPublication>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     // `SIGNOFF-REPAIR.6.1.5.2.1`: the tenant is BOUND, not tested with
@@ -4993,7 +4993,7 @@ async fn mark_publication_failed(
     State(state): State<Arc<ApiState>>,
     Path(publication_id): Path<String>,
     headers: HeaderMap,
-    Json(input): Json<crate::publications::MarkFailedInput>,
+    ApiJson(input): ApiJson<crate::publications::MarkFailedInput>,
 ) -> Result<Json<crate::publications::StoredPublication>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     // `SIGNOFF-REPAIR.6.1.5.2.1`: the tenant is BOUND, not tested with
@@ -5146,7 +5146,7 @@ async fn publish_publication(
     State(state): State<Arc<ApiState>>,
     Path(publication_id): Path<String>,
     headers: HeaderMap,
-    Json(input): Json<crate::publications::PublishInput>,
+    ApiJson(input): ApiJson<crate::publications::PublishInput>,
 ) -> Result<Json<crate::publications::StoredPublication>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     // `SIGNOFF-REPAIR.6.1.5.2.1`: the tenant is BOUND, not tested with
@@ -5278,7 +5278,7 @@ async fn publish_publication(
 async fn register_deployment_target(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(input): Json<crate::deployments::TargetInput>,
+    ApiJson(input): ApiJson<crate::deployments::TargetInput>,
 ) -> Result<Json<serde_json::Value>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     let enrolled = reader_tenant(&state.pool, &principal).await?.is_some();
@@ -5333,7 +5333,7 @@ async fn list_deployment_targets(
 async fn assign_deployment(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(input): Json<crate::deployments::AssignmentInput>,
+    ApiJson(input): ApiJson<crate::deployments::AssignmentInput>,
 ) -> Result<Json<crate::deployments::StoredAssignment>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     // `SIGNOFF-REPAIR.6.1.5.2.1`: the tenant is BOUND, not tested with
@@ -5377,7 +5377,7 @@ async fn record_deployment_receipt(
     State(state): State<Arc<ApiState>>,
     Path((target_id, publication_id)): Path<(String, String)>,
     headers: HeaderMap,
-    Json(input): Json<crate::deployments::ReceiptInput>,
+    ApiJson(input): ApiJson<crate::deployments::ReceiptInput>,
 ) -> Result<Json<crate::deployments::StoredAssignment>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     // `SIGNOFF-REPAIR.6.1.5.2.1`: the tenant is BOUND, not tested with
@@ -5429,7 +5429,7 @@ async fn list_deployment_receipts(
 async fn record_policy_drift(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(input): Json<crate::corrections::DriftInput>,
+    ApiJson(input): ApiJson<crate::corrections::DriftInput>,
 ) -> Result<Json<serde_json::Value>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     // `SIGNOFF-REPAIR.6.1.5.2.1`: the tenant is BOUND, not tested with
@@ -5472,7 +5472,7 @@ async fn list_policy_drift(
 async fn record_policy_correction(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(input): Json<crate::corrections::CorrectionInput>,
+    ApiJson(input): ApiJson<crate::corrections::CorrectionInput>,
 ) -> Result<Json<serde_json::Value>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     // `SIGNOFF-REPAIR.6.1.5.2.1`: the tenant is BOUND, not tested with
@@ -5517,7 +5517,7 @@ async fn list_policy_corrections(
 async fn record_policy_outcome(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(input): Json<crate::corrections::OutcomeInput>,
+    ApiJson(input): ApiJson<crate::corrections::OutcomeInput>,
 ) -> Result<Json<serde_json::Value>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     // `SIGNOFF-REPAIR.6.1.5.2.1`: the tenant is BOUND, not tested with
@@ -5746,7 +5746,7 @@ async fn list_claim_assessments(
 async fn submit_derivation(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(submission): Json<crate::derivations::DerivationSubmission>,
+    ApiJson(submission): ApiJson<crate::derivations::DerivationSubmission>,
 ) -> Result<Json<serde_json::Value>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
@@ -5883,7 +5883,7 @@ struct SnapshotRequest {
 async fn submit_snapshot(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(request): Json<SnapshotRequest>,
+    ApiJson(request): ApiJson<SnapshotRequest>,
 ) -> Result<Json<crate::snapshots::SnapshotOutcome>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
@@ -5968,7 +5968,7 @@ async fn withdraw_snapshot_citation(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(snapshot_id): Path<String>,
-    Json(body): Json<serde_json::Value>,
+    ApiJson(body): ApiJson<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
@@ -6035,7 +6035,7 @@ fn base64_decode(input: &str) -> Option<Vec<u8>> {
 async fn submit_resource(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(reference): Json<crate::resources::ResourceReference>,
+    ApiJson(reference): ApiJson<crate::resources::ResourceReference>,
 ) -> Result<Json<crate::resources::SubmitOutcome>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     let Some(tenant) = reader_tenant(&state.pool, &principal).await? else {
@@ -6142,7 +6142,7 @@ struct AutoCreateRequest {
 async fn create_thread_auto(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(req): Json<AutoCreateRequest>,
+    ApiJson(req): ApiJson<AutoCreateRequest>,
 ) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     let GrantSubject::Role(role) = &principal else {
@@ -6439,7 +6439,7 @@ fn default_max_participants() -> i32 {
 async fn open_recruitment_call(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(req): Json<OpenCallRequest>,
+    ApiJson(req): ApiJson<OpenCallRequest>,
 ) -> Result<Json<Value>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     let tenant_id: TenantId = req
@@ -6672,7 +6672,7 @@ async fn respond_to_call(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(call_id): Path<String>,
-    Json(response): Json<crate::recruitment::RecruitmentResponse>,
+    ApiJson(response): ApiJson<crate::recruitment::RecruitmentResponse>,
 ) -> Result<Json<Value>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     let value = respond_to_call_core(&state.pool, &principal, &call_id, &response).await?;
@@ -7255,7 +7255,7 @@ fn scope_rank(class: crate::profiles::ReaderClass) -> u8 {
 async fn directory_match(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(req): Json<MatchRequest>,
+    ApiJson(req): ApiJson<MatchRequest>,
 ) -> Result<Json<Value>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     let Some(reader_tenant) = reader_tenant(&state.pool, &principal).await? else {
@@ -7644,7 +7644,7 @@ async fn put_profile(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(role_id): Path<String>,
-    Json(profile): Json<crate::profiles::AgentProfile>,
+    ApiJson(profile): ApiJson<crate::profiles::AgentProfile>,
 ) -> Result<Json<crate::profiles::CurrentProfile>, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     if !is_self(&principal, &role_id) {
@@ -7975,7 +7975,7 @@ pub struct ImportCardRequest {
 async fn import_profile_card(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(req): Json<ImportCardRequest>,
+    ApiJson(req): ApiJson<ImportCardRequest>,
 ) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     // The card's own digest, re-derived before the transaction because it is the
@@ -8138,7 +8138,7 @@ async fn attest_capability_claim(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(role_id): Path<String>,
-    Json(req): Json<AttestRequest>,
+    ApiJson(req): ApiJson<AttestRequest>,
 ) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     let Some(tenant) = role_tenant(&state.pool, &role_id).await? else {
@@ -8268,7 +8268,7 @@ async fn revoke_grant(
     State(state): State<Arc<ApiState>>,
     Path(grant_id): Path<String>,
     headers: HeaderMap,
-    Json(req): Json<RevokeAuthorityRequest>,
+    ApiJson(req): ApiJson<RevokeAuthorityRequest>,
 ) -> Result<Response, ControlApiError> {
     run_revocation(
         &state,
@@ -8284,7 +8284,7 @@ async fn revoke_boundary(
     State(state): State<Arc<ApiState>>,
     Path(boundary_id): Path<String>,
     headers: HeaderMap,
-    Json(req): Json<RevokeAuthorityRequest>,
+    ApiJson(req): ApiJson<RevokeAuthorityRequest>,
 ) -> Result<Response, ControlApiError> {
     run_revocation(
         &state,
@@ -8700,7 +8700,7 @@ async fn run_breaker_administration(
 async fn arm_breaker(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(req): Json<ArmBreakerRequest>,
+    ApiJson(req): ApiJson<ArmBreakerRequest>,
 ) -> Result<Response, ControlApiError> {
     run_breaker_administration(
         &state,
@@ -8716,7 +8716,7 @@ async fn arm_breaker(
 async fn reset_breaker(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(req): Json<BreakerTenantRequest>,
+    ApiJson(req): ApiJson<BreakerTenantRequest>,
 ) -> Result<Response, ControlApiError> {
     run_breaker_administration(
         &state,
@@ -9815,7 +9815,7 @@ where
 async fn create_thread(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Json(envelope): Json<CommandEnvelope>,
+    ApiJson(envelope): ApiJson<CommandEnvelope>,
 ) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     if envelope.protocol_version != PROTOCOL_VERSION {
@@ -9930,7 +9930,7 @@ async fn thread_command(
     State(state): State<Arc<ApiState>>,
     Path(thread_id_raw): Path<String>,
     headers: HeaderMap,
-    Json(envelope): Json<CommandEnvelope>,
+    ApiJson(envelope): ApiJson<CommandEnvelope>,
 ) -> Result<Response, ControlApiError> {
     let principal = resolve_principal(&headers)?;
     if envelope.protocol_version != PROTOCOL_VERSION {
@@ -10708,25 +10708,62 @@ fn site_receipt_response(
 /// with it in serde's own words, which name an unknown or missing field
 /// (`SIGNOFF-REPAIR.7.4.7`).
 ///
-/// ⚠️ A route taking a bare `Json<T>` answers the same body with axum's default,
-/// `422` and a plain-text body carrying no `code`, against the errors chapter's
-/// promise that every refusal carries one. `SIGNOFF-REPAIR.11.36` owns the
-/// routes still doing so.
+/// Every handler reads its body through [`ApiJson`] (control API) or
+/// `node_channel::NodeJson` (node channel), which map axum's rejection here
+/// (`SIGNOFF-REPAIR.11.36`): a bare `Json<T>` answered axum's default, `422` or
+/// `400` with a plain-text body and no `code`, against the errors chapter's
+/// promise that every refusal carries one. The guard
+/// `json_extraction::no_handler_takes_a_bare_json` refuses a new one.
 fn json_body<T>(
     request: Result<Json<T>, axum::extract::rejection::JsonRejection>,
 ) -> Result<T, ControlApiError> {
     request.map(|Json(value)| value).map_err(|rejection| {
-        let status = match rejection.status() {
-            StatusCode::PAYLOAD_TOO_LARGE => StatusCode::PAYLOAD_TOO_LARGE,
-            StatusCode::UNSUPPORTED_MEDIA_TYPE => StatusCode::UNSUPPORTED_MEDIA_TYPE,
-            _ => StatusCode::BAD_REQUEST,
-        };
+        let (status, message) = json_rejection(&rejection);
         ControlApiError {
             status,
             code: "invalid_command",
-            message: rejection.body_text(),
+            message,
         }
     })
+}
+
+/// The one mapping of a body that did not deserialize, shared by both surfaces
+/// (`SIGNOFF-REPAIR.11.36`, `docs/decisions/2026-09-26_a-body-refusal-keeps-its-status-and-gains-a-code.md`).
+///
+/// ⭐ The STATUS is axum's, unchanged: `422` for a body that parses but is not the
+/// declared shape (the strict wire boundary, `.9.2.1.2.3`'s deliberate second
+/// level beside the handler's own `400 invalid_command`), `400` for one that does
+/// not parse, `413` and `415` for size and media type. What was missing was the
+/// CODE: the body was a plain-text sentence. It is now `{code, message}` with
+/// `invalid_command` and the parser's own sentence, which names an unknown or
+/// missing field.
+pub(crate) fn json_rejection(
+    rejection: &axum::extract::rejection::JsonRejection,
+) -> (StatusCode, String) {
+    (rejection.status(), rejection.body_text())
+}
+
+/// A control-API request body (`SIGNOFF-REPAIR.11.36`): axum's `Json`, its
+/// rejection answered by [`json_body`] — `400 invalid_command` naming what was
+/// wrong — instead of axum's plain-text default. Every control-API handler takes
+/// its body as `ApiJson`, so a new route cannot reintroduce the default without
+/// failing `json_extraction::no_handler_takes_a_bare_json`.
+pub(crate) struct ApiJson<T>(pub(crate) T);
+
+impl<T, S> axum::extract::FromRequest<S> for ApiJson<T>
+where
+    T: serde::de::DeserializeOwned + Send,
+    S: Send + Sync,
+{
+    type Rejection = ControlApiError;
+
+    async fn from_request(
+        request: axum::extract::Request,
+        state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        json_body(<Json<T> as axum::extract::FromRequest<S>>::from_request(request, state).await)
+            .map(ApiJson)
+    }
 }
 
 fn site_request<T>(
@@ -11400,13 +11437,16 @@ mod json_bodies {
     }
 
     #[tokio::test]
-    async fn an_unknown_field_is_a_400_that_names_it() {
+    async fn an_unknown_field_is_a_422_that_names_it() {
+        // `SIGNOFF-REPAIR.11.36`: a body that is not the declared shape keeps the
+        // strict wire boundary's `422` (`.9.2.1.2.3`), now WITH its code; it was
+        // `400` here only, against every other typed route.
         let refused = extract(Some("application/json"), br#"{"author":"x"}"#.to_vec())
             .await
             .unwrap_err();
         assert_eq!(
             (refused.status.as_u16(), refused.code),
-            (400, "invalid_command")
+            (422, "invalid_command")
         );
         assert!(
             refused.message.contains("unknown field `author`"),
@@ -11482,5 +11522,104 @@ mod publication_refusals {
             (400, "invalid_command")
         );
         assert!(refused.message.contains("is at stage `effective`"));
+    }
+}
+
+#[cfg(test)]
+mod json_extraction {
+    /// Does this line destructure a bare `Json` extractor — `Json(name): Json<…>`
+    /// or `: axum::Json<…>`? Written without a regex (the crate has none), and
+    /// with the type name built from parts so this file's own text is not a match.
+    fn takes_bare_json(line: &str) -> bool {
+        let json = ["J", "son"].concat();
+        let open = format!("{json}(");
+        let mut rest = line;
+        while let Some(at) = rest.find(&open) {
+            let before = rest[..at].chars().next_back();
+            let after = &rest[at + open.len()..];
+            rest = after;
+            if before.is_some_and(|c| c.is_alphanumeric() || c == '_') {
+                continue; // `ApiJson(` or `NodeJson(`
+            }
+            let Some(close) = after.find(')') else {
+                continue;
+            };
+            let name = &after[..close];
+            if name.is_empty() || !name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                continue;
+            }
+            let tail = after[close + 1..].trim_start();
+            let Some(tail) = tail.strip_prefix(':') else {
+                continue;
+            };
+            let tail = tail.trim_start();
+            let tail = tail.strip_prefix("axum::").unwrap_or(tail);
+            if tail.starts_with(&format!("{json}<")) {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[test]
+    fn the_matcher_sees_the_shapes() {
+        let json = ["J", "son"].concat();
+        assert!(takes_bare_json(&format!(
+            "    {json}(input): {json}<Thing>,"
+        )));
+        assert!(takes_bare_json(&format!(
+            "    {json}(req) : axum::{json}<Thing>,"
+        )));
+        assert!(!takes_bare_json(&format!(
+            "    Api{json}(input): Api{json}<Thing>,"
+        )));
+        assert!(!takes_bare_json(&format!(
+            "    Node{json}(req): Node{json}<Thing>,"
+        )));
+        assert!(!takes_bare_json(&format!(
+            ") -> Result<{json}<Vec<Row>>, ControlApiError> {{"
+        )));
+        assert!(!takes_bare_json(&format!(
+            "    request.map(|{json}(value)| value)"
+        )));
+    }
+
+    /// `SIGNOFF-REPAIR.11.36`: no handler in the server takes a bare `Json<T>`
+    /// body. Its rejection is axum's plain-text default, with no reason code, and
+    /// 52 handlers took one; each now takes `ApiJson` or `NodeJson`. The guard
+    /// walks every source file of the crate (tracked source, which travels with
+    /// the crate), so a new route in any module is held to it.
+    #[test]
+    fn no_handler_takes_a_bare_json() {
+        let mut found = Vec::new();
+        let mut stack = vec![std::path::PathBuf::from(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/src"
+        ))];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).expect("the source directory reads") {
+                let path = entry.expect("an entry").path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().is_some_and(|e| e == "rs") {
+                    let text = std::fs::read_to_string(&path).expect("a source file reads");
+                    for (number, line) in text.lines().enumerate() {
+                        // A comment describing the shape is not the shape.
+                        if !line.trim_start().starts_with("//") && takes_bare_json(line) {
+                            found.push(format!(
+                                "{}:{}: {}",
+                                path.display(),
+                                number + 1,
+                                line.trim()
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            found.is_empty(),
+            "handlers taking a bare Json body: {found:#?}"
+        );
     }
 }

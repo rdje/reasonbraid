@@ -10071,10 +10071,13 @@ async fn an_assessment_is_attributed_to_the_principal_that_submitted_it() {
     ] {
         let (status, refused) =
             post(&client, &base, "/v1/assessments", &principal, &body(extra)).await;
+        // `422`, the strict wire boundary every typed route answers, with its
+        // code (`SIGNOFF-REPAIR.11.36`); this route alone answered `400`.
         assert_eq!(
-            status, 400,
+            status, 422,
             "a body naming its `{field}` is refused: {refused}"
         );
+        assert_eq!(refused["code"], json!("invalid_command"), "{refused}");
         assert!(
             refused["message"]
                 .as_str()
@@ -12626,10 +12629,12 @@ async fn the_two_assessment_writers_are_two_namespaces() {
         }),
     )
     .await;
+    // `422`, the strict wire boundary, with its code (`SIGNOFF-REPAIR.11.36`).
     assert_eq!(
-        status, 400,
+        status, 422,
         "a body naming its author is refused: {refused}"
     );
+    assert_eq!(refused["code"], json!("invalid_command"), "{refused}");
     let (status, forged) = post(
         &client,
         &base,

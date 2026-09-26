@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — The ordinary CLI writers bind the reply to the request (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.4.1`)
+
+`REASONBRAID-REPAIR-0540`.
+
+- 🔴 **Root cause:** `run_enroll_with_recovery` (ordinary branch) and `run_thread_create_in_store` read the reply with `unwrap_or_default()`; the store validates shape, never the binding. RED 8/8: 3 recorded silently, 5 refused as LOCAL state after a 200.
+- ✅ **Fix:** `enrollment_binding` (kind, name, canonical principal of that kind, canonical tenant equal to the one asked for) and a canonical `thread_id`, both checked before `state_mut()`; `malformed server response`. 13/14 mutants caught via `cargo mutants --in-diff … --in-place`, 1 unviable.
+- ⭐ `cargo mutants --in-diff <git diff>` scopes mutants to the leaf's own lines, and `--in-place` reuses the warm target dir (6 s baseline build). Both suit a leaf whose change is a few functions in a large file.
+
 ## 2026-09-26 — `.2.4` censused: no obsolete recovery path; two ordinary writers take the reply on trust (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.4`)
 
 `REASONBRAID-DOC-0185`.

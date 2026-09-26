@@ -115,6 +115,22 @@ own result. For example, enrollment of bob followed by a thread creation still
 retains alice and all previously stored thread mappings, whichever writer ran
 first.
 
+Each writer checks the server's reply against its own request before it touches
+the store. An enrollment reply must name the kind, name and tenant that were
+asked for, and a canonical principal ID of that kind. A thread-creation reply
+must carry a canonical thread ID. A reply that does not answer the request is
+the server's error and is refused as one:
+
+```text
+$ rb enroll role reviewer --tenant ten_… --json
+error: malformed server response: the enrollment reply names another tenant than the one asked for
+```
+
+Nothing is recorded, and the store keeps its earlier bytes. The server may still
+have acted on the request. An enrollment repeated with the same tenant, kind and
+name returns the original principal, but a repeated thread creation creates
+another thread, so inspect the tenant's threads before you retry one.
+
 The library's run_thread_create entrypoint still accepts an explicitly supplied
 PrincipalRef and uses it as supplied. The CLI uses run_thread_create_named for
 fresh name resolution. Both entrypoints share the held-store implementation.

@@ -25,7 +25,7 @@ use std::time::Duration;
 
 use reasonbraid_core::{
     AgentRoleId, AuthorityContext, ClientContext, CommandEnvelope, HumanPrincipalId, RequestId,
-    TargetSelector, PROTOCOL_VERSION,
+    TargetSelector, TenantId, ThreadId, PROTOCOL_VERSION,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -668,26 +668,14 @@ pub async fn run_enroll_with_recovery(
         body["actions"] = json!(a);
     }
     let response = client.enroll(body).await?;
+    let principal = enrollment_binding(&response, kind, name, tenant)?;
 
     // Record the principal (and the tenant it belongs to) locally.
     let state = writer.state_mut();
     if state.version == 0 {
         state.version = 1;
     }
-    state.principals.insert(
-        name.to_string(),
-        StoredPrincipal {
-            kind: kind.to_string(),
-            id: response["principal_id"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string(),
-            tenant: response["tenant_id"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string(),
-        },
-    );
+    state.principals.insert(name.to_string(), principal);
     writer.publish()?;
 
     if json_out {
@@ -708,6 +696,57 @@ pub async fn run_enroll_with_recovery(
             .map(|b| format!("\nboundary: {b}"))
             .unwrap_or_default(),
     ))
+}
+
+fn canonical<T: std::str::FromStr + fmt::Display>(raw: &str) -> bool {
+    raw.parse::<T>().is_ok_and(|id| id.to_string() == raw)
+}
+
+/// The ordinary enrollment reply, bound to its request before the store is
+/// touched (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.4.1`), as the keyed bootstrap binds
+/// its own. A reply naming another tenant, name or kind, or no canonical
+/// principal of the enrolled kind, does not answer this request: it is the
+/// server's error, refused as malformed, and nothing is recorded. The store
+/// would refuse a missing identity only at publication, as a LOCAL-state error
+/// after the server had committed.
+fn enrollment_binding(
+    response: &Value,
+    kind: &str,
+    name: &str,
+    tenant: Option<&str>,
+) -> Result<StoredPrincipal, CliError> {
+    let refuse = |what: &str| CliError::Malformed(format!("the enrollment reply {what}"));
+    if response["kind"].as_str() != Some(kind) || response["name"].as_str() != Some(name) {
+        return Err(refuse("names another kind or name than the one enrolled"));
+    }
+    let id = response["principal_id"]
+        .as_str()
+        .filter(|id| match kind {
+            "human" => canonical::<HumanPrincipalId>(id),
+            "role" => canonical::<AgentRoleId>(id),
+            _ => false,
+        })
+        .ok_or_else(|| refuse("has no canonical principal of the enrolled kind"))?;
+    let replied = response["tenant_id"]
+        .as_str()
+        .filter(|replied| canonical::<TenantId>(replied))
+        .ok_or_else(|| refuse("has no canonical tenant"))?;
+    // The caller's spelling is input; the server answers the canonical form.
+    if let Some(asked) = tenant {
+        if asked
+            .parse::<TenantId>()
+            .map(|asked| asked.to_string())
+            .ok()
+            != Some(replied.to_owned())
+        {
+            return Err(refuse("names another tenant than the one asked for"));
+        }
+    }
+    Ok(StoredPrincipal {
+        kind: kind.to_owned(),
+        id: id.to_owned(),
+        tenant: replied.to_owned(),
+    })
 }
 
 #[derive(Debug, Clone, Default)]
@@ -848,13 +887,20 @@ async fn run_thread_create_in_store(
     let response = client
         .create_thread(&principal.id, body, delegation)
         .await?;
+    // Checked before the store is touched (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.4.1`):
+    // a reply with no canonical thread id is the server's error, not local state's.
+    let thread_id = response["thread_id"]
+        .as_str()
+        .filter(|id| canonical::<ThreadId>(id))
+        .ok_or_else(|| {
+            CliError::Malformed("the thread-create reply has no canonical thread_id".into())
+        })?;
 
     // Remember the thread → tenant mapping for later verbs.
     let state = writer.state_mut();
     if state.version == 0 {
         state.version = 1;
     }
-    let thread_id = response["thread_id"].as_str().unwrap_or_default();
     state.threads.insert(
         thread_id.to_string(),
         StoredThread {

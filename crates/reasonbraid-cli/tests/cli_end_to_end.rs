@@ -817,6 +817,30 @@ async fn bootstrap_recovery_matches_server_outcomes_and_preserves_fresh_intent()
     assert_eq!(current.principals["alice"].tenant, fresh["tenant_id"]);
     let replayed = StateFile::load(&restored_fixture.0).unwrap();
     assert_eq!(replayed.principals["alice"].tenant, first["tenant_id"]);
+
+    // `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.4.1`: the ordinary writer binds its reply to
+    // its request, so the real server's reply must pass that binding for the one
+    // ordinary route the whole flow does not drive, a human into an existing tenant.
+    let tenant = first["tenant_id"].as_str().unwrap();
+    let carol = rb
+        .json(&["enroll", "human", "carol", "--tenant", tenant, "--json"])
+        .await;
+    assert_eq!(carol["tenant_id"], first["tenant_id"]);
+    assert_eq!(carol["replayed"], false);
+    let again = rb
+        .json(&["enroll", "human", "carol", "--tenant", tenant, "--json"])
+        .await;
+    assert_eq!(again["replayed"], true);
+    assert_eq!(again["principal_id"], carol["principal_id"]);
+    let carol_state = &StateFile::load(&fixture.0).unwrap().principals["carol"];
+    assert_eq!(
+        (
+            carol_state.kind.as_str(),
+            carol_state.id.as_str(),
+            carol_state.tenant.as_str()
+        ),
+        ("human", carol["principal_id"].as_str().unwrap(), tenant)
+    );
     eprintln!("real bootstrap recovery: one original tenant/request after server+local recovery; two distinct tenants/requests after fresh intent; original outcome unchanged");
     server.finish().await;
     pool.close().await;

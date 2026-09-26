@@ -29,6 +29,8 @@ const ALICE: &str = "hpr_00000000-0000-7000-8000-000000000001";
 const BOB: &str = "hpr_00000000-0000-7000-8000-000000000002";
 const OLD_THREAD: &str = "thr_00000000-0000-7000-8000-000000000001";
 const NEW_THREAD: &str = "thr_00000000-0000-7000-8000-000000000002";
+const REVIEWER: &str = "rol_00000000-0000-7000-8000-000000000001";
+const OTHER_TENANT: &str = "ten_00000000-0000-7000-8000-000000000002";
 
 struct Fixture {
     root: PathBuf,
@@ -114,6 +116,9 @@ struct Gate {
     release: Notify,
 }
 
+/// Fields to set (`Some`) or remove (`None`) in a reply.
+type Edits = Vec<(&'static str, Option<Value>)>;
+
 #[derive(Clone, Default)]
 enum Reply {
     #[default]
@@ -123,6 +128,21 @@ enum Reply {
     WrongIdentity,
     MissingGrant,
     Replay,
+    /// Set (`Some`) or remove (`None`) fields of an otherwise normal reply, on
+    /// either route: a server answering something other than what was asked.
+    Edit(Edits),
+}
+
+fn edited(mut reply: Value, edits: &[(&'static str, Option<Value>)]) -> Value {
+    for (field, value) in edits {
+        match value {
+            Some(value) => reply[*field] = value.clone(),
+            None => {
+                reply.as_object_mut().unwrap().remove(*field);
+            }
+        }
+    }
+    reply
 }
 
 #[derive(Clone)]
@@ -167,8 +187,13 @@ async fn enroll(
     Json(body): Json<Value>,
 ) -> Response {
     probe.record("enroll", &body, &headers).await;
+    let principal = if body["kind"] == "role" {
+        REVIEWER
+    } else {
+        BOB
+    };
     let mut response = json!({
-        "kind":body["kind"], "name":body["name"], "principal_id":BOB,
+        "kind":body["kind"], "name":body["name"], "principal_id":principal,
         "tenant_id":TENANT, "boundary_id":format!("bnd_{TENANT}"),
         "grant_id":format!("grt_{BOB}"), "replayed":false
     });
@@ -210,6 +235,7 @@ async fn enroll(
             response["replayed"] = json!(true);
             Json(response).into_response()
         }
+        Reply::Edit(edits) => Json(edited(response, &edits)).into_response(),
     }
 }
 
@@ -219,7 +245,11 @@ async fn create_thread(
     Json(body): Json<Value>,
 ) -> Json<Value> {
     probe.record("create", &body, &headers).await;
-    Json(json!({"thread_id":NEW_THREAD,"thread_state":"open"}))
+    let reply = json!({"thread_id":NEW_THREAD,"thread_state":"open"});
+    match probe.reply.lock().unwrap().clone() {
+        Reply::Edit(edits) => Json(edited(reply, &edits)),
+        _ => Json(reply),
+    }
 }
 
 impl Server {
@@ -1169,5 +1199,102 @@ async fn bootstrap_checks_completion_capacity_before_dispatch_at_the_exact_bound
             (1, true, 0, false, true, true, true),
             (0, false, 1, true, false, true, true)
         ]
+    );
+}
+
+/// `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.4.1`: the keyed bootstrap binds its reply to
+/// its request field by field; the two ordinary writers must too. A reply that
+/// does not answer the request is the server's fault, so it is refused as a
+/// malformed server response before the store is touched, never recorded and
+/// never reported as a local-state error after the server committed.
+#[tokio::test]
+async fn ordinary_writers_refuse_a_reply_that_does_not_answer_their_request() {
+    let human = vec!["enroll", "human", "carol", "--tenant", TENANT, "--json"];
+    let role = vec!["enroll", "role", "reviewer", "--tenant", TENANT, "--json"];
+    let thread = thread_args();
+    let wrong: Vec<(&str, &Vec<&str>, Edits)> = vec![
+        (
+            "another tenant",
+            &human,
+            vec![("tenant_id", Some(json!(OTHER_TENANT)))],
+        ),
+        ("no principal", &human, vec![("principal_id", None)]),
+        (
+            "a role for a human",
+            &human,
+            vec![("principal_id", Some(json!(REVIEWER)))],
+        ),
+        (
+            "a human for a role",
+            &role,
+            vec![("principal_id", Some(json!(BOB)))],
+        ),
+        (
+            "another name",
+            &human,
+            vec![("name", Some(json!("mallory")))],
+        ),
+        ("another kind", &human, vec![("kind", Some(json!("role")))]),
+        ("no thread", &thread, vec![("thread_id", None)]),
+        (
+            "a non-canonical thread",
+            &thread,
+            vec![("thread_id", Some(json!("thr_not-a-uuid")))],
+        ),
+    ];
+    let mut failures = Vec::new();
+    for (case, args, edits) in wrong {
+        let fixture = Fixture::new();
+        let server = Server::start().await;
+        *server.reply.lock().unwrap() = Reply::Edit(edits);
+        let before = std::fs::read(fixture.state_dir().join("state.json")).unwrap();
+        let (status, _, stderr) = Rb::start(&fixture, &server, args).finish().await;
+        let after = std::fs::read(fixture.state_dir().join("state.json")).unwrap();
+        let held = lock_is_held(&fixture);
+        let requests = server.requests.load(Ordering::SeqCst);
+        server.finish().await;
+        let observed = format!(
+            "success={} unchanged={} held={held} requests={requests} stderr={}",
+            status.success(),
+            after == before,
+            stderr.trim()
+        );
+        eprintln!("{case}: {observed}");
+        if status.success()
+            || after != before
+            || held
+            || requests != 1
+            || !stderr.contains("malformed server response")
+        {
+            failures.push(format!("{case}: {observed}"));
+        }
+    }
+    // The matched positives: the same routes with the reply they asked for.
+    for (case, args, name) in [
+        ("human into a tenant", &human, "carol"),
+        ("role", &role, "reviewer"),
+    ] {
+        let fixture = Fixture::new();
+        let server = Server::start().await;
+        let result = Rb::start(&fixture, &server, args).finish().await;
+        server.finish().await;
+        let state = StateFile::load(&fixture.state_dir()).unwrap();
+        assert!(result.0.success(), "{case}: {result:?}");
+        assert_eq!(state.principals[name].tenant, TENANT, "{case}");
+        assert_eq!(state.principals["alice"].id, ALICE, "{case}");
+    }
+    let fixture = Fixture::new();
+    let server = Server::start().await;
+    let result = Rb::start(&fixture, &server, &thread).finish().await;
+    server.finish().await;
+    assert!(result.0.success(), "thread: {result:?}");
+    let state = StateFile::load(&fixture.state_dir()).unwrap();
+    assert_eq!(state.threads[NEW_THREAD].tenant_id, TENANT);
+    assert!(state.threads.contains_key(OLD_THREAD));
+    assert!(
+        failures.is_empty(),
+        "{} of 8 cases:\n{}",
+        failures.len(),
+        failures.join("\n")
     );
 }

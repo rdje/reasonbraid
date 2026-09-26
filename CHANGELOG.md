@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-26 — The command-line tool checks the server's reply before saving it (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.4.1`)
+
+`REASONBRAID-REPAIR-0540`.
+
+- 🔴 **Before:** when enrolling someone into an existing organisation or creating a thread, the tool saved what the server answered without checking it. A reply naming a different organisation was saved as the person's organisation, and a reply missing an ID produced an error blaming the tool's own files.
+- ✅ **Now:** a reply that does not answer the request is refused as the server's error and nothing is saved. Checked against a real server, and by deliberately breaking the check 14 ways (every way that compiles was caught).
+
 ## 2026-09-26 — What is left of the command-line tool's enrollment recovery, measured (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.4`)
 
 `REASONBRAID-DOC-0185`.

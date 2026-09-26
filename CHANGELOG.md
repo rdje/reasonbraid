@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-26 — The tool recovers from being killed at any moment of its own saves (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.3.3`)
+
+`REASONBRAID-REPAIR-0544`.
+
+- ✅ **Checked:** the tool was killed outright at seven exact moments between its own saves, including half-way through writing its file. Every time, running the same command again finished the job correctly: the same enrollment and no duplicate. Nothing needed fixing.
+- ✅ **Closed:** this finishes the enrollment-recovery work and five parent tasks with it. The only kind of blocking issue that could lose or corrupt data now has no open items left.
+
 ## 2026-09-26 — A killed tool's leftover helper no longer gets a misleading error (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.3.2`)
 
 `REASONBRAID-REPAIR-0543`.

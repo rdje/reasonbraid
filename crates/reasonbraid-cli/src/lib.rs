@@ -33,6 +33,7 @@ use uuid::Uuid;
 
 mod bootstrap_flow;
 mod bootstrap_state;
+mod kill_point;
 mod state_store;
 
 pub use bootstrap_state::{

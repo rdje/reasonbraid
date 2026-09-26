@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — A real SIGKILL between the CLI's writes, qualified; `.3.3.4.3` closes (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.3.3`)
+
+`REASONBRAID-REPAIR-0544`.
+
+- ✅ **Qualified:** `kill_point::reached`, a `debug_assertions`-only self-SIGKILL at `publish:<checkpoint>#n` and `bootstrap:{pending,outcome}-published`. Seven cases, every recovery exact, no repair needed. Release carries no hook (`strings target/release/rb` → 0).
+- 🔴 **Survivor:** `bootstrap_flow.rs:108:58 && → ||` (resume matching after cleanup) was uncovered, because every resume control ran while a request was pending. Now controlled.
+- ⭐ A structural cascade closed five leaves up to `.3.3.4.3`. No class-2 blocking leaf remains open.
+
 ## 2026-09-26 — Abrupt writer death with a surviving descendant, qualified; the lock refusal corrected (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.3.2`)
 
 `REASONBRAID-REPAIR-0543`.

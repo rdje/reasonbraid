@@ -358,7 +358,19 @@ impl Rb {
     }
 
     fn start(fixture: &Fixture, server: &Server, args: &[&str]) -> Self {
-        let mut child = Self::command(fixture, server, args).spawn().unwrap();
+        Self::spawn(Self::command(fixture, server, args), args)
+    }
+
+    /// The debug-build kill point (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.3.3`): the
+    /// process SIGKILLs itself the n-th time it reaches the named point.
+    fn start_killed_at(fixture: &Fixture, server: &Server, args: &[&str], point: &str) -> Self {
+        let mut command = Self::command(fixture, server, args);
+        command.env("REASONBRAID_CLI_KILL_AT", point);
+        Self::spawn(command, args)
+    }
+
+    fn spawn(mut command: Command, args: &[&str]) -> Self {
+        let mut child = command.spawn().unwrap();
         eprintln!(
             "owned rb pid={:?}, verb={:?}, argument bytes={}",
             child.id(),
@@ -1297,4 +1309,210 @@ async fn ordinary_writers_refuse_a_reply_that_does_not_answer_their_request() {
         failures.len(),
         failures.join("\n")
     );
+}
+
+/// `SIGNOFF-REPAIR.3.3.4.3.3.3.3.3.3`: a real SIGKILL at each publication point
+/// the HTTP gate cannot reach, so nothing external marks the moment. After each
+/// death the lock is free and the next ordinary invocation recovers exactly: the
+/// same request key, no new request where the outcome was already published,
+/// and no working file left behind.
+#[tokio::test]
+async fn a_real_kill_between_publications_recovers_the_same_request() {
+    use std::os::unix::process::ExitStatusExt;
+
+    // (kill point, requests the dead process sent, the state it left, the
+    // recovery's source and total requests after it)
+    let cases: [(&str, usize, &str, &str, usize); 6] = [
+        ("publish:Written#1", 0, "original+residue", "server", 1),
+        ("bootstrap:pending-published", 0, "pending", "server", 1),
+        ("publish:Written#2", 1, "pending+residue", "server", 2),
+        ("publish:Renamed#2", 1, "completed", "local_receipt", 1),
+        (
+            "bootstrap:outcome-published",
+            1,
+            "completed",
+            "local_receipt",
+            1,
+        ),
+        (
+            "publish:Written#3",
+            1,
+            "completed+residue",
+            "local_receipt",
+            1,
+        ),
+    ];
+    let mut failures = Vec::new();
+    for (point, sent, left, source, total) in cases {
+        let fixture = Fixture::new();
+        let server = Server::start().await;
+        let original = std::fs::read(fixture.state_dir().join("state.json")).unwrap();
+        let died = Rb::start_killed_at(&fixture, &server, &enrollment_args(), point)
+            .finish()
+            .await;
+        let at_death = server.requests.load(Ordering::SeqCst);
+        let residue = fixture.state_dir().join("state.json.next").exists();
+        let state = StateFile::load(&fixture.state_dir()).unwrap();
+        let (pending, completed) = state
+            .bootstrap
+            .map(|recovery| (recovery.pending, recovery.completed))
+            .unwrap_or((None, None));
+        let observed_left = match (&pending, &completed) {
+            (None, None)
+                if std::fs::read(fixture.state_dir().join("state.json")).unwrap() == original =>
+            {
+                "original"
+            }
+            (Some(_), None) => "pending",
+            (Some(_), Some(_)) => "completed",
+            _ => "other",
+        };
+        let observed_left = if residue {
+            format!("{observed_left}+residue")
+        } else {
+            observed_left.to_owned()
+        };
+        let killed = died.0.signal() == Some(9);
+        let held = lock_is_held(&fixture);
+        let key = pending.as_ref().map(|pending| pending.request_id.clone());
+        let recovered = Rb::start(&fixture, &server, &enrollment_args())
+            .finish()
+            .await;
+        let requests = server.requests.load(Ordering::SeqCst);
+        let observed = server.observed.lock().unwrap().clone();
+        server.finish().await;
+        let output: Value = serde_json::from_str(recovered.1.trim()).unwrap_or(Value::Null);
+        let final_state = StateFile::load(&fixture.state_dir()).unwrap();
+        let still_pending = final_state
+            .bootstrap
+            .as_ref()
+            .is_some_and(|recovery| recovery.pending.is_some());
+        let same_key = key.as_ref().is_none_or(|key| {
+            output["bootstrap_request_id"] == json!(key)
+                && observed
+                    .iter()
+                    .all(|seen| seen.body["bootstrap_request_id"] == json!(key))
+        });
+        let line = format!(
+            "{point}: killed={killed} sent={at_death} left={observed_left} held={held} \
+             recovered={} source={} requests={requests} same_key={same_key} residue_after={}",
+            recovered.0.success(),
+            output["recovery_source"],
+            fixture.state_dir().join("state.json.next").exists(),
+        );
+        eprintln!("{line}");
+        if !killed
+            || at_death != sent
+            || observed_left != left
+            || held
+            || !recovered.0.success()
+            || output["recovery_source"] != source
+            || requests != total
+            || !same_key
+            || still_pending
+            || final_state.principals.get("bob").map(|bob| bob.id.as_str()) != Some(BOB)
+            || !final_state.principals.contains_key("alice")
+            || fixture.state_dir().join("state.json.next").exists()
+        {
+            failures.push(line);
+        }
+    }
+
+    // The ordinary thread writer: killed mid-replacement after the server answered,
+    // the store keeps its earlier snapshot and the next writer removes the residue.
+    let fixture = Fixture::new();
+    let server = Server::start().await;
+    let original = std::fs::read(fixture.state_dir().join("state.json")).unwrap();
+    let died = Rb::start_killed_at(&fixture, &server, &thread_args(), "publish:Written#1")
+        .finish()
+        .await;
+    let line = format!(
+        "thread publish:Written#1: killed={} requests={} unchanged={} residue={} held={}",
+        died.0.signal() == Some(9),
+        server.requests.load(Ordering::SeqCst),
+        std::fs::read(fixture.state_dir().join("state.json")).unwrap() == original,
+        fixture.state_dir().join("state.json.next").exists(),
+        lock_is_held(&fixture),
+    );
+    eprintln!("{line}");
+    if !line.ends_with("killed=true requests=1 unchanged=true residue=true held=false")
+        && !line.contains("killed=true requests=1 unchanged=true residue=true held=false")
+    {
+        failures.push(line);
+    }
+    let next = Rb::start(&fixture, &server, &thread_args()).finish().await;
+    server.finish().await;
+    if !next.0.success() || fixture.state_dir().join("state.json.next").exists() {
+        failures.push(format!("thread recovery: {next:?}"));
+    }
+    assert!(
+        failures.is_empty(),
+        "{} failures:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}
+
+/// A mutant survivor found by `SIGNOFF-REPAIR.3.3.4.3.3.3.3.3.3`: every other
+/// resume control runs while a request is pending, and the pending branch
+/// refuses a mismatch first. After cleanup, `--resume-bootstrap` must still
+/// match BOTH the saved server and the saved name, or refuse without HTTP.
+#[tokio::test]
+async fn explicit_resume_after_cleanup_requires_the_same_server_and_name() {
+    let fixture = Fixture::new();
+    let server = Server::start().await;
+    let other = Server::start().await;
+    let completed = Rb::start(&fixture, &server, &enrollment_args())
+        .finish()
+        .await;
+    assert!(completed.0.success(), "{completed:?}");
+    let before = std::fs::read(fixture.state_dir().join("state.json")).unwrap();
+    for args in [
+        vec![
+            "enroll",
+            "human",
+            "different",
+            "--resume-bootstrap",
+            "--json",
+        ],
+        vec![
+            "enroll",
+            "human",
+            "bob",
+            "--resume-bootstrap",
+            "--json",
+            "--server",
+            &other.url,
+        ],
+    ] {
+        let refused = Rb::start(&fixture, &server, &args).finish().await;
+        assert!(!refused.0.success(), "{args:?}: {refused:?}");
+        assert!(
+            refused
+                .2
+                .contains("no matching bootstrap receipt to resume"),
+            "{args:?}: {refused:?}"
+        );
+        assert_eq!(
+            std::fs::read(fixture.state_dir().join("state.json")).unwrap(),
+            before
+        );
+    }
+    let resumed = Rb::start(
+        &fixture,
+        &server,
+        &["enroll", "human", "bob", "--resume-bootstrap", "--json"],
+    )
+    .finish()
+    .await;
+    let counts = (
+        server.requests.load(Ordering::SeqCst),
+        other.requests.load(Ordering::SeqCst),
+    );
+    server.finish().await;
+    other.finish().await;
+    assert!(resumed.0.success(), "{resumed:?}");
+    let output: Value = serde_json::from_str(resumed.1.trim()).unwrap();
+    assert_eq!(output["recovery_source"], "local_receipt");
+    assert_eq!(counts, (1, 0));
 }

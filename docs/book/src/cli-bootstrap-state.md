@@ -18,9 +18,20 @@ Qualification under interruption is partial. Tested:
   or the new one is reported as unconfirmed;
 - a writer killed while a process it started still holds the store's lock: other
   writers refuse until that process exits, then the pending request recovers
-  ([CLI local state](cli-state.md#a-child-process-does-not-keep-the-store-locked)).
+  ([CLI local state](cli-state.md#a-child-process-does-not-keep-the-store-locked));
+- a real kill between the CLI's own writes: in the middle of saving the pending
+  request, after saving it and before sending, in the middle of saving the
+  outcome, after the outcome is saved, and in the middle of clearing the pending
+  request. Running the command again resends the same key, or, once the outcome
+  was saved, reports that receipt without contacting the server; a half-written
+  working file is removed by the next writer.
 
-Not yet tested: a real process death between the CLI's own writes.
+Survival of a power loss or an operating-system crash is not claimed: a killed
+process leaves the kernel's own writes intact, so these tests do not exercise it.
+
+Debug builds let a test stop the process at a named point with
+`REASONBRAID_CLI_KILL_AT=<point>[#<n>]`, which sends the process SIGKILL the n-th
+time it reaches that point. Release builds contain no such hook.
 
 ## Versions and compatibility
 

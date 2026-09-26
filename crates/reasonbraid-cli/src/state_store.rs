@@ -513,7 +513,7 @@ mod unix {
             if self.fault == Some(point) {
                 return Err(invalid("owned publication fault"));
             }
-            let _ = point;
+            crate::kill_point::reached(point.name());
             Ok(())
         }
 
@@ -592,6 +592,19 @@ mod unix {
         FileSynced,
         Renamed,
         DirectorySynced,
+    }
+
+    impl Checkpoint {
+        /// The kill-point name (`crate::kill_point`).
+        fn name(self) -> &'static str {
+            match self {
+                Checkpoint::Created => "publish:Created",
+                Checkpoint::Written => "publish:Written",
+                Checkpoint::FileSynced => "publish:FileSynced",
+                Checkpoint::Renamed => "publish:Renamed",
+                Checkpoint::DirectorySynced => "publish:DirectorySynced",
+            }
+        }
     }
 
     pub(crate) fn load(path: &Path) -> Result<StateFile, CliError> {

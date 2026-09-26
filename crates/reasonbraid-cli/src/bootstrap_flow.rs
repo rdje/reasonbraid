@@ -135,6 +135,7 @@ pub(crate) async fn run(
         completed: previous_completion,
     });
     writer.persist()?;
+    crate::kill_point::reached("bootstrap:pending-published");
 
     let local_receipt = cached.is_some();
     let outcome = match cached {
@@ -147,6 +148,7 @@ pub(crate) async fn run(
     };
     install_completion(writer.state_mut(), &request, &outcome);
     writer.persist()?;
+    crate::kill_point::reached("bootstrap:outcome-published");
     // Completion is already durable before removing unresolved intent. Keep its
     // receipt for explicit recovery after this process returns or loses stdout.
     writer

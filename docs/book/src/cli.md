@@ -250,6 +250,8 @@ publication.
 $ rb enroll human alice
 enrolled human `alice` as hpr_… in tenant ten_…
 boundary: bnd_ten_…
+bootstrap request: req_…
+recovery source: server
 
 $ rb enroll role reviewer --tenant ten_…
 enrolled role `reviewer` as rol_… in tenant ten_…
@@ -271,24 +273,33 @@ $ rb thread cancel --thread thr_… --reason "no longer needed" --as alice
 Enrollment replay is scoped to the existing tenant, kind and name. Repeating
 `rb enroll role reviewer --tenant ten_…` returns the original principal with
 `replayed: true` in `--json` output, without a new grant or changed action set.
-Concurrent requests for that name now serialize through the full server
+Concurrent requests for that name serialize through the full server
 transaction. Replay still works after a boundary freeze; new enrollment refuses.
-A repeated human enrollment without `--tenant` creates a separate new tenant.
-Use the returned tenant ID when intending an existing-tenant replay.
+Once a human enrollment without `--tenant` has completed, repeating it creates a
+separate new tenant. Use the returned tenant ID when you mean an existing-tenant
+replay.
 
 A parent expiring during a guard wait cannot authorize new enrollment. Storage
-failure returns a safe internal error; an unconfirmed commit returns
-`commit_outcome_unconfirmed`. Inspect the relevant tenant state before retrying
-that outcome. For a new bootstrap, a lost response can leave the CLI without the
-server-generated tenant ID; operator database reconciliation may be needed. The
-server now accepts an explicit bootstrap_request_id and returns its committed
-creation outcome on matching retries, but this CLI does not yet persist or send
-that key. Live qualification has confirmed a commit after the unconfirmed response.
-The selected next CLI design
-will persist a request ID before sending and retain it through local state
-publication; this recovery behavior is not implemented yet. Retrying the same human
-name without --tenant can create another tenant. These are server transaction guarantees; the CLI's local state-file
-write occurs after the server response and is a separate persistence step.
+failure returns a safe internal error. An unconfirmed commit returns
+`commit_outcome_unconfirmed`, and the server may still have committed.
+
+A new-human bootstrap survives a lost answer. Before it sends anything, the CLI
+saves a request key with the exact name and server in its state directory, and
+sends it as `bootstrap_request_id`. If the request fails, times out, or its answer
+is lost, run the same command again. The CLI resends the same key. If the first
+attempt committed, the server answers with that tenant (`replayed: true`)
+instead of creating another; if it did not, the same key creates the tenant
+once. If the enrollment completed but its output was
+lost, `rb enroll human alice --resume-bootstrap` prints the saved result without
+contacting the server. [Bootstrap recovery records](cli-bootstrap-state.md)
+describes both, with their limits.
+
+Existing-tenant enrollment and thread creation carry no such key. A repeated
+enrollment of the same tenant, kind and name returns the original principal. A
+repeated thread creation creates another thread, so inspect the tenant's threads
+before retrying one whose outcome you do not know. In every case the CLI writes
+its local state only after the server answers, as a separate step; see
+[CLI local state and recovery](cli-state.md).
 
 The create verb also takes the typed profile fields (`.1.1.3`):
 

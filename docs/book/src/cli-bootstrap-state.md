@@ -1,13 +1,16 @@
 # Bootstrap recovery records
 
-Human enrollment without `--tenant` now saves a version-two recovery record before
-sending a keyed bootstrap request. Matching pending work reuses that request;
-`--resume-bootstrap` also recovers the most recent completed receipt when output
-was lost. Other state writers refuse unresolved pending work before HTTP.
-Thirty-three selected controls, the final output-window rerun and strict CLI lint
-pass. All results/shutdown are consumed and unique fixtures/owned cluster absent.
-Completion-capacity preflight is also qualified below. HTTP deadlines and broader
-interruption qualification remain separately owned.
+Human enrollment without `--tenant` saves a version-two recovery record before it
+sends a keyed bootstrap request. Running the same command again while that request
+is pending resends it with the same key; `--resume-bootstrap` recovers the most
+recent completed receipt when its output was lost. Other state writers refuse to
+run while a bootstrap is pending, before they send anything. The requests are
+bounded in time and reply size ([bounded transport](cli-state.md#bounded-transport)).
+
+Qualification under interruption is partial. Killing the CLI while it waits for
+the server, or while its output is unread, is tested: the saved request survives
+and the store is released. Process death at the other points of the flow, a
+server restart and a filesystem failure are not yet tested.
 
 ## Versions and compatibility
 
@@ -16,8 +19,8 @@ principals and threads. Their serialized shapes remain unchanged: neither gains
 a null bootstrap field. Version two requires a nonempty bootstrap recovery record.
 Older qualified clients refuse this version instead of ignoring pending intent.
 
-Rust StateFile callers gain the optional bootstrap field. Existing construction
-with `..StateFile::default()` continues to work. The public BootstrapRecovery,
+In Rust, StateFile carries the optional bootstrap field; construction with
+`..StateFile::default()` leaves it absent. The public BootstrapRecovery,
 BootstrapRequest, CompletedBootstrap and BootstrapOutcome types describe the data;
 StateFile load/save perform the complete storage validation. These records are
 neither credentials nor authenticated proof of server authority.
@@ -144,12 +147,39 @@ export REASONBRAID_CLI_STATE=target/rb-state
 rb --server http://127.0.0.1:4310 enroll human alice --json
 ```
 
+A checked answer from the server is reported with `recovery_source: "server"`:
+
+```json
+{
+  "bootstrap_request_id": "req_00000000-0000-7000-8000-000000000001",
+  "kind": "human",
+  "name": "alice",
+  "principal_id": "hpr_00000000-0000-7000-8000-000000000002",
+  "tenant_id": "ten_00000000-0000-7000-8000-000000000003",
+  "boundary_id": "bnd_ten_00000000-0000-7000-8000-000000000003",
+  "grant_id": "grt_hpr_00000000-0000-7000-8000-000000000002",
+  "replayed": false,
+  "recovery_source": "server"
+}
+```
+
 Before that HTTP request, the CLI synchronizes a canonical request key, endpoint,
 exact name and original action input. If the request fails or the process exits,
 repeating the command while a matching pending request exists reuses that exact
 request. A changed name or endpoint refuses before HTTP. New ignored human action
 arguments do not replace the original saved action input. No automatically
 invented replacement key follows a server, transport or malformed-reply error.
+While a request is pending, a different name or server, and any other state
+writer, is refused before HTTP:
+
+```text
+$ rb --server http://127.0.0.1:4310 enroll human bob
+error: state error: bootstrap recovery is pending for a different server or name
+$ rb enroll role reviewer --tenant ten_…
+error: state error: bootstrap recovery is pending; use the matching recovery operation before another writer
+```
+
+Resolve it by running the original command again.
 
 After pending cleanup, a normal invocation is intentionally fresh and creates a
 new tenant, even if the name matches the most recent completion. If the earlier
@@ -160,7 +190,8 @@ rb --server http://127.0.0.1:4310 enroll human alice --resume-bootstrap --json
 ```
 
 This operation requires human enrollment without `--tenant`. Missing or mismatched
-recovery refuses; it never falls through to creation. Only one most recent
+recovery refuses (`error: no matching bootstrap receipt to resume`); it never
+falls through to creation. Only one most recent
 completed request is retained, so a later completed bootstrap replaces the older
 receipt available for this command. Use the same state directory; another store
 does not possess this operation's recovery record.
@@ -189,7 +220,16 @@ JSON output includes `recovery_source: "server"` for a checked HTTP outcome or
 }
 ```
 
-Human output says "recovered historical enrollment of" for local recovery.
+Human-readable output names the source on its last line:
+
+```text
+$ rb --server http://127.0.0.1:4310 enroll human alice --resume-bootstrap
+recovered historical enrollment of human `alice` as hpr_… in tenant ten_…
+boundary: bnd_ten_…
+bootstrap request: req_…
+recovery source: local_receipt
+```
+
 A saved outcome does not prove current authority, current remote existence or
 continuity of the database at that URL. It is not an authenticated credential.
 File publication cannot establish whether a person or consuming process received
@@ -204,18 +244,14 @@ silent fallback to an unkeyed request against an older server. The public
 run_enroll convenience function follows normal invocation semantics;
 run_enroll_with_recovery exposes the explicit resume choice to Rust callers.
 
-HTTP connect, whole-request and reply-size bounds are implemented; see
+The bootstrap request has connect, whole-request and reply-size bounds; see
 [bounded transport](cli-state.md#bounded-transport) for their values and for
 what a refusal preserves. A timed-out or oversized-reply attempt keeps its
 original request key and releases the store, so repeating the command resumes
-the same logical bootstrap. Broader process/filesystem/server restart
-qualification remains open; this flow does not claim universal automatic retry
-or physical power-loss survival.
+the same logical bootstrap. Nothing is retried automatically, and survival of a
+physical power loss is not claimed.
 
-Completion-capacity preflight is implemented under
-SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.1: thirty-one selected controls, the final boundary
-matrix and strict CLI lint pass; all results consumed and fixtures absent. Before
-publishing pending or sending HTTP, the CLI validates that the complete encoded
+Before publishing pending or sending HTTP, the CLI validates that the complete encoded
 principal/receipt snapshot fits the 8 MiB limit. A near-limit pending snapshot
 alone is insufficient. Refusal preserves the original snapshot and any pending
 key without dispatch. The sizing sample stays private memory; only an actual

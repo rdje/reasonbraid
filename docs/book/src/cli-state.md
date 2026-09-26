@@ -182,7 +182,7 @@ it is.
 
 ## The configured endpoint is checked
 
-Every verb now canonicalises `--server` / `REASONBRAID_SERVER` before opening a
+Every verb canonicalises `--server` / `REASONBRAID_SERVER` before opening a
 socket, using the same check the bootstrap path has always applied: an absolute
 HTTP(S) URL, at most 4096 bytes, with **no URL credentials, query or fragment**.
 
@@ -197,45 +197,32 @@ bootstrap record's stored server identity must already be canonical. Those are
 deliberately different: one is configuration input, the other is a durable
 binding that a later recovery compares against.
 
-The CLI now persists/sends bootstrap_request_id before new-human HTTP enrollment,
-validates a complete keyed reply, publishes its principal and receipt, then clears
-pending under the same lock. After cleanup, use `--resume-bootstrap` to recover
-the retained historical result if output was lost; a normal no-pending invocation
-intentionally creates another tenant. See the
-[request and recovery examples](cli-bootstrap-state.md).
-Broader interruption/restart qualification remains open. Successful lock release
-alone is not evidence that repeating an unkeyed request is safe.
+## New-human bootstrap
 
-Completion-capacity preflight is implemented under
-SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.3.1: thirty-one selected controls, the final boundary
-matrix and strict CLI lint pass; all results consumed and fixtures absent. Before
-publishing pending or sending HTTP, the CLI validates that the complete encoded
-principal/receipt snapshot fits the 8 MiB limit. A near-limit pending snapshot
-alone is insufficient. Refusal preserves the original snapshot and any pending
-key without dispatch. The sizing sample stays private memory; only an actual
-checked outcome or a saved historical receipt can be published or reported.
-This checks the format limit, not physical disk reservation or later write success.
+A human enrollment without `--tenant` saves its request key before sending it,
+validates the complete keyed reply, publishes the principal and receipt, then
+clears the pending request under the same lock. After that cleanup,
+`--resume-bootstrap` recovers the saved result if the output was lost, and a
+normal invocation with nothing pending creates another tenant. Before any of
+this, the CLI checks that the completed receipt will fit the store's 8 MiB limit
+and refuses before sending if it would not. That checks the format limit, not
+disk space. [Bootstrap recovery records](cli-bootstrap-state.md) has the
+examples. A released lock after a failure is not evidence that repeating an
+unkeyed request is safe.
 
-## Inherited-descriptor qualification
+## A child process does not keep the store locked
 
-The original close-only guard retained exclusion when a child inherited its lock
-descriptor. The guard now explicitly unlocks before File close, including errors
-immediately after acquisition. For example, an embedding application can finish
-or cancel a run_thread_create call and start another writer while an unrelated
-forked child still holds the old description. Valid overlapping writers continue
-to fail promptly; close-on-exec and complete snapshot synchronization stay intact.
+The writer's guard unlocks explicitly before it closes the lock file, on
+success, on an error right after acquisition, on discard and on unwind. A child
+process that inherited the lock's descriptor therefore does not keep the store
+locked once the writer is done. For example, an embedding application can
+finish or cancel a run_thread_create call and start another writer while an
+unrelated forked child is still running. Overlapping writers still fail
+promptly, and close-on-exec and complete snapshot synchronization are unchanged.
+A permanent control keeps the real lock description in a child across all five
+paths, and checks that a successor stays exclusive when the old child exits.
 
-All 32 distinct CLI tests pass under default concurrency. A permanent control
-retains the real lock description in a child across success, encoding error,
-publication error, discard and unwind; it fails all five paths on unchanged
-production and passes after repair. It also verifies that a successor stays
-exclusive when the old child exits. Six independent raw-fork public-API scenarios
-confirm immediate release after success, HTTP error and future cancellation,
-with unchanged failure/cancellation snapshots. Strict CLI lint and format pass.
-
-The original concurrent checkpoint failure did not preserve its holder, so these
-controls do not establish its exact historical spawn path. Abrupt process death
-does not run a release destructor; surviving inherited references need separate
-restart qualification, concretely owned by the broader interruption/restart leaf.
-Never unlink state.lock or infer server rollback from local contention. Evidence:
-`docs/tasks/artifacts/signoff_review/state-writer-lock-release.md`.
+Abrupt process death runs no release code, so a child that outlives a killed
+writer can still hold the lock; that case is not yet qualified. Never delete
+state.lock to force progress, and never infer from local contention that the
+server rolled back.

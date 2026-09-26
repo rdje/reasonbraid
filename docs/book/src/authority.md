@@ -1979,18 +1979,18 @@ tenant ID. Operator database reconciliation can still be needed. Repeating the
 same human name without a tenant ID or request key is intentionally a new request
 and can create another tenant. A live control observes HTTP commit uncertainty,
 then the original committed bootstrap, then a distinct tenant from a repeated
-no-key request. Keyed callers can now recover through the protocol below; the CLI
-has not yet implemented durable request-key persistence.
+no-key request. Keyed callers recover through the protocol below, and the CLI is
+one: it persists its request key before sending
+([bootstrap recovery records](cli-bootstrap-state.md)).
 
-Enrollment remains a development trust mechanism. A human receives the nine
-explicit dev admin actions regardless of an `actions` field, and its grant names
+Enrollment remains a development trust mechanism. A human receives the fourteen
+explicit dev admin actions (every registered action except `thread_create_auto`)
+regardless of an `actions` field, and its grant names
 that human as issuer. A role's grant records a newly generated human issuer handle;
 that handle is not authenticated issuer provenance. Caller/issuer policy remains
 owned by `.3.5`; enrollment cannot issue site-operator grants. Qualification and
 exact rollback/race evidence for this integration are tracked in
-`docs/tasks/artifacts/signoff_review/enrollment-transaction.md`. All 97 selected
-controls (96 live / one pure), final focused strict lint and rendered book checks
-pass. Every result/shutdown is consumed; all three owned clusters are absent.
+`docs/tasks/artifacts/signoff_review/enrollment-transaction.md`.
 
 #### Recover one bootstrap with a persisted request ID
 
@@ -2000,8 +2000,8 @@ with the exact request and server identity before the first send**. Its wire for
 is exactly 40 characters: `req_` followed by a lowercase, hyphenated RFC UUIDv7.
 The server continues generating the tenant and principal IDs. This key cannot
 select an existing tenant for new authority.
-Rust callers constructing EnrollRequest or EnrollResponse struct literals must
-provide the new bootstrap_request_id field; None preserves the legacy wire shape.
+In Rust, EnrollRequest and EnrollResponse carry an optional bootstrap_request_id;
+None keeps the unkeyed wire shape.
 
 The following IDs are illustrative; clients must generate their own request ID:
 

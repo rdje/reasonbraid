@@ -1126,3 +1126,57 @@ mod unix {
         }
     }
 }
+
+/// `SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.4.2`: every JSON example in the bootstrap
+/// chapter is decoded by the code that reads the real thing, so an example
+/// cannot drift from the format unnoticed. A block of no known shape fails:
+/// a new example gets a decoder here rather than being skipped.
+#[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
+mod book_examples {
+    const CHAPTER: &str = include_str!("../../../docs/book/src/cli-bootstrap-state.md");
+
+    fn json_blocks(text: &str) -> Vec<&str> {
+        text.split("```json\n")
+            .skip(1)
+            .map(|rest| rest.split("\n```").next().unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn every_json_example_decodes_through_the_real_decoders() {
+        let mut request = None;
+        let (mut snapshots, mut outputs) = (0, 0);
+        for block in json_blocks(CHAPTER) {
+            let value: serde_json::Value = serde_json::from_str(block).unwrap();
+            if value.get("version").is_some() {
+                // The store's own decoder: shape, canonical identities and the
+                // recovery record's bindings, exactly as a state file is read.
+                let state = super::codec::decode(block.as_bytes())
+                    .unwrap_or_else(|error| panic!("{error}: {block}"));
+                if let Some(pending) = state.bootstrap.and_then(|recovery| recovery.pending) {
+                    request = Some(pending);
+                }
+                snapshots += 1;
+            } else if let Some(source) = value.get("recovery_source") {
+                assert!(source == "server" || source == "local_receipt", "{block}");
+                let mut outcome = value.clone();
+                outcome.as_object_mut().unwrap().remove("recovery_source");
+                // The CLI's strict reply decoder, bound to the request the
+                // chapter's pending example saved.
+                let request = request
+                    .as_ref()
+                    .expect("an output example follows the pending request it answers");
+                crate::bootstrap_flow::decode_outcome(outcome.to_string().as_bytes(), request)
+                    .unwrap_or_else(|error| panic!("{error}: {block}"));
+                outputs += 1;
+            } else {
+                panic!("a JSON example of no known shape: {block}");
+            }
+        }
+        eprintln!("bootstrap chapter: {snapshots} state snapshots and {outputs} outputs decoded");
+        assert!(
+            snapshots >= 2 && outputs >= 1,
+            "{snapshots} snapshots, {outputs} outputs"
+        );
+    }
+}

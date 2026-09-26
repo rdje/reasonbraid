@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-26 — The agent-to-agent module now records what it loses (`SIGNOFF-REPAIR.6.3.1`)
+
+`REASONBRAID-REPAIR-0546`.
+
+- 🔴 **Before:** the agent-to-agent (A2A) module recorded "nothing was lost in translation" while its description said everything is, two of its tests passed on that contradiction, and its replies dropped the other side's task number.
+- ✅ **Now:** every translation records all five kinds of loss, the tests check each one, and replies carry the task number. No problems of the data-loss, cross-organisation or false-documentation kinds remain open; what is left is checks and CI work.
+
 ## 2026-09-26 — What is left of the agent-to-agent module, measured (`SIGNOFF-REPAIR.6.3`)
 
 `REASONBRAID-DOC-0187`.

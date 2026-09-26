@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — `SemanticLosses` loses its `Default`; `.6.3` closes (`SIGNOFF-REPAIR.6.3.1`)
+
+`REASONBRAID-REPAIR-0546`.
+
+- 🔴 **Root cause:** `#[derive(Default)]` on a loss record means "nothing lost"; both mappers used it, and two tests asserted `== SemanticLosses::default()` under messages saying all five were lost. `response_message` never set `task_id`.
+- ✅ **Fix:** no `Default`, `SemanticLosses::ALL_LOST`, and `task_id` set. RED 4/5; `cargo mutants` made only 3 unviable mutants, so 4 hand mutants cover the literals.
+- ⭐ A test compared against the value under test (`== SemanticLosses::default()`) cannot fail when that value is wrong. The fix spells the expected record field by field in the test.
+
 ## 2026-09-26 — `.6.3` censused: the A2A facade's loss record lies, and so does its test (`SIGNOFF-REPAIR.6.3`)
 
 `REASONBRAID-DOC-0187`.

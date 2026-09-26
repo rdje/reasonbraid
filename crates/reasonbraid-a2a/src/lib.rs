@@ -13,8 +13,13 @@
 use serde::{Deserialize, Serialize};
 
 /// The five §9.7 semantic dimensions the facade maps — each exchange
-/// records which dimensions SURVIVED and which are LOST.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+/// records which dimensions SURVIVED and which are LOST. `true` means lost.
+///
+/// ⛔ No `Default` (`SIGNOFF-REPAIR.6.3.1`): the derived default was all
+/// `false`, which records that NOTHING was lost, and both mappers used it
+/// while their docs said every dimension was. A loss record is built on
+/// purpose, from [`SemanticLosses::ALL_LOST`] or field by field.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SemanticLosses {
     /// The remote authority is not the local grant — always lost (the
     /// local grants are the only authority that acts).
@@ -30,6 +35,19 @@ pub struct SemanticLosses {
     pub decision_rule: bool,
     /// The remote task states are not the thread states — always lost.
     pub policy_lifecycle: bool,
+}
+
+impl SemanticLosses {
+    /// A message or task that carries none of the local machinery: every
+    /// dimension lost. Evidence could survive only if the local pipeline
+    /// re-derived it, and nothing here does.
+    pub const ALL_LOST: Self = Self {
+        authority: true,
+        budget: true,
+        evidence: true,
+        decision_rule: true,
+        policy_lifecycle: true,
+    };
 }
 
 /// A mapped A2A message: the compatible content (the text) + the
@@ -55,7 +73,7 @@ pub fn map_message(message: &a2a::Message) -> MappedMessage {
     MappedMessage {
         text: message.text().unwrap_or_default().to_string(),
         external_role: format!("{:?}", message.role),
-        losses: SemanticLosses::default(),
+        losses: SemanticLosses::ALL_LOST,
     }
 }
 
@@ -77,7 +95,7 @@ pub fn map_task_request(task_id: &str, message: &a2a::Message) -> MappedTask {
     MappedTask {
         external_task_id: task_id.to_string(),
         text: message.text().unwrap_or_default().to_string(),
-        losses: SemanticLosses::default(),
+        losses: SemanticLosses::ALL_LOST,
     }
 }
 
@@ -90,14 +108,29 @@ pub struct FacadeResponse {
 }
 
 /// Build the A2A response message for a mapped outcome (the text out,
-/// the role is the assistant — the facade's own voice).
+/// the role is the assistant — the facade's own voice), carrying the
+/// external task id it answers in the message's own `task_id`. It was
+/// dropped until `SIGNOFF-REPAIR.6.3.1`, although the response is the
+/// half of the exchange that must name the peer's task.
 pub fn response_message(response: &FacadeResponse) -> a2a::Message {
-    a2a::Message::new(a2a::Role::Agent, vec![a2a::Part::text(&response.text)])
+    let mut message = a2a::Message::new(a2a::Role::Agent, vec![a2a::Part::text(&response.text)]);
+    message.task_id = Some(response.external_task_id.clone());
+    message
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every dimension lost, spelled field by field so the check does not
+    /// lean on the constant it checks (`SIGNOFF-REPAIR.6.3.1`).
+    const EVERY_LOSS: SemanticLosses = SemanticLosses {
+        authority: true,
+        budget: true,
+        evidence: true,
+        decision_rule: true,
+        policy_lifecycle: true,
+    };
 
     /// The A2A message maps with the text surviving, the external role
     /// preserved, and ALL five semantic dimensions recorded lost.
@@ -112,8 +145,7 @@ mod tests {
             "the external role preserves"
         );
         assert_eq!(
-            mapped.losses,
-            SemanticLosses::default(),
+            mapped.losses, EVERY_LOSS,
             "all five dimensions lost on the bare message"
         );
     }
@@ -126,6 +158,7 @@ mod tests {
         let mapped = map_task_request("ext-task-42", &message);
         assert_eq!(mapped.external_task_id, "ext-task-42");
         assert_eq!(mapped.text, "the ask");
+        assert_eq!(mapped.losses, EVERY_LOSS, "a task carries none either");
     }
 
     /// The response round-trips through the A2A message shape.
@@ -137,6 +170,11 @@ mod tests {
         };
         let message = response_message(&response);
         assert_eq!(message.text(), Some("the answer"));
+        assert_eq!(
+            message.task_id.as_deref(),
+            Some("ext-task-42"),
+            "the response carries the external task id it answers"
+        );
     }
 
     /// The WIRE roundtrip (the `.2.4` demonstration): the A2A JSON-RPC
@@ -182,7 +220,7 @@ mod tests {
         let mapped: MappedMessage = serde_json::from_value(decoded.result.expect("the result"))
             .expect("the result decodes");
         assert_eq!(mapped.text, "the ask");
-        assert_eq!(mapped.losses, SemanticLosses::default());
+        assert_eq!(mapped.losses, EVERY_LOSS, "the losses survive the wire");
     }
 
     /// The unknown-method refusal: the facade refuses an OUTSIDE-the-set

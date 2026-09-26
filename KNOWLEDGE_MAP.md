@@ -288,6 +288,7 @@
 - [`2026-09-25_verification-is-scoped-to-the-change-and-broad-at-batch-boundaries.md`](docs/decisions/2026-09-25_verification-is-scoped-to-the-change-and-broad-at-batch-boundaries.md)
 - [`2026-09-25_what-a-tenant-declares-about-a-reference-is-its-own.md`](docs/decisions/2026-09-25_what-a-tenant-declares-about-a-reference-is-its-own.md)
 - [`2026-09-26_a-body-refusal-keeps-its-status-and-gains-a-code.md`](docs/decisions/2026-09-26_a-body-refusal-keeps-its-status-and-gains-a-code.md)
+- [`2026-09-26_a-freshness-horizon-is-the-citing-tenants.md`](docs/decisions/2026-09-26_a-freshness-horizon-is-the-citing-tenants.md)
 - [`2026-09-26_a-target-is-assigned-by-its-authority.md`](docs/decisions/2026-09-26_a-target-is-assigned-by-its-authority.md)
 - [`2026-09-26_the-deployment-wave-is-a-label.md`](docs/decisions/2026-09-26_the-deployment-wave-is-a-label.md)
 

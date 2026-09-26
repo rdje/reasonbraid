@@ -46,6 +46,16 @@
 # discloses nothing `GET /v1/policies` does not already return to the same
 # caller. Not a defect; the control surface's defect was always the WRITE, now
 # a site act with a held owning grant (`.6.1.5.4`, `.9.1.2`).
+#
+# ⭐ RE-ADJUDICATED at `SIGNOFF-REPAIR.7.4.9` (2026-09-26): no reader entered or
+# left, and the count stays 31. `stale_for_tenant` on evidence_snapshots LOST its
+# `!` without its predicate changing: it always bound the tenant through the
+# `CITED_BY_TENANT` fragment, which a lexical scan of string literals cannot see.
+# The freshness horizon moved to the tenant's citation, and the statement now
+# spells `h.tenant_id = $2` inline, so the scan sees what was already there.
+# `get_for_tenant!` keeps its mark for the same reason: its predicate is the
+# fragment, and its new horizon subquery lives in `SNAPSHOT_COLUMNS`, outside
+# the function the scan reads.
 agent_profiles	agent_profiles→agent_roles	list_node_presence,create_thread_auto!,respondent_candidate!,inspect_call,replay!,presence,write_profile_in_tx!,current_profile!,lock_existing_profile_anchor_in_tx!,current_profile_in_tx!,offer_to_subscribers
 deployment_assignments	-	record_drift!,record_receipt,list_receipts,list_assignments
 deployment_targets	-	list_deployment_targets!,assign!,record_receipt
@@ -57,7 +67,7 @@ evaluation_gates	-	evaluate_gate!,list_gates!,record_recommendation!
 evaluation_runs	-	list_runs!,record_calibration!
 evaluation_trial_results	-	list_trial_results!
 evaluation_trials	-	record_trial_results!,list_trials!,record_recommendation!
-evidence_snapshots	-	submit!,submit,submit!,external_identity!,get_for_tenant!,stale_for_tenant!
+evidence_snapshots	-	submit!,submit,submit!,external_identity!,get_for_tenant!,stale_for_tenant
 node_ambiguous_attempts	node_ambiguous_attempts→nodes	list_ambiguous_attempts,adjudicate_ambiguous_attempt_in_one_transaction,operator_verdict!
 node_certificates	node_certificates→nodes	revoke_node_in_one_transaction!,replay,verify_cert_proof!,verify_rotate_proof_in_tx!,renew_lease!,classify_renewal_refusal!,enroll
 node_events	-	apply_node_result_in_tx,event_id_for_operation!,result_receipt_for_attempt!

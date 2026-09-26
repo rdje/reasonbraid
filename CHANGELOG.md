@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-26 — Re-collecting evidence now counts as fresh again, per organisation (`SIGNOFF-REPAIR.7.4.9`)
+
+`REASONBRAID-REPAIR-0545`.
+
+- 🔴 **Before:** the guide said collecting the same evidence again renews its "fresh until" date, but nothing was renewed, so evidence stayed on the "needs re-collecting" list. And because two organisations citing the same document share one record, the first one to collect it decided the other's date.
+- ✅ **Now:** each organisation has its own date for the evidence it cites, re-collecting renews it, and no organisation's choice changes another's. Existing records kept their dates when the database was upgraded.
+
 ## 2026-09-26 — The tool recovers from being killed at any moment of its own saves (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.3.3`)
 
 `REASONBRAID-REPAIR-0544`.

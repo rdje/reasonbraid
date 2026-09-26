@@ -81,7 +81,9 @@ kept would be a claim the system cannot support.
 
 **Re-resolving the same commit does not accumulate rows.** A second acquisition
 of the same reference at the same commit replays onto the existing snapshot,
-refreshes its freshness horizon, and records the citation. A *different* commit
+records the re-acquisition time (`refreshed_at`), and records the citation. This
+class declares no freshness horizon: the commit id is what makes the reference
+verifiable. A *different* commit
 on the same reference is a new snapshot, because the reference legitimately holds
 many versions.
 

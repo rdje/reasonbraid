@@ -547,7 +547,8 @@ A tombstone retains the snapshot metadata and records its deletion reason.
 The existing same-content replay updates refreshed_at while retaining created_at;
 it does not reset retention age. A replay only ever lands on a live row: the same
 content acquired after its row was tombstoned is a new row, with a new retention
-age (see *What a tombstoned snapshot refuses*). Freshness horizons are a separate field. The
+age (see *What a tombstoned snapshot refuses*). The freshness horizon is separate from
+retention, and it is each tenant's own (see *A tenant's own freshness horizon*). The
 focused fixture preserves its freshness-list, license and replay assertions and
 checks exact rows/counts at expiry boundaries.
 
@@ -561,8 +562,10 @@ The boundary controls above drive the sweep directly rather than over HTTP,
 because the caller's clock is no longer a wire field: expiry authority, scope and
 the caller clock were repaired under SIGNOFF-REPAIR.7.4.3 and are described in
 "Who may run the retention sweep" below. Every assertion these controls make is
-the one they made through the route. Actual freshness-horizon refresh and object
-retirement remain open under SIGNOFF-REPAIR.7.4. Evidence:
+the one they made through the route. A re-acquisition refreshes the citing
+tenant's own freshness horizon (*A tenant's own freshness horizon*, below).
+Retiring a stored object whose snapshot row was never written remains open
+under SIGNOFF-REPAIR.7.4.12. Evidence:
 `docs/tasks/artifacts/signoff_review/retention-fixture-clock.md`.
 
 ### Who may read an evidence snapshot
@@ -581,7 +584,7 @@ read that citation:
 
 | Surface | A tenant that cited the snapshot | Any other enrolled tenant |
 | --- | --- | --- |
-| `GET /v1/snapshots/stale` | the tenant's own stale rows | those rows are absent from the list |
+| `GET /v1/snapshots/stale` | the tenant's own stale rows, by its own horizon | those rows are absent from the list |
 | `GET /v1/snapshots/{id}` | 200 with the row | 404 |
 | `GET /v1/snapshots/{id}/derivations` | 200 with the children | 404 |
 | `GET /v1/snapshots/{id}/assessments` | 200 with the tenant's OWN assessments | 404 |
@@ -602,6 +605,27 @@ the reads had been filtered without it, a tenant that submitted a snapshot
 someone else had already acquired would have been refused its own evidence.
 Instead the replay records the second citation, both tenants read the shared
 row, and a count of `evidence_citations` for that snapshot returns 2.
+
+### A tenant's own freshness horizon
+
+A snapshot's `fresh_until` is the citing tenant's own decision about when to
+re-acquire, so it is kept on that tenant's citation rather than on the shared
+row. `POST /v1/snapshots` records the submission's `fresh_until` on the caller's
+citation, and a re-acquisition of the same bytes replaces it. `GET
+/v1/snapshots/stale` lists the rows whose horizon has passed *for this tenant*,
+and `GET /v1/snapshots/{id}` shows the reader's own horizon. Another tenant that
+cites the same bytes keeps its own horizon: its acquisitions never change yours.
+
+For example, tenant A acquires a page with a horizon an hour in the past, so
+the row is on A's stale list. Tenant B then acquires the same bytes with a
+horizon a week away: the row is not on B's list, and it stays on A's. When A
+re-acquires with a week's horizon, the row leaves A's list, and B's later
+choice of a past horizon puts it back on B's list alone.
+
+A re-acquisition that omits `fresh_until` leaves the tenant with no horizon, so
+the row leaves that tenant's stale list. Horizons are stored at microsecond
+precision. Citations recorded before migration 0116 carry the horizon the shared
+row held, the only one that was ever recorded.
 
 ### Who may read an assessment
 

@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — The freshness horizon moves to the citation; a replay refreshes it (`SIGNOFF-REPAIR.7.4.9`)
+
+`REASONBRAID-REPAIR-0545`.
+
+- 🔴 **Root cause:** `snapshots::replay` wrote `refreshed_at` only, and `fresh_until` lived on the SHARED `evidence_snapshots` row, so the first acquirer decided every tenant's stale list. The replay also discarded its refresh error.
+- ✅ **Fix:** migration 0116 moves the horizon to `evidence_citations` (backfilled, shared column dropped); `record_citation` upserts it, and the reads take the reader's. RED 4/5, four live hand mutants, and an upgrade control.
+- ⭐ The bound-instants census had judged `evidence_snapshots.fresh_until` "written and never read back", yet the stale list had always read it: the right verdict for a false reason. A reason is a claim too, and only moving the site made anyone read it again.
+
 ## 2026-09-26 — A real SIGKILL between the CLI's writes, qualified; `.3.3.4.3` closes (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.3.3`)
 
 `REASONBRAID-REPAIR-0544`.

@@ -1566,3 +1566,127 @@ async fn node_presence_in_flight_upgrade_appends_without_dropping_the_view() {
         assert_eq!(upgraded, old, "every pre-existing column is unchanged");
     }
 }
+
+/// `SIGNOFF-REPAIR.7.4.9`, migration 0116: every existing citation takes its
+/// snapshot's freshness horizon, the only one ever recorded; a snapshot with
+/// none leaves its citations with none; and the shared column is gone, so no
+/// reader can take the first acquirer's horizon for its own.
+#[tokio::test]
+async fn freshness_upgrade_gives_every_citation_its_snapshots_horizon() {
+    let _g = guard().await;
+    let Some(pool) = pg_test_support::pool().await else {
+        return;
+    };
+    let migrator =
+        Migrator::new(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../migrations"))
+            .await
+            .unwrap();
+    let prefix = Migrator {
+        migrations: std::borrow::Cow::Owned(
+            migrator
+                .migrations
+                .iter()
+                .filter(|m| m.version <= 115)
+                .cloned()
+                .collect(),
+        ),
+        ignore_missing: false,
+        no_tx: false,
+        locking: true,
+    };
+    recreate_public_schema(&pool).await;
+    prefix.run(&pool).await.unwrap();
+
+    let (alpha, beta) = (
+        reasonbraid_core::TenantId::new().to_string(),
+        reasonbraid_core::TenantId::new().to_string(),
+    );
+    for tenant in [&alpha, &beta] {
+        sqlx::query("INSERT INTO tenants (tenant_id, name) VALUES ($1, 'legacy evidence tenant')")
+            .bind(tenant)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+    let locator = "https://example.org/legacy-evidence";
+    sqlx::query(
+        "INSERT INTO resource_references (resource_id, original_locator, submitted_by) \
+         VALUES ('res_legacy', $1, 'legacy')",
+    )
+    .bind(locator)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let horizon: DateTime<Utc> = "2026-01-02T03:04:05.123456Z".parse().unwrap();
+    for (snapshot, payload, fresh_until) in [
+        ("snp_dated", &b"legacy dated evidence"[..], Some(horizon)),
+        ("snp_undated", &b"legacy undated evidence"[..], None),
+    ] {
+        let digest = reasonbraid_server::fetcher::digest_sha256_hex(payload);
+        sqlx::query("INSERT INTO snapshot_objects (digest, bytes) VALUES ($1, $2)")
+            .bind(&digest)
+            .bind(payload)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO evidence_snapshots \
+             (snapshot_id, reference_id, original_locator, final_locator, retrieved_at, \
+              resolver_id, resolver_version, raw_digest, byte_length, media_type, fresh_until) \
+             VALUES ($1, 'res_legacy', $2, $2, now(), 'r0-https-fetcher', '0.1.0', $3, $4, \
+                     'text/plain', $5)",
+        )
+        .bind(snapshot)
+        .bind(locator)
+        .bind(&digest)
+        .bind(payload.len() as i64)
+        .bind(fresh_until)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    for (snapshot, tenant) in [
+        ("snp_dated", &alpha),
+        ("snp_dated", &beta),
+        ("snp_undated", &alpha),
+    ] {
+        sqlx::query(
+            "INSERT INTO evidence_citations (snapshot_id, tenant_id, cited_by) \
+             VALUES ($1, $2, 'legacy')",
+        )
+        .bind(snapshot)
+        .bind(tenant)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    migrator.run(&pool).await.unwrap();
+
+    let citations: Vec<(String, String, Option<DateTime<Utc>>)> = sqlx::query_as(
+        "SELECT snapshot_id, tenant_id, fresh_until FROM evidence_citations \
+         ORDER BY snapshot_id, tenant_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    let mut expected = vec![
+        ("snp_dated".to_string(), alpha.clone(), Some(horizon)),
+        ("snp_dated".to_string(), beta.clone(), Some(horizon)),
+        ("snp_undated".to_string(), alpha.clone(), None),
+    ];
+    expected.sort();
+    assert_eq!(
+        citations, expected,
+        "each citation carries its snapshot's horizon"
+    );
+    let shared: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM information_schema.columns \
+         WHERE table_schema = 'public' AND table_name = 'evidence_snapshots' \
+           AND column_name = 'fresh_until'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(shared, 0, "the shared horizon column is gone");
+}

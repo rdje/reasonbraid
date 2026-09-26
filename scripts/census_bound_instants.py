@@ -698,10 +698,15 @@ ADJUDICATION: dict[tuple[str, str, str], tuple[str, str, str, str]] = {
      "issue_grant", "public.site_grants.valid_from"):
         ("normalized", "reaches_return", "normalized",
          "scope.checked() rounds through from_timestamp_micros before any bind"),
+    # `SIGNOFF-REPAIR.7.4.9` moved the freshness horizon from the shared row to
+    # the tenant's citation. ⚠️ The judgement it replaced, on
+    # `submit`/`evidence_snapshots.fresh_until`, said "written and never read
+    # back"; the stale list had always read it. The verdict was still right,
+    # because nothing compared two copies, but its stated reason was false.
     ("reasonbraid-server/src/snapshots.rs",
-     "submit", "evidence_snapshots.fresh_until"):
+     "record_citation", "evidence_citations.fresh_until"):
         ("caller_supplied", "contained", "contained",
-         "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+         "record_citation returns nothing; the stale list and the tenant-bound read take the STORED value from the database, and the one comparison, `h.fresh_until < $1`, runs in SQL, so no Rust copy of the caller's instant is compared with it"),
     ("reasonbraid-server/src/snapshots.rs",
      "submit", "evidence_snapshots.retrieved_at"):
         ("caller_supplied", "contained", "contained",

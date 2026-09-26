@@ -70,7 +70,9 @@ pub struct SnapshotSubmission {
     /// The license metadata (the §12.6 record).
     #[serde(default)]
     pub license: Option<String>,
-    /// The freshness horizon (the §12.9 staleness surface).
+    /// The freshness horizon (the §12.9 staleness surface): THIS tenant's
+    /// decision about when to re-acquire, recorded on its citation rather than
+    /// on the shared row (`SIGNOFF-REPAIR.7.4.9`). A re-acquisition replaces it.
     #[serde(default)]
     pub fresh_until: Option<chrono::DateTime<chrono::Utc>>,
 }
@@ -433,9 +435,10 @@ pub async fn submit(
     if let Some(existing) = existing {
         // The re-fetch policy: the replay refreshes the freshness record
         // (the re-acquisition happened — the bytes are unchanged, the
-        // horizon resets). Shared with `submit_external` so the two classes
-        // cannot drift into different replay behaviour.
-        return replay(pool, &existing, citer).await;
+        // citing tenant's horizon becomes this submission's). Shared with
+        // `submit_external` so the two classes cannot drift into different
+        // replay behaviour.
+        return replay(pool, &existing, citer, submission.fresh_until).await;
     }
     sqlx::query(
         "INSERT INTO evidence_snapshots \
@@ -443,8 +446,8 @@ pub async fn submit(
           resolver_id, resolver_version, network_class, auth_class, provider_receipt, \
           immutable_source_version, raw_digest, byte_length, media_type, storage_class, \
           retention_class, extraction_version, quarantine_status, redactions, disclosure_policy, \
-          license, fresh_until) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)",
+          license) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)",
     )
     .bind(&snapshot_id)
     .bind(&submission.reference_id)
@@ -467,11 +470,10 @@ pub async fn submit(
     .bind(&submission.redactions)
     .bind(&submission.disclosure_policy)
     .bind(&submission.license)
-    .bind(submission.fresh_until)
     .execute(pool)
     .await
     .map_err(SnapshotError::Storage)?;
-    record_citation(pool, &snapshot_id, citer)
+    record_citation(pool, &snapshot_id, citer, submission.fresh_until)
         .await
         .map_err(SnapshotError::Storage)?;
     Ok(SnapshotOutcome {
@@ -537,8 +539,10 @@ pub async fn submit_external(
     if pin.is_some() {
         return Err(SnapshotError::PinnedReferenceHoldsNoBytes);
     }
+    // This class declares no freshness horizon (§12.9: the commit id is the
+    // verification), so its citations carry none.
     if let Some(existing) = external_identity(pool, submission).await? {
-        return replay(pool, &existing, citer).await;
+        return replay(pool, &existing, citer, None).await;
     }
     let snapshot_id = evidence_id("snp");
     let inserted = sqlx::query(
@@ -547,9 +551,9 @@ pub async fn submit_external(
           resolver_id, resolver_version, network_class, auth_class, provider_receipt, \
           immutable_source_version, raw_digest, external_reference, byte_length, media_type, \
           storage_class, retention_class, extraction_version, quarantine_status, redactions, \
-          disclosure_policy, license, fresh_until) \
+          disclosure_policy, license) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NULL, $12, 0, $13, \
-                 $14, $15, NULL, 'none', '[]'::jsonb, '{}'::jsonb, NULL, NULL) \
+                 $14, $15, NULL, 'none', '[]'::jsonb, '{}'::jsonb, NULL) \
          ON CONFLICT (reference_id, immutable_source_version) \
            WHERE storage_class = 'external-reference' AND deleted_at IS NULL DO NOTHING",
     )
@@ -579,9 +583,9 @@ pub async fn submit_external(
         let existing = external_identity(pool, submission)
             .await?
             .ok_or(SnapshotError::ReferenceMissing)?;
-        return replay(pool, &existing, citer).await;
+        return replay(pool, &existing, citer, None).await;
     }
-    record_citation(pool, &snapshot_id, citer)
+    record_citation(pool, &snapshot_id, citer, None)
         .await
         .map_err(SnapshotError::Storage)?;
     Ok(SnapshotOutcome {
@@ -613,19 +617,24 @@ async fn external_identity(
 }
 
 /// The replay both submission surfaces take: the re-acquisition happened, so
-/// the freshness horizon resets and the citation is recorded (the reason
-/// `submit` gives for recording it on a replay applies identically here).
+/// the row's `refreshed_at` moves, the citing tenant's horizon becomes this
+/// submission's, and the citation is recorded (the reason `submit` gives for
+/// recording it on a replay applies identically here).
+///
+/// ⛔ The refresh's error is the replay's (`SIGNOFF-REPAIR.7.4.9`): it was
+/// discarded, so a refresh that failed was reported as a replay that succeeded.
 async fn replay(
     pool: &PgPool,
     snapshot_id: &str,
     citer: &Citer,
+    fresh_until: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<SnapshotOutcome, SnapshotError> {
-    let _ =
-        sqlx::query("UPDATE evidence_snapshots SET refreshed_at = now() WHERE snapshot_id = $1")
-            .bind(snapshot_id)
-            .execute(pool)
-            .await;
-    record_citation(pool, snapshot_id, citer)
+    sqlx::query("UPDATE evidence_snapshots SET refreshed_at = now() WHERE snapshot_id = $1")
+        .bind(snapshot_id)
+        .execute(pool)
+        .await
+        .map_err(SnapshotError::Storage)?;
+    record_citation(pool, snapshot_id, citer, fresh_until)
         .await
         .map_err(SnapshotError::Storage)?;
     Ok(SnapshotOutcome {
@@ -635,7 +644,9 @@ async fn replay(
 }
 
 /// Record one citation — idempotent, so a re-acquisition by the same tenant
-/// keeps the original time and actor.
+/// keeps the original time and actor, and takes the new freshness horizon:
+/// the horizon is the tenant's latest decision about when to re-acquire, and
+/// it is THIS tenant's alone (`SIGNOFF-REPAIR.7.4.9`).
 ///
 /// A tenant that WITHDREW (`SIGNOFF-REPAIR.7.4.4`) and cites again is restored
 /// rather than refused: the upsert clears the withdrawal and deliberately
@@ -646,15 +657,18 @@ async fn record_citation(
     pool: &PgPool,
     snapshot_id: &str,
     citer: &Citer,
+    fresh_until: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
-        "INSERT INTO evidence_citations (snapshot_id, tenant_id, cited_by) \
-         VALUES ($1, $2, $3) ON CONFLICT (snapshot_id, tenant_id) DO UPDATE \
-         SET withdrawn_at = NULL, withdrawn_by = NULL, withdrawal_reason = NULL",
+        "INSERT INTO evidence_citations (snapshot_id, tenant_id, cited_by, fresh_until) \
+         VALUES ($1, $2, $3, $4) ON CONFLICT (snapshot_id, tenant_id) DO UPDATE \
+         SET withdrawn_at = NULL, withdrawn_by = NULL, withdrawal_reason = NULL, \
+             fresh_until = EXCLUDED.fresh_until",
     )
     .bind(snapshot_id)
     .bind(&citer.tenant_id)
     .bind(&citer.principal)
+    .bind(fresh_until)
     .execute(pool)
     .await?;
     Ok(())
@@ -725,13 +739,17 @@ impl From<SnapshotRow> for StoredSnapshot {
 }
 
 /// The stored snapshot's columns — one definition, so the two bound reads
-/// cannot drift into different row shapes.
+/// cannot drift into different row shapes. `fresh_until` is the READER's own
+/// horizon, from its citation (`SIGNOFF-REPAIR.7.4.9`); `$2` is the tenant in
+/// both bound reads, as `CITED_BY_TENANT` also relies on.
 const SNAPSHOT_COLUMNS: &str =
     "snapshot_id, reference_id, original_locator, final_locator, retrieved_at, \
      resolver_id, resolver_version, network_class, auth_class, provider_receipt, \
      immutable_source_version, raw_digest, external_reference, byte_length, media_type, \
      storage_class, retention_class, extraction_version, quarantine_status, redactions, \
-     disclosure_policy, deleted_at, deletion_reason, license, fresh_until, refreshed_at";
+     disclosure_policy, deleted_at, deletion_reason, license, refreshed_at, \
+     (SELECT c.fresh_until FROM evidence_citations c \
+       WHERE c.snapshot_id = evidence_snapshots.snapshot_id AND c.tenant_id = $2) AS fresh_until";
 
 /// The disclosure predicate (§16.8): a snapshot is readable by a tenant that
 /// CITED it and by no other. `$2` is the tenant in both bound reads, so this
@@ -954,8 +972,10 @@ pub async fn stale_for_tenant(
 ) -> Result<Vec<StoredSnapshot>, sqlx::Error> {
     let rows = sqlx::query_as::<_, SnapshotRow>(&format!(
         "SELECT {SNAPSHOT_COLUMNS} FROM evidence_snapshots \
-         WHERE deleted_at IS NULL AND fresh_until IS NOT NULL AND fresh_until < $1 \
-           AND {CITED_BY_TENANT} \
+         WHERE deleted_at IS NULL AND {CITED_BY_TENANT} \
+           AND EXISTS (SELECT 1 FROM evidence_citations h \
+                        WHERE h.snapshot_id = evidence_snapshots.snapshot_id \
+                          AND h.tenant_id = $2 AND h.fresh_until < $1) \
          ORDER BY fresh_until"
     ))
     .bind(now)

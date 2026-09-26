@@ -18971,3 +18971,166 @@ async fn a_profile_holding_nul_is_refused_as_the_callers() {
         "the caller's input, refused permanently: {refused}"
     );
 }
+
+/// `SIGNOFF-REPAIR.7.4.9`: a re-acquisition refreshes the citing tenant's OWN
+/// freshness horizon.
+///
+/// `evidence.md` said a replay "refreshes its freshness horizon", and it did
+/// not: `snapshots::replay` wrote `refreshed_at` and discarded the new
+/// submission's `fresh_until`, so re-acquired evidence stayed on the tenant's
+/// stale list. And the horizon sat on the SHARED row, so the first tenant to
+/// acquire the bytes decided every later tenant's stale list. The horizon is a
+/// tenant's own decision about when to re-acquire; it lives on the tenant's
+/// citation.
+#[tokio::test]
+async fn a_reacquisition_refreshes_the_citing_tenants_own_freshness_horizon() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let locator = "https://example.org/fresh-evidence";
+    let payload = b"evidence both tenants acquire";
+
+    let mut principals = Vec::new();
+    for name in ["fresh-alpha", "fresh-beta"] {
+        let (status, human) =
+            enroll(&client, &base, json!({ "kind": "human", "name": name })).await;
+        assert_eq!(status, 200, "{name} enrolls: {human}");
+        principals.push(human["principal_id"].as_str().unwrap().to_string());
+    }
+    let (alpha, beta) = (principals[0].clone(), principals[1].clone());
+
+    // Each acquisition: the reference (idempotent on the locator), then the
+    // snapshot over the same bytes, so every one after the first is a replay.
+    let acquire = |principal: String, fresh_until: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            let (status, reference) = post(
+                &client,
+                &base,
+                "/v1/resources",
+                &principal,
+                &json!({ "original_locator": locator, "scheme": "https" }),
+            )
+            .await;
+            assert_eq!(status, 200, "the reference submits: {reference}");
+            let (status, snapshot) = post(
+                &client,
+                &base,
+                "/v1/snapshots",
+                &principal,
+                &json!({
+                    "reference_id": reference["resource_id"],
+                    "original_locator": locator,
+                    "final_locator": locator,
+                    "resolver_id": "r0-https-fetcher",
+                    "resolver_version": "0.1.0",
+                    "raw_digest": reasonbraid_server::fetcher::digest_sha256_hex(payload),
+                    "byte_length": payload.len(),
+                    "media_type": "text/plain",
+                    "fresh_until": fresh_until,
+                    "bytes_base64": util::base64(payload),
+                }),
+            )
+            .await;
+            assert_eq!(status, 200, "the snapshot submits: {snapshot}");
+            snapshot["snapshot_id"].as_str().unwrap().to_string()
+        }
+    };
+    let stale = |principal: String| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            let (status, rows) = get(&client, &base, "/v1/snapshots/stale", &principal).await;
+            assert_eq!(status, 200, "the staleness surface reads: {rows}");
+            rows.as_array()
+                .unwrap()
+                .iter()
+                .map(|row| row["snapshot_id"].as_str().unwrap().to_string())
+                .collect::<Vec<String>>()
+        }
+    };
+    let horizon = |principal: String, snapshot: String| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            let (status, row) = get(
+                &client,
+                &base,
+                &format!("/v1/snapshots/{snapshot}"),
+                &principal,
+            )
+            .await;
+            assert_eq!(status, 200, "the snapshot reads: {row}");
+            row["fresh_until"].clone()
+        }
+    };
+    let past = (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
+    let future = (chrono::Utc::now() + chrono::Duration::days(7)).to_rfc3339();
+    let (past_value, future_value) = (json!(past), json!(future));
+
+    let mut failures = Vec::new();
+    // 1. A acquires with a horizon already past: stale for A.
+    let snapshot = acquire(alpha.clone(), past_value.clone()).await;
+    if !stale(alpha.clone()).await.contains(&snapshot) {
+        failures.push("1: A's past horizon is not stale for A".to_string());
+    }
+    // 2. B acquires the same bytes (a replay onto the shared row) with a future
+    //    horizon: B's own declaration decides B's list; A's is untouched.
+    assert_eq!(acquire(beta.clone(), future_value.clone()).await, snapshot);
+    if stale(beta.clone()).await.contains(&snapshot) {
+        failures.push("2: B's future horizon was discarded — A's decides B's list".to_string());
+    }
+    if !stale(alpha.clone()).await.contains(&snapshot) {
+        failures.push("2: B's acquisition changed A's list".to_string());
+    }
+    // 3. A re-acquires with a future horizon: the replay refreshes A's horizon.
+    assert_eq!(acquire(alpha.clone(), future_value.clone()).await, snapshot);
+    if stale(alpha.clone()).await.contains(&snapshot) {
+        failures.push("3: A's re-acquisition did not refresh A's horizon".to_string());
+    }
+    // 4. B re-acquires with a past horizon: B's list, never A's.
+    assert_eq!(acquire(beta.clone(), past_value.clone()).await, snapshot);
+    if !stale(beta.clone()).await.contains(&snapshot) {
+        failures.push("4: B's re-acquisition did not set B's horizon".to_string());
+    }
+    if stale(alpha.clone()).await.contains(&snapshot) {
+        failures.push("4: B's re-acquisition reset A's horizon".to_string());
+    }
+    // 5. Each tenant reads its own horizon on the row.
+    let (alpha_horizon, beta_horizon) = (
+        horizon(alpha.clone(), snapshot.clone()).await,
+        horizon(beta.clone(), snapshot.clone()).await,
+    );
+    let parsed = |value: &Value| {
+        value
+            .as_str()
+            .and_then(|raw| chrono::DateTime::parse_from_rfc3339(raw).ok())
+            .map(|at| at.timestamp())
+    };
+    let expected = |raw: &str| {
+        chrono::DateTime::parse_from_rfc3339(raw)
+            .ok()
+            .map(|at| at.timestamp())
+    };
+    if parsed(&alpha_horizon) != expected(&future) || parsed(&beta_horizon) != expected(&past) {
+        failures.push(format!(
+            "5: the read shows A {alpha_horizon} / B {beta_horizon}"
+        ));
+    }
+    // 6. B re-acquires declaring no horizon: B has none, so the row leaves B's
+    //    list; A's horizon is untouched.
+    assert_eq!(acquire(beta.clone(), Value::Null).await, snapshot);
+    if stale(beta.clone()).await.contains(&snapshot)
+        || !horizon(beta.clone(), snapshot.clone()).await.is_null()
+    {
+        failures.push("6: a re-acquisition without a horizon left B's".to_string());
+    }
+    if parsed(&horizon(alpha.clone(), snapshot.clone()).await) != expected(&future) {
+        failures.push("6: B's horizonless re-acquisition changed A's".to_string());
+    }
+    eprintln!("freshness horizons: {} failures", failures.len());
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}

@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — The load test measures exactly what it was asked to (`SIGNOFF-REPAIR.11.3.4`)
+
+`REASONBRAID-REPAIR-0536`.
+
+- 🔴 **Root cause:** a rounded-up per-worker count and no validation; no curl timeout; `wait $PIDS`; percentiles over every line; fixed port/output, any-listener readiness, relative bin root, unreaped server.
+- ✅ **Fix:** `scripts/load_summary.py` (unit-tested summary); exact split; `--timeout`; per-pid waits; own-server readiness; per-run output; URL off argv; setup requires 200 and ids. Closing census of `.11.3`: argv and readiness guards over all five scripts.
+- ⭐ My mutant driver hung 5 h 47 min: `pg_ctl start` with captured output leaves the pipe with the postmaster. Log to a file, bound the call, check long jobs.
+
 ## 2026-09-26 — The development environment checks its own server and cleans up honestly (`SIGNOFF-REPAIR.11.3.3`)
 
 `REASONBRAID-REPAIR-0535`.

@@ -133,10 +133,28 @@ class ConnectionTests(unittest.TestCase):
         builtin = re.compile(
             r'^\s*(:\s|[A-Z_]+="\$\{[A-Z_]+:-\}"\s*$|(if\s+)?\[ -[zn] "\$[A-Z_]+" \])'
         )
-        for script in ["scripts/restore.sh", "scripts/backup.sh", "scripts/demo_two_host.sh", "scripts/dev.sh"]:
+        # The CLOSING census of `.11.3` (`.11.3.4`): every script DOC-0183 named.
+        for script in ["scripts/restore.sh", "scripts/backup.sh", "scripts/demo_two_host.sh",
+                       "scripts/dev.sh", "scripts/load_harness.sh"]:
             for number, line in enumerate((root / script).read_text().splitlines(), 1):
                 code = "" if builtin.match(line) else line.split("#", 1)[0]
                 self.assertIsNone(url_variable.search(code), f"{script}:{number}: {line.strip()}")
+
+    def test_no_script_waits_for_any_listener(self):
+        """The closing census of `.11.3` (`.11.3.4`): a script that starts `rb-server`
+        waits for the line rb-server prints only after binding ITS port. Any answer on
+        the port proved nothing: with the port held, the script's own server failed to
+        bind and the run went on against the other listener."""
+        root = Path(__file__).resolve().parents[2]
+        launchers = []
+        for script in ["scripts/restore.sh", "scripts/backup.sh", "scripts/demo_two_host.sh",
+                       "scripts/dev.sh", "scripts/load_harness.sh"]:
+            code = "\n".join(l for l in (root / script).read_text().splitlines()
+                             if not l.lstrip().startswith("#"))
+            if "rb-server" in code or "SERVER_BIN" in code or "BIN_SERVER" in code:
+                launchers.append(script)
+                self.assertIn("rb-server listening on", code, f"{script} waits for any listener")
+        self.assertEqual(launchers, ["scripts/demo_two_host.sh", "scripts/dev.sh", "scripts/load_harness.sh"])
 
     def test_the_url_subcommands_read_a_variable_and_print_no_credential(self):
         import contextlib

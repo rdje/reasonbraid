@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-26 — The load test measures exactly what it was asked to (`SIGNOFF-REPAIR.11.3.4`)
+
+`REASONBRAID-REPAIR-0536`.
+
+- 🔴 **Before:** the load test could run more requests than asked (10 became 16), reported success when asked to run none, could hang forever on one stuck request, and mixed failed requests into its speed figures, so fast failures made the system look faster.
+- ✅ **Now:** it runs exactly the number asked (or refuses), gives up on a request after a set time, and reports speed only over requests that succeeded, with failures listed beside them. The speed figures published on 2026-09-08 were not affected.
+
 ## 2026-09-26 — The development environment checks its own server and cleans up honestly (`SIGNOFF-REPAIR.11.3.3`)
 
 `REASONBRAID-REPAIR-0535`.

@@ -239,6 +239,18 @@ if ! python3 -B scripts/census_bound_instants.py --check >/dev/null 2>&1; then
     exit 1
 fi
 
+# The corrective exit bar is a COUNT of open blocking leaves
+# (`docs/decisions/2026-09-25_the-corrective-tree-ends-at-a-bug-bar.md`), and
+# nothing derived it (`SIGNOFF-REPAIR.12.2`): a leaf records its state as
+# `- Status:`, `- Opened:` or "Opened and closed", and a count reading only the
+# first said 50 where 65 were open. It also produced this repository's claim that
+# no class 1-3 leaf was open, while seven class-3 leaves were. Every open leaf
+# must carry its `- ⚖️ Bar` line, and every leaf a readable state.
+if ! python3 -B scripts/census_open_leaves.py --check >/dev/null 2>&1; then
+    python3 -B scripts/census_open_leaves.py --check >&2
+    exit 1
+fi
+
 # A positional source reference must name a file a reader can find
 # (`SIGNOFF-REPAIR.11.17`). `CLAIM_VERIFICATION.md` §4.1 grades a NAMED INSTANCE
 # as exact with no tolerance band, and a BARE BASENAME is exact only when it

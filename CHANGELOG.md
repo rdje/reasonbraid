@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-26 — The list of what still blocks the release is now counted by a tool, and a claim of mine was wrong (`SIGNOFF-REPAIR.12.2`)
+
+`REASONBRAID-REPAIR-0547`.
+
+- 🔴 **Correction:** the entry below this one said no documentation-honesty problems remained open. That was wrong: seven do. I had counted by hand from one kind of status line, and those seven record their state another way.
+- ✅ **Now:** a tool counts every open task the way the release rule needs (60 open, 13 of them blocking), and every commit is refused if an open task has no severity. Four unclassified tasks were classified on the triggers they already named.
+
 ## 2026-09-26 — The agent-to-agent module now records what it loses (`SIGNOFF-REPAIR.6.3.1`)
 
 `REASONBRAID-REPAIR-0546`.

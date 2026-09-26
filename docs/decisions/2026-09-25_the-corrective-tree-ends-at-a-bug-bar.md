@@ -37,6 +37,8 @@ The measured problem: between `fcb2a7c` and `ac90ee3` (2026-09-24) seventeen lea
 3. the full CI checkpoint passes on a pushed commit (`SIGNOFF-REPAIR.11.4.3.1`);
 4. the qualification chapter reconciles with measured behaviour (`SIGNOFF-REPAIR.11.4.3`).
 
+**The count is derived, not read** (`SIGNOFF-REPAIR.12.2`, REPAIR-0547): `python3 -B scripts/census_open_leaves.py` reports open leaves by bar class, reading every state form, and its `--check` refuses an open leaf with no bar line. A hand count from `- Status:` lines misses leaves recorded as `- Opened:`, and on 2026-09-26 it produced a false *no class 1–3 leaf is open* while seven were.
+
 **After the return**, every new finding is classified when it is found, by this bar. A blocking one preempts roadmap work; a deferred one gets its trigger and joins the backlog. The bar is also what a census uses to decide what it opens.
 
 ## Why

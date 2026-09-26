@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — `census_open_leaves.py` derives the exit count; REPAIR-0546's "no class 1–3 open" was false (`SIGNOFF-REPAIR.12.2`)
+
+`REASONBRAID-REPAIR-0547`.
+
+- 🔴 **Root cause:** a hand count from `- Status:` lines misses 13 open leaves recorded as `- Opened: \`pending\``, 7 of them blocking class 3. My MEMORY census used that method, and REPAIR-0546 published the false sentence.
+- ✅ **Fix:** the instrument (three state forms, bar classes, `--check` refusing an unbarred open leaf) in the project gate; 4 blocked leaves classified deferred on their named triggers.
+- ⭐ Its first version treated a shell `# comment` inside a code fence as a heading and read three closed leaves as open. Reading the closing commits before "repairing" the records caught it, and repairing them would have produced a second Status line. Verify before acting on an instrument's first output.
+
 ## 2026-09-26 — `SemanticLosses` loses its `Default`; `.6.3` closes (`SIGNOFF-REPAIR.6.3.1`)
 
 `REASONBRAID-REPAIR-0546`.

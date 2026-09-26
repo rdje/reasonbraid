@@ -133,7 +133,7 @@ class ConnectionTests(unittest.TestCase):
         builtin = re.compile(
             r'^\s*(:\s|[A-Z_]+="\$\{[A-Z_]+:-\}"\s*$|(if\s+)?\[ -[zn] "\$[A-Z_]+" \])'
         )
-        for script in ["scripts/restore.sh", "scripts/backup.sh", "scripts/demo_two_host.sh"]:
+        for script in ["scripts/restore.sh", "scripts/backup.sh", "scripts/demo_two_host.sh", "scripts/dev.sh"]:
             for number, line in enumerate((root / script).read_text().splitlines(), 1):
                 code = "" if builtin.match(line) else line.split("#", 1)[0]
                 self.assertIsNone(url_variable.search(code), f"{script}:{number}: {line.strip()}")

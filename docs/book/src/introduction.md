@@ -46,6 +46,13 @@ cluster. The CLI is `target/debug/rb` (`--server http://127.0.0.1:4310`, or
 export `REASONBRAID_SERVER`). `bash scripts/dev.sh --check` is the
 self-verification beat for the dev loop itself.
 
+The loop waits for its own server, not for any answer on the port: if another
+program (another dev loop, say) already holds port 4310, the boot fails with the
+new server's log instead of running `--check` against the other one. It removes
+the cluster only once no database server is running on it, and says so plainly
+if it cannot confirm that, leaving the directory for you. It always builds this
+repository, wherever you run it from (`SIGNOFF-REPAIR.11.3.3`).
+
 ## Reading historical changes
 
 The root `CHANGELOG.md` is a recent digest; older entries rotate into reachable

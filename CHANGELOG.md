@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-26 — The development environment checks its own server and cleans up honestly (`SIGNOFF-REPAIR.11.3.3`)
+
+`REASONBRAID-REPAIR-0535`.
+
+- 🔴 **Before:** if another copy of the development environment was already running, a self-check reported success by talking to the other copy; the cleanup deleted the database folder even when the database had not stopped, and said all was well; and it could not be started from outside the project folder.
+- ✅ **Now:** it checks that it is talking to its own server, deletes the database folder only once the database has stopped (and says so plainly if it cannot), and works from any folder.
+- 🔎 **Found and tracked:** some of the demonstration's "this did not happen" checks would pass even if the tool running them failed (`.11.3.7`).
+
 ## 2026-09-26 — The demonstration checks it is talking to its own server, and its two-host mode works (`SIGNOFF-REPAIR.11.3.5`)
 
 `REASONBRAID-REPAIR-0534`.

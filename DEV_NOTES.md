@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — The development environment checks its own server and cleans up honestly (`SIGNOFF-REPAIR.11.3.3`)
+
+`REASONBRAID-REPAIR-0535`.
+
+- 🔴 **Root cause:** any-listener `curl` readiness; `pg_ctl stop || true; rm -rf`; no `cd "$ROOT"` before a bare `cargo`; a fixed CLI-state path; a residue census over every run's directory.
+- ✅ **Fix:** `server_ready` (own pid + own startup line + answering); `teardown` removes only when no server runs (status → stop → status), reports and exits 1 otherwise; `cd "$ROOT"` + `project_env.py`; per-run CLI state; URL off argv.
+- ⭐ Scenarios first shown holding on the unmodified script; 5 of 5 mutants caught. My harness stalled once on `kill -INT` to a background job (bash ignores SIGINT there); SIGTERM now.
+
 ## 2026-09-26 — The demonstration checks it is talking to its own server, and its two-host mode works (`SIGNOFF-REPAIR.11.3.5`)
 
 `REASONBRAID-REPAIR-0534`.

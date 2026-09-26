@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — `.6.3` censused: the A2A facade's loss record lies, and so does its test (`SIGNOFF-REPAIR.6.3`)
+
+`REASONBRAID-DOC-0187`.
+
+- 🔍 **Census:** `reasonbraid-a2a` has no consumer in the workspace. `map_message`/`map_task_request` record `SemanticLosses::default()` (all false) against docs saying all five are lost, and the test asserts that default under the message "all five dimensions lost". `response_message` drops `task_id`.
+- 📋 **Opened:** `.6.3.1` (blocking class 4/3) and `.6.3.2` (the build half, deferred until a product surface accepts A2A).
+
 ## 2026-09-26 — The freshness horizon moves to the citation; a replay refreshes it (`SIGNOFF-REPAIR.7.4.9`)
 
 `REASONBRAID-REPAIR-0545`.

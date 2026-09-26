@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-26 — What is left of the agent-to-agent module, measured (`SIGNOFF-REPAIR.6.3`)
+
+`REASONBRAID-DOC-0187`.
+
+- 🔍 **Found:** nothing in the product uses the agent-to-agent (A2A) module yet, and the qualification page already says it only converts message formats. Inside the module, it records "nothing was lost in translation" while its own description says everything is, a test passes on that contradiction, and replies drop the external task number.
+- 📋 **Next:** fix the record, the test and the replies. Connecting real outside agents waits until the product first accepts their messages.
+
 ## 2026-09-26 — Re-collecting evidence now counts as fresh again, per organisation (`SIGNOFF-REPAIR.7.4.9`)
 
 `REASONBRAID-REPAIR-0545`.

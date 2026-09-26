@@ -85,7 +85,29 @@ bash scripts/demo_two_host.sh --database-url ... \
 The node binaries are copied to the remote scratch directory and the journals
 live there (node-local state is device-local by design). The bundle's `env.txt`
 records which mode ran. `psql` must be reachable where the script runs (it is
-the fencing-token evidence path).
+the fencing-token evidence path). The remote login shell must be bash-compatible,
+and a leading `~/` in `--remote-workdir` is the remote home.
+
+⚠️ **Until 2026-09-26 this mode could not have passed** (`SIGNOFF-REPAIR.11.3.5`),
+and nothing ran it. Every remote path was wrapped in single quotes, so the
+documented `'~/rb-demo'` was never expanded: the directories were made under a
+literal `~` while the binaries were copied to the real home. The node was
+started from its own subdirectory as `./rb-node`, one level below where the
+binary was copied. Its scripted output went to the remote shell unquoted. The
+directory was made inside the backgrounded job, so the pid file was written
+before the directory existed. And the certificate check looked at the
+orchestrator's own disk. All five are corrected, and the mode now passes every
+acceptance check, measured with stand-in `ssh` and `scp` that run the remote
+side on the same machine in a separate home, using a working directory holding
+`~/`, a space and a quote. It has not been run between two real hosts.
+
+**What the run proves about itself.** The demonstration waits for ITS OWN server,
+not for any answer on the port: its process must be alive and must have printed
+the line `rb-server` writes only after it has bound the port. If another program
+already holds the port, the run stops at *server listens* instead of carrying on
+against it. The database URL reaches no command line: `rb-server` reads it from
+its environment and `psql` from libpq's own variables. The bundle's `env.txt`
+records the URL without user information or query.
 
 ## Honest boundaries (Phase 1)
 

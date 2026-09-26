@@ -87,6 +87,22 @@ if [ -n "$NODE_HOST" ] && [ -z "$REMOTE_WORKDIR" ]; then
 fi
 command -v jq >/dev/null || { echo "error: jq is required (duplicate-delivery reconstruction)" >&2; exit 2; }
 command -v psql >/dev/null || { echo "error: psql is required (the .1.2.2 lease/fencing evidence)" >&2; exit 2; }
+command -v python3 >/dev/null || { echo "error: python3 is required (the connection helper)" >&2; exit 2; }
+
+# SIGNOFF-REPAIR.11.3.5: the database URL reaches no command line, where any
+# local user reads it from the process list. rb-server takes DATABASE_URL from
+# its environment, and psql gets libpq's own variables — every one cleared
+# first, so an ambient variable meant for another server cannot ride along.
+export DATABASE_URL
+RECEIPT="$ROOT/scripts/backup_receipt.py"
+PG_NAMES="$(python3 -B "$RECEIPT" pg-names)"
+while IFS= read -r name; do
+    [ -n "$name" ] && unset "$name"
+done <<< "$PG_NAMES"
+PG_ENV="$(python3 -B "$RECEIPT" pg-env DATABASE_URL)"
+while IFS= read -r assignment; do
+    [ -n "$assignment" ] && export "$assignment"
+done <<< "$PG_ENV"
 
 WORK="$ROOT/target/demo/$RUN_ID"        # repo-root-relative, same volume (§13)
 EVIDENCE="$WORK/evidence"
@@ -134,12 +150,51 @@ wait_for() { # wait_for <label> <timeout-s> <probe...>
     return 0
 }
 
+# Readiness of OUR server (SIGNOFF-REPAIR.11.3.5): our process is alive, and its
+# log carries the startup line rb-server prints only after its bind succeeded —
+# the <n>-th one, since a restart appends to the same log. Any HTTP answer on the
+# port proved nothing: with the port already held, our server failed to bind and
+# the run went on against whatever held it.
+server_ready() { # server_ready <n>
+    kill -0 "$SERVER_PID" 2>/dev/null \
+        && [ "$(grep -c "^rb-server listening on http://.*:$SERVER_PORT " "$WORK/server.log")" -ge "$1" ] \
+        && curl -s -o /dev/null "$SERVER_BASE/v1/threads"
+}
+
+# Node A's live lease field, with the node id BOUND as a psql variable rather
+# than pasted into the SQL (SIGNOFF-REPAIR.11.3.5). The column is one of two
+# fixed names, never a value.
+lease_field() { # lease_field fencing_token|lease_epoch
+    case "$1" in
+        fencing_token) psql -X -q -At -v ON_ERROR_STOP=1 -v node="$ROLE_A" <<'SQL'
+SELECT fencing_token FROM node_leases WHERE node_id = :'node'
+SQL
+            ;;
+        lease_epoch) psql -X -q -At -v ON_ERROR_STOP=1 -v node="$ROLE_A" <<'SQL'
+SELECT lease_epoch FROM node_leases WHERE node_id = :'node'
+SQL
+            ;;
+        *) return 2 ;;
+    esac
+}
+
+# A word for the REMOTE shell (SIGNOFF-REPAIR.11.3.5): quoted for bash, except a
+# leading ~/, which must still expand to the remote home — the documented
+# `--remote-workdir '~/rb-demo'` never worked while paths were wrapped in single
+# quotes, and a quote in a path broke the command outright.
+remote_quote() { # remote_quote <word>
+    case "$1" in
+        "~/"*) printf '~/%q' "${1#\~/}" ;;
+        *) printf '%q' "$1" ;;
+    esac
+}
+
 cli() { "$BIN_CLI" --server "$SERVER_BASE" "$@"; }
 
 # The bash -c probes run `cli`/`node_journal` as exported functions; their
 # captured variables must be exported with them.
 export BIN_CLI BIN_JOURNAL NODE_HOST SERVER_BASE WORK
-export -f cli
+export -f cli lease_field remote_quote
 
 # The node's work dir on ITS host (local: under the repo's target/; remote: the
 # caller-authorized scratch dir).
@@ -160,24 +215,48 @@ node_exec() {
         local remote_args=""
         local a
         for a in "$@"; do
-            remote_args="$remote_args $(printf '%s' "$a" | sed "s|$WORK/nodes/|$REMOTE_WORKDIR/|")"
+            a="${a/#$WORK\/nodes\//$REMOTE_WORKDIR/}"
+            remote_args="$remote_args $(remote_quote "$a")"
         done
-        ssh "$NODE_HOST" "mkdir -p '$dir' && cd '$dir' && nohup ./rb-node $remote_args > node.log 2>&1 & echo \$! > '$dir/node.pid'"
+        local q; q="$(remote_quote "$dir")"
+        # The directory is made and entered in the FOREGROUND and only the node is
+        # backgrounded: `mkdir … && cd … && nohup … &` backgrounded all three, so
+        # the pid write raced the directory into existence and recorded the
+        # subshell's pid rather than the node's.
+        ssh "$NODE_HOST" "mkdir -p $q && cd $q && { nohup ../rb-node $remote_args > node.log 2>&1 & echo \$! > node.pid; }"
     fi
 }
 
 node_kill() { # node_kill <dir>  — SIGKILL the node recorded in <dir>/node.pid.
     local dir="$1"
     if [ -z "$NODE_HOST" ]; then
-        [ -f "$dir/node.pid" ] && kill -9 "$(cat "$dir/node.pid")" >/dev/null 2>&1 || true
+        local pid
+        [ -f "$dir/node.pid" ] && read -r pid < "$dir/node.pid" \
+            && kill -9 "$pid" >/dev/null 2>&1 || true
     else
-        ssh "$NODE_HOST" "[ -f '$dir/node.pid' ] && kill -9 \$(cat '$dir/node.pid')" >/dev/null 2>&1 || true
+        local pidfile; pidfile="$(remote_quote "$dir/node.pid")"
+        ssh "$NODE_HOST" "[ -f $pidfile ] && kill -9 \$(cat $pidfile)" >/dev/null 2>&1 || true
     fi
 }
 
 node_wait() { # node_wait <dir>  — reap the local job so bash prints no Killed banner.
-    local dir="$1"
-    [ -z "$NODE_HOST" ] && [ -f "$dir/node.pid" ] && wait "$(cat "$dir/node.pid")" 2>/dev/null || true
+    # The pid is READ, not `$(cat …)`: a command substitution forks, and bash
+    # reports a job killed moments before at that fork, outside this redirect.
+    local dir="$1" pid
+    [ -z "$NODE_HOST" ] && [ -f "$dir/node.pid" ] && read -r pid < "$dir/node.pid" \
+        && wait "$pid" 2>/dev/null || true
+}
+
+# node_files_present <dir> <file>...  — each file is non-empty on the NODE's host.
+# A local test of a remote node's directory could never pass (SIGNOFF-REPAIR.11.3.5).
+node_files_present() {
+    local dir="$1" f words=""; shift
+    if [ -z "$NODE_HOST" ]; then
+        for f in "$@"; do [ -s "$dir/$f" ] || return 1; done
+    else
+        for f in "$@"; do words="$words [ -s $(remote_quote "$dir/$f") ] &&"; done
+        ssh "$NODE_HOST" "$words true"
+    fi
 }
 
 # node_journal <dir> <rb-journal args...>
@@ -186,15 +265,26 @@ node_journal() {
     if [ -z "$NODE_HOST" ]; then
         ( cd "$dir" && exec "$BIN_JOURNAL" "$@" )
     else
-        ssh "$NODE_HOST" "cd '$dir' && exec ./rb-journal $*"
+        local words="" w
+        for w in "$@"; do words="$words $(remote_quote "$w")"; done
+        ssh "$NODE_HOST" "cd $(remote_quote "$dir") && exec ../rb-journal$words"
     fi
 }
 export -f node_journal
 
 cleanup() {
-    node_kill "$(node_dir a)" || true
-    node_kill "$(node_dir b)" || true
-    if [ -n "$SERVER_PID" ]; then kill -9 "$SERVER_PID" >/dev/null 2>&1 || true; fi
+    # Both directories are resolved BEFORE anything is killed, and each node is
+    # reaped by its own `wait`, so no fork after a kill reports it as a banner.
+    local dir_a dir_b
+    dir_a="$(node_dir a)"; dir_b="$(node_dir b)"
+    node_kill "$dir_a" || true
+    node_kill "$dir_b" || true
+    node_wait "$dir_a"
+    node_wait "$dir_b"
+    if [ -n "$SERVER_PID" ]; then
+        kill -9 "$SERVER_PID" >/dev/null 2>&1 || true
+        wait "$SERVER_PID" 2>/dev/null || true
+    fi
     wait >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
@@ -208,7 +298,7 @@ trap cleanup EXIT
     echo "bin_root: $BIN_ROOT ($([ "$RELEASE" = "1" ] && echo release || echo debug))"
     echo "node_host: ${NODE_HOST:-<local>}"
     echo "remote_workdir: ${REMOTE_WORKDIR:-<local: $WORK/nodes>}"
-    echo "database_url: $DATABASE_URL"
+    echo "database_url: $(python3 -B "$RECEIPT" redact-env DATABASE_URL)"
     echo "date_utc: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "channel: .1.2.2 certificate-proof (channel_version 5) — workload-certificate"
     echo "  handshake, lease/fencing token, heartbeats, observable presence"
@@ -222,25 +312,27 @@ trap cleanup EXIT
 
 if [ "$RELEASE" = "1" ]; then
     log "building the project release binaries (cargo build --release --bins)"
-    cargo build --release --bins -q
+    python3 -B "$ROOT/scripts/project_env.py" cargo build --release --bins -q
 else
     log "building the project binaries (cargo build --bins)"
-    cargo build --bins -q
+    python3 -B "$ROOT/scripts/project_env.py" cargo build --bins -q
 fi
 
 if [ -n "$NODE_HOST" ]; then
     log "deploying rb-node + rb-journal to $NODE_HOST:$REMOTE_WORKDIR"
-    ssh "$NODE_HOST" "mkdir -p '$REMOTE_WORKDIR'"
+    ssh "$NODE_HOST" "mkdir -p $(remote_quote "$REMOTE_WORKDIR")"
     scp -q "$BIN_NODE" "$BIN_JOURNAL" "$NODE_HOST:$REMOTE_WORKDIR/"
 fi
 
 # ── 1. control plane ────────────────────────────────────────────────────────────
 
 log "starting rb-server on $SERVER_BASE"
-"$BIN_SERVER" --host "$SERVER_HOST" --port "$SERVER_PORT" --database-url "$DATABASE_URL" \
+"$BIN_SERVER" --host "$SERVER_HOST" --port "$SERVER_PORT" \
     >"$WORK/server.log" 2>&1 &
 SERVER_PID=$!
-wait_for "server listens" 20 curl -s -o /dev/null "$SERVER_BASE/v1/threads"
+wait_for "server listens" 20 server_ready 1
+# A server that is not ours makes every later check meaningless: stop here.
+server_ready 1 || exit 1
 
 export REASONBRAID_CLI_STATE="$WORK/.cli"   # repo-local CLI state dir (§13)
 
@@ -281,7 +373,7 @@ SECRET_B="dev-secret-b-$RUN_ID"
 } > "$EVIDENCE/channel-auth.txt"
 
 # The authenticated-channel probes (bash -c / wait_for) need these.
-export ROLE_A ROLE_B DATABASE_URL
+export ROLE_A ROLE_B
 probe_poll() {
     local tok epoch
     # The fencing token is the node's channel CREDENTIAL. The demo reads it via
@@ -289,9 +381,9 @@ probe_poll() {
     # supported surface should expose a live credential (least privilege), and
     # every STATE assertion elsewhere runs through the CLI/API/rb-journal
     # (the `.1.8` census note — this read is an oracle, not an inspection).
-    tok="$(psql "$DATABASE_URL" -Atc "SELECT fencing_token FROM node_leases WHERE node_id = '$ROLE_A'")"
+    tok="$(lease_field fencing_token)"
     [ -n "$tok" ] || return 1
-    epoch="$(psql "$DATABASE_URL" -Atc "SELECT lease_epoch FROM node_leases WHERE node_id = '$ROLE_A'")"
+    epoch="$(lease_field lease_epoch)"
     [ -n "$epoch" ] || return 1
     curl -s -o /dev/null -X POST -H 'content-type: application/json' \
         -d "{\"channel_version\":5,\"node_id\":\"$ROLE_A\",\"after_cursor\":0,\"fencing_token\":\"$tok\",\"lease_epoch\":$epoch}" \
@@ -335,8 +427,8 @@ log "node A's contribution landed (event $CONTRIBUTION_ID)"
 # The `.1.2.2` workload identity: enrollment issued the certificate and the node
 # stored it beside its journal — the handshake that delivered this contribution
 # signed its proof with it.
-check "the workload certificate is stored beside the journal (.1.2.2)" bash -c \
-    "[ -s '$NODE_A_DIR/cert.der' ] && [ -s '$NODE_A_DIR/key.der' ]"
+check "the workload certificate is stored beside the journal (.1.2.2)" \
+    node_files_present "$NODE_A_DIR" cert.der key.der
 
 # The `.1.6.1` incarnation surface: enrollment recorded the §8.1 facts the node
 # declared; the tenant_admin inspection shows them.
@@ -378,9 +470,9 @@ check "node A's presence is observable ONLINE through the channel API" \
 # CREDENTIAL — psql is the demo's oracle for it (no supported surface should
 # expose a live credential); every STATE assertion runs through the CLI/API/
 # rb-journal (the `.1.8` census note).
-FENCE_A="$(psql "$DATABASE_URL" -Atc "SELECT fencing_token FROM node_leases WHERE node_id = '$ROLE_A'")"
+FENCE_A="$(lease_field fencing_token)"
 [ -n "$FENCE_A" ] || { fail "node A holds a live lease (fencing token present)"; exit 1; }
-EPOCH_A="$(psql "$DATABASE_URL" -Atc "SELECT lease_epoch FROM node_leases WHERE node_id = '$ROLE_A'")"
+EPOCH_A="$(lease_field lease_epoch)"
 EVENTS_JSON="$(node_journal "$NODE_A_DIR" events node.db --json)"
 DUP_BODY="$(printf '%s' "$EVENTS_JSON" | jq -c --arg n "$ROLE_A" --arg f "$FENCE_A" --argjson e "$EPOCH_A" '
     { channel_version: 5,
@@ -406,10 +498,11 @@ check "exactly ONE contribution despite the duplicate" \
 log "killing the control plane (SIGKILL) and restarting it on the same store"
 kill -9 "$SERVER_PID" >/dev/null 2>&1 || true
 wait "$SERVER_PID" >/dev/null 2>&1 || true
-"$BIN_SERVER" --host "$SERVER_HOST" --port "$SERVER_PORT" --database-url "$DATABASE_URL" \
+"$BIN_SERVER" --host "$SERVER_HOST" --port "$SERVER_PORT" \
     >>"$WORK/server.log" 2>&1 &
 SERVER_PID=$!
-wait_for "server is back" 20 curl -s -o /dev/null "$SERVER_BASE/v1/threads"
+wait_for "server is back" 20 server_ready 2
+server_ready 2 || exit 1
 # probe_poll re-reads the CURRENT fencing token every attempt: node A
 # re-handshakes after the restart (rotating its token), so a stale capture
 # would race — the probe fetches the live lease each time instead.
@@ -457,7 +550,7 @@ node_exec "$NODE_A_DIR" \
     >"$WORK/node-a.log" 2>&1
 
 wait_for "the revise attempt is DISPATCHED (durable boundary record)" 30 bash -c \
-    "node_journal '$NODE_A_DIR' pending node.db --json | grep -q dispatched"
+    'node_journal "$1" pending node.db --json | grep -q dispatched' _ "$NODE_A_DIR"
 log "killing node A AFTER dispatch (SIGKILL — the crash)"
 node_kill "$NODE_A_DIR"
 node_wait "$NODE_A_DIR"
@@ -473,7 +566,7 @@ node_exec "$NODE_A_DIR" \
     >"$WORK/node-a.log" 2>&1
 
 wait_for "recovery classifies the attempt outcome_unknown" 30 bash -c \
-    "node_journal '$NODE_A_DIR' ambiguous node.db --json | grep -q outcome_unknown"
+    'node_journal "$1" ambiguous node.db --json | grep -q outcome_unknown' _ "$NODE_A_DIR"
 node_journal "$NODE_A_DIR" ambiguous node.db --json > "$EVIDENCE/journal-a-ambiguous.json"
 check "the ambiguous attempt is visible with its boundary history" \
     grep -q 'dispatched' "$EVIDENCE/journal-a-ambiguous.json"
@@ -516,7 +609,7 @@ cli thread challenge --thread "$THREAD_B" --target "$B_CONTRIBUTION_ID" \
     --text "prove it" --as organizer >/dev/null
 
 wait_for "node B's budget gate refuses the unreserved dispatch" 30 bash -c \
-    "node_journal '$NODE_B_DIR' inspect node.db | grep -q 'failed_before_dispatch=1'"
+    'node_journal "$1" inspect node.db | grep -q "failed_before_dispatch=1"' _ "$NODE_B_DIR"
 check "the denial is journaled BEFORE any provider contact (failed_before_dispatch)" \
     grep -q 'failed_before_dispatch=1' <(node_journal "$NODE_B_DIR" inspect node.db)
 check "no revision entered thread B" bash -c \

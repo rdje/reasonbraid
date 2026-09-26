@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — The demonstration checks it is talking to its own server, and its two-host mode works (`SIGNOFF-REPAIR.11.3.5`)
+
+`REASONBRAID-REPAIR-0534`.
+
+- 🔴 **Root cause:** `curl -s -o /dev/null` readiness (any listener); `env.txt` echoed `$DATABASE_URL`; URL on `rb-server`/`psql` argv; ids pasted into SQL; remote words single-quoted. Remote mode had never run: `~` unexpanded, `./rb-node` one level too deep, `--fake-script` unquoted, the backgrounded `mkdir` pid race, a local certificate check.
+- ✅ **Fix:** `server_ready <n>` (own pid + n-th post-bind startup line + port answers, else stop); `redact-env`; libpq environment; `lease_field` binds via psql variables on stdin; `remote_quote` (`%q`, leading `~/` kept); positional probe args; `node_files_present`; deterministic reaping (`read` not `$(cat)` after a kill).
+- ⭐ Harnesses: a decoy listener, a stand-in ssh/scp with a separate home. 34/34 local and remote; 7 of 7 mutants caught (one judge written inverted, corrected).
+
 ## 2026-09-26 — A backup is never half-written and never readable by others (`SIGNOFF-REPAIR.11.3.1`)
 
 `REASONBRAID-REPAIR-0533`.

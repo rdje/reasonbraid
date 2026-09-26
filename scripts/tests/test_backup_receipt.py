@@ -125,10 +125,17 @@ class ConnectionTests(unittest.TestCase):
         user for as long as the process runs. Grows as each script is repaired."""
         import re
         root = Path(__file__).resolve().parents[2]
-        url_variable = re.compile(r"\$\{?(RESTORE_DATABASE_URL|DATABASE_URL)\b")
-        for script in ["scripts/restore.sh", "scripts/backup.sh"]:
+        # An escaped `\$` is literal text (a usage message), not an expansion.
+        url_variable = re.compile(r"(?<!\\)\$\{?(RESTORE_DATABASE_URL|DATABASE_URL)\b")
+        # The shell's own uses start no process and put nothing in a process list:
+        # a parameter check (`: "${V:?…}"`), an assignment (`V="${V:-}"`), and a
+        # `[ -z "$V" ]` / `[ -n "$V" ]` test.
+        builtin = re.compile(
+            r'^\s*(:\s|[A-Z_]+="\$\{[A-Z_]+:-\}"\s*$|(if\s+)?\[ -[zn] "\$[A-Z_]+" \])'
+        )
+        for script in ["scripts/restore.sh", "scripts/backup.sh", "scripts/demo_two_host.sh"]:
             for number, line in enumerate((root / script).read_text().splitlines(), 1):
-                code = line.split("#", 1)[0] if not line.lstrip().startswith(":") else ""
+                code = "" if builtin.match(line) else line.split("#", 1)[0]
                 self.assertIsNone(url_variable.search(code), f"{script}:{number}: {line.strip()}")
 
     def test_the_url_subcommands_read_a_variable_and_print_no_credential(self):

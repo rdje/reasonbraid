@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-26 — What is left of testing the tool's recovery under interruption, measured (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.3`)
+
+`REASONBRAID-DOC-0186`.
+
+- 🔍 **Found:** six of the nine situations this task names are already tested. Three are not: the server restarting between a lost answer and the retry, the tool being killed while a child process still holds its lock, and a kill at the moments between the tool's own saves.
+- 📋 **Next:** one sub-task each, in that order.
+
 ## 2026-09-26 — The command-line guide describes the recovery the tool has (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.4.2`)
 
 `REASONBRAID-REPAIR-0541`.

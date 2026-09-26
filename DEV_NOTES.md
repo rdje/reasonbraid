@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — `.3` censused: 6 of 9 clauses held; restart, inherited descriptor and mid-publication kills open (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.3`)
+
+`REASONBRAID-DOC-0186`.
+
+- 🔍 **Census:** each clause mapped to named controls. Three residuals: a server restart (measured only within one process), abrupt death with a surviving descendant (only normal release controlled), and a real kill between publications (held only by composition).
+- 📋 **Opened:** `.3.1`–`.3.3`. `.3.3` needs a deterministic pause where nothing external happens; the candidate is a `debug_assertions`-only failpoint.
+
 ## 2026-09-26 — The CLI chapters describe the recovery the CLI has; `.2.4` and `.2` close (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.2.4.2`)
 
 `REASONBRAID-REPAIR-0541`.

@@ -12219,6 +12219,7 @@ done
 - promotion: declined — the procedure is this leaf plus the record file, and the instrument's own header states its refusals.
 - Commit: `REASONBRAID-REPAIR-0502 (leaf SIGNOFF-REPAIR.11.4.3.1.10): the cleanup gets a dated record, and 210 retained test clusters are retired through the guard`.
 - 🧹 **§8 cleanup, 2026-09-26** (`REASONBRAID-DOC-0184`): 186 retained test clusters retired through the guard (10,089,259,915 bytes; residue verified); 261 kept by the guard; 10 strays and the build cache left for a decision. `docs/ARTIFACT_CLEANUP.md` carries the date.
+- 🧹 **The 10 strays, decided 2026-09-26** (`REASONBRAID-DOC-0189`): the guard announces clusters outside `target/pg-tests` and leaves them to a human, and the director delegated the decision (*"you decide the best course of action"*). All ten were removed by hand, NOT through the guard (it has no stray mode by design), with its checks re-run per path immediately before each removal: `data/PG_VERSION` present, no `postmaster.pid`, no live `postgres -D <path>`, and `git grep` for citations INTO the path → 0. The guard's own citation figure matches the bare basename, so `probe` showed 180 unrelated hits. 742,696 KiB; per-path evidence in `target/stray_cleanup/2026-09-26.log`; `census_pg_test_clusters.py` then reports *"STRAY: none — every cluster under target/ is inside target/pg-tests"*.
 
 ###### SIGNOFF-REPAIR.11.4.3.1.11 — The debug build tree is retired again, on the director's word
 

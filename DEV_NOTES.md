@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — `role_weighted`/`human_committee` stay refused until designed (`SIGNOFF-REPAIR.8.1.1.4`)
+
+`REASONBRAID-REPAIR-0548`.
+
+- ✅ **Decided:** the leaf's false claim was already gone (`.8.1.1.2` refuses both at creation). What remained was the decision, recorded; the design is `.8.1.1.4.1`, deferred with a trigger. Both refusals now name the deferral (RED first on the message).
+- ⭐ `.12.2`'s instrument found this leaf: its state was only `- Opened: pending`, and my Status-only census had never listed it.
+
 ## 2026-09-26 — `census_open_leaves.py` derives the exit count; REPAIR-0546's "no class 1–3 open" was false (`SIGNOFF-REPAIR.12.2`)
 
 `REASONBRAID-REPAIR-0547`.

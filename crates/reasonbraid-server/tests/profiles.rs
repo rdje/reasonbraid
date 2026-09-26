@@ -18434,7 +18434,7 @@ async fn a_declared_rule_is_checked_against_the_charter_after_authorization() {
     refused(
         status,
         &value,
-        "SIGNOFF-REPAIR.8.1.1.4",
+        "SIGNOFF-REPAIR.8.1.1.4.1",
         "an uncountable family",
     );
 

@@ -417,7 +417,7 @@ pub fn validate_declared_rule(rule: DecisionRule, steps: &[String]) -> Result<()
     match crate::decisions::evaluation(rule) {
         crate::decisions::Evaluation::Uncountable => Err(ThreadError::InvalidCommand(format!(
             "the decision rule `{}` has no bar the server can evaluate yet \
-             (SIGNOFF-REPAIR.8.1.1.4), so a thread cannot be decided under it",
+             (SIGNOFF-REPAIR.8.1.1.4.1), so a thread cannot be decided under it",
             rule.as_str()
         ))),
         crate::decisions::Evaluation::Counted if !steps.iter().any(|s| s == "vote") => {
@@ -3123,8 +3123,8 @@ mod tests {
         for rule in [DecisionRule::RoleWeighted, DecisionRule::HumanCommittee] {
             let err = validate_declared_rule(rule, &steps(&["vote"])).unwrap_err();
             assert!(
-                err.to_string().contains("SIGNOFF-REPAIR.8.1.1.4"),
-                "the refusal names the leaf that owns the gap: {err}"
+                err.to_string().contains("SIGNOFF-REPAIR.8.1.1.4.1"),
+                "the refusal names the deferred leaf that owns the design: {err}"
             );
         }
         let err = validate_declared_rule(DecisionRule::Unanimity, &steps(&["solicit", "decide"]))

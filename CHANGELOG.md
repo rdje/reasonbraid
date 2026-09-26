@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-26 — Two voting rules stay switched off until they are designed (`SIGNOFF-REPAIR.8.1.1.4`)
+
+`REASONBRAID-REPAIR-0548`.
+
+- ✅ **Decided:** "weighted by role" and "committee" approval stay refused when a discussion is created, as the guide already says, because neither has a design yet (how weights are written, who the committee is). The refusal now points at the task that will design them, which starts when the roadmap schedules them or an organisation asks for one.
+
 ## 2026-09-26 — The list of what still blocks the release is now counted by a tool, and a claim of mine was wrong (`SIGNOFF-REPAIR.12.2`)
 
 `REASONBRAID-REPAIR-0547`.

@@ -80,8 +80,10 @@ pub enum Evaluation {
     ByOwner,
     /// `advisory_synthesis`: the only decision terminal is `advisory_answer_only`.
     Advisory,
-    /// No bar anything can evaluate yet (`SIGNOFF-REPAIR.8.1.1.4`), so the
-    /// family is refused at thread creation rather than accepted and ignored.
+    /// No bar anything can evaluate yet, so the family is refused at thread
+    /// creation rather than accepted and ignored. Decided to stay refused until
+    /// it is designed (`docs/decisions/2026-09-26_weighted-and-committee-rules-stay-refused-until-designed.md`);
+    /// the design is `SIGNOFF-REPAIR.8.1.1.4.1`, deferred with a trigger.
     Uncountable,
 }
 
@@ -296,7 +298,7 @@ impl std::fmt::Display for CloseRefusal {
             ),
             Self::Uncountable(rule) => write!(
                 f,
-                "`{}` has no bar the server can evaluate (SIGNOFF-REPAIR.8.1.1.4)",
+                "`{}` has no bar the server can evaluate (SIGNOFF-REPAIR.8.1.1.4.1)",
                 rule.as_str()
             ),
             Self::Count(e) => write!(f, "{e}"),

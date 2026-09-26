@@ -215,7 +215,10 @@ and each rule currently takes the narrowest honest reading:
   ID is not one.
 - **Amendments after voting starts** — a ballot is final.
 
-`role_weighted` and `human_committee` cannot be declared yet.
+`role_weighted` and `human_committee` cannot be declared. They stay refused until
+they are designed: a schema for the charter's weights, and a §13.3 bar for the
+committee. The refusal names that deferred design work,
+`SIGNOFF-REPAIR.8.1.1.4.1`.
 
 ## An adjudication verdict applies the thread's rule, and cannot claim a count
 

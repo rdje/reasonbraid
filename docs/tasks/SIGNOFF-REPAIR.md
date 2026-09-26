@@ -12089,6 +12089,7 @@ done
 - [x] **LOCKSTEP** — `docs/ARTIFACT_CLEANUP.md` (new), `.doctrine/readme_routes.txt`, `scripts/census_route_controls.py` (the adjudication row), `MEMORY.md`, `CHANGELOG.md`, `DEV_NOTES.md` (with its rotation), `LIVE_STATUS.md` and this tree, in this commit. `docs/TASK_TREE.md` is unchanged because the frontier did not move. The book documents the product, and generated artifacts are not a product surface, so no page moves.
 - promotion: declined — the procedure is this leaf plus the record file, and the instrument's own header states its refusals.
 - Commit: `REASONBRAID-REPAIR-0502 (leaf SIGNOFF-REPAIR.11.4.3.1.10): the cleanup gets a dated record, and 210 retained test clusters are retired through the guard`.
+- 🧹 **§8 cleanup, 2026-09-26** (`REASONBRAID-DOC-0184`): 186 retained test clusters retired through the guard (10,089,259,915 bytes; residue verified); 261 kept by the guard; 10 strays and the build cache left for a decision. `docs/ARTIFACT_CLEANUP.md` carries the date.
 
 ###### SIGNOFF-REPAIR.11.4.3.1.11 — The debug build tree is retired again, on the director's word
 

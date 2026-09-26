@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-26 — Tests no longer leave empty folders behind, and the scripts review is complete (`SIGNOFF-REPAIR.11.3.6`)
+
+`REASONBRAID-REPAIR-0538`.
+
+- 🔴 **Before:** every successful run of the backup test left an empty folder behind (46 had piled up).
+- ✅ **Now:** a successful run cleans up after itself and the test checks that it did; a failed run keeps its folder for inspection. The 46 empty folders are gone. This completes the review of the operational scripts (`.11.3`): backup, restore, development environment, demonstration and load test.
+
 ## 2026-09-26 — The demonstration's "this did not happen" checks can no longer pass by accident (`SIGNOFF-REPAIR.11.3.7`)
 
 `REASONBRAID-REPAIR-0537`.

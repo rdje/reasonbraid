@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — Tests no longer leave empty folders behind, and the scripts review is complete (`SIGNOFF-REPAIR.11.3.6`)
+
+`REASONBRAID-REPAIR-0538`.
+
+- 🔴 **Root cause:** a hand-made `DirBuilder` directory, only its dump removed on success (`remove_file(…).ok()`).
+- ✅ **Fix:** a `Fixture` (removed on pass, retained on failure) plus an assertion that the directory is gone after the drop; 46 empty leftovers removed with an empty-only `find … -empty -delete`.
+- ✅ `.11.3` CLOSED with a closing census.
+
 ## 2026-09-26 — The demonstration's "this did not happen" checks can no longer pass by accident (`SIGNOFF-REPAIR.11.3.7`)
 
 `REASONBRAID-REPAIR-0537`.

@@ -108,16 +108,15 @@ async fn a_backup_restores_into_an_isolated_database() {
     // ambient temporary directory. The directory name was also FIXED, so two
     // runs shared it, and a clock supplied the only uniqueness in the file
     // name.
+    // `SIGNOFF-REPAIR.11.3.6`: the directory is a `Fixture`, which removes itself
+    // when this test PASSES and keeps itself, saying where, when it fails. It
+    // used to be made by hand and never removed, so every passing run left an
+    // empty `exercise-*` directory behind (45 when this was measured), while the
+    // dump inside it was removed only on success with its error discarded.
     let run = uuid::Uuid::now_v7().simple().to_string();
-    let dir = reasonbraid_core::repository_root()
-        .expect("the tests run inside the repository")
-        .join("target/backup-restore-controls")
-        .join(format!("exercise-{run}"));
-    std::fs::create_dir_all(dir.parent().expect("the control parent")).expect("backup parent");
-    std::fs::DirBuilder::new()
-        .create(&dir)
-        .expect("the backup directory is new");
-    let file = dir.join("exercise.dump");
+    let fixture = reasonbraid_core::fixture::Fixture::create("backup-restore-controls", "exercise")
+        .expect("the backup fixture");
+    let file = fixture.join("exercise.dump");
     let dump = Command::new("pg_dump")
         .args(["--format=custom", "--no-owner", "--file"])
         .arg(&file)
@@ -153,7 +152,9 @@ async fn a_backup_restores_into_an_isolated_database() {
     };
     // CREATE/DROP run on the verified pool connection, so a reused TCP port
     // cannot redirect these administrative mutations to another cluster.
-    // `target` contains only this fixed prefix and a generated integer.
+    // `target` contains only this fixed prefix and a v7 UUID in hex. ⚠️ If this
+    // test fails before the DROP below, the database stays in the runner's
+    // cluster, which the runner itself retains as the failure's evidence.
     sqlx::query(&format!("CREATE DATABASE {target}"))
         .execute(&pool)
         .await
@@ -193,7 +194,14 @@ async fn a_backup_restores_into_an_isolated_database() {
         .execute(&pool)
         .await
         .expect("drop the isolated restore database on the verified server");
-    std::fs::remove_file(&file).ok();
+    // The dump goes with the fixture, and a passing run leaves nothing behind.
+    let place = fixture.path().to_path_buf();
+    drop(fixture);
+    assert!(
+        !place.exists(),
+        "a passing exercise leaves no directory behind: {}",
+        place.display()
+    );
 }
 
 /// Run one of the backup scripts from the repository, returning (success, output).

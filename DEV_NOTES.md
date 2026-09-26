@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — Tranche 4d: 23 clauses; the ownership gate is blind, the invite trusts its body (`SIGNOFF-REPAIR.11.9.1.3.4`)
+
+`REASONBRAID-DOC-0191`.
+
+- 🔍 **Census:** 17 handled, 3 unowned, 1 owned, 1 declined, 1 none. Two measured live with a throwaway probe (reverted): foreign-role invite `200` / accept `403`+`404`; TTL `i64::MAX` → the request's connection drops.
+- 🔴 **Opened:** `.11.40` (class 4: `--diff-filter=ACM` plus a narrow code list; a second copy of `.doctrine/code_paths.txt`) and `.11.39` (deferred; the trigger fired).
+
 ## 2026-09-26 — `.8.1.1.6` closed by census: every narrow reading holds (`SIGNOFF-REPAIR.8.1.1.6`)
 
 `REASONBRAID-DOC-0190`.

@@ -49,7 +49,9 @@ async fn pool() -> Option<PgPool> {
         .run(&pool)
         .await
         .expect("apply migrations");
-    // The authority tables belong exclusively to this binary: purge at start.
+    // Other suites use these tables too. The runner (`scripts/run_pg_tests.py`)
+    // runs one test binary at a time, single-threaded, against a cluster of its
+    // own, so this binary may purge them at start (`R-58-3`, `SIGNOFF-REPAIR.11.9.1.3.4`).
     //
     // ⚠️ This used to be three hand-rolled DELETEs in a hand-chosen order, and
     // it was the ONLY purge of `authorization_records` the checked-plan helper

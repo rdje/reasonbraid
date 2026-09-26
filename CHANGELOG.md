@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-26 — A batch of old review notes checked against today's code (`SIGNOFF-REPAIR.11.9.1.3.4`)
+
+`REASONBRAID-DOC-0191`.
+
+- 🔍 **Checked:** 23 points from four old review notes. Most were already fixed. Two real issues surfaced: the check that every code change has a task misses deleted files, database migrations, scripts and git hooks (a check that can wrongly pass, so it blocks the release), and inviting a participant accepts a nonsensical expiry time or a participant from another organisation (who still cannot join). Each has its own task now.
+
 ## 2026-09-26 — The voting guide's "not built yet" list is true to the code (`SIGNOFF-REPAIR.8.1.1.6`)
 
 `DOC-0190`.

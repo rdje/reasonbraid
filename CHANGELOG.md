@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-26 — A killed tool's leftover helper no longer gets a misleading error (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.3.2`)
+
+`REASONBRAID-REPAIR-0543`.
+
+- ✅ **Checked:** if a program using the tool is killed while a process it started still holds the tool's lock, other runs are refused at once, nothing is damaged, and everything works again once that process ends, including a pending enrollment.
+- 🔴 **Fixed:** the refusal said to wait for "another writer" to finish, but in this case there is no writer left to finish. It now names the real holder and says what to do; the guide explains how to find and end it safely.
+
 ## 2026-09-26 — Enrollment recovery survives a server restart (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.3.1`)
 
 `REASONBRAID-REPAIR-0542`.

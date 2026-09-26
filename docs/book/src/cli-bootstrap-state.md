@@ -15,10 +15,12 @@ Qualification under interruption is partial. Tested:
   the retry fails and keeps its key, and the restarted server returns the
   original outcome;
 - a failed write at each step of a state replacement: the earlier snapshot stays,
-  or the new one is reported as unconfirmed.
+  or the new one is reported as unconfirmed;
+- a writer killed while a process it started still holds the store's lock: other
+  writers refuse until that process exits, then the pending request recovers
+  ([CLI local state](cli-state.md#a-child-process-does-not-keep-the-store-locked)).
 
-Not yet tested: a real process death between the CLI's own writes, and a killed
-writer whose child process still holds the store's lock.
+Not yet tested: a real process death between the CLI's own writes.
 
 ## Versions and compatibility
 

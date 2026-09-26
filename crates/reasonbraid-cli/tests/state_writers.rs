@@ -474,8 +474,8 @@ async fn both_cli_writers_refuse_a_held_state_lock_before_http() {
     );
     assert!(!enroll.0.success() && !thread.0.success());
     assert!(
-        enroll.2.contains("another local state writer")
-            && thread.2.contains("another local state writer")
+        enroll.2.contains("holds this directory's state lock")
+            && thread.2.contains("holds this directory's state lock")
     );
     assert_eq!(
         count, 0,
@@ -594,7 +594,7 @@ async fn both_writer_orders_hold_exclusion_until_publication_and_merge_fresh_sta
             assert_eq!(before, original);
         }
         assert!(
-            !second.0.success() && second.2.contains("another local state writer"),
+            !second.0.success() && second.2.contains("holds this directory's state lock"),
             "{second:?}"
         );
         assert!(first.0.success(), "{first:?}");
@@ -746,7 +746,7 @@ async fn explicit_principal_entrypoint_obeys_exclusion_and_releases_usage_failur
     assert!(busy
         .unwrap_err()
         .to_string()
-        .contains("another local state writer"));
+        .contains("holds this directory's state lock"));
     assert_eq!(blocked_requests, 0);
     assert!(usage.unwrap_err().to_string().contains("no tenant"));
     assert!(released);

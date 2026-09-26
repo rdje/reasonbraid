@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-26 — Abrupt writer death with a surviving descendant, qualified; the lock refusal corrected (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.3.2`)
+
+`REASONBRAID-REPAIR-0543`.
+
+- ✅ **Qualified:** the test binary re-executes itself as an embedded writer (an `#[ignore]`d test gated by an env var), hands its lock description to a python descendant (witnessed by dev:ino), and is SIGKILLed. Successors refuse in under 1 s, bytes unchanged, then proceed once the descendant exits; the pending key survives.
+- 🔴 **Fixed:** the refusal told the operator to "retry after it finishes" when no writer exists. It now names "a writer, or a process a writer started".
+- ⭐ Two harness lessons. A release signalled by a file inside a fixture directory that is removed right after needs an acknowledgment, or the descendant misses it (three orphans, ended by verified path). And `pgrep -f "os.fstat(2)"` never matches: the parentheses are an ERE group.
+
 ## 2026-09-26 — Keyed bootstrap recovery qualified across a server restart (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.3.1`)
 
 `REASONBRAID-REPAIR-0542`.

@@ -476,8 +476,11 @@ mod unix {
             metadata(&file, self.device, false)?;
             fs::flock(&file, FlockOperation::NonBlockingLockExclusive).map_err(|error| {
                 if error == Errno::WOULDBLOCK {
+                    // The holder is a writer, or a process a killed writer started
+                    // that still shares its lock (`SIGNOFF-REPAIR.3.3.4.3.3.3.3.3.2`):
+                    // the latter never "finishes" as a writer would.
                     invalid(
-                        "another local state writer holds this directory; retry after it finishes",
+                        "another process holds this directory's state lock (a writer, or a process a writer started); retry after it exits",
                     )
                 } else {
                     failure("lock failed", error)
@@ -855,6 +858,168 @@ mod unix {
                 retained.is_empty(),
                 "completed writers retained exclusion: {retained:?}"
             );
+        }
+
+        /// `SIGNOFF-REPAIR.3.3.4.3.3.3.3.3.2`: the embedded writer the next control
+        /// kills. It does nothing unless that control starts it. It opens the store,
+        /// hands its lock description to a descendant that waits for a release
+        /// file (not for this process), reports the lock's identity, and waits to
+        /// be killed.
+        #[test]
+        #[ignore = "started by a_killed_writer_whose_descendant_holds_the_lock_refuses_successors_until_it_exits"]
+        fn embedded_writer_holding_an_inherited_lock() {
+            use std::io::{BufRead, BufReader};
+            use std::process::{Command, Stdio};
+
+            let Some(path) = std::env::var_os("REASONBRAID_TEST_EMBEDDED_WRITER") else {
+                return;
+            };
+            let release = std::env::var_os("REASONBRAID_TEST_EMBEDDED_RELEASE").unwrap();
+            let writer = Writer::open_recovery(Path::new(&path)).unwrap();
+            let file = &writer.publication.lock.file;
+            let metadata = file.metadata().unwrap();
+            // Bounded: the descendant exits on its own after 120 s, so a failed
+            // control cannot leave it behind.
+            let mut descendant = Command::new("python3")
+                .args([
+                    "-B",
+                    "-c",
+                    "import os,sys,time\nm=os.fstat(2)\nprint(f'{m.st_dev}:{m.st_ino}',flush=True)\nend=time.time()+120\nwhile not os.path.exists(sys.argv[1]) and time.time()<end: time.sleep(0.02)\ntry: os.remove(sys.argv[1])\nexcept FileNotFoundError: pass",
+                ])
+                .arg(&release)
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::from(file.try_clone().unwrap()))
+                .spawn()
+                .unwrap();
+            let mut witness = String::new();
+            BufReader::new(descendant.stdout.take().unwrap())
+                .read_line(&mut witness)
+                .unwrap();
+            assert_eq!(
+                witness.trim(),
+                format!("{}:{}", metadata.dev(), metadata.ino())
+            );
+            // libtest has already printed "test <name> ... " without a newline.
+            println!("\nready {}", witness.trim());
+            // Killed here by the control; otherwise ends with its descendant.
+            let _ = descendant.wait();
+        }
+
+        /// `SIGNOFF-REPAIR.3.3.4.3.3.3.3.3.2`: abrupt death runs no release code,
+        /// so a descendant sharing a killed writer's lock description keeps the
+        /// store locked for exactly its own lifetime. Successors must refuse
+        /// promptly, with the store unchanged and a message that does not promise
+        /// a writer will finish, and must proceed once the descendant exits, with
+        /// a pending bootstrap still recoverable by its key.
+        #[test]
+        fn a_killed_writer_whose_descendant_holds_the_lock_refuses_successors_until_it_exits() {
+            use std::io::{BufRead, BufReader};
+            use std::process::{Command, Stdio};
+            use std::time::{Duration, Instant};
+
+            struct Release(PathBuf);
+            impl Drop for Release {
+                // Ends exactly the descendant this control started, on every
+                // path: never a process chosen by name or owner. The descendant
+                // removes the file as it exits, so the release is complete
+                // only when it is gone: the fixture directory holding it is
+                // removed next, and a file deleted with it would never be seen.
+                fn drop(&mut self) {
+                    let _ = std::fs::write(&self.0, b"release");
+                    let deadline = Instant::now() + Duration::from_secs(10);
+                    while self.0.exists() && Instant::now() < deadline {
+                        std::thread::sleep(Duration::from_millis(20));
+                    }
+                    let _ = std::fs::remove_file(&self.0);
+                }
+            }
+
+            let fixture = Fixture::new();
+            let path = fixture.dir();
+            pending_state().save(&path).unwrap();
+            let before = std::fs::read(path.join(STATE)).unwrap();
+            let release = Release(fixture.0.join("release"));
+            let mut writer = Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "state_store::unix::tests::embedded_writer_holding_an_inherited_lock",
+                    "--ignored",
+                    "--nocapture",
+                    "--test-threads=1",
+                ])
+                .env("REASONBRAID_TEST_EMBEDDED_WRITER", &path)
+                .env("REASONBRAID_TEST_EMBEDDED_RELEASE", &release.0)
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap();
+            let stdout = writer.stdout.take().unwrap();
+            let (send, received) = std::sync::mpsc::sync_channel(1);
+            let reader = std::thread::spawn(move || {
+                let ready = BufReader::new(stdout)
+                    .lines()
+                    .map_while(Result::ok)
+                    .find(|line| line.starts_with("ready "));
+                let _ = send.send(ready);
+            });
+            let ready = received.recv_timeout(Duration::from_secs(30));
+            let lock = std::fs::metadata(path.join(LOCK)).unwrap();
+            let expected = format!("ready {}:{}", lock.dev(), lock.ino());
+            if ready.as_ref().ok().and_then(|line| line.as_deref()) != Some(expected.as_str()) {
+                let _ = writer.kill();
+                let _ = writer.wait();
+                panic!("embedded writer never reported its descendant: {ready:?}");
+            }
+            assert_exclusion(&path);
+
+            writer.kill().unwrap();
+            assert!(!writer.wait().unwrap().success());
+            reader.join().unwrap();
+            // The writer is dead; its descendant still holds the description.
+            assert_exclusion(&path);
+            type Open = fn(&Path) -> Result<Writer, CliError>;
+            let opens: [(&str, Open); 2] = [
+                ("ordinary", Writer::open),
+                ("recovery", Writer::open_recovery),
+            ];
+            for (kind, open) in opens {
+                let started = Instant::now();
+                let error = match open(&path) {
+                    Ok(_) => panic!("{kind}: a successor took a lock a live descendant holds"),
+                    Err(error) => error.to_string(),
+                };
+                assert!(
+                    started.elapsed() < Duration::from_secs(1),
+                    "{kind}: not prompt"
+                );
+                assert!(
+                    error.contains("or a process a writer started"),
+                    "{kind}: {error}"
+                );
+            }
+            assert_eq!(std::fs::read(path.join(STATE)).unwrap(), before);
+
+            drop(release);
+            let deadline = Instant::now() + Duration::from_secs(10);
+            let probe = File::open(path.join(LOCK)).unwrap();
+            while fs::flock(&probe, FlockOperation::NonBlockingLockExclusive).is_err() {
+                assert!(
+                    Instant::now() < deadline,
+                    "the descendant never released the lock"
+                );
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            fs::flock(&probe, FlockOperation::Unlock).unwrap();
+            drop(probe);
+            let recovered = Writer::open_recovery(&path).unwrap();
+            assert_eq!(
+                recovered.state().bootstrap,
+                pending_state().bootstrap,
+                "the pending key survives the killed writer"
+            );
+            assert_eq!(std::fs::read(path.join(STATE)).unwrap(), before);
         }
 
         #[test]

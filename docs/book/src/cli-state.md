@@ -223,6 +223,17 @@ A permanent control keeps the real lock description in a child across all five
 paths, and checks that a successor stays exclusive when the old child exits.
 
 Abrupt process death runs no release code, so a child that outlives a killed
-writer can still hold the lock; that case is not yet qualified. Never delete
-state.lock to force progress, and never infer from local contention that the
-server rolled back.
+writer keeps the store locked for exactly as long as it runs. Successors refuse
+at once, and the store is unchanged:
+
+```text
+error: state error: another process holds this directory's state lock (a writer, or a process a writer started); retry after it exits
+```
+
+Once the child exits, the next writer proceeds, and a pending bootstrap is still
+recovered by its original key. To recover sooner, find the process holding
+`state.lock` (for example `lsof <state dir>/state.lock`), confirm that the
+writer started it, and end it. Never delete state.lock to force progress: a new
+lock file would let a second writer run beside the process that still holds the
+old one. Never end an unrelated process only because it runs as the same user,
+and never infer from local contention that the server rolled back.

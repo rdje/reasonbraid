@@ -19134,3 +19134,91 @@ async fn a_reacquisition_refreshes_the_citing_tenants_own_freshness_horizon() {
     eprintln!("freshness horizons: {} failures", failures.len());
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+/// `SIGNOFF-REPAIR.11.41` (tranche 4e, `R-54-2`): a submitted snapshot's
+/// `byte_length` is the stored bytes' length, as `evidence.md` says, because
+/// the submit checks it. It used to store whatever the caller declared, beside
+/// a digest the submit DID verify, so an evidence row could misstate its size.
+#[tokio::test]
+async fn a_snapshot_whose_declared_length_is_not_its_bytes_is_refused() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "length-check" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{human}");
+    let principal = human["principal_id"].as_str().unwrap().to_string();
+    let locator = "https://example.org/length-evidence";
+    let (status, reference) = post(
+        &client,
+        &base,
+        "/v1/resources",
+        &principal,
+        &json!({ "original_locator": locator, "scheme": "https" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{reference}");
+    let payload = b"seven bytes, or more";
+    let submit = |declared: i64| {
+        let client = client.clone();
+        let base = base.clone();
+        let principal = principal.clone();
+        let reference_id = reference["resource_id"].clone();
+        async move {
+            post(
+                &client,
+                &base,
+                "/v1/snapshots",
+                &principal,
+                &json!({
+                    "reference_id": reference_id,
+                    "original_locator": locator,
+                    "final_locator": locator,
+                    "resolver_id": "r0-https-fetcher",
+                    "resolver_version": "0.1.0",
+                    "raw_digest": reasonbraid_server::fetcher::digest_sha256_hex(payload),
+                    "byte_length": declared,
+                    "media_type": "text/plain",
+                    "bytes_base64": util::base64(payload),
+                }),
+            )
+            .await
+        }
+    };
+    let actual = payload.len() as i64;
+    let mut failures = Vec::new();
+    for declared in [actual + 1, 999_999, -1] {
+        let (status, value) = submit(declared).await;
+        let named = value["message"].as_str().is_some_and(|m| {
+            m.contains(&format!("{actual} bytes")) && m.contains(&declared.to_string())
+        });
+        if status != 400 || value["code"] != "invalid_command" || !named {
+            failures.push(format!("declared {declared}: {status} {value}"));
+        }
+    }
+    // The matched positive: the true length is stored and read back as such.
+    let (status, value) = submit(actual).await;
+    assert_eq!(status, 200, "the true length submits: {value}");
+    let snapshot = value["snapshot_id"].as_str().unwrap().to_string();
+    let (status, stored) = get(
+        &client,
+        &base,
+        &format!("/v1/snapshots/{snapshot}"),
+        &principal,
+    )
+    .await;
+    assert_eq!(status, 200, "{stored}");
+    assert_eq!(stored["byte_length"], json!(actual));
+    assert!(
+        failures.is_empty(),
+        "{} failures:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}

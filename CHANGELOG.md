@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-28 — Submitted evidence must state its true size (`SIGNOFF-REPAIR.11.41`)
+
+`REASONBRAID-REPAIR-0550`.
+
+- 🔴 **Before:** evidence submitted to the server could claim any file size, although the guide says the recorded size is the size of the stored file; and re-submitting the same file with the right size could not correct it.
+- ✅ **Now:** a submission whose stated size is not its real size is refused, naming both numbers.
+
 ## 2026-09-28 — Another batch of old review notes checked, and two small record errors found (`SIGNOFF-REPAIR.11.9.1.3.5`)
 
 `REASONBRAID-DOC-0193`.

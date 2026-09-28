@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-28 — `POST /v1/snapshots` refuses a wrong `byte_length` (`SIGNOFF-REPAIR.11.41`)
+
+`REASONBRAID-REPAIR-0550`.
+
+- 🔴 **Root cause:** `snapshots::submit` verified the digest and stored `byte_length` as declared; a true resubmission REPLAYED onto the wrong row (RED: `21` stored for 20 bytes).
+- ✅ **Fix:** `SnapshotError::LengthMismatch` after the digest check, refused 400 naming both. The four server packs already pass the true length. Disabled-check mutant caught live.
+- 📋 **Opened:** `.11.43` (the director's lockstep rule: `ROADMAP.md`'s status preamble is weeks stale).
+
 ## 2026-09-28 — Tranche 4e: 17 clauses; `byte_length` unchecked, a changed response keeps its first time (`SIGNOFF-REPAIR.11.9.1.3.5`)
 
 `REASONBRAID-DOC-0193`.

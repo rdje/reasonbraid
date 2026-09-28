@@ -22,6 +22,13 @@ artefact rather than a setting.
 | `standard` | the ADR-011 digest of the stored bytes | the stored bytes' length | absent | R0 fetch, R2 extract, R3 render, R5 |
 | `external-reference` | absent | `0` | the verifiable pointer | R1 git |
 
+A snapshot submitted through `POST /v1/snapshots` is held to the same facts: its
+bytes must hash to `raw_digest` and be exactly `byte_length` long, or the
+submission is refused with `400 invalid_command` naming both values. Its
+acquisition fields (`resolver_id`, `network_class`, `auth_class`,
+`disclosure_policy`) describe an acquisition the server did not perform, so they
+are stored as the submitter declared them.
+
 `raw_digest` being absent is the signal a client branches on. It is not a
 degraded snapshot: it says *this store holds no bytes for this row, and here is
 what to re-acquire instead*. `byte_length` is `0` for the same reason — it

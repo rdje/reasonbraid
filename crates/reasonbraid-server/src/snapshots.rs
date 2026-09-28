@@ -225,6 +225,14 @@ pub enum SnapshotError {
         declared: String,
         actual: String,
     },
+    /// The declared `byte_length` is not the bytes' length
+    /// (`SIGNOFF-REPAIR.11.41`). It used to be stored as declared beside a
+    /// digest that WAS verified, and a later true declaration replayed onto
+    /// the wrong row rather than correcting it.
+    LengthMismatch {
+        declared: i64,
+        actual: usize,
+    },
     /// The submission names a different `original_locator` from the reference
     /// it is filed against (`SIGNOFF-REPAIR.11.14.3.13`).
     ///
@@ -291,6 +299,10 @@ impl std::fmt::Display for SnapshotError {
                 f,
                 "the bytes hash to `{actual}`, not the declared `{declared}`"
             ),
+            Self::LengthMismatch { declared, actual } => write!(
+                f,
+                "the bytes are {actual} bytes long, not the declared byte_length {declared}"
+            ),
             Self::LocatorMismatch {
                 submitted,
                 reference,
@@ -350,6 +362,12 @@ pub async fn submit(
         return Err(SnapshotError::DigestMismatch {
             declared: submission.raw_digest.clone(),
             actual,
+        });
+    }
+    if usize::try_from(submission.byte_length).ok() != Some(bytes.len()) {
+        return Err(SnapshotError::LengthMismatch {
+            declared: submission.byte_length,
+            actual: bytes.len(),
         });
     }
     // The reference must exist, THIS TENANT must have registered it, AND its

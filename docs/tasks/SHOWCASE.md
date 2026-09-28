@@ -37,10 +37,25 @@ The director, 2026-09-28: *"Please create a single entry CLI and Web page for me
 - Status: `pending` — opened 2026-09-28 with `SHOWCASE.1`, standing.
 - ⚖️ Bar (`REASONBRAID-DOC-0162`): each note is classified by the bar when it is routed; this leaf is the routing, not a finding.
 - Owns: at the start of each working turn, new lines in `target/showcase/feedback.jsonl` are read, and each becomes a leaf in the tree that owns its surface (or a note on an existing one), with the note quoted. A note is never answered only in chat.
+- Routed so far: the note of `2026-09-28T20:13:36Z` (five points) → `SHOWCASE.3` (reply in a conversation) and `SHOWCASE.4` (hover help, a Progress panel in plain language, resizable panels, fool-proof). The director's chat message of the same evening about their own agents and a Teams/Slack/Discord-like chat → `PARTICIPATION.4` and `.6`, quoted there.
+
+### SHOWCASE.3 — Reply to the network, like a real conversation
+
+- Status: `pending` — opened 2026-09-28 from the director's showcase note: *"how to respond to a reply from the network. I think for a response or message from the network I should be able to reply, like in a real chat application. like a real conversation if you see what I mean."*
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): the director's request, not a corrective finding; worked at the director's priority.
+- Owns: first measure what the shipped thread model offers for a second turn (a human contribution, then work for the agents in the next round: which verb dispatches it, and what the agent's work item carries of the conversation so far). Then a reply box under each answer on the page, driving those same verbs through the CLI. ⚠️ With the scripted stand-in agents the second answer is scripted too, and the page must say so; a conversation that reads as real needs a real model behind a node (`PARTICIPATION.6`).
+
+### SHOWCASE.4 — Explain every section, say progress in plain words, let panels grow, and make it fool-proof
+
+- Status: `pending` — opened 2026-09-28 from the director's showcase note: *"Each section shall have a pop up or something to explain what it does … when we move the mouse over a section widget it shall … show a message describing what it does"*; *"I do not really understand the information presented in the Progress section"*; *"there shall be a handle to enlarge both the Progress and Command line section"*; *"the UI shall be fool proof and really intuitive and really user friendly"*.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): the director's request, not a corrective finding.
+- Owns: a help hint per section, hidden until hovered or focused (and reachable by keyboard); the Progress panel rewritten for a reader who does not know the task tree (what is fixed, what is still wrong, in plain sentences, with the leaf ids demoted to details); a handle to enlarge the Progress and Command line panels; empty, loading and error states that say what to do next; and a check that runs the page in a real browser, as `console_browser` does for the console.
 
 ## Current Frontier
 
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
 | 1a | `SHOWCASE.1` | `done` | ✅ `make showcase`: a live system with two answering agents, a local page, a status CLI and a feedback file, run end to end. |
-| 1 | `SHOWCASE.2` | `pending` | standing: the director's notes, routed as they arrive |
+| 1 | `SHOWCASE.4` | `pending` | the director's first note: section help, plain-language progress, resizable panels, fool-proof |
+| 2 | `SHOWCASE.3` | `pending` | the director's first note: reply in a conversation (measure the second turn first) |
+| 3 | `SHOWCASE.2` | `pending` | standing: the director's notes, routed as they arrive |

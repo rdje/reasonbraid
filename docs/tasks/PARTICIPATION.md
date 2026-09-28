@@ -32,6 +32,16 @@ The director's requirements of 2026-09-25, in their words:
 > We need to expose REASONBRAID to those chat-bot or agent in sota, signoff and
 > production-grade way.
 
+And on 2026-09-28, after first trying the showcase (`SHOWCASE.1`):
+
+> I have access to several chatbots and coding agents. Right now they all are
+> running in my LAN. I use the codex, claude, kimi code, qwen code and pi CLIs. I
+> use gpt, opus, kimi, qwen and deepseek models for coding. Any of these
+> harness/model can connect to the network and [deliberate], discuss, come to
+> conclusions, disagree on a subject. the chat interface should, long term
+> resemble that of Teams, slack, discord for there flexibility when humans are
+> involved, on the other end agents do not care.
+
 ## Non-Goals
 
 - Un-freezing `ROADMAP.md` v0.4.1 in this tree. The tree measures and designs; v0.5.0 takes what it proves.
@@ -81,6 +91,7 @@ The director's requirements of 2026-09-25, in their words:
   - ID: `PARTICIPATION.4`
     Status: `proposed`
     Director (2026-09-25, `REASONBRAID-DOC-0173`): the web console must *"behave exactly like the rb CLI tool"*, and both must be *"extremely secure and super intuitive"*: full parity, not a read-only window.
+    Director (2026-09-28): the chat interface should, long term, resemble Teams, Slack or Discord *"for their flexibility when humans are involved"*; agents do not care about the interface. The showcase's first note (`SHOWCASE.3`, `.4`) is the earliest measurement of what the director expects of a human client.
     Goal: human clients, CLI and web, production-grade, elegant, fool-proof and intuitive. The survey found the `rb` CLI the primary surface and the web console READ-ONLY by construction, both trusting a development identity header; a human has no production sign-in.
     Acceptance: `pending` — opens after `.1`; its first question is human authentication, which the rest depends on.
     Verification: `pending`
@@ -97,6 +108,7 @@ The director's requirements of 2026-09-25, in their words:
 
   - ID: `PARTICIPATION.6`
     Status: `proposed`
+    Director (2026-09-28): the harnesses in use on the director's LAN are the codex, claude, kimi code, qwen code and pi CLIs, over gpt, opus, kimi, qwen and deepseek models; any of them should be able to join, deliberate, conclude and disagree. Two of the five harnesses (claude, codex) have adapters today, as library code `rb-node` does not construct; kimi code, qwen code and pi have none.
     Goal: the ADAPTER path — ReasonBraid runs the agent. The survey found two real adapters (the Claude and Codex CLIs) and a fake; every other surveyed vendor offers an OpenAI-compatible chat API with tool calling, so one qualified OpenAI-compatible API adapter would reach most of them, and their agent CLIs are candidates for further CLI adapters.
     Acceptance: `pending` — opens after `.1`; each adapter is qualified by the §19.4 checklist (`docs/book/src/adapter-boundary.md`).
     Verification: `pending`

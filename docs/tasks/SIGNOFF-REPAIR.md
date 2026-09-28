@@ -9761,10 +9761,46 @@ Six children by the adopted ranking, at the natural gaps in the distribution. Me
 ##### SIGNOFF-REPAIR.11.9.1.4 — Tranche 5: narrowest candidate named by sixteen to eighteen records
 
 - Opened: `pending` by `.11.9.1`'s split.
-- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 3, as `.11.9.1.3.4`.
 - The 22 records: `R-33-35-5`, `R-33-35-6`, `R-36-39-5`, `R-36-39-7`, `R-40-42-8`, `R-43-2`, `R-43-3`, `R-44-45-1`, `R-44-45-2`, `R-44-45-3`, `R-52-3`, `R-52-5`, `R-54-3`, `R-55-1`, `R-58-1`, `R-6-27-5`, `R-6-27-6`, `R-61-62-3`, `R-66-2`, `R-67-68-1`, `R-70-1`, `R-73-74-2`.
 - Acceptance: as `.11.9.1.1`.
-- Verification / commit: pending.
+- Status: `active`; sized and split (DOC-0194), its first child executed in the same commit. ⛔ The acceptance descends to `.11.9.1.4.1`–`.3` collectively.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **structural**: closes when its children do.
+
+**The sizing, taken before the split, by `.11.9.1.3`'s method.** The 22 records hold **4,259 characters** of body, above the 1,405–3,006 this activity has executed in one commit. Grouping by each record's own narrowest candidate (`python3 -B scripts/census_record_reconciliation.py --rank`) gives three groups, each inside that range:
+
+| Child | Narrowest candidate | Records | Body characters |
+| --- | --- | --- | --- |
+| `.11.9.1.4.1` | `SIGNOFF-REPAIR.5.3`, named by 16 | `R-33-35-5`, `R-33-35-6`, `R-36-39-5`, `R-36-39-7`, `R-44-45-3`, `R-52-3`, `R-52-5`, `R-55-1`, `R-61-62-3`, `R-70-1` | 2,055 |
+| `.11.9.1.4.2` | `SIGNOFF-REPAIR.7.3`, named by 16 | `R-40-42-8`, `R-43-2`, `R-43-3`, `R-44-45-1`, `R-54-3`, `R-6-27-5`, `R-6-27-6` | 1,244 |
+| `.11.9.1.4.3` | `SIGNOFF-REPAIR.2.2`, named by 18 | `R-44-45-2`, `R-58-1`, `R-66-2`, `R-67-68-1`, `R-73-74-2` | 960 |
+
+The evidence for all 22 was gathered first, per clause, by three read-only passes over today's source, so every live finding was known before the first child was written; each is re-read by hand before it enters the ledger.
+
+###### SIGNOFF-REPAIR.11.9.1.4.1 — Tranche 5a: the ten records whose narrowest candidate is `SIGNOFF-REPAIR.5.3`
+
+- Status: `done` — `REASONBRAID-DOC-0194`; opened by `.11.9.1.4`'s split.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 3, as `.11.9.1.3.4`.
+- [x] **REPRODUCE / ISSUE** — the census, per clause (`docs/tasks/artifacts/signoff_review/RECONCILIATION.md` § Tranche 5a): **51 clauses**, 24 `handled`, 26 `unowned`, 1 `declined`; `python3 -B scripts/census_record_reconciliation.py --classified` re-reads them. Every live clause was re-read by hand against the source before it was written, and four handled ones were sampled the same way; all held.
+- 🔴 **Eight leaves opened, six of them blocking.** `.11.45` (class 2 and 4): a card import keeps the card's claimed confidence, never authenticates its origin, digests its own export time, and its schema control passes whichever rung refuses. `.11.46` (class 3): the view the book calls *"the network pseudonym"* carries the role's own id. `.11.47` (class 3): the initiator closes a call on a name comparison, its invitation authority never re-read. `.11.48` (class 2): a node's result is linked to the role's current incarnation, and an unusable one is acknowledged. `.11.50` (class 1 and 3): the IPv6 destination classifier admits reserved ranges, and a redirect to an IPv6 literal is never classified. `.11.52` (class 3): a lost machine's in-flight work is replayed without the possible-duplicate authorization. Deferred with a trigger: `.11.49`, the quota ledger; `.11.51`, the R1 file walk.
+- ⚠️ **`.11.50`'s redirect half belongs to a record in tranche 5b** (`R-44-45-1`), and it was read now because it is the same boundary and the worse half. Tranche 5b attaches it.
+- [x] **ADDRESSED** — classification only; each finding needs a RED control and a code change, so each has its own leaf. The book's qualification review reopens the two areas it had marked complete (directory and recruitment; node recovery and budgets) and names the new leaves in the acquisition row.
+- [x] **NO REGRESSION** — no code, schema or test changed. `census_record_reconciliation.py --classified` reports no breach; `census_open_leaves.py --check` OK.
+- promotion: declined. Two areas the book called complete reopened on a census of records written before their repairs; that is the census working, not a new pattern.
+- Acceptance: as `.11.9.1.1`.
+
+###### SIGNOFF-REPAIR.11.9.1.4.2 — Tranche 5b: the seven records whose narrowest candidate is `SIGNOFF-REPAIR.7.3`
+
+- Opened: `pending` by `.11.9.1.4`'s split.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 3, as `.11.9.1.3.4`.
+- The seven records: `R-40-42-8`, `R-43-2`, `R-43-3`, `R-44-45-1`, `R-54-3`, `R-6-27-5`, `R-6-27-6` (1,244 characters). `R-44-45-1`'s redirect clause attaches to `.11.50`.
+- Acceptance: as `.11.9.1.1`.
+
+###### SIGNOFF-REPAIR.11.9.1.4.3 — Tranche 5c: the five records whose narrowest candidate is `SIGNOFF-REPAIR.2.2`
+
+- Opened: `pending` by `.11.9.1.4`'s split.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 3, as `.11.9.1.3.4`.
+- The five records: `R-44-45-2`, `R-58-1`, `R-66-2`, `R-67-68-1`, `R-73-74-2` (960 characters).
+- Acceptance: as `.11.9.1.1`.
 
 ##### SIGNOFF-REPAIR.11.9.1.5 — Tranche 6: narrowest candidate named by twenty to twenty-two records
 
@@ -13047,6 +13083,62 @@ done
 - [x] **NO REGRESSION** — test code only; the same second broad run: **47 suites, 536 passed, 0 failed**, `bootstrap_recovery`'s 11 among them; strict clippy on `reasonbraid-server --all-targets` rc=0.
 - Commit: `REASONBRAID-REPAIR-0485` (with `.4.5.3`).
 
+### SIGNOFF-REPAIR.11.52 — A lost machine's in-flight work is replayed without the possible-duplicate authorization
+
+- Status: `pending` — opened 2026-09-28 by tranche 5a (`.11.9.1.4.1`, DOC-0194), `R-70-1` clauses 1–4.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 3, and class 2 if a second spend is measured. The book's node-recovery row says *"a retry whose outcome is unknown needs an administrator's authorization"*. After a total machine loss the `outcome_unknown` fact dies with the journal, and the runbook's replay re-dispatches the work with no such authorization.
+- Measured from source: `crates/reasonbraid-server/tests/node_replacement.rs` destroys the lost machine's journal and then replays with a plain `POST /v1/nodes/replay` (no `allow_possible_duplicate`); `authority/node_admin.rs::replay_command_in_one_transaction` clears the quarantine, refreshes the decision and re-sequences, with no ambiguity check and no fresh reservation. The consent path (REPAIR-0481) exists only for rows quarantined `retry_requires_authorization`, which needs the journal that was lost. The drill's `LoseResponse` adapter has no invocation counter, and its final count of folded contributions is read as *"no duplicate"* while the provider ran twice.
+- Owns: RED first on the drill, counting provider invocations across the lost response and the replay. Then decide how the server knows what it cannot see: work offered to an incarnation that is now revoked, with no result, is itself outcome-unknown, so its replay needs `allow_possible_duplicate` and a fresh reservation. The runbook (`docs/runbooks/node-lost-replaced.md`) and the book's recovery row say what the operator is authorizing.
+
+### SIGNOFF-REPAIR.11.51 — The R1 acquisition's own file walk skips errors, and its digest has no framing
+
+- Status: `pending` — opened 2026-09-28 by tranche 5a (`.11.9.1.4.1`, DOC-0194), `R-44-45-3` clauses 3–6. Tranches 5b and 5c attach the transport's latent limits here.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **deferred with a trigger**, below the bar in the claimed profile. The directory walked is the process's own ODB, which a fetch does not fill with unreadable files or symlinks, and the digest is a per-acquisition receipt (`.11.24.1.3.2`), not an identity other records rely on. **Trigger**: the walk reads a directory this process did not create, or a principal the owner does not control is admitted (opening beyond the owner-only profile, `REASONBRAID-DOC-0173`). The limit is stated in the qualification review.
+- Measured from source: `crates/reasonbraid-server/src/git.rs` `git_digest` and `collect_files` skip an unreadable file or a failed `read_dir` (`if let Ok`); the digest hashes bytes with no name or length framing; `dir_size` ignores errors while it feeds the `max_bytes` ceiling; both walks test `path.is_dir()`, which follows a symlink.
+- Owns: a walk that refuses on an error rather than skipping, sizes counted without following a symlink, and the digest framed by name and length or described as a content receipt only.
+
+### SIGNOFF-REPAIR.11.50 — IPv6 destinations: the classifier admits reserved ranges, and a redirect to an IPv6 literal is never classified
+
+- Status: `pending` — opened 2026-09-28 by tranche 5a (`.11.9.1.4.1`, DOC-0194), `R-55-1` clauses 1 and 2. The redirect half is `R-44-45-1` clause 1 (tranche 5b), read now because it is the same boundary.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 1 and 3. The R1 git pack is on by default. A remote a principal names can redirect to a bracketed IPv6 literal that no check sees, so the server dials a destination the §12.4 classes refuse, while `deployment.md` says the pack *"classifies every dial"*. Internet exposure, the trigger such hardening was deferred on, fired on 2026-09-25 (`REASONBRAID-DOC-0173`).
+- Measured from source: `crates/reasonbraid-server/src/git.rs`'s hop policy classifies a hop only when `url.host_str()` parses as an `IpAddr`; `url` 2.5.8 returns an IPv6 host in brackets, so the parse fails and the hop is followed. hyper-util then strips the brackets and connects without the resolver, so `ClassifiedDns` never sees it. The hop policy also never checks the scheme or the port, though the first URL must be `https` on 443. `crates/reasonbraid-server/src/ssrf.rs::classify_v6` refuses seven prefixes and calls everything else public, including `fec0::/10`, IPv4-compatible `::a.b.c.d`, `2002::/16` and `64:ff9b:1::/48`.
+- Owns: RED first against a live listener, a redirect to `[::1]` followed today and refused after. The hop policy reads the typed host (`url.host()`), and refuses a hop that leaves `https` or port 443. `classify_v6` admits only global unicast (`2000::/3`) outside the special-purpose registry, with every IPv4-embedding form re-classified as its IPv4 address. `fetcher.rs`'s own hop loop is re-read for the same shape. Book: `deployment.md`'s destination-class definition and the qualification review.
+
+### SIGNOFF-REPAIR.11.49 — The quota ledger keeps every denial and counts rows from the future
+
+- Status: `pending` — opened 2026-09-28 by tranche 5a (`.11.9.1.4.1`, DOC-0194), `R-52-3` clauses 3–5.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **deferred with a trigger**, below the bar in the claimed profile. The denial rows are written by principals of the owner's own deployment, one per refused call, and every caller passes the server's clock. **Trigger**: a principal the owner does not control is admitted (opening beyond the owner-only profile, `REASONBRAID-DOC-0173`), or a quota check is given a time other than the server's clock. The limit is stated in the qualification review.
+- Measured from source: `crates/reasonbraid-server/src/quota.rs::check_in_tx` inserts a `denial` row for every call over the ceiling, and nothing in the product deletes from `quota_events`; the window counts `at > $2` with no upper bound; `QuotaError`'s comment says a refusal is *"always a recorded fact"*, and `Unconfigured` returns before any insert. `mcp.md` states the behaviour correctly.
+- Owns: a bounded denial record (one counted row per window, or pruning past the window), a window bounded above by the check's own time, and the comment made to say what `mcp.md` says.
+
+### SIGNOFF-REPAIR.11.48 — A node's result is linked to the wrong incarnation, and an unusable one is acknowledged
+
+- Status: `pending` — opened 2026-09-28 by tranche 5a (`.11.9.1.4.1`, DOC-0194), `R-36-39-7` clauses 3, 5 and 6.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 2. A durable run record can name an incarnation that did not run the attempt, and a dead-letter report with no `reason` is acknowledged while changing nothing, so the work item no longer says what happened. Both are measured before either is fixed.
+- Measured from source: the run writer in `crates/reasonbraid-server/src/api.rs` links a result's `attempt_id` to the role's CURRENT incarnation (`valid_to IS NULL`, newest first), so a result that arrives after a re-enrollment is recorded against the new one. A result naming an unknown command, a dead-letter report without a `reason`, a non-thread work kind and an unparsable role each return `Ok(())`, and the receipt answers `accepted: true`.
+- Owns: RED live for each; the run linked to the incarnation the work was dispatched to; an unusable result answered as not accepted, with its reason, or recorded; and the under-reporting question REPAIR-0484 left open decided and written down: a node reports its own tenant's usage, and either that trust is the design and the book says so, or settlement checks it. Book: `node-channel.md`.
+
+### SIGNOFF-REPAIR.11.47 — Closing a recruitment call trusts the initiator's name, not its authority
+
+- Status: `pending` — opened 2026-09-28 by tranche 5a (`.11.9.1.4.1`, DOC-0194), `R-33-35-6` clause 5.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 3, and class 2 if a revoked initiator's close is measured to write the panel. `recruitment.md` says a call rides the invitation authority and that closing *"is audited"*. The close admits the initiator on a string comparison and reads no grant or boundary.
+- Measured from source: `close_recruitment_call` in `crates/reasonbraid-server/src/api.rs` sets `is_initiator` from `call.initiator == actor_handle_for_subject(&principal)`. Opening the call ran `authorize_guarded` for `ThreadInvite`; the owner's close runs `authorize_tenant_admin`. Whether the initiator's close writes an audit record is not yet measured.
+- Owns: RED live: open with a grant, revoke the grant (and, separately, the boundary), then close as the initiator. The close re-reads the invitation authority the open used, and the initiator's close is audited as the owner's is. Book: `recruitment.md`.
+
+### SIGNOFF-REPAIR.11.46 — The view the book calls the network pseudonym carries the role's own id
+
+- Status: `pending` — opened 2026-09-28 by tranche 5a (`.11.9.1.4.1`, DOC-0194), `R-33-35-5` clause 7.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 3. `authority.md` and `site-authority.md` call the view another tenant reads *"the network pseudonym"*. `GET /v1/directory/presence` gives that tenant the raw `role_id`, and the `node_id` when the two are equal. Whether exposing the id is also a class 1 disclosure is measured here: what another tenant can do knowing it.
+- Measured from source: the presence listing in `crates/reasonbraid-server/src/api.rs` builds each foreign entry as `role_id`, `state`, `hold` and the filtered profile. `REASONBRAID-DOC-0066` decided which rows another tenant sees, never the identifier's form.
+- Owns: measure what a foreign tenant can do with a role id (invite, recruit, inspect). Then either give foreign readers an identifier that is not the role's own, or narrow the book's word to what is shown. `ROADMAP.md` states the target (*"counts, pseudonyms, or no roster"*); if the build keeps the id, the qualification review records the difference.
+
+### SIGNOFF-REPAIR.11.45 — A card import trusts the card: its claims' confidence, its origin, and its schema control
+
+- Status: `pending` — opened 2026-09-28 by tranche 5a (`.11.9.1.4.1`, DOC-0194), `R-36-39-5` clauses 3 and 5, `R-52-5` clauses 2–4, `R-61-62-3` clauses 1–3.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 2 and 4. An administrator under an effective agreement can import a hand-made card whose claims say `certified`, and they are stored as the imported role's provenance, which a role's own write refuses. The control that says the schema rung refuses passes whichever rung does.
+- Measured from source: `crates/reasonbraid-server/src/authority/profile_admin.rs` writes `card.profile` verbatim; `PUT` of a role's own profile refuses any claim that is not `self_asserted`. `cards::verify_pure_rungs` recomputes the digest from the submitted bytes and compares it with the digest submitted beside them, and nothing signs a card. A `local` import never checks that the origin role exists. `mint_card` stamps `exported_at: Utc::now()` inside the digested bytes, against the *"byte-identical regeneration contract"* the type documents. `crates/reasonbraid-server/tests/cards.rs` sends the wrong schema with `sha256:00000000` and asserts only `400`, which the digest rung also answers.
+- Owns: RED first live: import a hand-made card with a `certified` claim. Decide what an imported claim's confidence may be (without a signature the origin's level cannot be verified, so cap it, or record it as imported provenance), and whether a `local` import must name a real origin role. Take the export time out of the digest, or correct the contract. Give the schema control a recomputed digest and the schema refusal's own message. Book: `profiles.md`'s card section.
+
 ### SIGNOFF-REPAIR.11.44 — The live status's *Corrective review* row is a hand-kept narrative, weeks stale
 
 - Status: `pending` — opened 2026-09-28 by `.11.40`'s lockstep read (REPAIR-0553).
@@ -15136,7 +15228,9 @@ git grep -nI -E "never run|licen[cs]e decision|license decision" -- \
 | 1a | `SIGNOFF-REPAIR.11.41` | `done` | ✅ REPAIR-0550 — `POST /v1/snapshots` refuses a `byte_length` that is not the bytes' length, naming both; the wrong declaration used to be stored, and a true resubmission replayed onto it. RED first live; the disabled check caught. |
 | 1a | `SIGNOFF-REPAIR.11.43` | `done` | ✅ REPAIR-0551 — the director's lockstep rule: `ROADMAP.md`'s hand-kept status narrative (13 leaf references, weeks stale) is replaced by stable pointers and a sentence sending deviations to the qualification page, and `PLAN-STATES-TARGETS` refuses a task-leaf reference in the plan. The book states the same rule. |
 | 1a | `SIGNOFF-REPAIR.11.42` | `done` | ✅ REPAIR-0552 — a changed recruitment response now carries the time it was given (the upsert kept the first row's time, so the inspection paired the new answer with the old time); the false *conflict* comment is corrected, and `recruitment.md` states replacement and that closing invites no one. RED live; the dropped-time mutant caught. |
-| 1 | `SIGNOFF-REPAIR.11.9.1.4` | `pending` | ⚖️ blocking, class 3 — tranche 5 of the review records not yet routed: 22 records (narrowest candidate named by 16–18 records). Classify each clause against today's source, measuring live where the source leaves it open; any live finding gains a leaf. Then `.11.9.1.5`, `.11.9.1.6` (class 3), class 4 (`.11.40`, `.11.4.7.2.1.1`, CI leaves: a push, the director's call). The broad run is due at the next code leaf. |
+| 1a | `SIGNOFF-REPAIR.11.40` | `done` | ✅ REPAIR-0553 — the ownership gate now sees a commit that only deletes or renames code or changes a migration or a git hook; it asks the acceptance gate for ONE definition of code, read from the index, and its unused bypass is gone. RED in a throwaway index; 10 hand mutants caught; no commit of 1007 ever used the gap. Opened `.11.44` (LIVE_STATUS's stale corrective-review row). |
+| 1a | `SIGNOFF-REPAIR.11.9.1.4.1` | `done` | ✅ DOC-0194 — tranche 5 split three ways by narrowest candidate; 5a reconciled: 51 clauses (24 handled, 26 unowned, 1 declined). Opened `.11.45`–`.11.52`: six blocking, `.11.50` class 1 (an IPv6 redirect is not classified), two deferred. |
+| 1 | `SIGNOFF-REPAIR.11.9.1.4.2` | `pending` | ⚖️ blocking, class 3 — tranche 5b: 7 records, evidence gathered. Then 5c (`.11.9.1.4.3`). Then the blocking leaves by class: `.11.50` (class 1) first, then class 2 (`.11.45`, `.11.48`), then class 3, with `.11.9.1.5`, `.11.9.1.6` and `.11.44`; class 4 last (`.11.4.7.2.1.1`, the CI leaves: a push, the director's call). |
 | 3 | `SIGNOFF-REPAIR.11.26` | `pending` | ⚖️ deferred on its next occurrence (DOC-0162). 120-run hunt 2026-09-24: 0 failures (0 in 299 since the instrument). ⚖️ `.4.4` is COMPLETE (REPAIR-0459…0482, DOC-0153…0155); this row is next by the table's order. ⏳ **CAUGHT — and it is the same defect as `.11.2.7`, which has been open five days.** 🔴 `Ran 73 tests in 375.967s` / **`FAILED (errors=9)`** against a normal ~21 s, and the per-phase instrument localizes every one: **8 of 8 stall in the `download` phase**, `started` at 15,239–15,251 ms where it normally costs 144–209 ms, with `version` and `command` never reached. ⭐ That phase runs **no network** — a stubbed `curl` copying a local file — so the 15 s is spent STARTING a small fresh child. ⛔ **The candidate was then produced deliberately and REFUTED**: a fresh 191 MB signed bundle extracted immediately before the suite gave **21.314 s, 73 OK** with `syspolicyd` at 66–81 %, so the daemon’s load joins *the machine was busy* as a withdrawn explanation. ⚠ Swap read the identical **5,719 MB** in the failing and the passing run. Ownership of `.11.2.7` consolidates here |
 | 1a | `SIGNOFF-REPAIR.11.26.2` | `done` | ✅ REPAIR-0381 — **this batch's own findings graded: 11 claims, 8 exact, 2 moved, 1 unverifiable.** ⭐ Held exactly by DIFFERENT routes: the population (raw shell vs the Python census), the census movement **62/2/40 → 101/1/2** (today's instrument replayed over past trees via `git show`), **21 coarse vs 14 per-route** and the seven partly-described families by name, every schema claim table-by-table, and both `git grep` named instances. 🔴 **WRONG: *24 timing records … nothing stalled*** — the log is APPEND-mode, 24 is the file's total across three runs, this run wrote **8**, and eight of the 24 are the 2026-09-20 stall. `CLAIM_VERIFICATION` §6's *a claim about an item, evidenced by its container*. 🔴 **UNVERIFIABLE: `.11.26`'s 240-invocation distribution** — its artefact is untracked and replaced; a leg-3 breach, and the CARRIED figure again. ✅ But the capture itself re-derives to the millisecond, so the leaf's conclusion survives its arithmetic. 🔴 MOVED: the gate price 0.16 s → **0.27–0.35 s**, decision unchanged |
 | 1a | `SIGNOFF-REPAIR.11.25.1` | `done` | ✅ REPAIR-0323 — **the holder is two `chrome_crashpad_handler` OUTSIDE the owned process group**, named by KERNEL PIPE IDENTITY: a render’s stderr pipe has **12 holders at fd 2**, 10 in the group `stop_process` kills and 2 double-forked to `ppid 1` with a process group each — so `kill_process_group` cannot reach them by construction. ✅ **The positive control PASSES** (45 of 46 mid-render samples resolve the pipe; `pgrep` returns 11–12), so `.11.25.1.1`’s *both are blind on this host* is annotated while its withdrawal stands. 🔴 **And the hold does NOT reproduce — 22 runs across four render durations, drain 0–1 ms, none censored** — while the control that opened `.11.25` now passes **18/0** with no predicate changed since it failed. ⛔ **No product change**: 7 launch flags suppress nothing, the handle is inherited before any code of ours runs, and there is nothing to bound. ✅ `scripts/measure_browser_stderr_holder.py` ships as the tracked producer, reporting `positive_control: blind` rather than an absence it cannot license |

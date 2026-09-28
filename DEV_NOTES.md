@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-28 — Tranche 5a: 51 clauses; an IPv6 redirect escapes the destination check (`SIGNOFF-REPAIR.11.9.1.4.1`)
+
+`REASONBRAID-DOC-0194`.
+
+- 🔍 **Census:** `.11.9.1.4` split three ways by narrowest candidate (`.5.3` 10 records, `.7.3` 7, `.2.2` 5). 5a: 24 handled, 26 unowned, 1 declined; evidence gathered by three read-only passes, every live clause re-read by hand.
+- 🔴 **Opened:** `.11.50` (class 1/3: `git.rs` hop policy parses `host_str()`, bracketed for IPv6, so an IPv6 literal hop is unclassified and hyper-util dials it; `classify_v6` default-public), `.11.45` (cards: claimed confidence verbatim, origin unauthenticated, schema control rung-blind), `.11.46` (presence raw `role_id` vs "network pseudonym"), `.11.47` (close by name), `.11.48` (run → current incarnation; unusable results acked), `.11.52` (lost-machine replay without `allow_possible_duplicate`); deferred `.11.49` (quota denial rows), `.11.51` (R1 file walk).
+
 ## 2026-09-28 — The ownership gate sees D, R, migrations and hooks; one code definition (`SIGNOFF-REPAIR.11.40`)
 
 `REASONBRAID-REPAIR-0553`.

@@ -438,13 +438,23 @@ reader's own — to every tenant's candidate, which this paragraph described as
 the design. The presence listing reads each other tenant at the **same** class,
 from the same code (`SIGNOFF-REPAIR.5.1.6`): until then it split own tenant
 from every other correctly but read all the others at `Network`, so a partner
-under an effective directory agreement saw the pseudonym there and the tenant
-view in the match.
+under an effective directory agreement saw the network view there and the
+tenant view in the match.
 
 This differs from `GET /v1/nodes/presence`, which answers about one *named* node
 and is therefore bound to the caller's own tenant: there, a foreign answer would
 be an existence oracle. Set-valued directory questions and identity-valued
 presence questions are bounded differently, and on purpose.
+
+**The network view names each role by its own id.** An entry another tenant
+reads carries the role's `role_id`, and its `node_id` when the two are the same:
+a stable identifier, not a pseudonym, although this book used to call the view
+*the network pseudonym*. Knowing the id takes that tenant no further, measured
+(`SIGNOFF-REPAIR.11.46`): inviting the role is refused (`400`, it is not a role
+enrolled in that tenant), its node presence by id answers `404`, its profile
+read by id is the same network view, and exporting its card is `403`.
+Identifiers that are pseudonymous toward other tenants, which the roadmap's
+directory design allows for, are not built (`.11.46.1`).
 
 ### The policy registry: one name, two subjects
 

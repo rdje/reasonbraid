@@ -2302,7 +2302,7 @@ async fn accept_federation_agreement(
 }
 
 /// `POST /v1/federation-agreements/revoke` — revoke this tenant's
-/// direction (the fallback: the network pseudonym).
+/// direction (the fallback: the network view).
 async fn revoke_federation_agreement(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -7331,7 +7331,7 @@ async fn directory_match(
     // reader's own tenant reads at `own_class`; a tenant holding the effective
     // directory agreement with the reader's reads at the tenant view (the
     // opt-in `classify_reader` honours); every other tenant at the network
-    // pseudonym. A candidate is judged, ranked and rendered at the LOWER of
+    // view. A candidate is judged, ranked and rendered at the LOWER of
     // the expression's scope and that class — so a foreign tenant-only claim
     // neither satisfies a requirement nor appears in the answer.
     let mut class_by_tenant: std::collections::HashMap<String, crate::profiles::ReaderClass> =
@@ -7463,7 +7463,7 @@ async fn directory_match(
 /// of their own tenant's nodes; a tenant member reads the TENANT-filtered
 /// fields; every enrolled principal reads the other tenants at the class the
 /// match reads them at — the tenant view under the effective directory
-/// agreement, the network pseudonym otherwise (`SIGNOFF-REPAIR.5.1.6`) — and a
+/// agreement, the network view otherwise (`SIGNOFF-REPAIR.5.1.6`) — and a
 /// profile whose view at that class is empty contributes NOTHING, not even a
 /// count. The `.1.3` filter is the field-level engine.
 async fn directory_presence(
@@ -7502,7 +7502,7 @@ async fn directory_presence(
     let mut network_nodes = Vec::new();
     // Another tenant's entries are read at the class the match reads them at
     // (`SIGNOFF-REPAIR.5.1.6`): the tenant view under the effective directory
-    // agreement, the network pseudonym otherwise. Until this repair every other
+    // agreement, the network view otherwise. Until this repair every other
     // tenant was read at `Network`, agreement or not.
     let mut class_by_tenant: std::collections::HashMap<String, crate::profiles::ReaderClass> =
         std::collections::HashMap::new();
@@ -7817,7 +7817,7 @@ async fn classify_reader(
     // tenant holds the EFFECTIVE (both-sides accepted) directory-visibility
     // agreement with the profile's tenant reads the TENANT view — the
     // explicit opt-in; no agreement (or a revoked/one-sided one) stays the
-    // network pseudonym. The widening never widens beyond the tenant view.
+    // network view. The widening never widens beyond the tenant view.
     if crate::federation::has_effective_directory_agreement(pool, &reader_tenant, &role_tenant)
         .await?
     {

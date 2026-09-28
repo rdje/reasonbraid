@@ -2,7 +2,7 @@
 //! NAMED tenant-to-tenant pairing — the single capability source. The
 //! pairing is BOTH-SIDES: each side records its own row; the EFFECTIVE
 //! agreement is the pair of `accepted` rows. A one-sided proposal widens
-//! nothing; a revocation falls back to the network pseudonym.
+//! nothing; a revocation falls back to the network view.
 //!
 //! ⛔ **The WRITERS are not here.** `authority::federation_admin` owns the three
 //! direction verbs — propose, accept and revoke — each as ONE transaction under

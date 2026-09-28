@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-28 — The network view names roles by their ids; the book stops calling it a pseudonym (`SIGNOFF-REPAIR.11.46`)
+
+`REASONBRAID-REPAIR-0564`.
+
+- 🔍 **Measured:** a foreign tenant holding a role id: invite 400, presence 404, profile 200 at the network view, card 403 — no reach beyond the listing, so class 3 only. The profile leg's unfiltered mutant caught.
+- ✅ **Narrowed:** "network pseudonym" → "network view" in the book, code and test comments; `.11.46.1` deferred (per-reader pseudonyms).
+
 ## 2026-09-28 — R2 reads RSS 2.0; a nested archive is known by its content (`SIGNOFF-REPAIR.11.54`)
 
 `REASONBRAID-REPAIR-0563`.

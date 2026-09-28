@@ -2,7 +2,7 @@
 //! 0048): the NAMED tenant-to-tenant pairing is the single capability
 //! source. Measured:
 //!   - WITHOUT an agreement, a cross-tenant reader sees the NETWORK view
-//!     (the pseudonym class — the tenant fields ABSENT);
+//!     (the network view — the tenant fields ABSENT);
 //!   - a ONE-SIDED proposal widens nothing;
 //!   - the BOTH-SIDES accepted agreement widens the visibility to the
 //!     TENANT view (the agreed scope — exactly what the agreement names);
@@ -410,7 +410,7 @@ async fn the_agreement_widens_the_visibility_and_never_transitively() {
     assert_eq!(
         stranger_view["visibility"],
         json!("network"),
-        "no agreement, no widening — C sees the pseudonym only"
+        "no agreement, no widening — C sees the network view only"
     );
 }
 

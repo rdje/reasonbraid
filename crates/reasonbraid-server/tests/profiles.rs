@@ -1305,7 +1305,7 @@ async fn the_version_history_stays_full_only() {
 /// THE `.3.2.3` acceptance, measured: the SAME directory read by the owner, a
 /// tenant member, and a stranger yields the allowed shapes — the owner sees
 /// the FULL own-tenant fields, the member the TENANT-filtered fields, every
-/// enrolled principal the network pseudonyms, and a zero-visibility profile
+/// enrolled principal the network views, and a zero-visibility profile
 /// contributes nothing at all (not even a count).
 #[tokio::test]
 async fn the_directory_reads_yield_the_allowed_shapes_per_reader() {
@@ -1439,7 +1439,7 @@ async fn the_directory_reads_yield_the_allowed_shapes_per_reader() {
     };
 
     // THE OWNER: the FULL own-tenant fields (the self-only resource_ceilings
-    // ride the owner's view) + the network pseudonyms.
+    // ride the owner's view) + the network views.
     let owners = read_directory(owner_a_id.clone()).await;
     assert_eq!(owners["own_tenant"]["tenant_id"], json!(tenant_a));
     let own_nodes = owners["own_tenant"]["nodes"].as_array().unwrap();
@@ -1495,7 +1495,7 @@ async fn the_directory_reads_yield_the_allowed_shapes_per_reader() {
         "the member's view ABSENTS the self-only fields: {member_fields:?}"
     );
 
-    // THE STRANGER: their own tenant's view + A's network pseudonyms.
+    // THE STRANGER: their own tenant's view + A's network views.
     let strangers = read_directory(owner_b_id.clone()).await;
     assert_eq!(strangers["own_tenant"]["tenant_id"], json!(tenant_b));
     let stranger_network = strangers["network"]["nodes"].as_array().unwrap();
@@ -1505,7 +1505,7 @@ async fn the_directory_reads_yield_the_allowed_shapes_per_reader() {
         .collect();
     assert!(
         stranger_ids.contains(&role_a_id.as_str()),
-        "the stranger sees A's network pseudonym: {stranger_ids:?}"
+        "the stranger sees A's network view: {stranger_ids:?}"
     );
     assert!(
         !stranger_ids.contains(&role_c_id.as_str()),
@@ -3939,7 +3939,7 @@ async fn the_match_surface_classifies_each_candidate_by_its_own_tenant() {
 }
 
 /// `SIGNOFF-REPAIR.5.1.6` — the presence listing classifies another tenant's
-/// entries exactly as the match does: the network pseudonym by default, the
+/// entries exactly as the match does: the network view by default, the
 /// tenant view once the effective directory-visibility agreement stands. As
 /// found the listing read every other tenant at `Network`, agreement or not,
 /// while the match (REPAIR-0438) and the book widened it.
@@ -3997,7 +3997,7 @@ async fn the_presence_listing_widens_to_the_tenant_view_under_a_directory_agreem
         }
     };
 
-    // No agreement: the network pseudonym — B's tenant-visible `scopes` absent.
+    // No agreement: the network view — B's tenant-visible `scopes` absent.
     let entry = b_entry().await;
     assert!(entry["profile"].get("display_label").is_some(), "{entry}");
     assert!(entry["profile"].get("scopes").is_none(), "{entry}");
@@ -4029,6 +4029,125 @@ async fn the_presence_listing_widens_to_the_tenant_view_under_a_directory_agreem
         entry["profile"].get("resource_ceilings").is_none(),
         "the widening never goes past the tenant view: {entry}"
     );
+}
+
+/// `SIGNOFF-REPAIR.11.46` — what another tenant can do with a role id it reads
+/// in the presence listing. The book called that view *"the network
+/// pseudonym"*, and it carries the role's own `role_id`. This measures the
+/// question the name raises: knowing the id, can tenant A reach B's role any
+/// further than the listing already shows? A invites it, reads its presence by
+/// id, reads its profile and asks for its card; each must stay at the network
+/// view or be refused.
+#[tokio::test]
+async fn a_role_id_read_in_the_presence_listing_reaches_no_further_than_it() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let world = call_world(&client, &base, "id-reach", 1).await;
+    let (status, owner_b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "id-reach-b" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{owner_b}");
+    let owner_b_id = owner_b["principal_id"].as_str().unwrap().to_string();
+    let tenant_b = owner_b["tenant_id"].as_str().unwrap().to_string();
+    let (status, role_b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "id-reach-role", "tenant_id": tenant_b }),
+    )
+    .await;
+    assert_eq!(status, 200, "{role_b}");
+    let role_b = role_b["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &owner_b_id, &tenant_b, &role_b).await;
+    let (status, written) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_b}"),
+        &role_b,
+        &visibility_profile(),
+    )
+    .await;
+    assert_eq!(status, 200, "{written}");
+
+    // A's owner reads the listing, and B's role is there by its own id.
+    let (status, listed) = get(&client, &base, "/v1/directory/presence", &world.human_id).await;
+    assert_eq!(status, 200, "{listed}");
+    let entry = listed["network"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["role_id"] == json!(role_b))
+        .cloned()
+        .unwrap_or_else(|| panic!("B's role is listed by its id: {listed}"));
+    let mut failures = Vec::new();
+
+    // 1. The id does not invite: B's role is not enrolled in A's tenant.
+    let (status, invited) = thread_command(
+        &client,
+        &base,
+        &world.thread_id,
+        &world.human_id,
+        "id-reach-invite",
+        "thread.invite",
+        json!({ "tenant_id": world.tenant, "agent_role": role_b }),
+    )
+    .await;
+    eprintln!("probe 1, invite by id: {status}");
+    if status == 200 {
+        failures.push(format!("1: A invited B's role by its id: {invited}"));
+    }
+    // 2. The id does not read presence: that route answers for one's own tenant.
+    let (status, presence) = get(
+        &client,
+        &base,
+        &format!("/v1/nodes/presence?node_id={role_b}"),
+        &world.human_id,
+    )
+    .await;
+    eprintln!("probe 2, presence by id: {status}");
+    if status == 200 {
+        failures.push(format!("2: A read B's node presence by id: {presence}"));
+    }
+    // 3. The id reads no more of the profile than the listing showed.
+    let (status, profile) = get(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_b}"),
+        &world.human_id,
+    )
+    .await;
+    eprintln!("probe 3, profile by id: {status}");
+    if status == 200 {
+        let read = profile.get("profile").unwrap_or(&profile);
+        for field in ["scopes", "resource_ceilings"] {
+            if read.get(field).is_some() {
+                failures.push(format!("3: A read B's `{field}` by id: {profile}"));
+            }
+        }
+    }
+    assert!(
+        entry["profile"].get("scopes").is_none(),
+        "the listing itself is the network view: {entry}"
+    );
+    // 4. The id does not export the card: only the full class does.
+    let (status, card) = get(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_b}/card"),
+        &world.human_id,
+    )
+    .await;
+    eprintln!("probe 4, card by id: {status}");
+    if status == 200 {
+        failures.push(format!("4: A exported B's card by id: {card}"));
+    }
+    eprintln!("a role id's reach: {} failures", failures.len());
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
 /// `SIGNOFF-REPAIR.11.4.7.2.1.5.4.3` — §4.2's `conditions[]` have a vocabulary:

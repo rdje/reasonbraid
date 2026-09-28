@@ -1449,7 +1449,7 @@ this returns what this deployment recorded, never the counterparty's own trail.
 A federation agreement is **both-sides**: each tenant records its own direction
 row, and the agreement is EFFECTIVE only when both are `accepted` and both carry
 the capability in question. A one-sided proposal widens nothing, and a revoked
-direction falls back to the network pseudonym.
+direction falls back to the network view.
 
 ```text
 POST /v1/federation-agreements           propose a direction, or change its terms

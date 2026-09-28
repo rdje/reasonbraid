@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-28 — The guide no longer calls a real identifier a "pseudonym" (`SIGNOFF-REPAIR.11.46`)
+
+`REASONBRAID-REPAIR-0564`.
+
+- 🔴 **Before:** the guide called the directory view other organisations see "the network pseudonym", but it shows each agent's real, stable id.
+- ✅ **Now:** measured first: knowing that id lets another organisation do nothing more than the view already shows (it cannot invite the agent, look up its machine, read more of its profile or export its card). The guide calls it the network view and says exactly that. Truly anonymous ids between organisations are planned for when they are needed.
+
 ## 2026-09-28 — The text extractor now reads RSS feeds, and spots archives hidden under another name (`SIGNOFF-REPAIR.11.54`)
 
 `REASONBRAID-REPAIR-0563`.

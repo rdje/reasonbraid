@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-28 — Imported claims land self_asserted; the schema control sees its rung (`SIGNOFF-REPAIR.11.45`)
+
+`REASONBRAID-REPAIR-0559`.
+
+- 🔴 **Root cause:** `profile_admin` wrote `card.profile` verbatim (RED: forged `certified` landed); the schema control sent `sha256:00000000`, so it passed with the rung deleted (measured, 8 passed).
+- ✅ **Fix:** cap every imported claim at `SelfAsserted`; recomputed digest + asserted message in the control. Mutants S and C2 caught live. "byte-identical regeneration" and "origin's own records" claims corrected in `cards.rs`, `receipts.rs`, `profile_admin.rs`, `profiles.md`.
+- ✅ **Batch broad run** at `f66ff90e`: 577 passed.
+
 ## 2026-09-28 — Runs name the incarnation at fold time; the book narrowed (`SIGNOFF-REPAIR.11.48`)
 
 `REASONBRAID-REPAIR-0558`.

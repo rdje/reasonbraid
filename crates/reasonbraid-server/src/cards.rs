@@ -29,8 +29,11 @@ pub enum CardExecution {
 
 /// The portable card: the origin identity + the §10.1 profile + the
 /// capability declaration (the profile's capabilities). The canonical
-/// form is the struct's field order — the byte-identical regeneration
-/// contract.
+/// form is the struct's field order, so re-serialising a card yields its
+/// bytes again and its digest re-derives. ⚠️ Two EXPORTS of an unchanged
+/// profile are two cards with two digests: each carries its own
+/// `exported_at` (`SIGNOFF-REPAIR.11.45`; this comment used to promise a
+/// "byte-identical regeneration contract").
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct AgentCard {
@@ -86,7 +89,7 @@ impl std::error::Error for CardError {
     }
 }
 
-/// The canonical bytes (the byte-identical regeneration contract).
+/// The canonical bytes of THIS card; its digest re-derives from them.
 pub fn canonical_bytes(card: &AgentCard) -> Result<Vec<u8>, serde_json::Error> {
     serde_json::to_vec(card)
 }

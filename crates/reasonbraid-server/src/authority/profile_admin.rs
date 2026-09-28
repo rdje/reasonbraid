@@ -699,9 +699,10 @@ async fn import_after_admission(
         )));
     }
     // The cross-domain receipt (`.1.4`, ADR-026): the remote reference is the
-    // card's digest as the CALLER presented it — it is what that domain's own
-    // record is addressed by — and the local reference is the fresh role. The
-    // receipt CROSS-REFERENCES; it never merges the chains.
+    // card's digest as the CALLER presented it, and the local reference is the
+    // fresh role. The receipt CROSS-REFERENCES; it never merges the chains.
+    // ⚠️ The origin keeps no record of the cards it mints, so the digest names
+    // this card and nothing the origin can look up (`SIGNOFF-REPAIR.11.45`).
     crate::receipts::record_in_tx(
         &mut *conn,
         &importing,
@@ -715,7 +716,21 @@ async fn import_after_admission(
     // route committed everything above and then wrote the profile on the pool, so
     // a failure here left an imported role with a grant, a quota and a receipt and
     // no profile at all.
-    crate::profiles::write_profile_in_tx(&mut *conn, &role_id, &role_id, &card.profile, at).await?;
+    //
+    // 🔴 `SIGNOFF-REPAIR.11.45`: AN IMPORT CANNOT ATTEST. A role's own profile
+    // write may declare only `self_asserted` (§10.1: the provenance is shown,
+    // never self-granted), and this wrote the card's claims verbatim. A card is
+    // authenticated by nothing but a digest of its own bytes, which whoever
+    // assembles it computes, so an administrator under an agreement landed
+    // `certified` claims no certifier issued, and `matching` ranks by that level
+    // (measured: a forged card's claim read `certified`). Every imported claim
+    // lands `self_asserted`; this tenant's owner can attest it here as for any
+    // role of its own.
+    let mut profile = card.profile.clone();
+    for claim in &mut profile.capabilities {
+        claim.confidence = crate::profiles::ClaimConfidence::SelfAsserted;
+    }
+    crate::profiles::write_profile_in_tx(&mut *conn, &role_id, &role_id, &profile, at).await?;
 
     Ok(CardImportResult::Imported {
         role_id,

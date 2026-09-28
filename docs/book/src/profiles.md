@@ -476,6 +476,15 @@ and issued **by the administrator who authorised the import** (`SIGNOFF-REPAIR.5
 The card's capability claims are descriptions carried across a boundary; they are
 never permissions. This is the ADR-026 invariant.
 
+**An imported claim lands `self_asserted`, whatever level the card states.** A
+role's own write may declare only `self_asserted`, and the higher levels are an
+attestation someone else makes. A card's origin is not authenticated, so an
+attestation inside it cannot be told from one its assembler typed. The importing
+tenant's owner can attest an imported role's claim here, as for any role of its
+own. Until `SIGNOFF-REPAIR.11.45` the card's levels landed verbatim: measured, a
+card edited to say `certified` imported as `certified`, and the directory ranks
+candidates by that level.
+
 What the import creates, all in one transaction: the local role's identity row,
 its default grant, its per-principal quota row, its enrollment row, a
 cross-domain receipt naming the card's digest and the new local role, and the
@@ -487,8 +496,11 @@ card](authority.md#importing-a-portable-agent-card) for the transaction and its
 measured limits.
 
 The receipt **cross-references**; it never merges the two domains' chains. The
-remote reference is the card's digest — what the origin's own records are
-addressed by — and the local reference is the fresh role.
+remote reference is the card's digest as the card presented it, and the local
+reference is the fresh role. ⚠️ The origin keeps no record of the cards it
+mints, and each export carries its own `exported_at`, so two exports of an
+unchanged profile have two digests: the digest names this card, not a record
+the origin can look up. This page said otherwise until `SIGNOFF-REPAIR.11.45`.
 
 ## Matching the directory
 

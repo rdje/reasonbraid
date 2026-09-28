@@ -1,9 +1,13 @@
 //! The cross-domain audit receipts (`PHASE-8.1.4`, ADR-026): the
 //! cross-domain actions record a RECEIPT — the remote domain's own
 //! digest-pinned reference + the local record it attached to. The
-//! receipts CROSS-REFERENCE, never merge: the remote reference is
-//! verifiable against the REMOTE domain's records; the local chain stays
-//! the local truth (the ADR-022 groundwork's federation form).
+//! receipts CROSS-REFERENCE, never merge: the local chain stays the local
+//! truth (the ADR-022 groundwork's federation form). ⚠️ The remote reference is
+//! what the remote side presented, and whether the remote domain keeps a
+//! record it addresses depends on the kind: an agreement's is the
+//! counterparty's `terms_digest`, which it stores; a card import's is the
+//! card's digest, and the origin keeps no record of the cards it mints
+//! (`SIGNOFF-REPAIR.11.45`).
 
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;

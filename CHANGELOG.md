@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-28 — An imported agent card can no longer claim skills nobody certified (`SIGNOFF-REPAIR.11.45`)
+
+`REASONBRAID-REPAIR-0559`.
+
+- 🔴 **Before:** a card brought in from a partner tenant kept whatever trust level its claims stated. Measured: a card edited to say `certified` was imported as certified, and the directory ranks by that level. The test meant to check card versions also passed with that check deleted.
+- ✅ **Now:** imported claims start at the lowest level, as a role's own do, and the importing tenant's owner can vouch for them. The test now fails if the version check is removed. The guide corrects a sentence that said the origin keeps a record of its cards; it does not.
+
 ## 2026-09-28 — The guide now says exactly which machine a recorded run is credited to (`SIGNOFF-REPAIR.11.48`)
 
 `REASONBRAID-REPAIR-0558`.

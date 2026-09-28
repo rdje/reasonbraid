@@ -336,17 +336,31 @@ async fn the_card_import_runs_the_ladder_and_lands_the_local_role() {
     assert_eq!(status, 400, "the tampered card refuses: {refused}");
 
     // 5. The unsupported schema refuses at the compatibility rung.
+    // ⛔ `SIGNOFF-REPAIR.11.45`: this sent `sha256:00000000` and asserted only
+    // `400`, which the DIGEST rung also answers, so it passed with the schema
+    // rung deleted (measured). The digest is recomputed over the wrong-schema
+    // card, so only the schema rung can refuse, and its own message is asserted.
     let mut wrong_schema = card.clone();
     wrong_schema["schema_version"] = json!("agent-card/99");
+    let typed: reasonbraid_server::cards::AgentCard =
+        serde_json::from_value(wrong_schema.clone()).expect("still a card");
+    let wrong_digest = reasonbraid_server::cards::digest_of(&typed).expect("its digest");
     let (status, refused) = post(
         &client,
         &base,
         "/v1/profiles/cards/import",
         &b_admin,
-        &import_body(wrong_schema, "sha256:00000000"),
+        &import_body(wrong_schema, &wrong_digest),
     )
     .await;
     assert_eq!(status, 400, "the unknown schema refuses: {refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("the card schema `agent-card/99` is outside agent-card/1"),
+        "and it is the schema rung that refuses: {refused}"
+    );
 
     // A failed grant INSERT is a storage failure, with no imported identity,
     // grant, quota, enrollment, profile or cross-domain receipt left behind.
@@ -1780,4 +1794,128 @@ impl Holder {
             .expect("the holder finishes")
             .expect("the holder's task joins");
     }
+}
+
+/// 🔴 `SIGNOFF-REPAIR.11.45` — an imported claim's confidence. A role's own
+/// profile write may declare only `self_asserted`: the higher levels are an
+/// owner's attestation or better, never self-granted (§10.1). The import wrote
+/// `card.profile` verbatim, and a card is authenticated by nothing but a digest
+/// of its own bytes, which its assembler computes, so an importing
+/// administrator under an agreement could land `certified` claims no certifier
+/// issued. The forged card here is the origin's own export with one claim
+/// raised and its digest recomputed, exactly what any holder of a card can do.
+#[tokio::test]
+async fn an_imported_claim_lands_self_asserted_whatever_the_card_says() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+
+    let (status, human_a) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "forge-a" }),
+    )
+    .await;
+    assert_eq!(status, 200, "A enrolls: {human_a}");
+    let a_admin = human_a["principal_id"].as_str().unwrap().to_string();
+    let tenant_a = human_a["tenant_id"].as_str().unwrap().to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "forge-role", "tenant_id": tenant_a }),
+    )
+    .await;
+    assert_eq!(status, 200, "the role enrolls: {role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    let (status, written) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &role_id,
+        &sample_profile(),
+    )
+    .await;
+    assert_eq!(status, 200, "the profile writes: {written}");
+    let (status, human_b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "forge-b" }),
+    )
+    .await;
+    assert_eq!(status, 200, "B enrolls: {human_b}");
+    let b_admin = human_b["principal_id"].as_str().unwrap().to_string();
+    let tenant_b = human_b["tenant_id"].as_str().unwrap().to_string();
+    for (admin, tenant, remote) in [
+        (&a_admin, &tenant_a, &tenant_b),
+        (&b_admin, &tenant_b, &tenant_a),
+    ] {
+        let (status, proposed) = post(
+            &client,
+            &base,
+            "/v1/federation-agreements",
+            admin,
+            &json!({
+                "tenant_id": tenant,
+                "remote_tenant_id": remote,
+                "directory_visibility": false,
+                "recruitment": true,
+            }),
+        )
+        .await;
+        assert_eq!(status, 200, "the propose: {proposed}");
+    }
+    for (admin, tenant, remote) in [
+        (&a_admin, &tenant_a, &tenant_b),
+        (&b_admin, &tenant_b, &tenant_a),
+    ] {
+        let (status, accepted) = post(
+            &client,
+            &base,
+            "/v1/federation-agreements/accept",
+            admin,
+            &json!({ "tenant_id": tenant, "remote_tenant_id": remote }),
+        )
+        .await;
+        assert_eq!(status, 200, "the accept: {accepted}");
+    }
+
+    let (status, exported) = get(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}/card"),
+        &role_id,
+    )
+    .await;
+    assert_eq!(status, 200, "the card exports: {exported}");
+    let mut forged = exported["card"].clone();
+    forged["profile"]["capabilities"][0]["confidence"] = json!("certified");
+    let typed: reasonbraid_server::cards::AgentCard =
+        serde_json::from_value(forged.clone()).expect("the forged card is a card");
+    let digest = reasonbraid_server::cards::digest_of(&typed).expect("its digest");
+    let (status, imported) = post(
+        &client,
+        &base,
+        "/v1/profiles/cards/import",
+        &b_admin,
+        &json!({ "tenant_id": tenant_b, "card": forged, "digest": digest }),
+    )
+    .await;
+    assert_eq!(status, 200, "the forged card imports: {imported}");
+    let local = imported["role_id"]
+        .as_str()
+        .expect("the local role")
+        .to_string();
+    let (status, profile) = get(&client, &base, &format!("/v1/profiles/{local}"), &b_admin).await;
+    assert_eq!(status, 200, "the imported profile reads: {profile}");
+    let confidence = profile["capabilities"][0]["confidence"]
+        .as_str()
+        .or_else(|| profile["profile"]["capabilities"][0]["confidence"].as_str())
+        .unwrap_or_default()
+        .to_string();
+    assert_eq!(
+        confidence, "self_asserted",
+        "the card said `certified`, and an import cannot attest: {profile}"
+    );
 }

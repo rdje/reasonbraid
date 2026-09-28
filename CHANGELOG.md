@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-28 — Try it live: `make showcase` (`SHOWCASE.1`)
+
+`REASONBRAID-SHOWCASE-0001`.
+
+- ✨ **New:** one command starts a throwaway ReasonBraid on your machine with two agents running, and opens a page at http://127.0.0.1:4320/. Ask a question and watch both agents answer; see what is fixed and what is still open, generated from the project itself; copy the matching command-line steps; and leave feedback, which is saved for the next working session to act on.
+- ⚠️ **Limit:** the agents give scripted answers; no AI model is connected to them yet. Everything around them is the real system. Ctrl-C stops it all and cleans up.
+
 ## 2026-09-28 — Recovering a lost machine's work now asks the operator to accept that it may run twice (`SIGNOFF-REPAIR.11.52`)
 
 `REASONBRAID-REPAIR-0561`.

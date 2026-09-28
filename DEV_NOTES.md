@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-28 — `make showcase`: live system, answering agents, page, status CLI, feedback file (`SHOWCASE.1`)
+
+`REASONBRAID-SHOWCASE-0001`.
+
+- ✅ `scripts/showcase.py` (`up` | `status` | `--self-test`): ephemeral PG under `target/showcase/`, rb-server :4310, two fake-adapter rb-nodes, loopback page :4320 (ask via the CLI, derived progress, evidence links, feedback → `target/showcase/feedback.jsonl`). Skips its cargo build while another runs.
+- 🔴 **Its own first run failed:** tokens bound to `showcase-host`, nodes presenting `dev-host` → agents exited unseen; now `--host-claim` matches, the start waits for "enrolled", the page shows agent state. ⚠️ SIGINT from a non-interactive background start is inherited ignored; the script installs `default_int_handler`.
+
 ## 2026-09-28 — A replay of an earlier incarnation's work needs the possible-duplicate authorization (`SIGNOFF-REPAIR.11.52`)
 
 `REASONBRAID-REPAIR-0561`.

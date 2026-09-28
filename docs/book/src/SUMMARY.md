@@ -26,6 +26,7 @@
   - [CLI local state and recovery](cli-state.md)
     - [Bootstrap recovery records](cli-bootstrap-state.md)
 - [The web console](web-ui.md)
+- [Try it live: the showcase](showcase.md)
 - [Deployment — local and LAN](deployment.md)
 - [The two-host demonstration](two-host-demo.md)
 - [The deliberation benchmark](benchmark.md)

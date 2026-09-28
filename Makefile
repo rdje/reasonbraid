@@ -2,7 +2,7 @@
 SHELL := /usr/bin/env bash
 PROJECT_RUN := python3 -B scripts/project_env.py
 
-.PHONY: help gate check fmt clippy test deny secret-scan book demo dev release hooks bootstrap update-scaffold
+.PHONY: help gate check fmt clippy test deny secret-scan book demo dev showcase release hooks bootstrap update-scaffold
 
 help:
 	@echo "make gate            - run the doctrine enforcer (scripts/check_doctrines.sh)"
@@ -15,6 +15,7 @@ help:
 	@echo "make book            - build the mdBook (requires mdbook)"
 	@echo "make demo            - the two-host crash/reconnect demo (ephemeral PG + evidence bundle)"
 	@echo "make dev             - one-command dev environment: ephemeral PG + rb-server (Ctrl-C cleans up)"
+	@echo "make showcase        - try it live: two answering agents + a local page (ask, progress, feedback)"
 	@echo "make release         - the four release binaries (target/release/{rb,rb-server,rb-node,rb-journal})"
 	@echo "make hooks           - install the git hooks (core.hooksPath=.githooks)"
 	@echo "make bootstrap       - first-time project bootstrap"
@@ -58,6 +59,12 @@ book:
 # CLI e2e first; the evidence lands under target/demo/<run-id>/.
 demo:
 	RB_DEMO=1 $(PROJECT_RUN) bash scripts/run_pg_tests.sh
+
+# Try it live (SHOWCASE.1, the director's request): a disposable system with two
+# answering agents and a local page to ask, watch progress and leave feedback.
+# Ctrl-C tears everything down. `python3 -B scripts/showcase.py status` needs no server.
+showcase:
+	python3 -B scripts/showcase.py up
 
 # The one-command development environment (PHASE-1.7.1): ephemeral on-volume
 # PostgreSQL + rb-server in the foreground; Ctrl-C tears everything down.

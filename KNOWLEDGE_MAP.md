@@ -29,6 +29,7 @@
 - [`PHASE-9.md`](docs/tasks/PHASE-9.md)
 - [`PROGRAM.md`](docs/tasks/PROGRAM.md)
 - [`RB-SEED.md`](docs/tasks/RB-SEED.md)
+- [`SHOWCASE.md`](docs/tasks/SHOWCASE.md)
 - [`SIGNOFF-REPAIR.md`](docs/tasks/SIGNOFF-REPAIR.md)
 
 ## Decision records
@@ -295,6 +296,7 @@
 
 ## Promoted lessons
 
+- [`a-background-start-can-inherit-sigint-ignored.md`](docs/knowledge/a-background-start-can-inherit-sigint-ignored.md) — why does Ctrl-C not stop my script; why did SIGINT not raise KeyboardInterrupt; how do I make a long-running tool always tear down; why did my stop check leave processes running
 - [`a-census-is-an-instrument-not-a-table.md`](docs/knowledge/a-census-is-an-instrument-not-a-table.md) — how do I make a census someone can re-run; why did my reconciliation just re-read the same source; how do I know two censuses taken months apart are comparable; what should a census script do before it reports anything; how do I stop a lexical code census from over-approximating; how should I record that my measuring instrument was wrong
 - [`a-census-is-as-wide-as-its-key.md`](docs/knowledge/a-census-is-as-wide-as-its-key.md) — my census looked complete and missed a surface — why; how do I know an enumeration covered everything that can reach this object; why did a route census miss an endpoint; how wide is a grep over route definitions; how do I scope a security census so it cannot be silently incomplete
 - [`a-change-no-surface-can-see-needs-a-seam.md`](docs/knowledge/a-change-no-surface-can-see-needs-a-seam.md) — how do I test an optimisation that changes no output; my control passes with and without the repair — what now; where should a control live when the product cannot observe the change; is a database statistics counter a good instrument; how do I falsify an in-handler optimisation

@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-28 — Seven review notes on fetching and extraction checked: two more problems (`SIGNOFF-REPAIR.11.9.1.4.2`)
+
+`REASONBRAID-DOC-0195`.
+
+- 🔍 **Checked:** 33 points from seven review notes about fetching sources and extracting their text; 14 were already fixed or owned by open work, and 13 were added to open work that already covers them.
+- 🔴 **Found:** evidence can be stored under any retention label, and one the expiry sweep does not know is kept for ever, while the guide says evidence expires by its label. And the text-extraction pack says it reads RSS feeds but refuses every one. The guide's qualification page lists both.
+
 ## 2026-09-28 — Ten more old review notes checked: six problems to fix, two to watch (`SIGNOFF-REPAIR.11.9.1.4.1`)
 
 `REASONBRAID-DOC-0194`.

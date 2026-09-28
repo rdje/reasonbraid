@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-28 — Tranche 5b: 33 clauses; retention class unchecked, R2 refuses RSS (`SIGNOFF-REPAIR.11.9.1.4.2`)
+
+`REASONBRAID-DOC-0195`.
+
+- 🔍 **Census:** 7 handled, 7 owned, 13 attach, 5 unowned, 1 none. Attached: the IPv6 hop's record and the dead `numeric_ambiguous` arm to `.11.50`; fetcher latent limits (u8 hops, default port, deflate-as-raw, `text/*` trusted, R1 pre-flight DNS) to `.11.51`; sync `thread::sleep` extraction on the async handler to `.7.3.4`.
+- 🔴 **Opened:** `.11.53` (class 3: `retention_class` free text, sweep knows two; `deleted_at = now()`; bytes kept, unstated) and `.11.54` (class 3: `rss+xml` advertised, Atom parser refuses `<rss>`; nested archive by extension only).
+
 ## 2026-09-28 — Tranche 5a: 51 clauses; an IPv6 redirect escapes the destination check (`SIGNOFF-REPAIR.11.9.1.4.1`)
 
 `REASONBRAID-DOC-0194`.

@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-29 — The status page's summary table no longer lists finished work as remaining (`SIGNOFF-REPAIR.11.44`)
+
+`REASONBRAID-REPAIR-0566`.
+
+- 🔴 **Before:** the table at the top of this page was kept by hand, and eight of its rows had gone stale. One row was a long log of past repairs that still said work "follows" which had finished days earlier. Seven others described repairs as current work in areas where none was left.
+- ✅ **Now:** the table says only what stays true until the review closes, and points to where the moving parts are worked out: a script that lists the open work, the book's qualification page, and the dated entries below. The same commit check that keeps such lists out of the roadmap now refuses them in this table, so it cannot drift again.
+
 ## 2026-09-29 — A commit check no longer fails by chance when a system process exits (`SIGNOFF-REPAIR.11.57`)
 
 `REASONBRAID-REPAIR-0565`.

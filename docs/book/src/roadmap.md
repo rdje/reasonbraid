@@ -186,9 +186,12 @@ carries the same snapshot at the repository root, `docs/tasks/SIGNOFF-REPAIR.md`
 owns the frontier itself, and `docs/tasks/PROGRAM.md` maps the complete frozen
 roadmap to its execution trees.
 `ROADMAP.md` follows the same rule: it states targets, and where the build differs
-from them the qualification page records it. A commit gate refuses a task-tree leaf
-reference in the plan (`PLAN-STATES-TARGETS`), so a progress narrative cannot grow
-back into it.
+from them the qualification page records it. So does the status table at the top of
+`LIVE_STATUS.md`: it states what holds until the corrective review closes and points
+at `scripts/census_open_leaves.py` for the open work, while the dated entries below
+it record each repair. A commit gate refuses a task-tree leaf reference in the plan
+and in that table (`PLAN-STATES-TARGETS`), so a progress narrative cannot grow back
+into either.
 
 The full-read source census and its repair leaves are in
 `docs/tasks/SIGNOFF-REPAIR.md`; the underlying records are in

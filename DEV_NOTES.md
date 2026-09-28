@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-29 — LIVE_STATUS's table names no leaf, and PLAN-STATES-TARGETS refuses one there (`SIGNOFF-REPAIR.11.44`)
+
+`REASONBRAID-REPAIR-0566`.
+
+- 🔴 **Census:** 9 blocking leaves open, all under `.11`; the table was false in 8 rows (the *Corrective review* log and the Phase 0–6 "repairs are `.3`–`.4`" rows). Gate RED on the old table: 9 rows.
+- ✅ **Fix:** the table states standing facts with derived pointers; the gate reads `## Current status` to the next `## `, refuses a missing heading, and gains backticked one-level paths. 5/5 hand mutants caught. Book `roadmap.md` states the rule for both. Opened `.11.58` (deferred): 3 stale `active` parents.
+
 ## 2026-09-29 — A self-test's real-process arm tolerates a listed pid that exits before its probe (`SIGNOFF-REPAIR.11.57`)
 
 `REASONBRAID-REPAIR-0565`.

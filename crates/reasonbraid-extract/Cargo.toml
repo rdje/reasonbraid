@@ -30,8 +30,11 @@ lopdf = "0.44"
 # the initial set — named unsupported).
 zip = { version = "8.6", default-features = false, features = ["deflate"] }
 tar = "0.4"
-# The structured feeds.
+# The structured feeds. Atom through its own crate; RSS 2.0 read directly with
+# quick-xml, which atom_syndication already brings in, so no new crate enters
+# the build (`SIGNOFF-REPAIR.11.54`).
 atom_syndication = "0.12"
+quick-xml = "0.41"
 # The wire protocol + the Derivation digests (the ADR-011 sha256:<hex>
 # scheme the receipts share).
 serde = { version = "1", features = ["derive"] }

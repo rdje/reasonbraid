@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-28 — The text extractor now reads RSS feeds, and spots archives hidden under another name (`SIGNOFF-REPAIR.11.54`)
+
+`REASONBRAID-REPAIR-0563`.
+
+- 🔴 **Before:** the extractor said it could read RSS news feeds, and refused every one. An archive packed inside another archive was caught only if its file name ended in `.zip` or similar; renamed, it slipped through as an unreadable file instead of being refused.
+- ✅ **Now:** RSS feeds are read (the feed's title and description, then each item), and a nested archive is recognised by what is inside it, whatever its name, and refused as the guide says.
+
 ## 2026-09-28 — Stored evidence now always expires on its stated schedule (`SIGNOFF-REPAIR.11.53`)
 
 `REASONBRAID-REPAIR-0562`.

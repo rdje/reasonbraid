@@ -288,6 +288,31 @@ fn is_archive_name(name: &str) -> bool {
         || lower.ends_with(".gz")
 }
 
+/// An archive recognised by its CONTENT (`SIGNOFF-REPAIR.11.54`): the entry name
+/// alone let a nested archive under any other name through as an excluded
+/// binary, where `deployment.md` says R2 refuses one by name. The signatures:
+/// zip, gzip, tar (`ustar` at 257), bzip2 (`BZh[1-9]` then the block magic),
+/// xz and 7z.
+fn is_archive_bytes(data: &[u8]) -> bool {
+    data.starts_with(b"PK\x03\x04")
+        || data.starts_with(b"PK\x05\x06")
+        || data.starts_with(b"PK\x07\x08")
+        || data.starts_with(&[0x1f, 0x8b])
+        || data.get(257..262) == Some(b"ustar".as_slice())
+        || (data.starts_with(b"BZh")
+            && data.get(3).is_some_and(|b| (b'1'..=b'9').contains(b))
+            && data.get(4..10) == Some(b"1AY&SY".as_slice()))
+        || data.starts_with(&[0xfd, b'7', b'z', b'X', b'Z', 0x00])
+        || data.starts_with(&[b'7', b'z', 0xbc, 0xaf, 0x27, 0x1c])
+}
+
+fn nested_by_content(name: &str) -> Refusal {
+    Refusal::new(
+        "nested_archive",
+        format!("the entry `{name}` is an archive by its content (one level, then refused)"),
+    )
+}
+
 fn text_eligible(name: &str, data: &[u8], request: &ExtractRequest) -> bool {
     if is_archive_name(name) {
         return false; // the nested-archive refusal happens at the caller
@@ -366,6 +391,12 @@ fn extract_zip(
                     format!("the zip entry read failed: {e}"),
                 )
             })?;
+        // An archive is named as one before the ratio brake judges it: its
+        // bytes are already read (bounded by `take`), and a tar compresses so
+        // well that the brake would otherwise answer first.
+        if is_archive_bytes(&data) {
+            return Err(nested_by_content(&name));
+        }
         decompression_check(compressed, data.len() as u64, request, &name)?;
         if data.len() as u64 > request.limits.max_entry_bytes {
             return Err(Refusal::new(
@@ -437,6 +468,9 @@ fn extract_tar(
                 ),
             ));
         }
+        if is_archive_bytes(&data) {
+            return Err(nested_by_content(&name));
+        }
         if text_eligible(&name, &data, request) {
             push_chunk(
                 &mut chunks,
@@ -456,6 +490,13 @@ fn extract_feed(
     bytes: &[u8],
     request: &ExtractRequest,
 ) -> Result<(Vec<DerivedChunk>, Vec<String>), Refusal> {
+    // 🔴 `SIGNOFF-REPAIR.11.54`: R2 advertises `application/rss+xml`, and every
+    // feed went to the Atom parser, which refuses an `<rss>` root, so no RSS
+    // feed ever extracted. The document's own root element decides, whichever
+    // of the two types was declared.
+    if root_element(bytes)?.as_deref() == Some(b"rss".as_slice()) {
+        return extract_rss(bytes, request);
+    }
     let feed = atom_syndication::Feed::read_from(bytes)
         .map_err(|e| Refusal::new("feed_unreadable", format!("the feed failed to parse: {e}")))?;
     let mut chunks = Vec::new();
@@ -478,6 +519,116 @@ fn extract_feed(
             }
         }
         push_chunk(&mut chunks, text, request)?;
+    }
+    Ok((chunks, Vec::new()))
+}
+
+fn feed_unreadable(error: impl std::fmt::Display) -> Refusal {
+    Refusal::new(
+        "feed_unreadable",
+        format!("the feed failed to parse: {error}"),
+    )
+}
+
+/// The local name of the document's first element.
+fn root_element(bytes: &[u8]) -> Result<Option<Vec<u8>>, Refusal> {
+    use quick_xml::events::Event;
+    let mut reader = quick_xml::Reader::from_reader(bytes);
+    let mut buf = Vec::new();
+    loop {
+        match reader.read_event_into(&mut buf).map_err(feed_unreadable)? {
+            Event::Start(e) | Event::Empty(e) => return Ok(Some(e.local_name().as_ref().to_vec())),
+            Event::Eof => return Ok(None),
+            _ => buf.clear(),
+        }
+    }
+}
+
+/// RSS 2.0: the channel's title and description, then each item's title and
+/// description, as the Atom path gives a feed's title and each entry's. Text,
+/// CDATA, character references and the five predefined entities are read; any
+/// other entity refuses, since an RSS document declares none of its own.
+fn extract_rss(
+    bytes: &[u8],
+    request: &ExtractRequest,
+) -> Result<(Vec<DerivedChunk>, Vec<String>), Refusal> {
+    use quick_xml::events::Event;
+    let mut reader = quick_xml::Reader::from_reader(bytes);
+    let mut buf = Vec::new();
+    let mut path: Vec<Vec<u8>> = Vec::new();
+    let (mut channel_title, mut channel_description) = (String::new(), String::new());
+    let mut item: Option<(String, String)> = None;
+    let mut items: Vec<(String, String)> = Vec::new();
+    loop {
+        let text = match reader.read_event_into(&mut buf).map_err(feed_unreadable)? {
+            Event::Start(e) => {
+                let name = e.local_name().as_ref().to_vec();
+                if name == b"item" {
+                    item = Some((String::new(), String::new()));
+                }
+                path.push(name);
+                None
+            }
+            Event::End(_) => {
+                if path.last().map(Vec::as_slice) == Some(b"item".as_slice()) {
+                    if let Some(done) = item.take() {
+                        items.push(done);
+                    }
+                }
+                path.pop();
+                None
+            }
+            Event::Text(t) => Some(t.decode().map_err(feed_unreadable)?.into_owned()),
+            Event::CData(c) => Some(c.decode().map_err(feed_unreadable)?.into_owned()),
+            Event::GeneralRef(r) => {
+                if r.is_char_ref() {
+                    r.resolve_char_ref()
+                        .map_err(feed_unreadable)?
+                        .map(String::from)
+                } else {
+                    let name = r.decode().map_err(feed_unreadable)?;
+                    let resolved =
+                        quick_xml::escape::resolve_predefined_entity(&name).ok_or_else(|| {
+                            feed_unreadable(format!("the entity `&{name};` is undeclared"))
+                        })?;
+                    Some(resolved.to_owned())
+                }
+            }
+            Event::Eof => break,
+            _ => None,
+        };
+        if let Some(text) = text {
+            let leaf = path.last().map(Vec::as_slice);
+            let parent = path.len().checked_sub(2).map(|i| path[i].as_slice());
+            let target = match (&mut item, parent, leaf) {
+                (Some((title, _)), Some(b"item"), Some(b"title")) => Some(title),
+                (Some((_, description)), Some(b"item"), Some(b"description")) => Some(description),
+                (None, Some(b"channel"), Some(b"title")) => Some(&mut channel_title),
+                (None, Some(b"channel"), Some(b"description")) => Some(&mut channel_description),
+                _ => None,
+            };
+            if let Some(target) = target {
+                target.push_str(&text);
+            }
+        }
+        buf.clear();
+    }
+    let joined = |title: &str, description: &str| {
+        let (title, description) = (title.trim(), description.trim());
+        if description.is_empty() {
+            title.to_owned()
+        } else {
+            format!("{title}\n{description}")
+        }
+    };
+    let mut chunks = Vec::new();
+    push_chunk(
+        &mut chunks,
+        joined(&channel_title, &channel_description),
+        request,
+    )?;
+    for (title, description) in &items {
+        push_chunk(&mut chunks, joined(title, description), request)?;
     }
     Ok((chunks, Vec::new()))
 }
@@ -864,6 +1015,103 @@ mod tests {
         match extract(&request_for(path.path(), "application/rss+xml")) {
             Err(refusal) => assert_eq!(refusal.kind, "feed_unreadable"),
             Ok(_) => panic!("the malformed feed must refuse"),
+        }
+    }
+
+    /// 🔴 `SIGNOFF-REPAIR.11.54`: R2 advertises `application/rss+xml`, and an
+    /// RSS 2.0 feed went to the Atom parser, which refuses an `<rss>` root, so
+    /// every RSS feed ended `feed_unreadable`.
+    #[test]
+    fn an_rss_feed_extracts_its_channel_and_its_items() {
+        let rss = br#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel><title>Release notes</title><description>What changed</description>
+<item><title>Version 2</title><description>Faster &amp; safer</description></item>
+<item><title>Version 1</title><description><![CDATA[The <b>first</b> one]]></description></item>
+</channel></rss>"#;
+        let path = write_input(rss);
+        let response = extract(&request_for(path.path(), "application/rss+xml"))
+            .expect("the RSS feed extracts");
+        let texts: Vec<&str> = response.chunks.iter().map(|c| c.text.as_str()).collect();
+        assert_eq!(
+            texts,
+            vec![
+                "Release notes\nWhat changed",
+                "Version 2\nFaster & safer",
+                "Version 1\nThe <b>first</b> one"
+            ]
+        );
+    }
+
+    /// 🔴 `SIGNOFF-REPAIR.11.54`: an archive nested inside another was known by
+    /// its entry's NAME only, so one under any other name was excluded as
+    /// binary instead of being refused by name, as `deployment.md` says.
+    #[test]
+    fn a_nested_archive_is_refused_by_its_content_not_only_its_name() {
+        let inner_zip = zip_bytes(&[("inner.txt", b"x")]);
+        let gzip = vec![
+            0x1f, 0x8b, 0x08, 0, 0, 0, 0, 0, 0, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ];
+        let inner_tar = tar_bytes(&[("inner.txt", b"x")]);
+        for (label, inner) in [("zip", &inner_zip), ("gzip", &gzip), ("tar", &inner_tar)] {
+            for (outer, media_type) in [
+                (
+                    zip_bytes(&[("notes.bin", inner.as_slice())]),
+                    "application/zip",
+                ),
+                (
+                    tar_bytes(&[("notes.bin", inner.as_slice())]),
+                    "application/x-tar",
+                ),
+            ] {
+                let path = write_input(&outer);
+                match extract(&request_for(path.path(), media_type)) {
+                    Err(refusal) => assert_eq!(
+                        refusal.kind, "nested_archive",
+                        "a {label} inside a {media_type}: {:?}",
+                        refusal.message
+                    ),
+                    Ok(response) => panic!(
+                        "a {label} named notes.bin inside a {media_type} must refuse, not {:?}",
+                        response.excluded
+                    ),
+                }
+            }
+        }
+    }
+
+    /// Every signature `is_archive_bytes` knows, each beside a near-miss that
+    /// must stay text (`SIGNOFF-REPAIR.11.54`; `cargo mutants` found the six it
+    /// had not been shown).
+    #[test]
+    fn every_archive_signature_is_known_and_near_misses_are_not() {
+        let mut tar = vec![0u8; 512];
+        tar[257..262].copy_from_slice(b"ustar");
+        let archives: [(&str, Vec<u8>); 8] = [
+            ("zip local header", b"PK\x03\x04rest".to_vec()),
+            ("empty zip", b"PK\x05\x06rest".to_vec()),
+            ("spanned zip", b"PK\x07\x08rest".to_vec()),
+            ("gzip", vec![0x1f, 0x8b, 8, 0]),
+            ("tar", tar),
+            ("bzip2", b"BZh91AY&SYrest".to_vec()),
+            ("xz", vec![0xfd, b'7', b'z', b'X', b'Z', 0x00, 1]),
+            ("7z", vec![b'7', b'z', 0xbc, 0xaf, 0x27, 0x1c, 0]),
+        ];
+        for (label, bytes) in &archives {
+            assert!(is_archive_bytes(bytes), "{label} is an archive");
+        }
+        let texts: [(&str, &[u8]); 6] = [
+            ("text that begins BZh", b"BZh is how this sentence starts"),
+            (
+                "BZh with a digit, no block magic",
+                b"BZh9 and then ordinary words",
+            ),
+            ("BZh then the magic, no digit", b"BZhx1AY&SY"),
+            ("PK and other bytes", b"PK is two letters"),
+            ("a short text", b"hello"),
+            ("xz's first byte only", &[0xfd, b'x']),
+        ];
+        for (label, bytes) in texts {
+            assert!(!is_archive_bytes(bytes), "{label} is not an archive");
         }
     }
 

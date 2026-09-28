@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-28 — R2 reads RSS 2.0; a nested archive is known by its content (`SIGNOFF-REPAIR.11.54`)
+
+`REASONBRAID-REPAIR-0563`.
+
+- 🔴 **Root cause:** every feed → `atom_syndication` (refuses `<rss>`); `is_archive_name` by extension only. RED: 2 worker controls.
+- ✅ **Fix:** root-element dispatch + `extract_rss` on quick-xml 0.41 (entities arrive as `GeneralRef`; predefined + char refs resolved); `is_archive_bytes` (zip×3, gzip, tar, bzip2 with block magic, xz, 7z) checked before the ratio brake. `cargo mutants`: 6 missed in the signatures → a table test → 13/13 caught.
+
 ## 2026-09-28 — Retention class is one of three; tombstones carry the given time (`SIGNOFF-REPAIR.11.53`)
 
 `REASONBRAID-REPAIR-0562`.
@@ -636,119 +643,23 @@
 - ⚖️ **What it changes:** the two parked Internet items are reopened, to resume once the current corrective work is finished.
 - ⛔ **What it does not change:** the roadmap's Internet gate still needs an independent review of the threat model and an outside penetration test with serious findings fixed. A new guide, `docs/runbooks/external-security-review.md`, lists what the director does and what the project does, step by step.
 
-## 2026-09-25 — The choice of fetcher no longer depends on storage order (`SIGNOFF-REPAIR.7.1.5`)
-
-`REASONBRAID-REPAIR-0499`.
-
-- 🔴 **Before:** when two fetchers were equally fast on paper, which one fetched a page depended on the order the database happened to return them in, so two identical requests could fetch the same page in different ways.
-- ✅ **Now:** a tie is broken by the fetcher's name, so the same request always picks the same fetcher. The book now explains how the choice is made.
-- ✅ Tested: the new tests failed on the old code and pass now; deliberate faults were each caught.
-
-## 2026-09-25 — Citing a web address no longer reveals that another organisation cited it (`SIGNOFF-REPAIR.7.1.4.1`)
-
-`REASONBRAID-REPAIR-0498`.
-
-- 🔴 **Before:** when an organisation cited a web address for the first time, the reply said "already seen" if any other organisation had cited it before. That told it something about another organisation's research.
-- ✅ **Now:** "already seen" means only that this organisation cited it before. The page is still stored once and shared.
-- ✅ Tested: the new test failed on the old code and passes now; an older test that had recorded this as a limit that could not be fixed was updated, because it could be.
-
-## 2026-09-25 — The director's requirements for who can take part are recorded (`PARTICIPATION`)
-
-`REASONBRAID-DOC-0172`.
-
-- 📌 **Asked for:** send any request to an agent even while it is offline, delivered when it returns, like email; tell "away" from "gone for good"; production-grade command-line and web clients for people; and ChatGPT, Claude, Gemini, DeepSeek, Kimi, Qwen, GLM, MiniMax and MiMo agents able to take part fully.
-- 🔎 **What exists today:** a waiting inbox per node that only the server can fill; a read-only web console; a tool server that local apps can start, but no Internet-facing one with sign-in; runners for the Claude and Codex command-line tools. The book's roadmap page lists it per requirement and per platform.
-- ⚖️ **Decided:** two ways in. A chat app plugs ReasonBraid in as a connector (MCP, which ChatGPT and Claude both accept). An agent that works on its own is run by ReasonBraid through an adapter. The inbox comes first, because a chat app only acts when its person asks.
-- ⏭️ **When:** after the corrective work's blocking items, because this widens who can reach the server. The first step, measuring, can run earlier.
-
-## 2026-09-25 — Each organisation's citation of a web address is its own (`SIGNOFF-REPAIR.7.1.4`)
-
-`REASONBRAID-REPAIR-0497`.
-
-- 🔴 **Before:** when two organisations cited the same web address, the first one's description of it (how to fetch it, its type, its purpose, its risk) was used for both. So the first organisation could decide how the second one's citation was fetched, and the second could read the first one's private note about why it cited the page.
-- ✅ **Now:** each organisation's description is stored separately and used only for its own citation. The page itself is still shared, so it is fetched and stored once.
-- ✅ Tested: the new test failed on the old code (the second organisation saw the first one's description and note) and passes now; six deliberate faults in the new code were each caught.
-- 🔎 Next: a small leftover the same test area revealed: the reply to a citation still says whether someone else cited the address first (`SIGNOFF-REPAIR.7.1.4.1`).
-
-## 2026-09-25 — Only a site operator can add a resolver (`SIGNOFF-REPAIR.7.1.3.1`)
-
-`REASONBRAID-REPAIR-0496`.
-
-- 🔴 **Before:** any tenant's administrator could add a resolver to the list the whole server shares, so one customer could put an entry into every other customer's acquisition results.
-- ✅ **Now:** adding a resolver is a site-operator act, like the other site-wide lists: it needs a site grant for it, carries a reason, and is audited. A tenant administrator without that grant is refused. Re-registering an existing resolver is refused with an audit record naming it.
-- ✅ Tested: the new test failed on the old code (a tenant administrator's registration was accepted) and passes now; the operator path is tested alongside it, and deliberate faults in the new code were each caught.
-- 🔎 Found on the way and owned: two census checks nothing runs, and two stale figures in the book (`SIGNOFF-REPAIR.7.1.6`).
-
-## 2026-09-25 — Governance charters can be registered again (`SIGNOFF-REPAIR.9.1.1`)
-
-`REASONBRAID-REPAIR-0495`.
-
-- 🔴 **Before:** registering a governance charter needs a site-operator permission, but that permission had been added to the code without the database change that lets it be stored. No one could hold it, so every charter registration was refused. The book listed it as a normal permission.
-- ✅ **Now:** the permission can be granted, and an operator holding it can register a charter while anyone else is refused. A new test lists every site permission from the code and checks the database accepts each one, so this cannot slip again.
-- ✅ Tested: the new test failed on the old database, naming exactly this permission, and passes now.
-
-## 2026-09-25 — Closing checks finished: nine items reviewed, seven real problems found (`SIGNOFF-REPAIR.12`)
-
-`REASONBRAID-DOC-0163`, `0165`–`0171`. No code changed.
-
-- ✅ **Closed** after checking the evidence: machine-acquisition safety (`.7.2`), bootstrap waits, and two tooling items.
-- ⏸️ **Deferred:** the optional browser pack's storage and process limits, which only matter when that pack is switched on.
-- 🔴 **Found, and now queued to fix:** four evidence problems, two evaluation problems and one publication problem (listed in the entries below). These are exactly what "every sub-item done" had hidden.
-- ⏭️ **Next:** the must-fix items, starting with the ones that cross between organisations.
-
-## 2026-09-25 — Three finished items formally closed (`SIGNOFF-REPAIR.11.4.5`, `.3.3.4.3.3.3.3.2.3`, `.11.4.3.1.7`)
-
-`REASONBRAID-DOC-0167`–`0169`. Closing checks; no code changed.
-
-- ✅ Each had all its work done and verified, and had simply never been marked closed. Each closure names the commits and the tests that prove it.
-
-## 2026-09-25 — Policy publication checked: one problem found (`SIGNOFF-REPAIR.9.2`)
-
-`REASONBRAID-DOC-0166`. A closing check; no code changed.
-
-- 🔴 **Must be fixed:** the step that marks a policy publication as effective or failed checks the current state and then writes without locking, so two at the same moment can overwrite each other, and a live publication can be turned into a failed one (`.9.2.2`).
-- ✅ **Holds:** where a publication is written, which approval and policy it is tied to, the Git checks, the safe update of the live pointer, and the reconciliation between the database and Git.
-
-## 2026-09-25 — Evaluation checked: two problems found (`SIGNOFF-REPAIR.8.2`)
-
-`REASONBRAID-DOC-0165`. A closing check; no code changed.
-
-- 🔴 **Must be fixed:** an evaluation trial accepts the same option listed twice, which silently gives it twice the share of cases (`.8.2.6`). And when a thread is created, its routing decision is logged before the request is authorised, so a refused request still leaves a log entry for a thread that never existed (`.8.2.7`).
-- ✅ **Holds:** quality gates refuse missing or non-numeric results and are tied to the right test set, calibration ignores runs that do not belong to it, and only site operators can write evaluation records.
-
-## 2026-09-25 — Checking each fix is now about five times faster, with the same rigour (`SIGNOFF-REPAIR.12.1`)
-
-`REASONBRAID-DOC-0164`. A measured decision; no product code changed.
-
-- ✅ **Measured:** the slowest check deliberately breaks the new code in several ways and confirms a test catches each one. The same ten breaks took **77 minutes** before, and now take **14 minutes**, with all ten still caught. The saving comes from rebuilding only the tests that cover the code, instead of about 50 unrelated test programs each time.
-- ⚠️ **A wrong turn, kept on record:** the obvious setting made it slower, 2 hours, because the tool ignored it at the build step. The logs showed why.
-- ✅ **The rule:** the full live test run happens on any change to shared foundations, otherwise at least every three fixes, and always before publishing.
-
-## 2026-09-25 — Evidence checked: four real problems found (`SIGNOFF-REPAIR.7.4`)
-
-`REASONBRAID-DOC-0163`. A closing check; no code changed.
-
-- 🔴 **Must be fixed:** evidence that was deleted can still be built on, still supports assessments, and is quietly cited again if the same content is fetched again (`.7.4.6`). Anyone can sign an assessment with someone else's name (`.7.4.7`). Resubmitting an assessment with a different quote silently keeps the first one (`.7.4.8`). Fetching evidence again does not renew its "fresh until" date, although the book says it does (`.7.4.9`).
-- ⏸️ **Deferred with a trigger:** evidence quarantine (the book already says it does not exist), unchecked derivation labels, and a write order that can leave an unused stored file behind.
-- ✅ **Holds:** a quoted excerpt must really appear in the evidence; deletion uses the server's clock; one organisation cannot delete evidence another relies on.
-
 The entries before those above were rotated into reachable Git history at the
-**eighteenth rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
+**nineteenth rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
 stood at the commit named below, which is the object every retired record was
 checked against before this notice was written — is:
 
 ```bash
-git show 96ced8f5ae44ce4ed6007609ed0b03ba277da18e:DEV_NOTES.md
+git show a02b7e914cdaae786515a833173a2949da8e20f5:DEV_NOTES.md
 ```
 
-That snapshot is 74459 bytes and 731 lines, and contains 89 dated
-entries; its Git blob is `37edeafd1be98e6bfd8c63e7b185644cca984aac` and its SHA-256 is
-`3af5d7ebdacbe7b2e2cfcf517ca4d63935262095d9c99e975044eccdd58b317f`. It carries the seventeenth rotation's
+That snapshot is 74617 bytes and 756 lines, and contains 94 dated
+entries; its Git blob is `0b97e62d505b104d405b4c21ae86196c415d2588` and its SHA-256 is
+`b180421360ffcd2924a02b6e9d02ec9b84644bc72646ed1ecde8c002046c2c78`. It carries the eighteenth rotation's
 notice in turn, and each earlier notice names the one before it, so the chain
 walks all the way back. `docs/decisions/2026-09-09_changelog-rotation.md` holds
 the first transition's evidence.
 
-⛔ **11 record(s) rotated out, 79 kept, lossless** — every retired heading was retrieved from the
+⛔ **12 record(s) rotated out, 83 kept, lossless** — every retired heading was retrieved from the
 predecessor named above before this notice was written, and every figure in it was re-derived from that object with
 `git rev-parse`, `git cat-file` and SHA-256 rather than typed. ⭐ The cut is DERIVED, not chosen: it retires whole
 records until the ledger has at least 10 commits of runway at the p90 entry size measured over the last

@@ -2644,7 +2644,14 @@ written. Each is now defined from what the code does:
   that is the reading: `deny` means depth one. This is why R2 advertises
   `archive_policy: "deny"` two fields above a `media_types` list containing
   `application/zip` and `application/x-tar` — it expands the archive it was
-  given and refuses one inside it, by name (`nested_archive`).
+  given and refuses one inside it, by name (`nested_archive`). An entry is an
+  archive by its CONTENT as well as its file name: the zip, gzip, tar, bzip2, xz
+  and 7z signatures are recognised, so one renamed `notes.bin` is refused, not
+  skipped as binary (`SIGNOFF-REPAIR.11.54`; until then only the name counted).
+  Both feed types it advertises are read: Atom through its own parser, and
+  RSS 2.0 (the channel's title and description, then each item's) through a
+  reader of its own. Until `.11.54` every RSS feed went to the Atom parser and
+  was refused `feed_unreadable`, although RSS was advertised.
 - **`egress_class: "listed"`** — the list is the §12.4 destination **classes**,
   not a list of hosts. The pack classifies every dial (public only; loopback,
   private, link-local and reserved refused) rather than consulting an allowlist.

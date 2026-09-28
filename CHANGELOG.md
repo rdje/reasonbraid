@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-28 — Closing a recruitment call now checks the initiator's permission, not just its name (`SIGNOFF-REPAIR.11.47`)
+
+`REASONBRAID-REPAIR-0560`.
+
+- 🔴 **Before:** the person who opened a call could close it on their name alone. Measured: with their permission revoked, they still closed it and fixed its panel.
+- ✅ **Now:** closing re-checks the same permission that opening needed, so a revoked initiator cannot close, and neither can someone who holds that permission but did not open the call. The guide says so.
+
 ## 2026-09-28 — An imported agent card can no longer claim skills nobody certified (`SIGNOFF-REPAIR.11.45`)
 
 `REASONBRAID-REPAIR-0559`.

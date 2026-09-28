@@ -2004,6 +2004,78 @@ async fn the_call_artifact_rides_the_invitation_machinery() {
     let declined: Value = response.json().await.unwrap();
     assert_eq!(declined["response"], json!("decline"));
 
+    // A caller that is not the call's initiator or its tenant's owner does not
+    // close it, whatever else it holds (`SIGNOFF-REPAIR.11.47`): the joiner is
+    // given the very authority the open used, `thread_invite`, so only the NAME
+    // check can refuse it.
+    sqlx::query(
+        "INSERT INTO authority_grants \
+         (grant_id, boundary_id, tenant_id, issuer, subject_kind, subject_id, actions, \
+          selector, risk_ceiling, spend_limits, delegable, valid_from, expires_at, status) \
+         VALUES ('grt_joiner_invite', $1, $2, $3, 'role', $4, '[\"thread_invite\"]', \
+                 '{\"kind\":\"tenant_wide\"}', 'low', NULL, false, \
+                 now(), now() + interval '1 day', 'active')",
+    )
+    .bind(human["boundary_id"].as_str().unwrap())
+    .bind(&tenant)
+    .bind(&human_id)
+    .bind(&role_a_id)
+    .execute(&pool)
+    .await
+    .expect("the joiner holds thread_invite");
+    let response = client
+        .post(format!("{base}/v1/calls/{call_id}/close"))
+        .header(PRINCIPAL_HEADER, &role_a_id)
+        .send()
+        .await
+        .expect("close request");
+    assert_eq!(
+        response.status().as_u16(),
+        403,
+        "the joiner is not the initiator and does not close the call"
+    );
+    sqlx::query("DELETE FROM authority_grants WHERE grant_id = 'grt_joiner_invite'")
+        .execute(&pool)
+        .await
+        .expect("the joiner's grant is withdrawn");
+
+    // 🔴 `SIGNOFF-REPAIR.11.47` — the close admitted the initiator by comparing
+    // its NAME with the call's, and read no grant: opening the call ran the
+    // guarded `ThreadInvite` authorization, closing it ran nothing for the
+    // initiator. With the initiator's grant revoked (it is also the tenant
+    // owner's, so neither path may stand), the close must refuse and the call
+    // must stay open; the grant is then restored for the close below.
+    let grant_id = format!("grt_{human_id}");
+    sqlx::query("UPDATE authority_grants SET status = 'revoked' WHERE grant_id = $1")
+        .bind(&grant_id)
+        .execute(&pool)
+        .await
+        .expect("the initiator's grant is revoked");
+    let response = client
+        .post(format!("{base}/v1/calls/{call_id}/close"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .send()
+        .await
+        .expect("close request");
+    let refused_status = response.status().as_u16();
+    let refused: Value = response.json().await.unwrap_or_default();
+    sqlx::query("UPDATE authority_grants SET status = 'active' WHERE grant_id = $1")
+        .bind(&grant_id)
+        .execute(&pool)
+        .await
+        .expect("the initiator's grant is restored");
+    assert_eq!(
+        refused_status, 403,
+        "an initiator without its invitation authority does not close the call: {refused}"
+    );
+    let still: String =
+        sqlx::query_scalar("SELECT status FROM recruitment_calls WHERE call_id = $1")
+            .bind(&call_id)
+            .fetch_one(&pool)
+            .await
+            .expect("the call's status");
+    assert_eq!(still, "open", "the refused close changed nothing");
+
     // The close: the panel snapshots the joiners + the explanation.
     let response = client
         .post(format!("{base}/v1/calls/{call_id}/close"))

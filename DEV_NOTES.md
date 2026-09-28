@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-28 — The call's initiator is re-authorized at close (`SIGNOFF-REPAIR.11.47`)
+
+`REASONBRAID-REPAIR-0560`.
+
+- 🔴 **Root cause:** `close_call`'s `is_initiator` was a string comparison; RED live: grant revoked, close `200`.
+- ✅ **Fix:** named AND `authorize_guarded(ThreadInvite, thread)`. ⚠️ The first non-initiator leg did not discriminate (the joiner lacked `thread_invite`); with the grant seeded, the drop-the-name mutant is caught.
+
 ## 2026-09-28 — Imported claims land self_asserted; the schema control sees its rung (`SIGNOFF-REPAIR.11.45`)
 
 `REASONBRAID-REPAIR-0559`.

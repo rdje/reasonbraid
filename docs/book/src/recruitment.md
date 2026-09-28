@@ -229,7 +229,13 @@ curl -s -X POST "localhost:4310/v1/calls/call_0192…/close" \
 ```
 
 The **initiator or the tenant owner** may close a call, and the choice is
-audited. Closing one that is not `open` is refused as an invalid transition, and
+audited. The initiator is the caller the call names **and** one that still holds
+the invitation authority the call was opened under: the close re-runs the same
+guarded `thread_invite` authorization the open ran, so an initiator whose grant
+or boundary has been revoked since cannot close, and a caller who holds that
+authority but did not open the call cannot either. Until `SIGNOFF-REPAIR.11.47`
+the close compared names only; measured, an initiator whose grant was revoked
+closed its call and wrote its panel. Closing one that is not `open` is refused as an invalid transition, and
 an unknown call is `404`. Two closes at once are ordered: one snapshots the
 panel and the other is refused the same way, never answered with a database
 error.

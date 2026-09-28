@@ -6875,7 +6875,33 @@ async fn close_call(
         )));
     }
     // The gate: the initiator or the tenant owner (audited).
-    let is_initiator = call.initiator == actor_handle_for_subject(&principal).to_string();
+    //
+    // 🔴 `SIGNOFF-REPAIR.11.47`: the initiator is the caller NAMED on the call
+    // AND still holding the invitation authority the open was authorized for.
+    // This compared names only, so an initiator whose grant or boundary had
+    // been revoked closed its call and wrote its panel (measured). The open
+    // ran `authorize_guarded` for `ThreadInvite` on the call's thread; the
+    // close runs the same, which also records the initiator's authorization.
+    let named = call.initiator == actor_handle_for_subject(&principal).to_string();
+    let is_initiator = match (named, call.tenant_id.parse(), call.thread_id.parse()) {
+        (true, Ok(tenant_id), Ok(thread_id)) => {
+            let authz = CommandAuthz {
+                actor: actor_handle_for_subject(&principal),
+                principal: principal.clone(),
+                delegation: None,
+                action: GrantAction::ThreadInvite,
+                target: ResourceTarget::Thread {
+                    tenant_id,
+                    thread_id,
+                },
+            };
+            matches!(
+                authority::authorize_guarded(&state.pool, &authz).await?,
+                AuthorizationOutcome::Allowed { .. }
+            )
+        }
+        _ => false,
+    };
     let is_owner = if let Ok(tenant) = call.tenant_id.parse() {
         authorize_tenant_admin(&state.pool, &principal, tenant)
             .await

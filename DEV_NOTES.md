@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-28 — An approval is one transaction holding its proposal (`SIGNOFF-REPAIR.11.55.1`)
+
+`REASONBRAID-REPAIR-0557`.
+
+- 🔴 **Root cause:** `record_approval` read the stage unlocked, then INSERT + UPDATE on the pool; any insert error became `Duplicate`. RED live: two concurrent approvals both `200`; failed stage write left the row; CHECK-refused insert said "already exists".
+- ✅ **Fix:** `pool.begin()`, `FOR UPDATE`, every read and write on the tx, `is_unique_violation()` only for `Duplicate`. M1/M3/M4 caught live; M2 (`AND status = 'decided'`) survives, equivalent under the lock. `.11.55.2` deferred: policy verbs write no authorization record.
+- 🧹 12 retained failure clusters retired via `census_pg_test_clusters.py --retire --confirm` (642 MB).
+
 ## 2026-09-28 — The reconciler judges the head's effective channel (`SIGNOFF-REPAIR.11.56`)
 
 `REASONBRAID-REPAIR-0556`.

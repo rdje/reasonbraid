@@ -1481,6 +1481,145 @@ async fn the_approval_carries_its_authority_proof() {
     assert_eq!(approvals.len(), 1, "{approvals:?}");
     assert_eq!(approvals[0]["approval_id"], json!("ap-app-1"));
 
+    // 8. 🔴 `SIGNOFF-REPAIR.11.55.1` — an approval was an unlocked read and two
+    // pool statements: the proposal's stage read without a lock, then the
+    // approval INSERT, then the proposal UPDATE, with no transaction. Three
+    // controls on one fresh decided proposal, ap-prop-4.
+    let (status, _) = register_proposal("ap-prop-4").await;
+    assert_eq!(status, 200, "the fourth proposal registers");
+    let (status, _) = decide("ap-dec-4", "ap-prop-4").await;
+    assert_eq!(status, 200, "the fourth decision records");
+    let approve4 = |approval_id: &'static str| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let grant_id = grant_id.clone();
+        async move {
+            post(
+                &client,
+                &base,
+                "/v1/policy-approvals",
+                &human_id,
+                &json!({
+                    "approval_id": approval_id,
+                    "proposal_id": "ap-prop-4",
+                    "decision_id": "ap-dec-4",
+                    "approver": human_id,
+                    "grant_id": grant_id,
+                    "quorum": { "participants": [human_id], "denominator": 1, "abstentions": [] },
+                }),
+            )
+            .await
+        }
+    };
+    let approvals_of = |proposal: &'static str| {
+        let pool = pool.clone();
+        async move {
+            sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM policy_approvals WHERE proposal_id = $1",
+            )
+            .bind(proposal)
+            .fetch_one(&pool)
+            .await
+            .expect("the approvals count")
+        }
+    };
+    // 8a. The stage write fails after the approval write: nothing may remain.
+    sqlx::query(
+        "ALTER TABLE policy_proposals ADD CONSTRAINT ap_refuse_approved \
+         CHECK (status <> 'approved') NOT VALID",
+    )
+    .execute(&pool)
+    .await
+    .expect("the constraint is added");
+    let (status, failed) = approve4("ap-app-8").await;
+    sqlx::query("ALTER TABLE policy_proposals DROP CONSTRAINT ap_refuse_approved")
+        .execute(&pool)
+        .await
+        .expect("the constraint is dropped");
+    assert_eq!(
+        status, 500,
+        "a failed stage write is the server's: {failed}"
+    );
+    assert_eq!(
+        approvals_of("ap-prop-4").await,
+        0,
+        "an approval whose stage write failed is not recorded"
+    );
+    // 8b. The approval write itself fails for a reason other than a taken id:
+    // that is the server's failure, not a duplicate.
+    sqlx::query(
+        "ALTER TABLE policy_approvals ADD CONSTRAINT ap_refuse_all CHECK (false) NOT VALID",
+    )
+    .execute(&pool)
+    .await
+    .expect("the constraint is added");
+    let (status, failed) = approve4("ap-app-8").await;
+    sqlx::query("ALTER TABLE policy_approvals DROP CONSTRAINT ap_refuse_all")
+        .execute(&pool)
+        .await
+        .expect("the constraint is dropped");
+    assert_eq!(
+        status, 500,
+        "a failed approval write is not a duplicate: {failed}"
+    );
+    // 8c. Two approvals at once: the proposal row is held, the first is sent and
+    // observed queued, then the second, so the row is granted in that order.
+    let mut holder = pool.begin().await.expect("begin the holder");
+    sqlx::query("SELECT 1 FROM policy_proposals WHERE proposal_id = 'ap-prop-4' FOR UPDATE")
+        .execute(&mut *holder)
+        .await
+        .expect("hold the proposal row");
+    let holder_pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+        .fetch_one(&mut *holder)
+        .await
+        .expect("the holder's backend");
+    let queued = |expected: i64| {
+        let pool = pool.clone();
+        async move {
+            let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                let queued: i64 = sqlx::query_scalar(
+                    "SELECT count(*) FROM pg_stat_activity \
+                     WHERE datname = current_database() AND wait_event_type = 'Lock' \
+                       AND query LIKE '%policy_proposals%' AND pid <> $1",
+                )
+                .bind(holder_pid)
+                .fetch_one(&pool)
+                .await
+                .expect("pg_stat_activity");
+                if queued == expected {
+                    return;
+                }
+                assert!(
+                    tokio::time::Instant::now() < deadline,
+                    "{expected} approval(s) queue on the held proposal"
+                );
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        }
+    };
+    let first = tokio::spawn(approve4("ap-app-8"));
+    queued(1).await;
+    let second = tokio::spawn(approve4("ap-app-9"));
+    queued(2).await;
+    holder.commit().await.expect("release the proposal row");
+    let won = first.await.expect("the first approval");
+    let lost = second.await.expect("the second approval");
+    assert_eq!(won.0, 200, "the approval queued first wins: {won:?}");
+    assert_eq!(
+        lost.0, 400,
+        "the second is refused by the stage it finds: {lost:?}"
+    );
+    assert!(
+        lost.1["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("approved"),
+        "the refusal names the stage: {lost:?}"
+    );
+    assert_eq!(approvals_of("ap-prop-4").await, 1, "one approval, not two");
+
     // 7. 🔴 `SIGNOFF-REPAIR.11.55` — the grant's BOUNDARY must stand. The
     // approval proof (`authority::grant_held_by`) and the resolver's owner check
     // (`authority::grant_is_live`) read the grant alone, so a grant whose

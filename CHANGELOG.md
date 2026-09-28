@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-28 — Approving a policy change is now all-or-nothing, and two approvals cannot both win (`SIGNOFF-REPAIR.11.55.1`)
+
+`REASONBRAID-REPAIR-0557`.
+
+- 🔴 **Before:** an approval was saved in two separate steps without a lock. Measured: two approvals of the same proposal sent at once were both recorded; if the second step failed, the approval stayed recorded while the proposal did not move; and a database failure was reported as "this approval already exists".
+- ✅ **Now:** an approval is one step that locks its proposal: a second one at the same time is refused, a failure records nothing, and a database failure is reported as the server's. The guide says so.
+
 ## 2026-09-28 — The publication check now notices a moved "effective" pointer (`SIGNOFF-REPAIR.11.56`)
 
 `REASONBRAID-REPAIR-0556`.

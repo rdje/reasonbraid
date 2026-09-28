@@ -388,6 +388,19 @@ its caller typed.
 the rule *a recused participant does not count* holds only because nobody can
 be recused yet.
 
+**An approval is one transaction that holds its proposal.** Two approvals of
+the same proposal at once are ordered: the first records and moves the proposal
+to `approved`, and the second is refused by the stage it finds. If any write
+fails, nothing is recorded, and a failure that is not a taken `approval_id`
+answers `500`, never *"already exists"*. Until `SIGNOFF-REPAIR.11.55.1` the stage
+was read without a lock and the approval and the stage were two separate
+writes: measured, two concurrent approvals were both recorded, a failed stage
+write left its approval behind, and a store fault was reported as a duplicate.
+
+⚠️ An approval is recorded by its own row, which names the approver, the grant
+and the quorum; it writes no authorization record. The authorization records
+this book describes are the thread commands' (`SIGNOFF-REPAIR.11.55.2`, deferred).
+
 ## Projections
 
 `POST /v1/policy-projections` resolves a policy set for one target and renders

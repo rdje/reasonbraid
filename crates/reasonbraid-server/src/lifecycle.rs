@@ -660,13 +660,22 @@ pub async fn record_approval(
     // redundant: that one proves the caller owns the proposal's THREAD, this one
     // that the proposal row itself is the caller's. A proposal stored before
     // `migrations/0073` has no owner and is approved by nobody.
+    //
+    // 🔴 `SIGNOFF-REPAIR.11.55.1`: ONE transaction, and it HOLDS the proposal
+    // row. The stage was read unlocked and the approval INSERT and stage UPDATE
+    // were two pool statements, so two approvals at once both passed the stage
+    // check and both were recorded, and a stage write that failed left its
+    // approval behind (both measured). Every read below runs on this
+    // transaction, after the row is held, so the stage it checks is the stage
+    // it writes over.
+    let mut tx = pool.begin().await.map_err(LifecycleError::storage)?;
     let proposal: Option<(String, String)> = sqlx::query_as(
         "SELECT thread_id, status FROM policy_proposals \
-         WHERE proposal_id = $1 AND tenant_id = $2",
+         WHERE proposal_id = $1 AND tenant_id = $2 FOR UPDATE",
     )
     .bind(&input.proposal_id)
     .bind(tenant_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(LifecycleError::storage)?;
     let Some((thread_id, status)) = proposal else {
@@ -709,7 +718,7 @@ pub async fn record_approval(
     )
     .bind(&thread_id)
     .bind(tenant_id)
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await
     .map_err(LifecycleError::storage)?;
     if !owned.unwrap_or(false) {
@@ -725,7 +734,7 @@ pub async fn record_approval(
         "SELECT proposal_id, electorate, derivation FROM policy_decisions WHERE decision_id = $1",
     )
     .bind(&input.decision_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(LifecycleError::storage)?;
     let Some((decision_proposal, electorate, derivation)) = decision else {
@@ -776,7 +785,7 @@ pub async fn record_approval(
     // refusal stays `invalid_proof`, the same answer a wrong subject gets: an
     // approval proof that does not reach this verb is not a proof.
     let proof = crate::authority::grant_held_by(
-        pool,
+        &mut *tx,
         &input.grant_id,
         principal,
         reasonbraid_core::GrantAction::PolicyProposalApprove,
@@ -803,19 +812,32 @@ pub async fn record_approval(
     .bind(&input.grant_id)
     .bind(&electorate)
     .bind(tenant_id)
-    .execute(pool)
+    .execute(&mut *tx)
     .await;
-    if inserted.is_err() {
-        return Err(LifecycleError::Duplicate(format!(
-            "approval `{}`",
-            input.approval_id
-        )));
+    // ⛔ Only a TAKEN id is a duplicate (`SIGNOFF-REPAIR.11.55.1`). Every failed
+    // insert used to answer *"already exists"*, so a store fault was reported
+    // as the caller's error (measured with a refusing constraint).
+    if let Err(error) = inserted {
+        return Err(
+            if error
+                .as_database_error()
+                .is_some_and(|db| db.is_unique_violation())
+            {
+                LifecycleError::Duplicate(format!("approval `{}`", input.approval_id))
+            } else {
+                LifecycleError::storage(error)
+            },
+        );
     }
-    sqlx::query("UPDATE policy_proposals SET status = 'approved' WHERE proposal_id = $1")
-        .bind(&input.proposal_id)
-        .execute(pool)
-        .await
-        .map_err(LifecycleError::storage)?;
+    sqlx::query(
+        "UPDATE policy_proposals SET status = 'approved' \
+         WHERE proposal_id = $1 AND status = 'decided'",
+    )
+    .bind(&input.proposal_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(LifecycleError::storage)?;
+    tx.commit().await.map_err(LifecycleError::storage)?;
     Ok(StoredApproval {
         approval_id: input.approval_id.clone(),
         proposal_id: input.proposal_id.clone(),

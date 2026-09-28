@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-28 — The guide now says exactly which machine a recorded run is credited to (`SIGNOFF-REPAIR.11.48`)
+
+`REASONBRAID-REPAIR-0558`.
+
+- 🔴 **Before:** the guide said each recorded run names the machine identity that ran it. Measured: it names the identity current when the result arrived, which differs if the machine re-enrolled in between.
+- ✅ **Now:** the guide says what is recorded and why; naming the exact one needs the node to report it, which is planned for when something relies on it. The guide also now says that results the server cannot use are kept but change nothing, and that the server trusts a node's reported usage as its tenant's own.
+
 ## 2026-09-28 — Approving a policy change is now all-or-nothing, and two approvals cannot both win (`SIGNOFF-REPAIR.11.55.1`)
 
 `REASONBRAID-REPAIR-0557`.

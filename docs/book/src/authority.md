@@ -444,7 +444,7 @@ tenant administration over that tenant.
 | `GET /v1/admin/grants` | Grant inventory and status |
 | `GET /v1/admin/boundaries` | Enrollment boundaries and status |
 | `GET /v1/admin/incarnations` | Recorded role incarnations — the §8.1 facts each enrolled role node declared, and `node_id`, the node instance each ran on ([why that is the binding](node-channel.md#the-node-a-role-runs-on-is-a-ledger-fact)) |
-| `GET /v1/admin/runs` | Recorded runs — each links its attempt to the incarnation that ran it |
+| `GET /v1/admin/runs` | Recorded runs — each links its attempt to the role's incarnation current when the result was folded. A result does not say which incarnation ran it, so one delivered after a re-enrollment is linked to the new incarnation (`SIGNOFF-REPAIR.11.48`; exact attribution is `.11.48.1`, deferred) |
 | `GET /v1/admin/breakers` | Spend-breaker state |
 | `GET /v1/admin/usage` | Usage ledger summary — reserved, settled, overrun per dimension, the denials with their reasons, and the per-thread breakdown |
 | `GET /v1/admin/authorization-records/{record_id}` | One known authorization record in this tenant |

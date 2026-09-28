@@ -181,7 +181,10 @@ reservations stop holding. An **indeterminate** attempt keeps its hold
 ### A usage too large to count
 
 Settled usage is what a node *reported*, recorded in full, so the ledger can
-hold numbers no honest provider produces. Until `SIGNOFF-REPAIR.4.5.2`, its sums
+hold numbers no honest provider produces. Nothing checks a report against the
+provider's bill, in either direction: a node that under-reports spends less of
+its tenant's budget than it used. A node is its tenant's own executor, so its
+reports are trusted as that tenant's own (`SIGNOFF-REPAIR.11.48`). Until `SIGNOFF-REPAIR.4.5.2`, its sums
 used plain `u64` addition, and the workspace declares no `[profile.release]`,
 so a release build does not check for overflow. Two reports of 2⁶³ tokens
 panicked a debug server's admission. In a release build they would have wrapped

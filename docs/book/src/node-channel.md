@@ -513,6 +513,15 @@ until the retention prune removed the rows. The controls that asserted
 operation id, a shape no node sends. They now use a node's shape, and a real
 node's delivery is asserted end to end.
 
+**An event the server cannot use is stored and changes nothing else.** A result
+naming a command this node's ledger does not hold under the tenant, a dead-letter
+report with no reason, and a result for work that is not thread work are each
+kept as the node's event, and their receipt still says `accepted`: it is a
+transport receipt, as the next paragraph says, not a statement that anything was
+applied. The node's own reports always carry what the fold needs, so this
+reaches only a node that is not running this project's code
+(`SIGNOFF-REPAIR.11.48`, decided rather than repaired).
+
 ⚠️ **`transport_received` is not an acknowledgement, and the two words are kept
 apart on purpose.** `ROADMAP.md` §10.6 states it directly — *transport receipt
 does not mean an agent read or acted* — and a client that reads a receipt as an

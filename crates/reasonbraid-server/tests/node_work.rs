@@ -585,6 +585,108 @@ async fn invite_dispatches_work_with_a_reservation() {
     assert_eq!(active, 1, "exactly one active reservation was issued");
 }
 
+/// `SIGNOFF-REPAIR.11.48` — which incarnation a run names. `authority.md` said a
+/// run links its attempt to the incarnation that RAN it. The run writer links it
+/// to the role's incarnation current when the result FOLDS, and a result
+/// carries nothing that says which incarnation ran it. The two differ when the
+/// role's incarnation changes between the offer and the result, as a
+/// re-enrollment on a machine whose journal survives does: the run names the
+/// new incarnation. This pins the behaviour the book now states, so the
+/// sentence cannot drift from the code again.
+#[tokio::test]
+async fn a_run_names_the_incarnation_current_when_its_result_folds() {
+    let _g = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    let (tenant, human, role, thread, cert_hex, key_hex) = bootstrap(&client, &server.base()).await;
+    let (status, _) = command(
+        &client,
+        &server.base(),
+        &format!("/v1/threads/{thread}/commands"),
+        &human,
+        &envelope(
+            "thread.invite",
+            "key-invite-inc",
+            json!({ "tenant_id": tenant, "agent_role": role }),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "invite succeeds");
+    accept_invitation(
+        &client,
+        &server.base(),
+        &role,
+        &thread,
+        &tenant,
+        "key-accept-inc",
+    )
+    .await;
+    let (handshake, token, ep7) =
+        handshake(&client, &server.base(), &role, &cert_hex, &key_hex).await;
+    let work = handshake["replay"][0].clone();
+    let command_id = work["command_id"].as_str().unwrap().to_string();
+    let reservation_id = work["payload"]["reservation"]["reservation_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // The incarnation the work was offered under…
+    let offered_under: String = sqlx::query_scalar(
+        "SELECT incarnation_id FROM incarnations WHERE role_id = $1 AND valid_to IS NULL",
+    )
+    .bind(&role)
+    .fetch_one(&pool)
+    .await
+    .expect("the role's incarnation");
+    // …ends, and another begins, before the result arrives.
+    sqlx::query("UPDATE incarnations SET valid_to = now() WHERE role_id = $1 AND valid_to IS NULL")
+        .bind(&role)
+        .execute(&pool)
+        .await
+        .expect("the incarnation ends");
+    sqlx::query(
+        "INSERT INTO incarnations (incarnation_id, role_id, tenant_id, valid_from, node_id) \
+         VALUES ('inc_after_the_offer', $1, $2, now(), $1)",
+    )
+    .bind(&role)
+    .bind(&tenant)
+    .execute(&pool)
+    .await
+    .expect("the next incarnation begins");
+
+    let attempt = "att_00000000-0000-7000-8000-00000000004a";
+    let result = work_result(
+        &command_id,
+        "contribute",
+        "an answer",
+        &reservation_id,
+        attempt,
+    );
+    let (status, receipt) = submit_event(
+        &client,
+        &server.base(),
+        &role,
+        &token,
+        ep7,
+        "evt_00000000-0000-7000-8000-00000000004a",
+        "op_00000000-0000-7000-8000-00000000004a",
+        &result,
+    )
+    .await;
+    assert_eq!(status, 200, "event accepted: {receipt}");
+    let named: String = sqlx::query_scalar("SELECT incarnation_id FROM runs WHERE attempt_id = $1")
+        .bind(attempt)
+        .fetch_one(&pool)
+        .await
+        .expect("the run row");
+    assert_eq!(
+        named, "inc_after_the_offer",
+        "the run names the incarnation current when the result folded, not {offered_under}, \
+         the one the work was offered under"
+    );
+}
+
 /// A node-emitted work result folds into the thread as a contribution — and
 /// duplicate transport produces exactly ONE domain effect at both layers (the
 /// receipt dedupe and the idempotency claim).

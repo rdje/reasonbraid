@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-28 — Runs name the incarnation at fold time; the book narrowed (`SIGNOFF-REPAIR.11.48`)
+
+`REASONBRAID-REPAIR-0558`.
+
+- 🔍 **Measured:** `a_run_names_the_incarnation_current_when_its_result_folds` — the run names the post-offer incarnation. `offered_at` is write-once and a result carries only `attempt_id`, so no server-side anchor is right; `.11.48.1` deferred (node reports its incarnation).
+- ✅ **Decided and written down:** unusable results are events with no effect (§10.6 receipt semantics); reported usage is trusted as the tenant's own (`budget.md`). Bar revised class 2 → 3; the pin's mutant (oldest incarnation) caught.
+
 ## 2026-09-28 — An approval is one transaction holding its proposal (`SIGNOFF-REPAIR.11.55.1`)
 
 `REASONBRAID-REPAIR-0557`.

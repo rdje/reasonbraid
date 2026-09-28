@@ -402,6 +402,7 @@ async fn the_replacement_ritual_recovers_a_lost_node() {
     // `journal_path` helper in this workspace, this file's returned the
     // directory and its call sites append `node.db` themselves.
     let journal_one = fixture_one.path().to_path_buf();
+    let lost_invocations;
     {
         let key_der = from_hex(&key_hex).expect("key hex");
         let der = rustls_pki_types::PrivateKeyDer::try_from(key_der).expect("key DER");
@@ -419,20 +420,25 @@ async fn the_replacement_ritual_recovers_a_lost_node() {
         node.reconcile().await.expect("reconcile the lost node");
         let work = node.journal().work_items().await.expect("work items");
         assert_eq!(work.len(), 1, "the work item delivered to the lost node");
+        // `SIGNOFF-REPAIR.11.52`: the lost machine's provider call is COUNTED.
+        // The drill used to read one folded contribution as "no duplicate"
+        // while the provider had been invoked here and again on the replacement.
+        let lost_adapter = reasonbraid_adapter::FakeAdapter::new(
+            vec![reasonbraid_adapter::ScriptStep::LoseResponse],
+            reasonbraid_adapter::StatusLookupSpec::Unsupported,
+            reasonbraid_adapter::AdapterCapabilities {
+                streaming: true,
+                cancellation: reasonbraid_adapter::CancellationStrength::BestEffort,
+                provider_idempotency: false,
+                status_lookup: false,
+                tool_support: false,
+                policy_injection: reasonbraid_adapter::PolicyInjectionMode::None,
+            },
+        );
+        lost_invocations = lost_adapter.invocation_counter();
         let worker = reasonbraid_node::Worker::new(
             node.clone(),
-            reasonbraid_adapter::FakeAdapter::new(
-                vec![reasonbraid_adapter::ScriptStep::LoseResponse],
-                reasonbraid_adapter::StatusLookupSpec::Unsupported,
-                reasonbraid_adapter::AdapterCapabilities {
-                    streaming: true,
-                    cancellation: reasonbraid_adapter::CancellationStrength::BestEffort,
-                    provider_idempotency: false,
-                    status_lookup: false,
-                    tool_support: false,
-                    policy_injection: reasonbraid_adapter::PolicyInjectionMode::None,
-                },
-            ),
+            lost_adapter,
             reasonbraid_node::LocalBudget::new(reasonbraid_core::BudgetDimensions {
                 calls: Some(100),
                 input_tokens: Some(100_000),
@@ -661,9 +667,20 @@ async fn the_replacement_ritual_recovers_a_lost_node() {
             quarantine.1
         );
 
-        // THE operator's explicit recovery: `POST /v1/nodes/replay` clears the
-        // quarantine, refreshes the admission decision against the current epoch,
-        // and re-sequences the row — then the replacement's worker completes it.
+        // 🔴 `SIGNOFF-REPAIR.11.52` — the server cannot see the lost journal,
+        // but it can see this: the work was offered before the current
+        // incarnation began, and no result ever came back, so the lost machine
+        // may have run it. A PLAIN replay would re-run it as if it never ran,
+        // which is the silent re-dispatch the runbook rules out; it is refused.
+        let original_reservation: String = sqlx::query_scalar(
+            "SELECT payload->'reservation'->>'reservation_id' FROM node_inbox \
+             WHERE node_id = $1 AND command_id = $2",
+        )
+        .bind(&role_id)
+        .bind(&work_command_id)
+        .fetch_one(&pool)
+        .await
+        .expect("the original reservation");
         let response = client
             .post(format!("{base}/v1/nodes/replay"))
             .header(PRINCIPAL_HEADER, &human_id)
@@ -675,10 +692,59 @@ async fn the_replacement_ritual_recovers_a_lost_node() {
             .send()
             .await
             .expect("replay request");
+        let plain_status = response.status().as_u16();
+        let plain: Value = response.json().await.unwrap_or_default();
         assert_eq!(
-            response.status().as_u16(),
-            200,
-            "the operator replay succeeds"
+            plain_status, 409,
+            "a plain replay of work a lost machine may have run is refused: {plain}"
+        );
+        assert!(
+            plain["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("may already have run"),
+            "the refusal says why: {plain}"
+        );
+        // THE operator's explicit recovery is the possible-duplicate replay: the
+        // risk is accepted with a reason, the re-run gets its own reservation, and
+        // the original stays held, because the lost attempt may have spent it.
+        let response = client
+            .post(format!("{base}/v1/nodes/replay"))
+            .header(PRINCIPAL_HEADER, &human_id)
+            .json(&json!({
+                "tenant_id": tenant,
+                "node_id": role_id,
+                "command_id": work_command_id,
+                "allow_possible_duplicate": true,
+                "reason": "the machine was lost with this attempt's outcome unknown",
+            }))
+            .send()
+            .await
+            .expect("replay request");
+        let status = response.status().as_u16();
+        let replayed: Value = response.json().await.unwrap_or_default();
+        assert_eq!(
+            status, 200,
+            "the possible-duplicate replay succeeds: {replayed}"
+        );
+        let fresh = replayed["reservation_id"]
+            .as_str()
+            .expect("a fresh reservation")
+            .to_string();
+        assert_ne!(
+            fresh, original_reservation,
+            "the re-run is paid from its own reservation"
+        );
+        let held: Option<chrono::DateTime<chrono::Utc>> = sqlx::query_scalar(
+            "SELECT outcome_unknown_at FROM budget_reservations WHERE reservation_id = $1",
+        )
+        .bind(&original_reservation)
+        .fetch_one(&pool)
+        .await
+        .expect("the original reservation's row");
+        assert!(
+            held.is_some(),
+            "the original is held for its unknown outcome"
         );
 
         let completing_adapter = reasonbraid_adapter::FakeAdapter::new(
@@ -746,6 +812,14 @@ async fn the_replacement_ritual_recovers_a_lost_node() {
     assert_eq!(
         n_contributions, 1,
         "the recovery folded exactly one contribution"
+    );
+    // …and the provider ran TWICE: once on the lost machine, once on the
+    // replacement under the operator's possible-duplicate authorization. One
+    // contribution is not "no duplicate".
+    assert_eq!(
+        lost_invocations.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "the lost machine invoked the provider"
     );
 }
 

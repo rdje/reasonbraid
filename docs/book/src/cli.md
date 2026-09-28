@@ -656,6 +656,16 @@ replayed command work_evt_… in node rol_…'s inbox (…), authorizing a possi
 
 Each flag without the other is refused before anything is sent.
 
+Work that an **earlier incarnation** of the node received takes the same
+authorization (`SIGNOFF-REPAIR.11.52`). This is the replaced-machine case: the
+lost journal's `outcome_unknown` never reached the server, so the server reads
+the risk from what it holds, a command first offered before the node's current
+incarnation began. A result that did come back does not exempt it, since that
+work certainly ran. A plain replay of such a command is refused with `409`,
+*"… it may already have run — replay it with allow_possible_duplicate and a
+reason"*, and the possible-duplicate replay also holds the original reservation
+for the unknown outcome, as the node's own report would have.
+
 The spend circuit breaker (`.3.2`): a per-tenant latch — once the tenant's
 recorded spend crosses the declared threshold, new dispatch reservations are
 refused with the typed reason until the operator resets:

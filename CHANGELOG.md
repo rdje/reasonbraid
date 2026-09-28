@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-28 — Recovering a lost machine's work now asks the operator to accept that it may run twice (`SIGNOFF-REPAIR.11.52`)
+
+`REASONBRAID-REPAIR-0561`.
+
+- 🔴 **Before:** when a machine was lost mid-task, the recovery steps re-ran its work as if it had never started. Measured: the AI provider was called on the lost machine and again on its replacement, with no one accepting that risk, and the first call's cost was never counted.
+- ✅ **Now:** the server refuses the plain re-run for work a lost machine received, and the operator re-runs it with an explicit "this may run twice" authorization and a reason. The re-run is paid separately, and the first call's budget stays held. The recovery guide and the command reference say so.
+
 ## 2026-09-28 — Closing a recruitment call now checks the initiator's permission, not just its name (`SIGNOFF-REPAIR.11.47`)
 
 `REASONBRAID-REPAIR-0560`.

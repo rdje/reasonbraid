@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-28 — A replay of an earlier incarnation's work needs the possible-duplicate authorization (`SIGNOFF-REPAIR.11.52`)
+
+`REASONBRAID-REPAIR-0561`.
+
+- 🔴 **Root cause:** the duplicate path admitted only `retry_requires_authorization` rows, a report a lost journal cannot send; RED live: plain replay `200`, provider invoked on both machines.
+- ✅ **Fix:** `possibly_run_by_an_earlier_incarnation_in_tx` (`offered_at` < current incarnation's `valid_from`); plain replay `409`; duplicate path admits it and holds the original reservation. R2–R4 caught; R1 survived and removed the "no result" clause (a returned result is a certain re-run).
+
 ## 2026-09-28 — The call's initiator is re-authorized at close (`SIGNOFF-REPAIR.11.47`)
 
 `REASONBRAID-REPAIR-0560`.

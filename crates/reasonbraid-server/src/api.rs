@@ -1668,6 +1668,12 @@ async fn replay_command(
         // lock makes the two states indistinguishable, and the superseded
         // "a concurrent replay won" message is retired rather than kept as a
         // claim about a race the lock no longer permits.
+        // `SIGNOFF-REPAIR.11.52`: an earlier incarnation may have run it.
+        authority::ReplayResult::PossibleDuplicate => ControlApiError::invalid_transition(
+            "an earlier incarnation of this node received the command, so it may already have \
+             run — replay it with allow_possible_duplicate and a reason",
+        )
+        .into_response(),
         authority::ReplayResult::NotDeadLettered => ControlApiError::invalid_transition(
             "the command is not dead-lettered — replay only reverses a quarantine",
         )

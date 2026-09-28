@@ -76,8 +76,14 @@
      incarnation cached (epoch N), so the replacement's dispatch refuses
      FAIL-CLOSED against the current epoch (N+1) — no silent re-dispatch of the
      lost node's in-flight work — and the row dead-letters (auto-quarantine).
-  5. `rb node replay` the dead-lettered work (the decision refreshes against
-     the current epoch), then the replacement completes it.
+  5. Replay the dead-lettered work WITH the possible-duplicate authorization:
+     `rb node replay --node … --command … --allow-possible-duplicate --reason "…"`.
+     The lost machine received it, so it may already have run, and a plain `rb node replay` is refused for exactly that reason
+     (`409`, *"it may already have run"*; `SIGNOFF-REPAIR.11.52`). The re-run is
+     paid from a fresh reservation, the original stays held while its outcome
+     is unknown, and the replacement completes it. ⚠️ Until `.11.52` step 5 was
+     a plain replay, which re-ran the lost machine's work as if it never ran:
+     measured in the drill, the provider was invoked on both machines.
 - **Total machine loss with a live database:** the database is the durable
   truth; the ritual above. **Total loss including the database:**
   the `.4.1` restore exercise is the control — `scripts/backup.sh` dumps,

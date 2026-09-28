@@ -494,6 +494,9 @@ pub enum QuarantineResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReplayResult {
     Replayed,
+    /// An earlier incarnation of this node may have run the command
+    /// (`SIGNOFF-REPAIR.11.52`): only the possible-duplicate replay may re-run it.
+    PossibleDuplicate,
     /// The command exists and is not dead-lettered, so there is no quarantine to
     /// reverse.
     NotDeadLettered,
@@ -925,8 +928,9 @@ pub(crate) async fn replay_command_with_possible_duplicate_in_one_transaction(
                 command_id: AdministrativeTargetId::new(command_id.as_str()).map_err(unusable)?,
             };
 
-            let row: Option<(Option<String>, String)> = sqlx::query_as(
-                "SELECT quarantine_reason, thread_id FROM node_inbox \
+            let row: Option<(Option<String>, String, Option<String>)> = sqlx::query_as(
+                "SELECT quarantine_reason, thread_id, payload->'reservation'->>'reservation_id' \
+                 FROM node_inbox \
                  WHERE node_id = $1 AND command_id = $2 AND tenant_id = $3 FOR UPDATE",
             )
             .bind(&node_id)
@@ -938,6 +942,23 @@ pub(crate) async fn replay_command_with_possible_duplicate_in_one_transaction(
                 "dead-lettered: {}",
                 reasonbraid_core::RETRY_REQUIRES_AUTHORIZATION
             );
+            // `SIGNOFF-REPAIR.11.52`: a quarantined row an EARLIER incarnation
+            // may have run takes this authorization too. Its node's report never
+            // came (the journal was lost with the machine), so the original
+            // reservation is held here for the unknown outcome, as the report
+            // would have held it.
+            let lost_incarnation = match &row {
+                Some((Some(quarantine), _, _)) if quarantine != &awaiting => {
+                    possibly_run_by_an_earlier_incarnation_in_tx(
+                        &mut *conn,
+                        &node_id,
+                        &command_id,
+                        tenant_id,
+                    )
+                    .await?
+                }
+                _ => false,
+            };
 
             let (result, effect) = match row {
                 None => (
@@ -949,18 +970,34 @@ pub(crate) async fn replay_command_with_possible_duplicate_in_one_transaction(
                         ),
                     },
                 ),
-                Some((quarantine, _)) if quarantine.as_deref() != Some(awaiting.as_str()) => (
-                    DuplicateReplayResult::NotAwaitingAuthorization,
-                    AdministrativeOutcome::Refused {
-                        code: AdministrativeRefusal::InvalidTransition,
-                        detail: bounded_detail(
-                            "the command is not dead-lettered for want of the \
+                Some((quarantine, _, _))
+                    if quarantine.as_deref() != Some(awaiting.as_str()) && !lost_incarnation =>
+                {
+                    (
+                        DuplicateReplayResult::NotAwaitingAuthorization,
+                        AdministrativeOutcome::Refused {
+                            code: AdministrativeRefusal::InvalidTransition,
+                            detail: bounded_detail(
+                                "the command is not dead-lettered for want of the \
                              possible-duplicate authorization"
-                                .to_owned(),
-                        ),
-                    },
-                ),
-                Some((_, thread_id)) => {
+                                    .to_owned(),
+                            ),
+                        },
+                    )
+                }
+                Some((_, thread_id, original)) => {
+                    if lost_incarnation {
+                        if let Some(original) = original.as_deref() {
+                            crate::budget::hold_for_unknown_outcome_in_tx(
+                                &mut *conn,
+                                original,
+                                &tenant_id.to_string(),
+                                None,
+                                at,
+                            )
+                            .await?;
+                        }
+                    }
                     let ceiling_id: String = sqlx::query_scalar(
                         "SELECT ceiling_id FROM budget_ceilings \
                          WHERE thread_id = $1 AND tenant_id = $2",
@@ -1059,6 +1096,45 @@ pub(crate) async fn replay_command_with_possible_duplicate_in_one_transaction(
     .await
 }
 
+/// Could an EARLIER incarnation of this node have run this command?
+///
+/// 🔴 `SIGNOFF-REPAIR.11.52`. After a total machine loss the `outcome_unknown`
+/// fact dies with the lost journal, so the node's own report, the one route to
+/// the possible-duplicate replay, never arrives, and a plain replay re-ran the
+/// lost machine's work as if it had never run (measured in the replacement
+/// drill: the provider was invoked on both machines). The server cannot read the
+/// lost journal, but it holds the fact that matters: the command was first
+/// offered BEFORE the node's current incarnation began. Then an earlier
+/// incarnation received it and may have run it, and only an authorized possible
+/// duplicate may run it again. It is conservative on purpose: an earlier
+/// incarnation that never dispatched looks the same from here, and the cost of
+/// that is a reason and a reservation.
+///
+/// ⛔ An earlier draft also required that no result had come back. A mutant
+/// dropping that clause survived every control, and reading why settled it: a
+/// result that DID come back means the work certainly ran, so replaying it is a
+/// certain re-run, the case a plain replay should allow least. The clause let a
+/// plain replay through exactly there, so it is gone.
+async fn possibly_run_by_an_earlier_incarnation_in_tx(
+    conn: &mut sqlx::PgConnection,
+    node_id: &str,
+    command_id: &str,
+    tenant_id: TenantId,
+) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM node_inbox i \
+           WHERE i.node_id = $1 AND i.command_id = $2 AND i.tenant_id = $3 \
+             AND i.offered_at IS NOT NULL \
+             AND i.offered_at < (SELECT max(c.valid_from) FROM incarnations c \
+                                  WHERE c.node_id = $1 AND c.valid_to IS NULL))",
+    )
+    .bind(node_id)
+    .bind(command_id)
+    .bind(tenant_id.to_string())
+    .fetch_one(&mut *conn)
+    .await
+}
+
 /// Replay one dead-lettered inbox command in ONE shared-guard transaction.
 ///
 /// ⛔ Which decision facts a replay refreshes is NOT this leaf's to change —
@@ -1117,6 +1193,28 @@ pub(crate) async fn replay_command_in_one_transaction(
                         ),
                     },
                 ),
+                Some((Some(_),))
+                    if possibly_run_by_an_earlier_incarnation_in_tx(
+                        &mut *conn,
+                        &node_id,
+                        &command_id,
+                        tenant_id,
+                    )
+                    .await? =>
+                {
+                    (
+                        ReplayResult::PossibleDuplicate,
+                        AdministrativeOutcome::Refused {
+                            code: AdministrativeRefusal::InvalidTransition,
+                            detail: bounded_detail(
+                                "an earlier incarnation of this node received the command, so \
+                                 it may already have run: only the possible-duplicate replay \
+                                 re-runs it"
+                                    .to_owned(),
+                            ),
+                        },
+                    )
+                }
                 Some((Some(_),)) => {
                     // The fresh admission decision (`.1.5.2` shape): the CURRENT
                     // revocation epoch, the decision clock restarted. Read under

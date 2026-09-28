@@ -780,3 +780,29 @@ separates stale from false, and both queries are there verbatim.
 | `R-6-27-4` | 2 | declined | `SIGNOFF-REPAIR.4.5.2` | the fallback cannot fire. Each reservation is settled or released exactly once, in exclusive arms of one match (`supervisor.rs`: release at the pre-dispatch refusal, settle at completion, failure and the unknown outcome), with the same `reservation.dimensions` it reserved, so the subtraction cannot underflow |
 | `R-6-27-4` | 3 | unowned | `SIGNOFF-REPAIR.11.62` | LIVE: the node casts `as u64` (a negative wraps) and forwards the provider's `i64` verbatim. The server's `as_u64()` makes a negative or missing count `None`, and a settled `None` dimension adds nothing to the ceiling's held sum: the token hold returns to the pool |
 | `R-6-27-4` | 4 | unowned | `SIGNOFF-REPAIR.11.62` | LIVE: `LocalBudget` is in memory, so a restart reopens the local headroom `budget.md` says a settlement cannot reopen |
+
+## Tranche 6b — the six records whose narrowest candidate leaf is `SIGNOFF-REPAIR.8.1`
+
+`SIGNOFF-REPAIR.11.9.1.5.2`, `REASONBRAID-DOC-0199` (2026-09-29). **19 clauses**: 6 `handled`, 5 `owned`, 2 `attach`, 2 `unowned`, 2 `declined`, 2 `none`. Every live clause was re-read by hand against the source before it was written here. Handled ones were sampled the same way (`R-65-1` clause 3, `R-71-72-1` clauses 1 and 3), and all held. `R-56-57-4`'s third sentence carried two fates and is split into clauses 3 and 4. The two `unowned` clauses open `.11.63`. The `attach` clauses land in `.8.1` and `.11.4`, each named in its leaf in this commit.
+
+| Record | Clause | State | Owner | Evidence |
+| --- | --- | --- | --- | --- |
+| `R-56-57-1` | 1 | owned | `SIGNOFF-REPAIR.8.1` | LIVE: `OP_REVISE` checks only that its target is a `thread.challenged` event, then decrements the thread-wide `open_challenges`. `.8.1`'s goal line: *"track each challenge's resolution once"* |
+| `R-56-57-1` | 2 | owned | `SIGNOFF-REPAIR.8.1` | LIVE: no record of which challenge a revision resolved; the same goal line |
+| `R-56-57-1` | 3 | attach | `SIGNOFF-REPAIR.8.1` | LIVE: nothing binds the reviser to the challenged contribution's author, while `node-channel.md` says a challenge sends the revision to the author's node. Attached in this commit |
+| `R-56-57-1` | 4 | owned | `SIGNOFF-REPAIR.8.1` | LIVE: two revisions of one challenge decrement the counter twice and hide another. The qualification review states it: *"Repeated challenge resolution … need[s] correction"* |
+| `R-56-57-1` | 5 | none | — | the reviewer's note that runtime evidence was pending |
+| `R-56-57-4` | 1 | handled | `SIGNOFF-REPAIR.11.4.7.2.1.3.1` | REPAIR-0400: `moderation.md` claims only the structural prohibition (*"The vocabulary cannot express those things, so a moderation act cannot do them"*), and no semantic protection |
+| `R-56-57-4` | 2 | unowned | `SIGNOFF-REPAIR.11.63` | LIVE: `VerdictInput.target_digest` is recorded as given, while an `evidence_request`'s target must exist (`claim_exists_in_thread`) |
+| `R-56-57-4` | 3 | declined | `SIGNOFF-REPAIR.8.1` | a synthesis's faithfulness to its sources is a reader's judgement, and no server can verify a summary. ADR-030 makes it re-derivable from the named event range, whose bounds are checked |
+| `R-56-57-4` | 4 | unowned | `SIGNOFF-REPAIR.11.63` | LIVE: `SynthesisInput.sources` is never read, so a synthesis may cite events that do not exist or lie outside its range |
+| `R-65-1` | 1 | owned | `SIGNOFF-REPAIR.8.1` | LIVE: re-inviting reads the stored state, and expiry is derived only at read time (`derived_view`), so an expired offer stays `Invited` and a re-invite is refused `AlreadyParticipant`, against the code's own comment. `.8.1`'s goal line: *"recover expired invitations"* |
+| `R-65-1` | 2 | owned | `SIGNOFF-REPAIR.8.1` | LIVE: no expire→re-invite test; it lands with clause 1's repair |
+| `R-65-1` | 3 | handled | `SIGNOFF-REPAIR.11.39` | REPAIR-0549: `expires_in_seconds` must be between 1 and 365 days |
+| `R-69-2` | 1 | handled | `SIGNOFF-REPAIR.4.1.1` | REPAIR-0146: migration 0059 supersedes a token that lapsed unused, so it no longer locks its node out |
+| `R-69-2` | 2 | handled | `SIGNOFF-REPAIR.4.1.5` | REPAIR-0167: a consumed token is replaced by the replacement ritual (PHASE2-0041), and what a replacement ends is qualified; `a_replacement_ends_the_old_machines_session_host_and_incarnation` runs it |
+| `R-69-2` | 3 | attach | `SIGNOFF-REPAIR.11.4` | LIVE: `tests/node_enrollment.rs` says a second token is *"unissuable"* and *"no second incarnation row can ever be written"*. Migration 0018's index is partial, and the replacement suite writes a second incarnation. Attached in this commit |
+| `R-71-72-1` | 1 | handled | `SIGNOFF-REPAIR.4.4.2` | REPAIR-0460: `a_refused_result_is_settled_and_the_node_journals_the_refusal` settles a refused result end to end with the real worker |
+| `R-71-72-1` | 2 | none | — | a positive note: a duplicate result folds once |
+| `R-71-72-1` | 3 | handled | `SIGNOFF-REPAIR.4.5.4` | REPAIR-0486: `a_node_cannot_settle_a_foreign_reservation_by_naming_it` |
+| `R-76-77-4` | 1 | declined | `SIGNOFF-REPAIR.8.1` | by design: ADR-016 makes a profile configuration with *"no state machines, no validation"*. Steps advance by the explicit `thread.advance_round` verb humans hold, each step gates its own kinds (`vote`, `adjudicate`, `moderate`, `synthesize`), and the close is the cut-off at any step (`decision-rules.md`). The test exercises the close fold, as documented |

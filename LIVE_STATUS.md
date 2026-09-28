@@ -31,6 +31,14 @@ re-examines its claims; they return to *Done* when the review requalifies them.
 | Phase 9 — stable release | Not Started | G9 requires sustained operational evidence and the outstanding release decisions. |
 | Corrective review | In Progress | It ends at a bug bar, not at exhaustion (`REASONBRAID-DOC-0162`): every leaf in a blocking class (cross-tenant; integrity of state, money, evidence or publication; a false claim; a gate that lies) closed with reproducible evidence, every deferred leaf with a readable trigger and a limit the qualification review states, the qualification review reconciled with measured behaviour, and the full CI checkpoint green on a pushed commit. |
 
+## 2026-09-29 — Six more review findings checked; one new problem, and two limits now stated (`SIGNOFF-REPAIR.11.9.1.5.2`)
+
+`REASONBRAID-DOC-0199`.
+
+- 🔍 **What was checked:** six notes about how discussions run (challenges, revisions, invitations, verdicts), split into 19 points and checked against the code. Six were already fixed, five belong to known work, and two were deliberate design.
+- 🔴 **Found:** a verdict can name something that is not in the discussion, and a summary can cite messages that do not exist; nothing checks either. An invitation that expired can never be offered again, and anyone in a discussion can answer a challenge, not only the person challenged. The guide's qualification page now says all of this.
+- ✅ **Also:** the full test suite passed, 581 tests with none failing, and the two-machine demonstration passed.
+
 ## 2026-09-29 — A review of five more findings turned up four real problems, two of them about money and integrity (`SIGNOFF-REPAIR.11.9.1.5.1`)
 
 `REASONBRAID-DOC-0198`.

@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-29 — Tranche 6b: 19 clauses, `.11.63` opened, two attaches; broad run green (`SIGNOFF-REPAIR.11.9.1.5.2`)
+
+`REASONBRAID-DOC-0199`.
+
+- 🔍 **6b:** 6 handled, 5 owned (`.8.1`: challenge tracking, expired re-invite), 2 attach (`.8.1` reviser not bound to author; `.11.4` node_enrollment comment "second token unissuable"), 2 unowned → `.11.63` (verdict `target_digest` and synthesis `sources` unchecked), 2 declined, 2 none. `--classified` clean, 15 left.
+- ✅ **Broad run at REPAIR-0565:** 51 suites, 581 passed, 0 failed, demo green (`target/r11_57/broad_0565.log`).
+
 ## 2026-09-29 — Tranche 6 sized on text and split; 6a opens .11.59–.11.62; tranche 5's sizes corrected (`SIGNOFF-REPAIR.11.9.1.5.1`)
 
 `REASONBRAID-DOC-0198`.

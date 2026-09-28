@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-29 — Six more review findings checked; one new problem, and two limits now stated (`SIGNOFF-REPAIR.11.9.1.5.2`)
+
+`REASONBRAID-DOC-0199`.
+
+- 🔍 **What was checked:** six notes about how discussions run (challenges, revisions, invitations, verdicts), split into 19 points and checked against the code. Six were already fixed, five belong to known work, and two were deliberate design.
+- 🔴 **Found:** a verdict can name something that is not in the discussion, and a summary can cite messages that do not exist; nothing checks either. An invitation that expired can never be offered again, and anyone in a discussion can answer a challenge, not only the person challenged. The guide's qualification page now says all of this.
+- ✅ **Also:** the full test suite passed, 581 tests with none failing, and the two-machine demonstration passed.
+
 ## 2026-09-29 — A review of five more findings turned up four real problems, two of them about money and integrity (`SIGNOFF-REPAIR.11.9.1.5.1`)
 
 `REASONBRAID-DOC-0198`.

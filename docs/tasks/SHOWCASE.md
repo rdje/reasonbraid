@@ -43,12 +43,14 @@ The director, 2026-09-28: *"Please create a single entry CLI and Web page for me
 
 - Status: `pending` — opened 2026-09-28 from the director's showcase note: *"how to respond to a reply from the network. I think for a response or message from the network I should be able to reply, like in a real chat application. like a real conversation if you see what I mean."*
 - ⚖️ Bar (`REASONBRAID-DOC-0162`): the director's request, not a corrective finding; worked at the director's priority.
+- ⏸️ **Parked by the director, 2026-09-28**: *"Don't focus on the UI for now, just focus on the engine. I just wanted to see [how] the initial chat UI looked like."* The note stands and is not dropped; it resumes when the director asks for the UI again, or when `PARTICIPATION.4` (the human client) opens.
 - Owns: first measure what the shipped thread model offers for a second turn (a human contribution, then work for the agents in the next round: which verb dispatches it, and what the agent's work item carries of the conversation so far). Then a reply box under each answer on the page, driving those same verbs through the CLI. ⚠️ With the scripted stand-in agents the second answer is scripted too, and the page must say so; a conversation that reads as real needs a real model behind a node (`PARTICIPATION.6`).
 
 ### SHOWCASE.4 — Explain every section, say progress in plain words, let panels grow, and make it fool-proof
 
 - Status: `pending` — opened 2026-09-28 from the director's showcase note: *"Each section shall have a pop up or something to explain what it does … when we move the mouse over a section widget it shall … show a message describing what it does"*; *"I do not really understand the information presented in the Progress section"*; *"there shall be a handle to enlarge both the Progress and Command line section"*; *"the UI shall be fool proof and really intuitive and really user friendly"*.
 - ⚖️ Bar (`REASONBRAID-DOC-0162`): the director's request, not a corrective finding.
+- ⏸️ **Parked by the director, 2026-09-28**: *"Don't focus on the UI for now, just focus on the engine. I just wanted to see [how] the initial chat UI looked like."* The note stands and is not dropped; it resumes when the director asks for the UI again, or when `PARTICIPATION.4` (the human client) opens. A first draft of the page (section help, plain-language progress from the changelog, enlarge and copy buttons) was set aside as a patch, `target/showcase_check/showcase4-draft.patch` (untracked, 262 lines), and `scripts/showcase.py` was left at its committed state.
 - Owns: a help hint per section, hidden until hovered or focused (and reachable by keyboard); the Progress panel rewritten for a reader who does not know the task tree (what is fixed, what is still wrong, in plain sentences, with the leaf ids demoted to details); a handle to enlarge the Progress and Command line panels; empty, loading and error states that say what to do next; and a check that runs the page in a real browser, as `console_browser` does for the console.
 
 ## Current Frontier
@@ -56,6 +58,6 @@ The director, 2026-09-28: *"Please create a single entry CLI and Web page for me
 | Order | Leaf | Status | Why next |
 | --- | --- | --- | --- |
 | 1a | `SHOWCASE.1` | `done` | ✅ `make showcase`: a live system with two answering agents, a local page, a status CLI and a feedback file, run end to end. |
-| 1 | `SHOWCASE.4` | `pending` | the director's first note: section help, plain-language progress, resizable panels, fool-proof |
-| 2 | `SHOWCASE.3` | `pending` | the director's first note: reply in a conversation (measure the second turn first) |
-| 3 | `SHOWCASE.2` | `pending` | standing: the director's notes, routed as they arrive |
+| 1 | `SHOWCASE.2` | `pending` | standing: the director's notes, routed as they arrive |
+| 2 | `SHOWCASE.4` | `pending` | ⏸️ parked by the director (the engine first): section help, plain-language progress, resizable panels |
+| 3 | `SHOWCASE.3` | `pending` | ⏸️ parked by the director (the engine first): reply in a conversation |

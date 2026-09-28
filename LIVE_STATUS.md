@@ -31,6 +31,14 @@ re-examines its claims; they return to *Done* when the review requalifies them.
 | Phase 9 — stable release | Not Started | G9 requires sustained operational evidence and the outstanding release decisions. |
 | Corrective review | In Progress | It ends at a bug bar, not at exhaustion (`REASONBRAID-DOC-0162`): every leaf in a blocking class (cross-tenant; integrity of state, money, evidence or publication; a false claim; a gate that lies) closed with reproducible evidence, every deferred leaf with a readable trigger and a limit the qualification review states, the qualification review reconciled with measured behaviour, and the full CI checkpoint green on a pushed commit. |
 
+## 2026-09-29 — A review of five more findings turned up four real problems, two of them about money and integrity (`SIGNOFF-REPAIR.11.9.1.5.1`)
+
+`REASONBRAID-DOC-0198`.
+
+- 🔍 **What was checked:** five notes from the original code review, split into 20 separate points and each checked against today's code. Six were already fixed and two were deliberate design. Nine are real and open.
+- 🔴 **Found:** when an agent's provider does not report how many tokens it used, the budget counts none, so a token limit never runs out. Publishing a policy reports a database failure as "already exists", and never checks the policy file against its fingerprint before writing it. The check that should spot publication records created outside the system cannot fire. The agent-mediated resource option sends out a request but nothing ever receives the answer, although the guide said it shipped. Each has a task now, and the guide's qualification page says so.
+- ⚠️ **Corrected:** the sizes recorded yesterday for the previous batch measured the wrong thing. They are fixed, and the decision they supported stands.
+
 ## 2026-09-29 — The status page's summary table no longer lists finished work as remaining (`SIGNOFF-REPAIR.11.44`)
 
 `REASONBRAID-REPAIR-0566`.

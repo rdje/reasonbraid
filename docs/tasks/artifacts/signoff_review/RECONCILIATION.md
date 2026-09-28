@@ -753,3 +753,30 @@ separates stale from false, and both queries are there verbatim.
 | `R-73-74-2` | 1 | handled | `SIGNOFF-REPAIR.9.2.1.1` | REPAIR-0190: the invalid-repository leg runs first, while the publication is still staged, and asserts it does not open and stays `staged` |
 | `R-73-74-2` | 2 | none | — | a positive note: the empty-quorum leg is intact, though it asserts only the status |
 | `R-73-74-2` | 3 | unowned | `SIGNOFF-REPAIR.11.55` | PARTLY handled: REPAIR-0184 (`.9.3.1`) and REPAIR-0343 (`.9.3.4.2`) enforce the grant's window, holder and action coverage. LIVE: `authority::grant_held_by` reads `authority_grants` with no join to `enrollment_boundaries`, and revoking a boundary updates only that table, so a grant under a revoked boundary still approves a policy proposal while `authority.md` says a revoked boundary freezes the next administrative write. `lifecycle.rs` writes the approval with no authorization or audit record, and no approval test has an expired, future or revoked-boundary leg |
+
+## Tranche 6a — the five records whose narrowest candidate leaf is `SIGNOFF-REPAIR.9.2`
+
+`SIGNOFF-REPAIR.11.9.1.5.1`, `REASONBRAID-DOC-0198` (2026-09-29). **20 clauses**: 6 `handled`, 1 `owned`, 9 `unowned`, 2 `declined`, 2 `none`. Every live clause was re-read by hand against the source before it was written here. Three handled ones were sampled the same way (`R-51-4` clause 1, `R-52-4` clause 1, `R-6-27-4` clause 1), and all held. The nine `unowned` clauses open four leaves: `.11.59`, `.11.60` (class 2), `.11.61` and `.11.62` (class 2). No clause is `attach`.
+
+| Record | Clause | State | Owner | Evidence |
+| --- | --- | --- | --- | --- |
+| `R-48-49-7` | 1 | unowned | `SIGNOFF-REPAIR.11.59` | LIVE: the RX resolver publishes `AcquisitionCall` (`api.rs`). `AcquisitionAnswer` and `AcquisitionAnswerRecord` are constructed only in `mediated.rs`'s tests and consumed nowhere. G4 names the delivery as deferral #2, and the book says the lane ships |
+| `R-48-49-7` | 2 | unowned | `SIGNOFF-REPAIR.11.59` | LIVE: `requires_second_verifier` is published `false` and read nowhere. The test `the_second_verifier_rule_is_carried_not_enforced` says so |
+| `R-48-49-7` | 3 | unowned | `SIGNOFF-REPAIR.11.59` | LIVE: `#[serde(default)] original_not_inspected: bool`, so an omitted field reads `false`, a silent claim of inspection against the field's own doc |
+| `R-48-49-7` | 4 | unowned | `SIGNOFF-REPAIR.11.59` | LIVE: `the_vocabulary_roundtrips_every_shape` round-trips `ImmutableSnapshot`, `Refusal` and `StructuredFact`, and checks `MinimalExcerpt`'s tag: four of six. `RedactedDerivative` and `TestReceipt` never |
+| `R-48-49-7` | 5 | unowned | `SIGNOFF-REPAIR.11.59` | PARTLY handled: `.11.4.7.2.1.5` re-derived Phase 0's row 17 as partial for exactly this. LIVE: PHASE-4 `.5` and G4 deferral #2 say the round trip *"rides the capability-call lane"*, which nothing implements, and the book's roadmap page says the lane ships |
+| `R-51-4` | 1 | handled | `SIGNOFF-REPAIR.9.1.4` | REPAIR-0505: the server writes the lock rows from the registry, and `ProjectionRequest` carries none |
+| `R-51-4` | 2 | handled | `SIGNOFF-REPAIR.9.2.1.3.2` | REPAIR-0340: a projection stores the `resolved_policies` its resolution named |
+| `R-51-4` | 3 | unowned | `SIGNOFF-REPAIR.11.60` | LIVE: `projections::load` returns the stored digest unchecked, and the publish writes the bundle without hashing it. Only the read route checks it (`publications.rs`, `integrity("bundle.txt", …)`). Read beside it: `load` answers a store failure and a missing row as `Duplicate` (*"already exists"*), which is a `400` at publish |
+| `R-51-4` | 4 | none | — | the reviewer's pointer to the next page |
+| `R-52-4` | 1 | handled | `SIGNOFF-REPAIR.11.56` | REPAIR-0556: the effective arm judges the newest publication's channel |
+| `R-52-4` | 2 | handled | `SIGNOFF-REPAIR.11.56` | REPAIR-0556: a missing or moved channel on the newest publication freezes |
+| `R-52-4` | 3 | unowned | `SIGNOFF-REPAIR.11.61` | LIVE: `reconcile(None, …)` alerts on an immutable or staging ref and answers `Consistent` for an effective channel alone. Nothing reaches the arm: `reconciliation::candidates` selects database rows only |
+| `R-52-4` | 4 | handled | `SIGNOFF-REPAIR.9.3.5.1.2` | REPAIR-0402: the driver and the `rb-reconciler` binary operate the matrix. §15.8 asks for regular exercise, not a startup worker, and `publication-store.md` documents the operator pass |
+| `R-56-57-2` | 1 | owned | `SIGNOFF-REPAIR.8.1` | its goal line: *"reconcile durable unresolved challenges with close contracts"*. The qualification review states the limit: `threads.rs` reads `body.unresolved` only, and `open_challenges` is maintained and never read at close |
+| `R-56-57-2` | 2 | declined | `SIGNOFF-REPAIR.8.1.1.2` | the documented contract: `decision-rules.md` says *"the close is the cut-off point"*. Under a counted rule an early close derives `no_quorum` from the ballots cast, never a decision |
+| `R-56-57-2` | 3 | none | — | the reviewer's instruction, answered by clause 2 |
+| `R-6-27-4` | 1 | handled | `SIGNOFF-REPAIR.4.5.2` | REPAIR-0484: `add` is checked and returns `BudgetError::Overflow` |
+| `R-6-27-4` | 2 | declined | `SIGNOFF-REPAIR.4.5.2` | the fallback cannot fire. Each reservation is settled or released exactly once, in exclusive arms of one match (`supervisor.rs`: release at the pre-dispatch refusal, settle at completion, failure and the unknown outcome), with the same `reservation.dimensions` it reserved, so the subtraction cannot underflow |
+| `R-6-27-4` | 3 | unowned | `SIGNOFF-REPAIR.11.62` | LIVE: the node casts `as u64` (a negative wraps) and forwards the provider's `i64` verbatim. The server's `as_u64()` makes a negative or missing count `None`, and a settled `None` dimension adds nothing to the ceiling's held sum: the token hold returns to the pool |
+| `R-6-27-4` | 4 | unowned | `SIGNOFF-REPAIR.11.62` | LIVE: `LocalBudget` is in memory, so a restart reopens the local headroom `budget.md` says a settlement cannot reopen |

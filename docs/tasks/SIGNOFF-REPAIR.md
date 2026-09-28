@@ -9773,13 +9773,15 @@ Six children by the adopted ranking, at the natural gaps in the distribution. Me
 - Status: `done` — closed with its last child, `.11.9.1.4.3` (DOC-0196); sized and split at DOC-0194. The acceptance descended to `.11.9.1.4.1`–`.3` collectively: 104 clauses across 22 records, and twelve leaves opened, `.11.45`–`.11.56`.
 - ⚖️ Bar (`REASONBRAID-DOC-0162`): **structural**: closes when its children do.
 
-**The sizing, taken before the split, by `.11.9.1.3`'s method.** The 22 records hold **4,259 characters** of body, above the 1,405–3,006 this activity has executed in one commit. Grouping by each record's own narrowest candidate (`python3 -B scripts/census_record_reconciliation.py --rank`) gives three groups, each inside that range:
+**The sizing, taken before the split, by `.11.9.1.3`'s method.** The 22 records hold **7,299 characters** of body, above the 1,405–3,006 this activity has executed in one commit. Grouping by each record's own narrowest candidate (`python3 -B scripts/census_record_reconciliation.py --rank`) gives three groups:
+
+⛔ **CORRECTED 2026-09-29 by `.11.9.1.5`'s sizing, which re-derived this table before reusing its method.** Every figure here was first recorded wrong: 4,259 for the tranche, and 2,055, 1,244 and 960 for the groups. Those are the lengths of each record's census METADATA as Python prints it (`len(str(record))`). A helper written for a `body` key the records do not have fell back to that length silently. Measured on the text, the tranche and its groups are the numbers now shown. That measure is the prose after a record's metadata lines, and it reproduces tranche 2's recorded 1,405 exactly. The split stands, and on firmer ground: 5a was above the 3,006 then proved and was executed in one commit anyway (DOC-0194), so the proved range is now **1,374–3,757**.
 
 | Child | Narrowest candidate | Records | Body characters |
 | --- | --- | --- | --- |
-| `.11.9.1.4.1` | `SIGNOFF-REPAIR.5.3`, named by 16 | `R-33-35-5`, `R-33-35-6`, `R-36-39-5`, `R-36-39-7`, `R-44-45-3`, `R-52-3`, `R-52-5`, `R-55-1`, `R-61-62-3`, `R-70-1` | 2,055 |
-| `.11.9.1.4.2` | `SIGNOFF-REPAIR.7.3`, named by 16 | `R-40-42-8`, `R-43-2`, `R-43-3`, `R-44-45-1`, `R-54-3`, `R-6-27-5`, `R-6-27-6` | 1,244 |
-| `.11.9.1.4.3` | `SIGNOFF-REPAIR.2.2`, named by 18 | `R-44-45-2`, `R-58-1`, `R-66-2`, `R-67-68-1`, `R-73-74-2` | 960 |
+| `.11.9.1.4.1` | `SIGNOFF-REPAIR.5.3`, named by 16 | `R-33-35-5`, `R-33-35-6`, `R-36-39-5`, `R-36-39-7`, `R-44-45-3`, `R-52-3`, `R-52-5`, `R-55-1`, `R-61-62-3`, `R-70-1` | 3,757 (⛔ first recorded 2,055) |
+| `.11.9.1.4.2` | `SIGNOFF-REPAIR.7.3`, named by 16 | `R-40-42-8`, `R-43-2`, `R-43-3`, `R-44-45-1`, `R-54-3`, `R-6-27-5`, `R-6-27-6` | 2,168 (⛔ first recorded 1,244) |
+| `.11.9.1.4.3` | `SIGNOFF-REPAIR.2.2`, named by 18 | `R-44-45-2`, `R-58-1`, `R-66-2`, `R-67-68-1`, `R-73-74-2` | 1,374 (⛔ first recorded 960) |
 
 The evidence for all 22 was gathered first, per clause, by three read-only passes over today's source, so every live finding was known before the first child was written; each is re-read by hand before it enters the ledger.
 
@@ -9799,7 +9801,7 @@ The evidence for all 22 was gathered first, per clause, by three read-only passe
 
 - Status: `done` — `REASONBRAID-DOC-0195`; opened by `.11.9.1.4`'s split.
 - ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 3, as `.11.9.1.3.4`.
-- The seven records: `R-40-42-8`, `R-43-2`, `R-43-3`, `R-44-45-1`, `R-54-3`, `R-6-27-5`, `R-6-27-6` (1,244 characters).
+- The seven records: `R-40-42-8`, `R-43-2`, `R-43-3`, `R-44-45-1`, `R-54-3`, `R-6-27-5`, `R-6-27-6` (2,168 characters; ⛔ first recorded as 1,244, corrected by `.11.9.1.5`).
 - [x] **REPRODUCE / ISSUE** — the census, per clause (`docs/tasks/artifacts/signoff_review/RECONCILIATION.md` § Tranche 5b): **33 clauses**, 7 `handled`, 7 `owned`, 13 `attach`, 5 `unowned`, 1 `none`; `python3 -B scripts/census_record_reconciliation.py --classified` re-reads them, and its attach rule checks that each of the five receiving leaves names its record. Every live clause was re-read by hand before it was written.
 - 🔴 **Two blocking leaves opened.** `.11.53` (class 3): a snapshot's retention class is any string, one the sweep does not know never expires, and the book says a snapshot expires by its class. `.11.54` (class 3): R2 advertises RSS and refuses every RSS feed, and knows a nested archive only by its name. The redirect finding `.11.50` was opened from tranche 5a; its record, `R-44-45-1`, attaches here.
 - ⚠️ **Two closed leaves' words are now known to be wider than their code**: `.7.2.2`'s title, *"Classify every redirect hop, including an IP literal"*, holds for IPv4 only, and `.7.2`'s closing census counted a `sha256:` prefix as digest framing. Neither is rewritten; `.11.50` and `.11.51` own the difference, and the ledger rows say so.
@@ -9811,7 +9813,7 @@ The evidence for all 22 was gathered first, per clause, by three read-only passe
 
 - Status: `done` — `REASONBRAID-DOC-0196`; opened by `.11.9.1.4`'s split.
 - ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 3, as `.11.9.1.3.4`.
-- The five records: `R-44-45-2`, `R-58-1`, `R-66-2`, `R-67-68-1`, `R-73-74-2` (960 characters).
+- The five records: `R-44-45-2`, `R-58-1`, `R-66-2`, `R-67-68-1`, `R-73-74-2` (1,374 characters; ⛔ first recorded as 960, corrected by `.11.9.1.5`).
 - [x] **REPRODUCE / ISSUE** — the census, per clause (`docs/tasks/artifacts/signoff_review/RECONCILIATION.md` § Tranche 5c): **20 clauses**: 7 `handled`, 7 `attach`, 1 `unowned`, 3 `declined`, 2 `none`. `python3 -B scripts/census_record_reconciliation.py --classified` re-reads them. Every live clause was re-read by hand before it was written.
 - 🔴 **Two blocking leaves opened.** `.11.56` (class 2 and 4), found by the `.9.2` correction below: the reconciler reads the effective channel and never compares it, and a unit test asserts the moved channel as consistent. `.11.55` (class 2 and 3): neither `grant_is_live` nor `grant_held_by` reads the enrollment boundary, so a grant under a revoked boundary still proves authority for a policy approval and the six other call sites that ask them, while `authority.md` says a revoked boundary freezes the next administrative write.
 - 🔴 **Two records in the tree corrected, found by this census.** `.9.2`'s Status line still said `active` after its own Bar line recorded it CLOSED by REPAIR-0522, so the open-leaf census counted it open; it now reads `done`. That made `QUALIFICATION-CURRENCY` read the book's two rows owned by `.9.2`: the wall-clock row was repaired at REPAIR-0401 (`.9.3.5.1.1`) and now says so, and the reconciler row is still true and now names `.11.56`. And `.11.9.1.3.2` said `grant_is_live` requires a boundary join; it does not, and a correction is written beside the sentence rather than over it.
@@ -9822,10 +9824,43 @@ The evidence for all 22 was gathered first, per clause, by three read-only passe
 ##### SIGNOFF-REPAIR.11.9.1.5 — Tranche 6: narrowest candidate named by twenty to twenty-two records
 
 - Opened: `pending` by `.11.9.1`'s split.
-- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 3, as `.11.9.1.3.4`.
 - The 14 records: `R-33-35-3`, `R-46-1`, `R-48-49-7`, `R-51-4`, `R-52-4`, `R-55-2`, `R-56-57-1`, `R-56-57-2`, `R-56-57-4`, `R-6-27-4`, `R-65-1`, `R-69-2`, `R-71-72-1`, `R-76-77-4`.
 - Acceptance: as `.11.9.1.1`.
-- Verification / commit: pending.
+- Status: `active` — sized and split 2026-09-29 (`REASONBRAID-DOC-0198`), its first child executed in the same commit. ⛔ The acceptance descends to `.11.9.1.5.1`–`.3` collectively.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **structural**: closes when its children do.
+
+**The sizing, on the records' text, and calibrated before it was used.** The measure is the prose of each record from `census_record_reconciliation.records()`, and it reproduces tranche 2's recorded 1,405 exactly. The same calibration against tranche 5's recorded figures failed, which is how those were found to be metadata lengths (corrected there). The 14 records hold **3,842 characters**, just above the largest group executed in one commit (5a, 3,757). Grouping by each record's narrowest candidate gives three groups inside the proved range:
+
+| Child | Narrowest candidate | Records | Body characters |
+| --- | --- | --- | --- |
+| `.11.9.1.5.1` | `SIGNOFF-REPAIR.9.2`, named by 20 | `R-48-49-7`, `R-51-4`, `R-52-4`, `R-56-57-2`, `R-6-27-4` | 1,312 |
+| `.11.9.1.5.2` | `SIGNOFF-REPAIR.8.1`, named by 21 | `R-56-57-1`, `R-56-57-4`, `R-65-1`, `R-69-2`, `R-71-72-1`, `R-76-77-4` | 1,827 |
+| `.11.9.1.5.3` | `SIGNOFF-REPAIR.7.4`, named by 22 | `R-33-35-3`, `R-46-1`, `R-55-2` | 703 |
+
+###### SIGNOFF-REPAIR.11.9.1.5.1 — Tranche 6a: the five records whose narrowest candidate is `SIGNOFF-REPAIR.9.2`
+
+- Status: `done` — `REASONBRAID-DOC-0198`; opened by `.11.9.1.5`'s split.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 3, as `.11.9.1.3.4`.
+- [x] **REPRODUCE / ISSUE** — the census, per clause (`docs/tasks/artifacts/signoff_review/RECONCILIATION.md` § Tranche 6a): **20 clauses**, 6 `handled`, 1 `owned`, 9 `unowned`, 2 `declined`, 2 `none`; `python3 -B scripts/census_record_reconciliation.py --classified` re-reads them. Every live clause was re-read against the source before it was written. Three handled clauses were sampled the same way, and all held: `R-51-4` clause 1 (the server's lock rows), `R-52-4` clause 1 (the reconciler's effective arm), `R-6-27-4` clause 1 (checked addition).
+- 🔴 **Four leaves opened, two of them class 2.** `.11.60` (class 2): publishing loads its projection with a store failure answered as *"already exists"*, and never hashes the bundle it writes. `.11.62` (class 2 and 3): a settlement charges nothing for a dimension its usage leaves unknown, which both real adapters produce, and the node's local headroom resets on restart. `.11.59` (class 3): the RX pack publishes an acquisition call and nothing receives the answer, while the book says the lane ships. `.11.61` (class 3): §15.8's no-record row cannot fire.
+- ⚠️ **Two findings were read beside a clause rather than in it**, and each is recorded in the leaf that owns its surface, never as a row of its own: `projections::load`'s error mapping (`.11.60`, beside `R-51-4` clause 3), and the unknown-usage settlement, which `R-6-27-4` clause 3's negative count reaches (`.11.62`).
+- [x] **ADDRESSED** — every `unowned` clause has its leaf. The qualification review states the four limitations in their surfaces' rows.
+- [x] **NO REGRESSION** — documents only; `--classified` and the doctrine gate at this commit.
+- [x] **LOCKSTEP** — `qualification-review.md`: the resource-acquisition, node-budget and governance rows. The governance row's *"reconciliation … hold[s]"* is narrowed.
+
+###### SIGNOFF-REPAIR.11.9.1.5.2 — Tranche 6b: the six records whose narrowest candidate is `SIGNOFF-REPAIR.8.1`
+
+- Status: `pending` — opened by `.11.9.1.5`'s split.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 3, as `.11.9.1.3.4`.
+- The six records: `R-56-57-1`, `R-56-57-4`, `R-65-1`, `R-69-2`, `R-71-72-1`, `R-76-77-4` (1,827 characters).
+- Acceptance: as `.11.9.1.1`.
+
+###### SIGNOFF-REPAIR.11.9.1.5.3 — Tranche 6c: the three records whose narrowest candidate is `SIGNOFF-REPAIR.7.4`
+
+- Status: `pending` — opened by `.11.9.1.5`'s split.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 3, as `.11.9.1.3.4`.
+- The three records: `R-33-35-3`, `R-46-1`, `R-55-2` (703 characters).
+- Acceptance: as `.11.9.1.1`.
 
 ##### SIGNOFF-REPAIR.11.9.1.6 — Tranche 7: narrowest candidate named by twenty-six or more records
 
@@ -13102,6 +13137,48 @@ done
 - [x] **NO REGRESSION** — test code only; the same second broad run: **47 suites, 536 passed, 0 failed**, `bootstrap_recovery`'s 11 among them; strict clippy on `reasonbraid-server --all-targets` rc=0.
 - Commit: `REASONBRAID-REPAIR-0485` (with `.4.5.3`).
 
+### SIGNOFF-REPAIR.11.62 — A settlement charges nothing for a dimension its usage leaves unknown, and the node's local headroom resets on restart
+
+- Status: `pending` — opened 2026-09-29 by tranche 6a (`R-6-27-4` clauses 3 and 4, `REASONBRAID-DOC-0198`).
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 2 and 3. Class 2 (money) by the precedent of `.4.4.6.1`: there a settlement handed the reserved time back, so a ceiling's clock never ran out; here it hands the token hold back. Class 3: `budget.md` says a settlement leaves the node's local headroom *"spent beyond counting, so a later settlement cannot reopen it"*, and a restart reopens all of it.
+- Measured from source, 2026-09-29:
+  - The node forwards its provider's usage verbatim (`worker.rs`, `json!(report.usage)`, `i64` counts). The server reads each count with `as_u64()` (`api.rs::settle_work_item_reservation`), so a missing count, or a negative one, becomes `None`.
+  - `budget::settle_reservation_in_tx` stores that usage, and the ceiling's held sum reads a settled row's `usage` (`CASE … ELSE r.usage END`), where a `None` dimension adds nothing. The whole token hold returns to the pool.
+  - Both real adapters produce it: `claude.rs` and `codex.rs` `normalize_usage` return `UsageConfidence::Unknown` with no counts when the receipt carries no usage block.
+  - The product already has the rule for an unmeasured amount: an operator verdict settles *"completed, by an amount nobody measured"* at the full held dimensions (`budget.md`). The result path does not apply it.
+  - On the node, `supervisor.rs` casts the same `i64` with `as u64`, so a negative count wraps to about 1.8 × 10¹⁹ in the local ledger. That fails closed, with a false number.
+  - `LocalBudget` is in memory (`consumed: Mutex<BudgetDimensions>`; its doc says *"Development profile: in-memory per-node state"*).
+- Owns: a reported dimension that is unknown or malformed (negative) settles at the held amount for that dimension, the verdict path's rule, RED first through a live result with no usage block. The node refuses a negative count rather than wrapping it. The budget chapter says the local headroom lives in the node process, and that the server's ceiling is the durable bound (or the ledger persists; decide in the leaf).
+- Not owned: a node that under-reports a positive count. It is trusted as its tenant's own executor (`.11.48`, stated in `budget.md`).
+
+### SIGNOFF-REPAIR.11.61 — §15.8's no-record row cannot fire: the reconciler reads database rows only
+
+- Status: `pending` — opened 2026-09-29 by tranche 6a (`R-52-4` clause 3, `REASONBRAID-DOC-0198`).
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 3. The qualification review says publication *"reconciliation … hold[s]"*, and ROADMAP §15.8's row *"no DB record / ReasonBraid-looking Git object/ref → treat as out-of-band, verify signature, alert"* has no path to it.
+- Measured from source, 2026-09-29: `reconciliation::candidates` selects `policy_publications` rows, and `rb-reconciler` reconciles exactly those. Nothing lists a repository's `refs/rb/*` to find a publication id with no row. The pure matrix's no-record arm (`reconciler::reconcile` with `db = None`) alerts on an immutable or staging ref and answers `Consistent` for an effective channel alone.
+- Owns: a pass over the repositories under the declared root that reports each `refs/rb/publications/*`, `refs/rb/staging/*` and effective channel no row accounts for as `OutOfBandAlert` (reported, never repaired), with the no-record arm judging the effective channel too, RED first. Or narrow the qualification review's claim instead. §15.8's *"verify signature"* presumes signed manifests: say what exists.
+
+### SIGNOFF-REPAIR.11.60 — Publishing loads its projection with a store failure answered as "already exists", and never hashes the bundle it writes
+
+- Status: `pending` — opened 2026-09-29 by tranche 6a (`R-51-4` clause 3, and the error mapping read beside it; `REASONBRAID-DOC-0198`).
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 2, by `.9.2.3`'s precedent: a store failure answered as a statement about the record, which a caller may act on.
+- Measured from source, 2026-09-29:
+  - `projections::load` maps any query error to `ProjectionError::Duplicate(id)`, and a missing row to `Duplicate` as well. That displays *"… already exists — the record's identity is its content"*. The publish verb (`api.rs`) answers it `400 invalid_command`, and `reconciliation.rs` also calls `load`.
+  - `load` decodes `unrepresentable` with `.expect`, so a malformed row panics the request. A malformed `resolved_policies` is dropped silently.
+  - The bundle's bytes are written to `bundle.txt` without being hashed against the projection digest the manifest names. `publisher::publish` fetch-back verifies the manifest only. `policy-lifecycle.md` says the digest *"was only checked when the publication was written"*, which is true of the manifest and never was of the bundle. The first check of the bundle is the read route (`publications.rs`, `integrity("bundle.txt", …)`).
+- Owns: `load` returns `Storage` for a store failure and a typed not-found for a missing row, and the caller answers them as the governance routes have since `.9.2.3`. A malformed row is a typed error, never a panic. The publish checks that `sha256(bytes) == digest` before anything is written. RED first for each.
+
+### SIGNOFF-REPAIR.11.59 — The RX pack publishes an acquisition call and nothing receives the answer, while the book says the lane ships
+
+- Status: `pending` — opened 2026-09-29 by tranche 6a (`R-48-49-7`, all five clauses, `REASONBRAID-DOC-0198`).
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**, class 3. Narrowing the claim is an allowed resolution.
+- Measured from source, 2026-09-29:
+  - `api.rs` publishes `AcquisitionCall { requires_second_verifier: false }` under the gated RX resolver. `AcquisitionAnswer` and `AcquisitionAnswerRecord` are constructed only in `mediated.rs`'s own tests and read nowhere. So the second-verifier rule is never checked, and there is nothing to check it on.
+  - `original_not_inspected` defaults to `false` under `#[serde(default)]`, so a record that omits it claims inspection. Its own doc comment says *"never a silent claim of inspection"*.
+  - `the_vocabulary_roundtrips_every_shape` round-trips four of the six shapes. `RedactedDerivative` and `TestReceipt` are never round-tripped.
+  - G4's record names the RX delivery as deferral #2 and says the round trip *"rides the capability-call lane"*, which nothing implements (`.11.4.7.2.1.5` re-derived Phase 0's row 17 as partial for this). The book says the gated R3/R5/RX lane *"ships"* (`roadmap.md`) and that the acquisition *"is the node's"* (`adapter-boundary.md`).
+- Owns: the book, G4's deferral #2 and PHASE-4's `.5` note say that the RX lane publishes a call and receives no answer. The round-trip test covers all six shapes, and the not-inspected default fails closed (`true`, or the field becomes required). Building the answer half is a deferred child, triggered by the first consumer of an `AcquisitionAnswer`.
+
 ### SIGNOFF-REPAIR.11.58 — Four parent nodes have nothing open under them, and none says what closing it takes
 
 - Status: `pending` — opened 2026-09-29 by `.11.44`'s census.
@@ -15422,7 +15499,8 @@ git grep -nI -E "never run|licen[cs]e decision|license decision" -- \
 | 1a | `SIGNOFF-REPAIR.11.46` | `done` | ✅ REPAIR-0564 — measured before deciding: a role id another tenant reads reaches nothing beyond the network view (invite 400, presence 404, profile at the network view, card 403), so the book's "network pseudonym" is corrected to "network view"; per-reader pseudonyms deferred to `.11.46.1`. |
 | 1a | `SIGNOFF-REPAIR.11.57` | `done` | ✅ REPAIR-0565 — the pre-commit hook refused a valid commit once: a self-test probed a root process it picked from `ps`, and that process exited in between. Absent now counts as a failure only when `ps` still lists the pid after the probe; 6 of 7 hand mutants caught, the seventh unreachable without a lying kernel. |
 | 1a | `SIGNOFF-REPAIR.11.44` | `done` | ✅ REPAIR-0566 — the census found the live status's table false in eight rows, not one: the *Corrective review* log, and Phases 0–6 naming repairs as current work where no blocking leaf was open. The table states standing facts and derived pointers now, and `PLAN-STATES-TARGETS` refuses a leaf reference in it (RED: 9 rows; 5/5 hand mutants caught). Opened `.11.58` (deferred). |
-| 1 | `SIGNOFF-REPAIR.11.9.1.5` | `pending` | ⚖️ blocking, class 3 — review tranche 6: the narrowest candidate named by twenty to twenty-two records. Then `.11.9.1.6` (class 3); class 4 last (`.11.4.7.2.1.1`, the CI leaves: a push, the director's call). `.11.58` (deferred): four parents with nothing open under them each need a closing verification. |
+| 1a | `SIGNOFF-REPAIR.11.9.1.5.1` | `done` | ✅ DOC-0198 — tranche 6 sized on the records' text (3,842 characters) and split in three; 6a classified 20 clauses and opened four leaves, two of them class 2 (`.11.60`, `.11.62`), two class 3 (`.11.59`, `.11.61`). The sizing's calibration found tranche 5's recorded sizes were metadata lengths, corrected in place. |
+| 1 | `SIGNOFF-REPAIR.11.9.1.5.2` | `pending` | ⚖️ blocking, class 3 — tranche 6b, the six records whose narrowest candidate is `.8.1`. Then 6c (`.11.9.1.5.3`), then the repairs by class: `.11.60` and `.11.62` (class 2), `.11.59` and `.11.61` (class 3); then `.11.9.1.6`; class 4 last (`.11.4.7.2.1.1`, the CI leaves: a push, the director's call). |
 | 3 | `SIGNOFF-REPAIR.11.26` | `pending` | ⚖️ deferred on its next occurrence (DOC-0162). 120-run hunt 2026-09-24: 0 failures (0 in 299 since the instrument). ⚖️ `.4.4` is COMPLETE (REPAIR-0459…0482, DOC-0153…0155); this row is next by the table's order. ⏳ **CAUGHT — and it is the same defect as `.11.2.7`, which has been open five days.** 🔴 `Ran 73 tests in 375.967s` / **`FAILED (errors=9)`** against a normal ~21 s, and the per-phase instrument localizes every one: **8 of 8 stall in the `download` phase**, `started` at 15,239–15,251 ms where it normally costs 144–209 ms, with `version` and `command` never reached. ⭐ That phase runs **no network** — a stubbed `curl` copying a local file — so the 15 s is spent STARTING a small fresh child. ⛔ **The candidate was then produced deliberately and REFUTED**: a fresh 191 MB signed bundle extracted immediately before the suite gave **21.314 s, 73 OK** with `syspolicyd` at 66–81 %, so the daemon’s load joins *the machine was busy* as a withdrawn explanation. ⚠ Swap read the identical **5,719 MB** in the failing and the passing run. Ownership of `.11.2.7` consolidates here |
 | 1a | `SIGNOFF-REPAIR.11.26.2` | `done` | ✅ REPAIR-0381 — **this batch's own findings graded: 11 claims, 8 exact, 2 moved, 1 unverifiable.** ⭐ Held exactly by DIFFERENT routes: the population (raw shell vs the Python census), the census movement **62/2/40 → 101/1/2** (today's instrument replayed over past trees via `git show`), **21 coarse vs 14 per-route** and the seven partly-described families by name, every schema claim table-by-table, and both `git grep` named instances. 🔴 **WRONG: *24 timing records … nothing stalled*** — the log is APPEND-mode, 24 is the file's total across three runs, this run wrote **8**, and eight of the 24 are the 2026-09-20 stall. `CLAIM_VERIFICATION` §6's *a claim about an item, evidenced by its container*. 🔴 **UNVERIFIABLE: `.11.26`'s 240-invocation distribution** — its artefact is untracked and replaced; a leg-3 breach, and the CARRIED figure again. ✅ But the capture itself re-derives to the millisecond, so the leaf's conclusion survives its arithmetic. 🔴 MOVED: the gate price 0.16 s → **0.27–0.35 s**, decision unchanged |
 | 1a | `SIGNOFF-REPAIR.11.25.1` | `done` | ✅ REPAIR-0323 — **the holder is two `chrome_crashpad_handler` OUTSIDE the owned process group**, named by KERNEL PIPE IDENTITY: a render’s stderr pipe has **12 holders at fd 2**, 10 in the group `stop_process` kills and 2 double-forked to `ppid 1` with a process group each — so `kill_process_group` cannot reach them by construction. ✅ **The positive control PASSES** (45 of 46 mid-render samples resolve the pipe; `pgrep` returns 11–12), so `.11.25.1.1`’s *both are blind on this host* is annotated while its withdrawal stands. 🔴 **And the hold does NOT reproduce — 22 runs across four render durations, drain 0–1 ms, none censored** — while the control that opened `.11.25` now passes **18/0** with no predicate changed since it failed. ⛔ **No product change**: 7 launch flags suppress nothing, the handle is inherited before any code of ours runs, and there is nothing to bound. ✅ `scripts/measure_browser_stderr_holder.py` ships as the tracked producer, reporting `positive_control: blind` rather than an absence it cannot license |

@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-29 — Tranche 6 sized on text and split; 6a opens .11.59–.11.62; tranche 5's sizes corrected (`SIGNOFF-REPAIR.11.9.1.5.1`)
+
+`REASONBRAID-DOC-0198`.
+
+- 🔍 **6a:** 20 clauses: 6 handled, 1 owned (`.8.1`), 9 unowned, 2 declined, 2 none; `--classified` clean, 21 records left. New: `.11.60` (class 2: `projections::load` maps any error to `Duplicate`, bundle never hashed before write), `.11.62` (class 2+3: unknown/negative usage settles as `None` = nothing spent; `LocalBudget` in memory), `.11.59` (class 3: RX answer consumed nowhere), `.11.61` (class 3: no-record row unreachable).
+- ⛔ **Own error:** DOC-0194's sizes were `len(str(record))` via a silent fallback. Calibrated measure reproduces 1,405: tranche 5 is 7,299 (3,757/2,168/1,374). Also fixed in passing: the resource row called `.7.1.5` open and blocking (closed REPAIR-0499).
+
 ## 2026-09-29 — LIVE_STATUS's table names no leaf, and PLAN-STATES-TARGETS refuses one there (`SIGNOFF-REPAIR.11.44`)
 
 `REASONBRAID-REPAIR-0566`.

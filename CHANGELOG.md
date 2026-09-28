@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-28 — A changed answer to a recruitment call shows when it was given (`SIGNOFF-REPAIR.11.42`)
+
+`REASONBRAID-REPAIR-0552`.
+
+- 🔴 **Before:** when a participant changed its answer to a recruitment call, the call's record showed the new answer with the time of the old one.
+- ✅ **Now:** the record shows the current answer and when it was given. The guide says that a new answer replaces the old one, and that closing a call picks a panel but invites no one.
+
 ## 2026-09-28 — The roadmap no longer carries a progress report that goes stale (`SIGNOFF-REPAIR.11.43`)
 
 `REASONBRAID-REPAIR-0551`.

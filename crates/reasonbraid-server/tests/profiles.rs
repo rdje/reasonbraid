@@ -19222,3 +19222,127 @@ async fn a_snapshot_whose_declared_length_is_not_its_bytes_is_refused() {
         failures.join("\n")
     );
 }
+
+/// `SIGNOFF-REPAIR.11.42` (tranche 4e, `R-53-1`): a respondent's second
+/// response replaces its first, and the call inspection shows the CURRENT
+/// response with the time it was given. The upsert used to replace the kind and
+/// payload but keep the first row's `created_at`, so the inspection paired the
+/// new answer with the old time.
+#[tokio::test]
+async fn a_changed_response_carries_the_time_it_was_given() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "respond-twice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{human}");
+    let tenant = human["tenant_id"].as_str().unwrap().to_string();
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let response = client
+        .post(format!("{base}/v1/threads"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({
+            "protocol_version": reasonbraid_core::PROTOCOL_VERSION,
+            "operation": "thread.create",
+            "request_id": reasonbraid_core::RequestId::new().to_string(),
+            "idempotency_key": "respond-twice-thread",
+            "expected_aggregate_version": null,
+            "body": { "tenant_id": tenant, "subject": "respond twice", "objective": "probe" },
+            "authority_context": null,
+            "client_context": { "correlation_id": null, "causation_id": null },
+        }))
+        .send()
+        .await
+        .expect("thread request");
+    let created: Value = response.json().await.unwrap();
+    let thread_id = created["thread_id"]
+        .as_str()
+        .expect("the thread creates")
+        .to_string();
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "respond-twice-agent", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "{role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &human_id, &tenant, &role_id).await;
+    let (status, opened) = post(
+        &client,
+        &base,
+        "/v1/calls",
+        &human_id,
+        &json!({
+            "tenant_id": tenant,
+            "thread_id": thread_id,
+            "expression": {
+                "scope": "tenant",
+                "capabilities": [{ "taxonomy_id": "code_review", "min_confidence": "owner_attested" }],
+                "presence_states": ["available", "offline"],
+            },
+            "min_participants": 1,
+            "max_participants": 2,
+            "join_deadline": (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339(),
+            "expires_at": (chrono::Utc::now() + chrono::Duration::hours(2)).to_rfc3339(),
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the call opens: {opened}");
+    let call_id = opened["call_id"].as_str().unwrap().to_string();
+    let responses = |kind: &'static str| {
+        let client = client.clone();
+        let base = base.clone();
+        let call_id = call_id.clone();
+        let human_id = human_id.clone();
+        let role_id = role_id.clone();
+        async move {
+            let (status, _) = post(
+                &client,
+                &base,
+                &format!("/v1/calls/{call_id}/respond"),
+                &role_id,
+                &match kind {
+                    "decline" => json!({ "kind": "decline", "reason": "not now" }),
+                    _ => json!({ "kind": "defer", "until": (chrono::Utc::now() + chrono::Duration::hours(3)).to_rfc3339() }),
+                },
+            )
+            .await;
+            assert_eq!(status, 200, "the {kind} rides");
+            let (status, call) =
+                get(&client, &base, &format!("/v1/calls/{call_id}"), &human_id).await;
+            assert_eq!(status, 200, "{call}");
+            call["responses"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|r| r["respondent"] == json!(role_id))
+                .cloned()
+                .expect("the role's response is listed")
+        }
+    };
+    let first = responses("decline").await;
+    tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
+    let second = responses("defer").await;
+    let at = |value: &Value| {
+        chrono::DateTime::parse_from_rfc3339(value["at"].as_str().unwrap()).unwrap()
+    };
+    assert_eq!(
+        second["kind"],
+        json!("defer"),
+        "the second response replaces the first: {second}"
+    );
+    assert!(
+        at(&second) > at(&first),
+        "the inspection pairs the current `defer` with the time it was given, not the first \
+         response's: first {} / second {}",
+        first["at"],
+        second["at"]
+    );
+}

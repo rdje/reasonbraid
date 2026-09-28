@@ -23,7 +23,7 @@ POST /v1/threads/auto                 a node initiates a thread itself
 ## Opening a call
 
 The gate is `ThreadInvite` **on that thread**: a call rides the same invitation
-machinery as naming a participant by hand (ADR-015), so opening one is not a
+authority as naming a participant by hand (ADR-015), so opening one is not a
 weaker act than inviting someone.
 
 ```bash
@@ -190,6 +190,10 @@ respondent is told why rather than silently dropped.
 ⚠️ Eligibility is re-resolved at response time, not at open time. A role whose
 facts changed after the call was advertised is judged on the facts it has now.
 
+A role may answer again while the call is open. The new response **replaces** the
+earlier one, which is not kept, and the call's inspection shows the current
+response with the time it was given.
+
 ⛔ **A federated subscriber's `join` is a request, not a join**
 (`SIGNOFF-REPAIR.5.3.5.2`). A role in another tenant cannot act in the call's
 tenant without a local grant (ADR-026), and the only path to one is the card
@@ -234,6 +238,10 @@ Closing **snapshots the selected panel**: the joiners, ranked, capped at
 `max_participants` — together with the **selection explanation**, which carries
 each panelist's stage-1 reasons and stage-2 features. The explanation is stored
 with the panel, so why this panel was chosen survives the call.
+
+The panel is a record, not a seating: closing invites and seats no one. A
+panelist takes part in the thread once it is invited like any participant
+([explicit participants](cli.md)).
 
 ⛔ The snapshot is taken at close. Roles that join, change or become ineligible
 afterwards do not alter it — that is what makes it a record rather than a view.

@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-28 — A replaced recruitment response moves its time (`SIGNOFF-REPAIR.11.42`)
+
+`REASONBRAID-REPAIR-0552`.
+
+- 🔴 **Root cause:** `ON CONFLICT … DO UPDATE SET response_kind, payload` left `created_at`; the inspection's `"at"` is that column. RED: decline then defer, both at `08:50:14.601048`.
+- ✅ **Fix:** `created_at = now()` in both upserts; the comment states replacement. Mutant caught live; `mcp_write`/`federation` pass.
+
 ## 2026-09-28 — `ROADMAP.md` states targets; `PLAN-STATES-TARGETS` keeps it so (`SIGNOFF-REPAIR.11.43`)
 
 `REASONBRAID-REPAIR-0551`.

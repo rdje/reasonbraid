@@ -290,9 +290,12 @@ pub async fn offer_to_subscribers(
     Ok(offered.len())
 }
 
-/// Record one typed response (one per respondent — the second overwrites is a
-/// conflict, never a silent merge). On the respond's transaction, which holds
-/// the call row shared (`SIGNOFF-REPAIR.5.2.4`).
+/// Record one typed response. One row per respondent: a second response
+/// REPLACES the first (a respondent's current answer is what the close reads),
+/// and the row's time moves with it, so the inspection never pairs the new
+/// answer with the old time (`SIGNOFF-REPAIR.11.42`; this comment used to call
+/// the replacement a conflict, which the SQL never raised). On the respond's
+/// transaction, which holds the call row shared (`SIGNOFF-REPAIR.5.2.4`).
 pub async fn record_response(
     conn: &mut sqlx::PgConnection,
     call_id: &str,
@@ -325,7 +328,8 @@ pub async fn record_response(
     sqlx::query(
         "INSERT INTO recruitment_responses (response_id, call_id, respondent, response_kind, payload) \
          VALUES ('rsp_' || gen_random_uuid()::text, $1, $2, $3, $4) \
-         ON CONFLICT (call_id, respondent) DO UPDATE SET response_kind = $3, payload = $4",
+         ON CONFLICT (call_id, respondent) \
+         DO UPDATE SET response_kind = $3, payload = $4, created_at = now()",
     )
     .bind(call_id)
     .bind(respondent)
@@ -351,7 +355,8 @@ pub async fn record_join_request(
     sqlx::query(
         "INSERT INTO recruitment_responses (response_id, call_id, respondent, response_kind, payload) \
          VALUES ('rsp_' || gen_random_uuid()::text, $1, $2, 'join_request', $3) \
-         ON CONFLICT (call_id, respondent) DO UPDATE SET response_kind = 'join_request', payload = $3",
+         ON CONFLICT (call_id, respondent) \
+         DO UPDATE SET response_kind = 'join_request', payload = $3, created_at = now()",
     )
     .bind(call_id)
     .bind(respondent)

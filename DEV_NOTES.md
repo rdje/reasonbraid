@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-28 — The ownership gate sees D, R, migrations and hooks; one code definition (`SIGNOFF-REPAIR.11.40`)
+
+`REASONBRAID-REPAIR-0553`.
+
+- 🔴 **Root cause:** `--diff-filter=ACM` plus a private glob (no `migrations/`, `.githooks/`, `scripts/`), a second copy of `.doctrine/code_paths.txt`. RED in a throwaway index: migration, hook, deletion each rc=0. History: 1007 commits, none used the gap.
+- ✅ **Fix:** `check_task_acceptance.sh --code-paths` is the one definition (seam read from the index only; seam and default gain migrations, hooks, Cargo files); both gates `--no-renames`, all statuses, a tree must be a present `docs/tasks/<TREE>.md`; `SPINE_ALLOW_UNOWNED` removed. New `--self-test`, 10/10 hand mutants killed. ⚠️ The self-test cannot see its own `GIT_INDEX_FILE` isolation; an outside control does.
+- 🔴 **Opened:** `.11.44` (class 3): `LIVE_STATUS.md`'s *Corrective review* row says work "follows" that closed at REPAIR-0544.
+
 ## 2026-09-28 — A replaced recruitment response moves its time (`SIGNOFF-REPAIR.11.42`)
 
 `REASONBRAID-REPAIR-0552`.

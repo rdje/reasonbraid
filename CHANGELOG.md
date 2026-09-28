@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-28 — Every code change needs its task record, including deletions, migrations and hooks (`SIGNOFF-REPAIR.11.40`)
+
+`REASONBRAID-REPAIR-0553`.
+
+- 🔴 **Before:** the check that every code change is owned by a task in the project's task tree missed four kinds of change: deleting code, renaming it, changing a database migration, and changing a git hook. Any of them could land with no task record. No past commit did.
+- ✅ **Now:** the check counts every kind of change, and it and the acceptance check share one definition of what code is. There is no longer a way to skip it. The book's qualification page says so.
+
 ## 2026-09-28 — A changed answer to a recruitment call shows when it was given (`SIGNOFF-REPAIR.11.42`)
 
 `REASONBRAID-REPAIR-0552`.

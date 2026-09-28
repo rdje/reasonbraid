@@ -6,7 +6,7 @@ turns a portable standard into a fork of it — that is what these seams exist t
 
 | file | consumed by | meaning |
 |---|---|---|
-| `code_paths.txt` | `TASK-ACCEPTANCE` | one extended regular expression per line: what counts as a **code change** here. Absent ⇒ the built-in Rust-workspace default (`crates/`, `src/`, `scripts/`, `*.rs`, `*.sh`, `Makefile`). |
+| `code_paths.txt` | `TASK-ACCEPTANCE`, `TASK-TREE-OWNERSHIP` | one extended regular expression per line: what counts as a **code change** here, for both gates (the ownership gate asks `check_task_acceptance.sh --code-paths`). Read from the **index**, so a commit is judged by the definition it carries. Absent ⇒ the built-in Rust-workspace default (`crates/`, `src/`, `scripts/`, `migrations/`, `.githooks/`, `*.rs`, `*.sh`, `Makefile`, `Cargo.toml`, `Cargo.lock`). |
 | `evidence_tokens.txt` | `TASK-ACCEPTANCE` | one extended regular expression per line: **your** tools' output signatures, ADDED to the universal defaults. Absent ⇒ defaults only. |
 | `acceptance_labels.txt` | `TASK-ACCEPTANCE` | `<NAME><TAB><extended regex>` per line: the hard-gated questions a closing leaf must answer, **in your project's spellings**. REPLACES the built-in families rather than adding to them. Absent ⇒ the portable defaults. |
 | `readme_routes.txt` | `README-STABILITY` | one row per routed destination: `path\|class\|pressure control\|owner` — every destination the README, the policy, or the guard's routing hint names must end at a governed terminal (a row's path governs that path and everything under it). Absent ⇒ the guard refuses. |

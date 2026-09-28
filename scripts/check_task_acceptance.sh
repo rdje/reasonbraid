@@ -48,7 +48,8 @@
 # this check as proving correctness — it proves the author cited something re-runnable.
 #
 # ── PROJECT SEAMS (this is what keeps the check neutral) ─────────────────────────────────────
-#   .doctrine/code_paths.txt       one glob per line — what counts as a CODE change here.
+#   .doctrine/code_paths.txt       one extended regular expression per line — what counts as a
+#                                  CODE change here, for this gate AND TASK-TREE-OWNERSHIP.
 #                                  Absent -> the built-in default below (Rust workspace shape).
 #   .doctrine/evidence_tokens.txt  one regular expression per line — YOUR tools' output signatures,
 #                                  ADDED to the universal defaults. Absent -> defaults only.
@@ -63,13 +64,15 @@ set -uo pipefail
 ROOT="$(git rev-parse --show-toplevel)"; cd "$ROOT"
 
 # ── what counts as a code change ─────────────────────────────────────────────────────────────
-default_code_re='(^|/)(crates|src|scripts)/|\.(rs|sh)$|(^|/)Makefile$'
-if [ -f .doctrine/code_paths.txt ]; then
-  code_re="$(grep -vE '^\s*(#|$)' .doctrine/code_paths.txt | paste -sd'|' -)"
-  [ -n "$code_re" ] || code_re="$default_code_re"
-else
-  code_re="$default_code_re"
-fi
+# ⛔ ONE definition, read by this gate and by TASK-TREE-OWNERSHIP (`--code-paths`), which kept a
+# private glob until `SIGNOFF-REPAIR.11.40`: `scripts/` was code to this gate and not to that one,
+# and neither counted a migration or a git hook. The seam is read from the INDEX, and ONLY from
+# it: a commit is judged by the definition it carries, so an unstaged edit cannot narrow it.
+default_code_re='(^|/)(crates|src|scripts|migrations|\.githooks)/|\.(rs|sh)$|(^|/)(Makefile|Cargo\.toml|Cargo\.lock)$'
+seam="$(git show :.doctrine/code_paths.txt 2>/dev/null || true)"
+code_re="$(printf '%s\n' "$seam" | grep -vE '^\s*(#|$)' | paste -sd'|' -)"
+[ -n "$code_re" ] || code_re="$default_code_re"
+if [ "${1:-}" = "--code-paths" ]; then printf '%s\n' "$code_re"; exit 0; fi
 
 # ── self-test ────────────────────────────────────────────────────────────────────────────────
 # Two-sided, and the NEGATIVE arm is the extractor this gate REPLACED: a first-box scan over the
@@ -298,10 +301,14 @@ if [ "${1:-}" = "--debt" ]; then
 fi
 
 
-staged="$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null || true)"
+# Every status, and a rename as its old AND new path: `--diff-filter=ACM` hid D and R, so a
+# commit that only deleted or moved code was not a code change here (`SIGNOFF-REPAIR.11.40`).
+staged="$(git diff --cached --name-only --no-renames 2>/dev/null || true)"
 [ -n "$staged" ] || exit 0
 
 printf '%s\n' "$staged" > "$tmp/staged.txt"
+# A tree deleted by this commit owns nothing, so leaves come from the set without deletions.
+git diff --cached --name-only --no-renames --diff-filter=d > "$tmp/present.txt" 2>/dev/null || true
 
 grep -E "$code_re" "$tmp/staged.txt" > "$tmp/code.txt" 2>/dev/null || true
 [ -s "$tmp/code.txt" ] || exit 0          # pure-docs change: this doctrine does not govern it
@@ -312,7 +319,7 @@ grep -E "$code_re" "$tmp/staged.txt" > "$tmp/code.txt" 2>/dev/null || true
 # were correct. The same exclusion exists in the layer-C check in this repo (INDEX/TEMPLATE).
 # A tree is docs/tasks/<TREE-ID>.md (TASK_TREE_README.md). Nested evidence is
 # neither another owning tree nor a substitute for staging the real owner.
-grep -E '^docs/tasks/[^/]+\.md$' "$tmp/staged.txt" | grep -vE '(^|/)TEMPLATE\.md$' \
+grep -E '^docs/tasks/[^/]+\.md$' "$tmp/present.txt" | grep -vE '(^|/)TEMPLATE\.md$' \
   > "$tmp/leaves.txt" 2>/dev/null || true
 if [ ! -s "$tmp/leaves.txt" ]; then
   {

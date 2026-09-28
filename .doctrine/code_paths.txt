@@ -1,11 +1,18 @@
-# What counts as a CODE change for TASK-ACCEPTANCE in this repository.
-# One extended regular expression per line. See .doctrine/README.md.
+# What counts as a CODE change in this repository, for TASK-ACCEPTANCE and
+# TASK-TREE-OWNERSHIP alike (the second asks the first: `check_task_acceptance.sh
+# --code-paths`). One extended regular expression per line. See .doctrine/README.md.
 #
 # The built-in default matches any path component named `src/`, which would treat
 # `docs/book/src/` (mdBook chapters) as product code. ReasonBraid's Rust lives
 # under `crates/`; scripts and the Makefile are the other executable surfaces.
+# Migrations change the schema every tenant runs on, the git hooks run the gates,
+# and the Cargo files choose what is compiled (`SIGNOFF-REPAIR.11.40`: none of the
+# four was code to either gate).
 (^|/)crates/
 (^|/)scripts/
+(^|/)migrations/
+(^|/)\.githooks/
 \.rs$
 \.sh$
 (^|/)Makefile$
+(^|/)Cargo\.(toml|lock)$

@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-28 — A redirect can no longer lead the server to a private address written in IPv6 (`SIGNOFF-REPAIR.11.50`)
+
+`REASONBRAID-REPAIR-0554`.
+
+- 🔴 **Before:** when a git source redirected to an address written in IPv6 form, such as `[::1]` or the IPv4-in-IPv6 spelling of a private address, the server followed it without checking where it led. Measured: the redirect reached a service on the server's own machine. A redirect could also move to another port, and some reserved IPv6 ranges counted as public.
+- ✅ **Now:** every redirect is checked however its address is written, keeps the scheme and port it started on, and only ordinary public IPv6 addresses are reachable. The guide describes the rule.
+
 ## 2026-09-28 — The last five review notes of this batch checked: revoked authority still approves policy (`SIGNOFF-REPAIR.11.9.1.4.3`)
 
 `REASONBRAID-DOC-0196`.

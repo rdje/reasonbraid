@@ -733,8 +733,14 @@ fn harden_url(
 
 /// The alternative-literal refusal (§12.4 "alternative literal"): a "domain"
 /// that is really a number — the decimal/octal/hex IPv4 spellings some stacks
-/// resolve ("2130706433", "127.1", "0177.0.0.1", "0x7f000001"). Refused before
-/// DNS ever sees it, whatever the parser normalized.
+/// resolve ("2130706433", "127.1", "0177.0.0.1", "0x7f000001").
+///
+/// ⚠️ For `http` and `https` this arm cannot fire, and its comment used to say
+/// otherwise (*"whatever the parser normalized"*, `SIGNOFF-REPAIR.11.50`): the
+/// URL parser rewrites every one of those spellings to `Host::Ipv4` before this
+/// runs, and that address is classified as the address it is, so nothing
+/// escapes. The arm stays as the refusal for a scheme the parser does not
+/// normalize.
 fn numeric_ambiguous(domain: &str) -> bool {
     let labels: Vec<&str> = domain.split('.').collect();
     if labels.is_empty() {

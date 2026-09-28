@@ -2648,6 +2648,17 @@ written. Each is now defined from what the code does:
 - **`egress_class: "listed"`** — the list is the §12.4 destination **classes**,
   not a list of hosts. The pack classifies every dial (public only; loopback,
   private, link-local and reserved refused) rather than consulting an allowlist.
+  For IPv6, **public** means global unicast (`2000::/3`) outside its
+  special-purpose blocks: Teredo, 6to4, both documentation blocks and the IETF
+  protocol assignments are refused, as is every address outside `2000::/3`. An
+  IPv4 address written in the IPv4-mapped form is classified as the IPv4
+  address it carries, and the other IPv6 forms that embed one are refused. A
+  redirect hop is classified like the first dial, IPv6 literals included, and
+  the git pack's hop keeps the scheme and port its request started on, so a
+  redirect cannot leave `https` on 443. ⚠️ Until `SIGNOFF-REPAIR.11.50` the
+  git pack read a hop's host as text, which keeps an IPv6 address in brackets,
+  so a redirect to `[::1]` or `[::ffff:127.0.0.1]` was followed unclassified;
+  that was measured live, then repaired.
   ⚠️ **For R3 this holds for the page's requests, not the browser's own.**
   Measured on 2026-09-25 (`SIGNOFF-REPAIR.7.3.7`): Chrome, left on a blank page
   under the worker's flags, connected to Google's time, accounts, component

@@ -78,14 +78,35 @@ fn classify_v6(ip: std::net::Ipv6Addr) -> DestinationClass {
             b as u8,
         )),
         [0, 0, 0, 0, 0, 0, 0, 1] => DestinationClass::Loopback, // ::1
-        [0, 0, 0, 0, 0, 0, 0, 0] => DestinationClass::Reserved, // ::
-        [0x2001, 0xdb8, ..] => DestinationClass::Reserved,      // the documentation range
-        [0x64, 0xff9b, ..] => DestinationClass::Reserved,       // the NAT64 well-known prefix
         [0xfe80..=0xfebf, ..] => DestinationClass::LinkLocal,
+        [0xfec0..=0xfeff, ..] => DestinationClass::Private, // site-local (deprecated, RFC 3879)
         [0xfc00..=0xfdff, ..] => DestinationClass::Private, // the unique-local range
         [0xff00..=0xffff, ..] => DestinationClass::Multicast,
-        _ => DestinationClass::Public,
+        // ⛔ Public is ALLOWED, not defaulted (`SIGNOFF-REPAIR.11.50`). This
+        // match used to refuse a list and end `_ => Public`, so every range the
+        // list missed was reachable: site-local, the IPv4-compatible and
+        // IPv4-translated forms, the discard prefix, Teredo, 6to4, local-use
+        // NAT64 and the second documentation block. Only global unicast
+        // (`2000::/3`) outside its special-purpose blocks is public now, and
+        // everything else, `::` and both NAT64 prefixes included, is reserved.
+        [0x2000..=0x3fff, ..] if !special_purpose_unicast(segments) => DestinationClass::Public,
+        _ => DestinationClass::Reserved,
     }
+}
+
+/// The blocks inside `2000::/3` that are not a public destination, from the
+/// IANA special-purpose registry: the IETF protocol assignments (`2001::/23`,
+/// which holds Teredo, benchmarking and ORCHID), documentation (`2001:db8::/32`
+/// and `3fff::/20`), and 6to4 (`2002::/16`, whose relays RFC 7526 deprecated and
+/// whose addresses carry an arbitrary IPv4 address).
+fn special_purpose_unicast(segments: [u16; 8]) -> bool {
+    matches!(
+        segments,
+        [0x2001, 0x0000..=0x01ff, ..]
+            | [0x2001, 0x0db8, ..]
+            | [0x2002, ..]
+            | [0x3fff, 0x0000..=0x0fff, ..]
+    )
 }
 
 /// The SSRF verdict: the policy's decision + the named reason.
@@ -127,6 +148,7 @@ mod tests {
             (ip4(172, 16, 0, 1), "private"),
             (ip4(192, 168, 1, 1), "private"),
             ("fc00::1".parse().unwrap(), "private"),
+            ("fec0::1".parse().unwrap(), "private"),
             (ip4(169, 254, 10, 1), "link_local"),
             ("fe80::1".parse().unwrap(), "link_local"),
             (ip4(169, 254, 169, 254), "cloud_metadata"),
@@ -176,6 +198,49 @@ mod tests {
                 assert!(reason.contains("cloud_metadata"), "{reason}")
             }
             SsrfVerdict::Allowed => panic!("the mapped metadata address must refuse"),
+        }
+    }
+
+    /// 🔴 `SIGNOFF-REPAIR.11.50` — the IPv6 classifier refused a list and
+    /// called the rest public, so every special-purpose range the list missed
+    /// was reachable. Each address below is outside global unicast, or inside
+    /// a range the IANA special-purpose registry says is not globally
+    /// reachable, or carries an IPv4 address in a form that is not the mapped
+    /// one. The two lists are the contract: the first must refuse, the second
+    /// must stay public, so a classifier that refuses everything fails too.
+    #[test]
+    fn the_ipv6_special_purpose_ranges_are_not_public() {
+        for text in [
+            "fec0::1",            // site-local, deprecated but routable inside a site
+            "::a9fe:a9fe",        // IPv4-compatible 169.254.169.254
+            "::ffff:0:a9fe:a9fe", // IPv4-translated 169.254.169.254
+            "100::1",             // the discard prefix
+            "2001::1",            // Teredo
+            "2001:2::1",          // benchmarking
+            "2001:10::1",         // ORCHID
+            "2002:a9fe:a9fe::1",  // 6to4 carrying 169.254.169.254
+            "64:ff9b:1::1",       // local-use NAT64
+            "3fff::1",            // documentation (RFC 9637)
+            "4000::1",            // outside global unicast
+        ] {
+            let ip: IpAddr = text.parse().unwrap();
+            assert_ne!(
+                classify_destination(ip),
+                DestinationClass::Public,
+                "{text} must not classify as public"
+            );
+            assert!(
+                matches!(evaluate(ip), SsrfVerdict::Refused { .. }),
+                "{text} must be refused"
+            );
+        }
+        for text in [
+            "2606:4700:4700::1111",
+            "2001:4860:4860::8888",
+            "2a00:1450:4001::1",
+        ] {
+            let ip: IpAddr = text.parse().unwrap();
+            assert_eq!(evaluate(ip), SsrfVerdict::Allowed, "{text} stays public");
         }
     }
 

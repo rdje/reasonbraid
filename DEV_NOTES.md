@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-28 — IPv6 literal hops classified; hops keep scheme and port; `classify_v6` allow-lists (`SIGNOFF-REPAIR.11.50`)
+
+`REASONBRAID-REPAIR-0554`.
+
+- 🔴 **Root cause:** `git.rs` parsed `url.host_str()` (IPv6 stays bracketed) as `IpAddr`, so `[::1]` and `[::ffff:127.0.0.1]` hops were followed unclassified; RED live, both `Ok(200)`. `classify_v6` ended `_ => Public`.
+- ✅ **Fix:** `literal_ip` on the typed `url.host()` for pre-flight and hops; `hop_leaves_origin` (scheme + `port_or_known_default`); `classify_v6` public only in `2000::/3` minus `2001::/23`, `2001:db8::/32`, `2002::/16`, `3fff::/20`. `cargo mutants --in-diff`: 18/19 viable caught; the `fec0` arm's survivor caught after the control asserted the class `private`.
+
 ## 2026-09-28 — Tranche 5c: 20 clauses; grant checks never read the boundary, the reconciler never judges `refs/rb/effective` (`SIGNOFF-REPAIR.11.9.1.4.3`)
 
 `REASONBRAID-DOC-0196`.

@@ -413,7 +413,7 @@ impl GitFetcher {
     async fn classify(&self, url: &Url) -> Result<(), GitError> {
         let host = url.host_str().ok_or(GitError::NoHost)?;
         let port = url.port_or_known_default().unwrap_or(443);
-        if let Ok(ip) = host.parse::<IpAddr>() {
+        if let Some(ip) = literal_ip(url) {
             return allow_ip(&self.policy, ip);
         }
         let mut addrs = self
@@ -430,6 +430,51 @@ impl GitFetcher {
         }
         Ok(())
     }
+}
+
+/// The address an IP-literal URL names, read from the TYPED host.
+///
+/// 🔴 `SIGNOFF-REPAIR.11.50`: both dials used to parse `host_str()`, which
+/// keeps an IPv6 address inside its brackets, so `"[::1]".parse::<IpAddr>()`
+/// failed and the literal read as a hostname. The redirect decision then
+/// followed it, and hyper-util, which strips the brackets itself, dialed it
+/// without the resolver: a redirect to `[::1]` or `[::ffff:127.0.0.1]` reached
+/// loopback, measured live.
+fn literal_ip(url: &Url) -> Option<IpAddr> {
+    match url.host()? {
+        url::Host::Ipv4(ip) => Some(IpAddr::V4(ip)),
+        url::Host::Ipv6(ip) => Some(IpAddr::V6(ip)),
+        url::Host::Domain(_) => None,
+    }
+}
+
+/// The host a refusal names, without the brackets an IPv6 literal carries in
+/// a URL.
+fn host_label(url: &Url) -> String {
+    match url.host() {
+        Some(url::Host::Ipv4(ip)) => ip.to_string(),
+        Some(url::Host::Ipv6(ip)) => ip.to_string(),
+        Some(url::Host::Domain(domain)) => domain.to_owned(),
+        None => String::new(),
+    }
+}
+
+/// A redirect hop keeps the scheme and port the request started on
+/// (`SIGNOFF-REPAIR.11.50`). The first URL is `https` on 443 by
+/// `harden_git_url`, and no hop was checked, so a redirect could downgrade to
+/// `http` or move to any port on an address the policy allows.
+fn hop_leaves_origin(first: &Url, next: &Url) -> Option<String> {
+    let (from, to) = (first.port_or_known_default(), next.port_or_known_default());
+    if first.scheme() == next.scheme() && from == to {
+        return None;
+    }
+    Some(format!(
+        "the redirect leaves `{}` on port {} for `{}` on port {}; a hop keeps the request's scheme and port",
+        first.scheme(),
+        from.map_or_else(|| "none".to_owned(), |p| p.to_string()),
+        next.scheme(),
+        to.map_or_else(|| "none".to_owned(), |p| p.to_string()),
+    ))
 }
 
 fn allow_ip(
@@ -486,6 +531,10 @@ fn harden_git_url(raw: &str) -> Result<Url, GitError> {
     Ok(url)
 }
 
+/// The alternative-literal refusal, as `fetcher.rs`'s. ⚠️ For `https`, the only
+/// scheme `harden_git_url` admits, the URL parser has already rewritten a
+/// numeric spelling to `Host::Ipv4`, so this arm cannot fire there; the address
+/// is classified instead (`SIGNOFF-REPAIR.11.50`).
 fn numeric_ambiguous(domain: &str) -> bool {
     let labels: Vec<&str> = domain.split('.').collect();
     if labels.is_empty() {
@@ -546,9 +595,13 @@ fn fetch_refspec(url: &Url) -> String {
 ///   0.1.20 says so in its own source — *"If the host is already an IP addr
 ///   (v4 or v6), skip resolving the dns and start connecting right away."*
 ///   The initial URL is covered by `GitFetcher::classify`'s pre-flight, which
-///   parses an IP literal explicitly; a REDIRECT hop to one was covered by
-///   nothing until `SIGNOFF-REPAIR.7.2.2` put the same policy in the redirect
-///   decision itself.
+///   reads an IP literal from the typed host; a REDIRECT hop to one was covered
+///   by nothing until `SIGNOFF-REPAIR.7.2.2` put the same policy in the
+///   redirect decision itself. ⚠️ Until `SIGNOFF-REPAIR.11.50` both read the
+///   host STRING, which keeps an IPv6 address in brackets, so an IPv6 literal
+///   was covered by neither.
+/// - A hop keeps the scheme and port the request started on
+///   (`SIGNOFF-REPAIR.11.50`), so a redirect cannot leave `https` on 443.
 ///
 /// ⛔ The hop cap moved with it. `Policy::limited(5)` enforced the cap and
 /// nothing else; a custom policy owns both, so the cap is re-stated here
@@ -583,26 +636,30 @@ impl ClassifiedGitHttp {
                 if attempt.previous().len() > MAX_REDIRECT_HOPS {
                     return attempt.error(format!("more than {MAX_REDIRECT_HOPS} redirect hops"));
                 }
+                let refuse = |attempt: reqwest::redirect::Attempt, refused: GitError| {
+                    let detail = refused.to_string();
+                    if let Ok(mut slot) = refusal.lock() {
+                        *slot = Some(refused);
+                    }
+                    attempt.error(detail)
+                };
                 // Only an IP literal is classified here. A hostname hop is
                 // already covered by `ClassifiedDns`, and re-resolving it in a
                 // SYNCHRONOUS policy would either block the connector or
                 // duplicate the belt's answer.
-                let literal = attempt
-                    .url()
-                    .host_str()
-                    .and_then(|host| host.parse::<IpAddr>().ok());
-                if let Some(ip) = literal {
+                if let Some(ip) = literal_ip(attempt.url()) {
                     if let SsrfVerdict::Refused { reason } = policy(&ip) {
-                        let refused = GitError::DestinationRefused {
-                            host: ip.to_string(),
-                            reason,
-                        };
-                        let detail = refused.to_string();
-                        if let Ok(mut slot) = refusal.lock() {
-                            *slot = Some(refused);
-                        }
-                        return attempt.error(detail);
+                        let host = ip.to_string();
+                        return refuse(attempt, GitError::DestinationRefused { host, reason });
                     }
+                }
+                if let Some(reason) = attempt
+                    .previous()
+                    .first()
+                    .and_then(|first| hop_leaves_origin(first, attempt.url()))
+                {
+                    let host = host_label(attempt.url());
+                    return refuse(attempt, GitError::DestinationRefused { host, reason });
                 }
                 attempt.follow()
             }
@@ -2387,6 +2444,191 @@ mod tests {
             0,
             "the refused destination was never dialed — a named refusal that still \
              connected would be a report, not a control"
+        );
+    }
+
+    /// 🔴 `SIGNOFF-REPAIR.11.50` — `.7.2.2`'s hop policy classified only a
+    /// host that parsed as an `IpAddr`, and `url` returns an IPv6 host in
+    /// brackets, so an IPv6 literal hop parsed as nothing and was followed;
+    /// hyper-util then strips the brackets and dials without the resolver.
+    ///
+    /// Two literals, one control each: `[::1]` is served by its own IPv6
+    /// listener, and `[::ffff:127.0.0.1]` is the IPv4-mapped spelling of the
+    /// origin itself, so a dial reaches the SAME `/private` route. Both are
+    /// loopback to `ssrf::evaluate`, and the test policy allows only the IPv4
+    /// origin, as `.7.2.2`'s control does.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_redirect_hop_to_an_ipv6_literal_is_classified_like_every_other_dial() {
+        use axum::http::header::LOCATION;
+        use axum::http::StatusCode;
+        use axum::routing::get;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let v4 = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .expect("the test origin binds");
+        let port = v4.local_addr().expect("the origin port").port();
+        // The SAME port on the IPv6 loopback, so the hop keeps the request's
+        // port and only the address can refuse it.
+        let v6 = tokio::net::TcpListener::bind(("::1", port))
+            .await
+            .expect("the IPv6 loopback listener binds");
+        let port6 = v6.local_addr().expect("the IPv6 port").port();
+        let hits = Arc::new(AtomicUsize::new(0));
+        let private = |hits: Arc<AtomicUsize>| {
+            get(move || {
+                hits.fetch_add(1, Ordering::SeqCst);
+                async { "the refused destination answered" }
+            })
+        };
+        let app = axum::Router::new()
+            .route(
+                "/to-v6",
+                get(move || async move {
+                    (
+                        StatusCode::FOUND,
+                        [(LOCATION, format!("http://[::1]:{port6}/private"))],
+                    )
+                }),
+            )
+            .route(
+                "/to-mapped",
+                get(move || async move {
+                    (
+                        StatusCode::FOUND,
+                        [(
+                            LOCATION,
+                            format!("http://[::ffff:127.0.0.1]:{port}/private"),
+                        )],
+                    )
+                }),
+            )
+            .route("/private", private(Arc::clone(&hits)));
+        let v6_app = axum::Router::new().route("/private", private(Arc::clone(&hits)));
+        let origin = tokio::spawn(async move {
+            let _ = axum::serve(v4, app).await;
+        });
+        let origin6 = tokio::spawn(async move {
+            let _ = axum::serve(v6, v6_app).await;
+        });
+
+        for (path, literal) in [("/to-v6", "::1"), ("/to-mapped", "::ffff:127.0.0.1")] {
+            let resolver: Arc<dyn DestinationResolver> = Arc::new(StaticResolver(
+                [("git.test".to_owned(), IpAddr::from([127, 0, 0, 1]))]
+                    .into_iter()
+                    .collect(),
+            ));
+            let policy: Arc<dyn Fn(&IpAddr) -> SsrfVerdict + Send + Sync> =
+                Arc::new(|ip: &IpAddr| match ip {
+                    IpAddr::V4(v4) if v4.octets() == [127, 0, 0, 1] => SsrfVerdict::Allowed,
+                    other => crate::ssrf::evaluate(*other),
+                });
+            let url = format!("http://git.test:{port}{path}");
+            let result = tokio::task::spawn_blocking(move || {
+                let http = ClassifiedGitHttp::new(resolver, policy)?;
+                http.send(reqwest::Method::GET, &url, Vec::<String>::new(), None)
+                    .map(|(_, response)| response.status().as_u16())
+            })
+            .await
+            .expect("the blocking dial joins");
+            match result {
+                Err(GitError::DestinationRefused { host, reason }) => {
+                    assert_eq!(host, literal, "the refusal names the hop's address");
+                    assert!(reason.contains("loopback"), "and its class: {reason}");
+                }
+                other => panic!("the IPv6 hop to {literal} must be refused by name: {other:?}"),
+            }
+        }
+
+        origin.abort();
+        origin6.abort();
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            0,
+            "neither refused destination was dialed"
+        );
+    }
+
+    /// 🔴 `SIGNOFF-REPAIR.11.50` — no hop's scheme or port was checked, while
+    /// the first URL must be `https` on 443 (`harden_git_url`). A hop may not
+    /// leave the scheme and port the request started on; the local origin is
+    /// `http` on a random port, so this control starts there and moves the
+    /// port, to an address the policy ALLOWS, so only the port rule can refuse.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_redirect_hop_may_not_leave_the_requests_scheme_or_port() {
+        use axum::http::header::LOCATION;
+        use axum::http::StatusCode;
+        use axum::routing::get;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .expect("the test origin binds");
+        let port = listener.local_addr().expect("the origin port").port();
+        let other = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .expect("the second origin binds");
+        let other_port = other.local_addr().expect("the second port").port();
+        let hits = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&hits);
+        let app = axum::Router::new().route(
+            "/start",
+            get(move || async move {
+                (
+                    StatusCode::FOUND,
+                    [(LOCATION, format!("http://127.0.0.1:{other_port}/landing"))],
+                )
+            }),
+        );
+        let other_app = axum::Router::new().route(
+            "/landing",
+            get(move || {
+                counter.fetch_add(1, Ordering::SeqCst);
+                async { "the other port answered" }
+            }),
+        );
+        let origin = tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        let origin2 = tokio::spawn(async move {
+            let _ = axum::serve(other, other_app).await;
+        });
+
+        let resolver: Arc<dyn DestinationResolver> = Arc::new(StaticResolver(
+            [("git.test".to_owned(), IpAddr::from([127, 0, 0, 1]))]
+                .into_iter()
+                .collect(),
+        ));
+        let policy: Arc<dyn Fn(&IpAddr) -> SsrfVerdict + Send + Sync> =
+            Arc::new(|ip: &IpAddr| match ip {
+                IpAddr::V4(v4) if v4.octets() == [127, 0, 0, 1] => SsrfVerdict::Allowed,
+                other => crate::ssrf::evaluate(*other),
+            });
+        let url = format!("http://git.test:{port}/start");
+        let result = tokio::task::spawn_blocking(move || {
+            let http = ClassifiedGitHttp::new(resolver, policy)?;
+            http.send(reqwest::Method::GET, &url, Vec::<String>::new(), None)
+                .map(|(_, response)| response.status().as_u16())
+        })
+        .await
+        .expect("the blocking dial joins");
+
+        origin.abort();
+        origin2.abort();
+        match result {
+            Err(GitError::DestinationRefused { host, reason }) => {
+                assert_eq!(host, "127.0.0.1", "the refusal names the hop's host");
+                assert!(
+                    reason.contains("port"),
+                    "and the port it moved to: {reason}"
+                );
+            }
+            other => panic!("a hop to another port must be refused: {other:?}"),
+        }
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            0,
+            "the other port was never dialed"
         );
     }
 

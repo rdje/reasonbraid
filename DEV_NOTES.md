@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-29 — A self-test's real-process arm tolerates a listed pid that exits before its probe (`SIGNOFF-REPAIR.11.57`)
+
+`REASONBRAID-REPAIR-0565`.
+
+- 🔴 **Root cause:** `census_retained_fixtures.py --self-test` took the first root pid from `ps -axo pid=,uid=` and failed if signal 0 read it absent. The hook hit it on pid 419, a short-lived root process from after the pid wrap, and REPAIR-0564 was refused once. RED by injection reproduces the hook's exact message.
+- ✅ **Fix:** `foreign_liveness_check` — absent is a failure only if `ps -o pid= -p` still lists the pid after the probe; else try the next candidate; none left → NOTE. Four injected arms (race, liar, no survivor, the second look itself). 6/7 hand mutants caught; the real arm's `append` is unreachable without a lying kernel.
+
 ## 2026-09-28 — The network view names roles by their ids; the book stops calling it a pseudonym (`SIGNOFF-REPAIR.11.46`)
 
 `REASONBRAID-REPAIR-0564`.

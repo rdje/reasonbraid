@@ -212,6 +212,39 @@ def id_in_use(kind: str, ident: int) -> bool:
     return True
 
 
+def pid_still_listed(pid: int) -> bool:
+    """Does `ps` list this pid right now?"""
+    shown = subprocess.run(
+        ["ps", "-o", "pid=", "-p", str(pid)], capture_output=True, text=True, check=False
+    )
+    return shown.stdout.strip() == str(pid)
+
+
+def foreign_liveness_check(listing: str, probe=id_in_use, still_listed=pid_still_listed):
+    """The EPERM branch against a real process owned by root.
+
+    `listing` is `ps -axo pid=,uid=` output. Returns `(failure, pid)`: the failure
+    message or None, and the pid that was checked, or None when none survived.
+
+    A listed process can exit before the probe reaches it, and the probe is then
+    right to read it as absent. So an absent answer is a failure only when `ps`
+    still lists the pid AFTER the probe: listed before and after, it was alive when
+    probed (pids advance; one is not reused within milliseconds). A candidate gone
+    by then has exited, and the next one is tried.
+    """
+    candidates = [
+        int(line.split()[0])
+        for line in listing.splitlines()
+        if len(line.split()) == 2 and line.split()[1] == "0" and int(line.split()[0]) > 1
+    ]
+    for pid in candidates:
+        if probe("pid", pid):
+            return None, pid
+        if still_listed(pid):
+            return f"EPERM: live root-owned pid {pid} read as absent (ps still lists it)", pid
+    return None, None
+
+
 class Fixture:
     def __init__(self, path: Path, population: Population) -> None:
         self.path = path
@@ -609,15 +642,31 @@ def self_test() -> int:
         foreign = subprocess.run(
             ["ps", "-axo", "pid=,uid="], capture_output=True, text=True, check=False
         )
-        candidates = [
-            int(line.split()[0])
-            for line in foreign.stdout.splitlines()
-            if len(line.split()) == 2 and line.split()[1] == "0" and int(line.split()[0]) > 1
-        ]
-        if os.geteuid() == 0 or not candidates:
+        failure, checked = (None, None) if os.geteuid() == 0 else foreign_liveness_check(foreign.stdout)
+        if failure:
+            failures.append(failure)
+        elif checked is None:
             print("self-test NOTE: no unsignalable process available; EPERM checked by injection only")
-        elif not id_in_use("pid", candidates[0]):
-            failures.append(f"EPERM: live root-owned pid {candidates[0]} read as absent")
+        # A process listed there can exit before the probe reaches it (REPAIR-0564's
+        # commit was refused once on pid 419, gone by the time it was probed). Absent
+        # is a failure only when `ps` still lists the pid after the probe.
+        gone, live = 424241, 424243
+        answers = {gone: False, live: True}
+        race = foreign_liveness_check(
+            f"{gone} 0\n{live} 0\n", lambda kind, pid: answers[pid], lambda pid: pid != gone
+        )
+        if race != (None, live):
+            failures.append(f"a root pid that exited before its probe failed the arm: {race}")
+        liar = foreign_liveness_check(f"{live} 0\n", lambda kind, pid: False, lambda pid: True)
+        if liar[0] is None:
+            failures.append("a probe reading a still-listed root pid as absent passed")
+        none_left = foreign_liveness_check(f"{gone} 0\n", lambda kind, pid: False, lambda pid: False)
+        if none_left != (None, None):
+            failures.append(f"with every candidate gone the arm did not fall back aloud: {none_left}")
+        reaped = subprocess.Popen(["true"])
+        reaped.wait()
+        if not pid_still_listed(os.getpid()) or pid_still_listed(reaped.pid):
+            failures.append("ps's second look does not tell a live pid from a reaped one")
 
         expect(
             "a young fixture",
@@ -738,7 +787,8 @@ def self_test() -> int:
         return 1
     print(
         "self-test: 11 refusal arms, both liveness branches (EPERM injected and, where the "
-        "machine allows, a real unsignalable pid), the citation guard's two directions, a "
+        "machine allows, a real unsignalable pid, whose exit before its probe is a race and not a "
+        "failure), the citation guard's two directions, a "
         "browser, a pg and a console reduction that kept every receipt and dropped every "
         "payload byte, "
         "the kept-tree guard seen refusing a destroyed keeper, a fixture that went live "

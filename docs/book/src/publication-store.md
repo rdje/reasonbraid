@@ -56,6 +56,14 @@ rather than forcing the channel.
 
 1. **Validate before anything is written.** The repository must be inside the
    root and must open, and the manifest must still digest to what was staged.
+   The projection is read as it was compiled: its bytes must hash to the
+   projection digest the manifest names, so `bundle.txt` is checked before it
+   is written, not only when it is read back (`SIGNOFF-REPAIR.11.60`). A
+   projection that is missing or does not match its own record is `409
+   publication_conflict`, naming it, and nothing is written. A database that
+   cannot answer is the server's `500`. Until that repair the publish answered
+   both as *"… already exists"*, the caller's `400`, and wrote the bytes
+   unchecked.
 2. **Record the Git operation** in the database (below).
 3. **Write the objects**: the two blobs, the tree and the commit. Git objects
    are content-addressed, so rewriting them is harmless.

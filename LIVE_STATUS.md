@@ -31,6 +31,13 @@ re-examines its claims; they return to *Done* when the review requalifies them.
 | Phase 9 — stable release | Not Started | G9 requires sustained operational evidence and the outstanding release decisions. |
 | Corrective review | In Progress | It ends at a bug bar, not at exhaustion (`REASONBRAID-DOC-0162`): every leaf in a blocking class (cross-tenant; integrity of state, money, evidence or publication; a false claim; a gate that lies) closed with reproducible evidence, every deferred leaf with a readable trigger and a limit the qualification review states, the qualification review reconciled with measured behaviour, and the full CI checkpoint green on a pushed commit. |
 
+## 2026-09-29 — Publishing a policy checks the policy file before writing it, and reports database failures honestly (`SIGNOFF-REPAIR.11.60`)
+
+`REASONBRAID-REPAIR-0567`.
+
+- 🔴 **Before:** when publishing a policy, a database failure, or a policy file that had gone missing, was reported as "already exists", as if the request were wrong. The policy file was written without being checked against its fingerprint, so a file that had changed since approval could be published.
+- ✅ **Now:** a database failure is reported as the server's fault. A missing file, or one that no longer matches its fingerprint, is refused with a clear message before anything is written. The guide's publication chapters say so.
+
 ## 2026-09-29 — The last three findings of this batch checked; one more problem found (`SIGNOFF-REPAIR.11.9.1.5.3`)
 
 `REASONBRAID-DOC-0200`.

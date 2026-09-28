@@ -44,6 +44,16 @@ pub struct StoredProjection {
 #[derive(Debug)]
 pub enum ProjectionError {
     Duplicate(String),
+    /// No projection has this id (`SIGNOFF-REPAIR.11.60`). [`load`] answered it,
+    /// and a store failure, as `Duplicate`: *"… already exists"*.
+    NotFound(String),
+    /// A stored projection that does not match its own record: bytes that do
+    /// not hash to its digest, or a column that does not decode
+    /// (`SIGNOFF-REPAIR.11.60`). Never returned, so never published.
+    Corrupt {
+        projection_id: String,
+        detail: String,
+    },
     Resolution(crate::policy::PolicyError),
     Compile(reasonbraid_policy_compiler::CompileError),
     /// A policy the lock would name, whose stored digest does not verify: a
@@ -70,6 +80,14 @@ impl std::fmt::Display for ProjectionError {
                     "{what} already exists — the record's identity is its content"
                 )
             }
+            ProjectionError::NotFound(id) => write!(f, "projection `{id}` does not exist"),
+            ProjectionError::Corrupt {
+                projection_id,
+                detail,
+            } => write!(
+                f,
+                "projection `{projection_id}` does not match its own record: {detail}"
+            ),
             ProjectionError::Resolution(e) => write!(f, "{e}"),
             ProjectionError::Compile(e) => write!(f, "{e}"),
             ProjectionError::UnverifiedDigest { policy_id, version } => write!(
@@ -202,6 +220,14 @@ pub async fn project(
 
 /// Load one projection row (the `.4.3.2` publish verb reads the bundle +
 /// the digest it publishes).
+///
+/// ⛔ `SIGNOFF-REPAIR.11.60`: the publish verb and the reconciler both trust
+/// what this returns, so it says what went wrong and returns only a row that
+/// matches its own record. It used to answer a store failure and a missing row
+/// alike as `Duplicate`, panic on a list it could not decode, drop a resolved
+/// set it could not decode, and return bytes without hashing them. The publish
+/// then wrote those bytes to `bundle.txt` beside a manifest naming the digest,
+/// and nothing compared the two until a reader fetched them.
 pub async fn load(pool: &PgPool, projection_id: &str) -> Result<StoredProjection, ProjectionError> {
     let row: Option<(
         String,
@@ -217,21 +243,39 @@ pub async fn load(pool: &PgPool, projection_id: &str) -> Result<StoredProjection
     .bind(projection_id)
     .fetch_optional(pool)
     .await
-    .map_err(|_| ProjectionError::Duplicate(projection_id.to_string()))?;
+    .map_err(ProjectionError::Storage)?;
     let Some((projection_id, target, digest, bytes, unrepresentable, resolved_policies)) = row
     else {
-        return Err(ProjectionError::Duplicate(format!(
-            "projection `{projection_id}` (the publish references a REGISTERED projection)"
-        )));
+        return Err(ProjectionError::NotFound(projection_id.to_string()));
     };
+    let corrupt = |detail: String| ProjectionError::Corrupt {
+        projection_id: projection_id.clone(),
+        detail,
+    };
+    // The writer's own definition of the digest (`project` stores the
+    // compiler's), so the two cannot disagree about the format.
+    let hashed = reasonbraid_policy_compiler::digest_sha256_hex(bytes.as_bytes());
+    if hashed != digest {
+        return Err(corrupt(format!(
+            "its bytes hash to `{hashed}`, not to its digest `{digest}`"
+        )));
+    }
+    let unrepresentable = serde_json::from_value(unrepresentable)
+        .map_err(|e| corrupt(format!("its unrepresentable list does not decode: {e}")))?;
+    // A NULL set predates `migrations/0082` and stays `None`, which the publish
+    // reports as *unrecorded*; a set that is present and does not decode is a
+    // different fact, and used to read as the same one.
+    let resolved_policies = resolved_policies
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(|e| corrupt(format!("its resolved set does not decode: {e}")))?;
     Ok(StoredProjection {
         projection_id,
         target,
         digest,
         bytes,
-        unrepresentable: serde_json::from_value(unrepresentable)
-            .expect("the unrepresentables parse"),
-        resolved_policies: resolved_policies.and_then(|value| serde_json::from_value(value).ok()),
+        unrepresentable,
+        resolved_policies,
     })
 }
 

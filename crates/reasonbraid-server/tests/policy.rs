@@ -2974,23 +2974,41 @@ async fn the_publish_verb_drives_the_git_half() {
     // digest had no reader at all: `publish` composed its own manifest and
     // never consulted the row.
     //
-    // ⭐ The tamper is REAL, not fabricated: the projection's digest column is
-    // moved after the publication was staged, which is precisely the case a
-    // stored digest exists to catch — the compiled inputs changing under a
-    // staged publication. It is restored afterwards, so leg 2 still measures
-    // the Git half and not this leg's leftovers.
+    // ⭐ The tamper is REAL, not fabricated: the projection's content moves
+    // after the publication was staged, which is precisely the case a stored
+    // digest exists to catch — the compiled inputs changing under a staged
+    // publication. It is restored afterwards, so leg 2 still measures the Git
+    // half and not this leg's leftovers.
+    //
+    // ⚠️ `SIGNOFF-REPAIR.11.60` changed this leg, and the change is recorded
+    // rather than hidden: it used to move the digest ALONE. A projection read
+    // now refuses a row whose bytes do not hash to its digest, so a lone digest
+    // is caught there, before this comparison. The bytes and the digest move
+    // together now, a projection that matches its own record and no longer
+    // matches the manifest staged for it, so the leg still reaches the
+    // comparison it exists for.
     let true_projection_digest: String = sqlx::query_scalar(
         "SELECT digest FROM policy_projections WHERE projection_id = 'pu-prop-proj'",
     )
     .fetch_one(&pool)
     .await
     .expect("the projection digest reads");
-    sqlx::query("UPDATE policy_projections SET digest = $2 WHERE projection_id = $1")
+    let staged_projection_bytes: String = sqlx::query_scalar(
+        "SELECT bytes FROM policy_projections WHERE projection_id = 'pu-prop-proj'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("the projection bytes read");
+    let recompiled = format!("{staged_projection_bytes}# a clause compiled after staging\n");
+    sqlx::query("UPDATE policy_projections SET digest = $2, bytes = $3 WHERE projection_id = $1")
         .bind("pu-prop-proj")
-        .bind(format!("sha256:{}", "b".repeat(64)))
+        .bind(reasonbraid_policy_compiler::digest_sha256_hex(
+            recompiled.as_bytes(),
+        ))
+        .bind(&recompiled)
         .execute(&pool)
         .await
-        .expect("the projection digest moves under the staged publication");
+        .expect("the projection moves under the staged publication");
     let (status, refused) = post(
         &client,
         &base,
@@ -3020,12 +3038,125 @@ async fn the_publish_verb_drives_the_git_half() {
         json!("staged"),
         "the refused publish left the publication staged: {still}"
     );
-    sqlx::query("UPDATE policy_projections SET digest = $2 WHERE projection_id = $1")
+    sqlx::query("UPDATE policy_projections SET digest = $2, bytes = $3 WHERE projection_id = $1")
         .bind("pu-prop-proj")
         .bind(&true_projection_digest)
+        .bind(&staged_projection_bytes)
         .execute(&pool)
         .await
-        .expect("the projection digest is restored");
+        .expect("the projection is restored");
+
+    // `SIGNOFF-REPAIR.11.60` — A PROJECTION THE STORE CANNOT READ IS THE
+    // SERVER'S FAULT. `projections::load` answered any query error, and a
+    // missing row, as `Duplicate` (*"… already exists"*), and this verb returned
+    // it as the caller's `400`. The table steps away for one request, so the
+    // publication reads and only the projection read fails; this suite runs its
+    // tests one at a time (`guard`), so nothing else sees the rename.
+    sqlx::raw_sql("ALTER TABLE policy_projections RENAME TO policy_projections_away")
+        .execute(&pool)
+        .await
+        .expect("the projection table steps away");
+    let (status, failed) = post(
+        &client,
+        &base,
+        "/v1/policy-publications/pu-pub/publish",
+        &human_id,
+        &json!({ "repo_path": "live", "owning_authority": grant_id }),
+    )
+    .await;
+    sqlx::raw_sql("ALTER TABLE policy_projections_away RENAME TO policy_projections")
+        .execute(&pool)
+        .await
+        .expect("the projection table returns");
+    assert_eq!(
+        status, 500,
+        "a projection store that cannot answer is the server's fault: {failed}"
+    );
+    assert!(
+        !failed["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("already exists"),
+        "a store failure is not reported as a taken id: {failed}"
+    );
+    // The publication's own reads were answered the same way, and the first of
+    // them is reached the same way: the authority check reads grants, not
+    // publications, so only the ownership read fails.
+    sqlx::raw_sql("ALTER TABLE policy_publications RENAME TO policy_publications_away")
+        .execute(&pool)
+        .await
+        .expect("the publication table steps away");
+    let (status, failed) = post(
+        &client,
+        &base,
+        "/v1/policy-publications/pu-pub/publish",
+        &human_id,
+        &json!({ "repo_path": "live", "owning_authority": grant_id }),
+    )
+    .await;
+    sqlx::raw_sql("ALTER TABLE policy_publications_away RENAME TO policy_publications")
+        .execute(&pool)
+        .await
+        .expect("the publication table returns");
+    assert_eq!(
+        status, 500,
+        "a publication store that cannot answer is the server's fault: {failed}"
+    );
+
+    // `SIGNOFF-REPAIR.11.60` — THE BUNDLE IS HASHED BEFORE IT IS WRITTEN. Leg
+    // 1a moves the digest; this moves the BYTES and keeps the digest, the one
+    // change the manifest comparison cannot see, because the manifest names
+    // the digest. Nothing compared the bundle with it until a reader fetched it
+    // from the repository, after the publish had written it and moved the
+    // effective channel.
+    let true_projection_bytes: String = sqlx::query_scalar(
+        "SELECT bytes FROM policy_projections WHERE projection_id = 'pu-prop-proj'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("the projection bytes read");
+    sqlx::query("UPDATE policy_projections SET bytes = $2 WHERE projection_id = $1")
+        .bind("pu-prop-proj")
+        .bind(format!(
+            "{true_projection_bytes}# a clause nobody compiled\n"
+        ))
+        .execute(&pool)
+        .await
+        .expect("the projection bytes move under the staged publication");
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policy-publications/pu-pub/publish",
+        &human_id,
+        &json!({ "repo_path": "live", "owning_authority": grant_id }),
+    )
+    .await;
+    assert_eq!(
+        status, 409,
+        "a bundle that does not hash to its projection digest is refused: {refused}"
+    );
+    assert_eq!(refused["code"], json!("publication_conflict"), "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("pu-prop-proj"),
+        "the refusal names the projection: {refused}"
+    );
+    // ⛔ NOTHING WAS WRITTEN: the check runs before the first Git object.
+    let repository = gix::open(&repo_dir).expect("the publication repository opens");
+    assert!(
+        repository
+            .find_reference("refs/rb/publications/pu-pub")
+            .is_err(),
+        "a refused bundle leaves no publication ref"
+    );
+    sqlx::query("UPDATE policy_projections SET bytes = $2 WHERE projection_id = $1")
+        .bind("pu-prop-proj")
+        .bind(&true_projection_bytes)
+        .execute(&pool)
+        .await
+        .expect("the projection bytes are restored");
 
     // `SIGNOFF-REPAIR.9.3.5.1.1`: the refused publishes above wrote nothing,
     // so they recorded no Git operation either.
@@ -3223,6 +3354,84 @@ async fn the_publish_verb_drives_the_git_half() {
     );
 
     let _ = std::fs::remove_dir_all(&repo_root);
+}
+
+/// `SIGNOFF-REPAIR.11.60` — a projection read says what went wrong, and hands
+/// back nothing that does not match its own record. `projections::load` is the
+/// read both the publish verb and the reconciler trust: it answered a missing
+/// row and a store failure alike as *"… already exists"*, panicked on a stored
+/// list it could not decode, and returned bytes without hashing them against
+/// the digest every caller then published beside them.
+#[tokio::test]
+async fn a_projection_read_says_what_went_wrong_and_returns_only_what_matches() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    use reasonbraid_server::projections::load;
+
+    let missing = load(&pool, "pl-nobody-wrote-this")
+        .await
+        .expect_err("a missing projection loads nothing")
+        .to_string();
+    assert!(
+        missing.contains("does not exist") && !missing.contains("already exists"),
+        "a missing projection is named as missing: {missing}"
+    );
+
+    let unreachable = pg_test_support::pool().await.expect("a second pool opens");
+    unreachable.close().await;
+    let failed = load(&unreachable, "pl-matching")
+        .await
+        .expect_err("a closed store answers nothing")
+        .to_string();
+    assert!(
+        failed.contains("store failed") && !failed.contains("already exists"),
+        "a store failure is named as one: {failed}"
+    );
+
+    let bytes = "# a bundle\n";
+    let digest = reasonbraid_policy_compiler::digest_sha256_hex(bytes.as_bytes());
+    let other = reasonbraid_policy_compiler::digest_sha256_hex(b"# another bundle\n");
+    for (id, digest, unrepresentable, resolved) in [
+        ("pl-matching", &digest, "[]", "[]"),
+        ("pl-moved-bytes", &other, "[]", "[]"),
+        ("pl-bad-list", &digest, r#"{"not": "a list"}"#, "[]"),
+        ("pl-bad-set", &digest, "[]", r#""not a set""#),
+    ] {
+        sqlx::query(
+            "INSERT INTO policy_projections \
+             (projection_id, target, digest, bytes, unrepresentable, resolved_policies) \
+             VALUES ($1, 'filesystem', $2, $3, $4::jsonb, $5::jsonb)",
+        )
+        .bind(id)
+        .bind(digest)
+        .bind(bytes)
+        .bind(unrepresentable)
+        .bind(resolved)
+        .execute(&pool)
+        .await
+        .expect("the row inserts");
+    }
+    // The control arm: a row that matches its record loads, so the refusals
+    // below are about the row, never about the check refusing everything.
+    let matching = load(&pool, "pl-matching")
+        .await
+        .expect("a matching row loads");
+    assert_eq!(matching.digest, digest);
+    assert_eq!(matching.bytes, bytes);
+    for (id, what) in [
+        ("pl-moved-bytes", "hash"),
+        ("pl-bad-list", "unrepresentable"),
+        ("pl-bad-set", "resolved"),
+    ] {
+        let refused = load(&pool, id)
+            .await
+            .expect_err("a row that does not match its record is not returned")
+            .to_string();
+        assert!(
+            refused.contains(id) && refused.contains(what),
+            "the refusal names the projection and what does not match: {refused}"
+        );
+    }
 }
 
 /// `SIGNOFF-REPAIR.9.2.1.1` — the publish verb used to take its repository
@@ -3551,6 +3760,14 @@ async fn the_publication_verbs_require_an_authority_the_caller_holds() {
     // `publish` gets past the gate and is stopped by the projection the seeded
     // row names, which does not exist — a LATER refusal, and therefore proof
     // that the authority check admitted it.
+    //
+    // ⚠️ `SIGNOFF-REPAIR.11.60` changed what that later refusal says, and this
+    // leg is changed with it rather than quietly: it was a `400
+    // invalid_command` reading *"`pa-proj` … already exists"*, a false message
+    // this leg accepted because it asserted only that the refusal was not an
+    // authority refusal. A publication naming a projection that does not exist
+    // is stored content that does not match its record: `409
+    // publication_conflict`, naming the missing projection.
     let (status, admitted) = post(
         &client,
         &base,
@@ -3559,11 +3776,18 @@ async fn the_publication_verbs_require_an_authority_the_caller_holds() {
         &publish_body(&alice_grant),
     )
     .await;
-    assert_eq!(status, 400, "the holder is admitted: {admitted}");
+    assert_eq!(status, 409, "the holder is admitted: {admitted}");
     assert_eq!(
         admitted["code"],
-        json!("invalid_command"),
+        json!("publication_conflict"),
         "the holder's refusal is not an authority refusal: {admitted}"
+    );
+    assert!(
+        admitted["message"]
+            .as_str()
+            .unwrap()
+            .contains("projection `pa-proj` does not exist"),
+        "the refusal names the missing projection: {admitted}"
     );
     assert!(
         !admitted["message"].as_str().unwrap().contains("HOLDS"),

@@ -4987,6 +4987,24 @@ fn publication_refusal(error: crate::publications::PublicationError) -> ControlA
     }
 }
 
+/// The projection a publish is about to write, on the wire
+/// (`SIGNOFF-REPAIR.11.60`): a store fault is the server's `500`, and a
+/// projection that is missing or does not match its own record is the stored
+/// content's conflict, `409 publication_conflict`, answered before the first Git
+/// object is written — the answer the bundle route gives the same bytes.
+fn projection_refusal(error: crate::projections::ProjectionError) -> ControlApiError {
+    match error {
+        crate::projections::ProjectionError::Storage(cause) => {
+            storage_failure(cause, "the policy projection")
+        }
+        conflict @ (crate::projections::ProjectionError::NotFound(_)
+        | crate::projections::ProjectionError::Corrupt { .. }) => {
+            ControlApiError::publication_conflict(conflict.to_string())
+        }
+        refusal => ControlApiError::invalid_command(refusal.to_string()),
+    }
+}
+
 /// `POST /v1/policy-publications/{id}/failed` — the typed failure (never a
 /// skip) with the reason.
 ///
@@ -5201,12 +5219,15 @@ async fn publish_publication(
     // the record. ⚠️ A non-owner reaches only path validation, which discloses
     // nothing about the publication and is already reachable by any authority
     // holder regardless of ownership.
+    // `SIGNOFF-REPAIR.11.60`: this verb's reads and writes answer a store fault
+    // as the server's, as its sibling transitions have since `.9.2.2`. It used
+    // to answer every error as the caller's `400`.
     crate::publications::owned_by(&state.pool, &publication_id, &caller_tenant)
         .await
-        .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+        .map_err(publication_refusal)?;
     let publication = crate::publications::load(&state.pool, &publication_id)
         .await
-        .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+        .map_err(publication_refusal)?;
     if publication.state != "staged" {
         return Err(ControlApiError::invalid_command(format!(
             "publication `{publication_id}` is at stage `{}` — the publish rides a staged publication",
@@ -5215,7 +5236,7 @@ async fn publish_publication(
     }
     let projection = crate::projections::load(&state.pool, &publication.projection_id)
         .await
-        .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+        .map_err(projection_refusal)?;
     // `.9.2.1.3.1`: ONE definition of the manifest, shared with `stage`, so
     // the bytes written here and the digest stored there cannot drift.
     let manifest = crate::publications::manifest(
@@ -5275,7 +5296,7 @@ async fn publish_publication(
         &repo_path,
     )
     .await
-    .map_err(|e| ControlApiError::invalid_command(e.to_string()))?;
+    .map_err(publication_refusal)?;
     Ok(Json(row))
 }
 
@@ -11513,7 +11534,7 @@ mod publication_refusals {
     //! `publication_refusal` (`SIGNOFF-REPAIR.9.2.2`): the transition verbs used
     //! to answer a store fault as the caller's `400`. No live control can make
     //! the store fail on cue, so the mapping is pinned here.
-    use super::{lifecycle_refusal, publication_refusal};
+    use super::{lifecycle_refusal, projection_refusal, publication_refusal};
     use crate::lifecycle::LifecycleError;
     use crate::publications::PublicationError;
 
@@ -11554,6 +11575,38 @@ mod publication_refusals {
             (400, "invalid_command")
         );
         assert!(refused.message.contains("is at stage `effective`"));
+    }
+
+    /// `SIGNOFF-REPAIR.11.60`: the publish verb's projection read. A store fault
+    /// is the server's; a projection that is missing or does not match its own
+    /// record is a conflict in the stored content, never the caller's request.
+    #[test]
+    fn a_projection_that_does_not_match_its_record_is_a_conflict_and_a_store_fault_the_servers() {
+        use crate::projections::ProjectionError;
+        let fault = projection_refusal(ProjectionError::Storage(sqlx::Error::PoolClosed));
+        assert_eq!(fault.status.as_u16(), 500);
+        let missing = projection_refusal(ProjectionError::NotFound("pp".into()));
+        assert_eq!(
+            (missing.status.as_u16(), missing.code),
+            (409, "publication_conflict")
+        );
+        assert_eq!(missing.message, "projection `pp` does not exist");
+        let corrupt = projection_refusal(ProjectionError::Corrupt {
+            projection_id: "pp".into(),
+            detail: "its bytes hash to `sha256:aa`, not to its digest `sha256:bb`".into(),
+        });
+        assert_eq!(
+            (corrupt.status.as_u16(), corrupt.code),
+            (409, "publication_conflict")
+        );
+        assert!(corrupt
+            .message
+            .contains("`pp` does not match its own record"));
+        let refused = projection_refusal(ProjectionError::Duplicate("projection `pp`".into()));
+        assert_eq!(
+            (refused.status.as_u16(), refused.code),
+            (400, "invalid_command")
+        );
     }
 }
 

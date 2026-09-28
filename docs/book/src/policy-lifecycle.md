@@ -500,8 +500,11 @@ against the record, not against what the stored bytes claim about themselves:
 
 If either fails, the answer is `409 publication_conflict`, naming the file that
 failed. The content is refused, never served with a warning. Before this route
-existed, the digest was only checked when the publication was **written**;
-nothing ever read it back.
+existed, only the manifest's digest was checked, when the publication was
+**written**, and nothing read either back. The bundle has been checked on the
+way in as well since `SIGNOFF-REPAIR.11.60`: the publish refuses a projection
+whose bytes do not hash to its digest before it writes anything (see
+[the order of a publish](publication-store.md#the-order-of-a-publish)).
 
 | Answer | When |
 | --- | --- |

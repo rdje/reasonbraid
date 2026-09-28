@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-29 — `projections::load` is typed and verifies its bytes; the publish verb's store faults are 500 (`SIGNOFF-REPAIR.11.60`)
+
+`REASONBRAID-REPAIR-0567`.
+
+- 🔴 **Root cause:** `load` mapped every query error and a missing row to `Duplicate`, `.expect`ed the unrepresentable list, dropped a bad resolved set, and never hashed `bytes`; publish mapped all its store errors to `400`. RED: 2 controls (missing → "already exists"; renamed table → 400).
+- ✅ **Fix:** `NotFound`/`Corrupt` variants, hash by the writer's `digest_sha256_hex`, `projection_refusal` (500 / 409 `publication_conflict`), `publication_refusal` on the verb's other store calls. Two legs changed and recorded. 8/10 hand mutants caught; the 2 missed (`publications::load`, `mark_effective`) unreachable live, predicted.
+
 ## 2026-09-29 — Tranche 6c: `.11.64` opened; tranche 6 closed (`SIGNOFF-REPAIR.11.9.1.5.3`)
 
 `REASONBRAID-DOC-0200`.

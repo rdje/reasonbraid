@@ -165,7 +165,7 @@ impl std::fmt::Display for CorrectionError {
             CorrectionError::GhostAuthority(g) => {
                 write!(
                     f,
-                    "the authority grant `{g}` is not an active, unexpired grant"
+                    "the authority grant `{g}` is not a live grant this caller holds for the verb (active, begun, unexpired, under a live enrollment boundary)"
                 )
             }
             CorrectionError::MalformedExpiry(detail) => {

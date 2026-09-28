@@ -433,6 +433,14 @@ where
 /// exactly one caller entitled to it — `policy::resolve`, which asks this of
 /// every LOADED policy's owner rather than of a caller's citation, so there is
 /// no verb to cover. Every other site names its action.
+/// 🔴 `SIGNOFF-REPAIR.11.55`: LIVE includes the BOUNDARY. Both checks read the
+/// grant alone, so a grant whose enrollment boundary had been revoked, had
+/// expired or had not begun still proved seven policy verbs (approvals,
+/// corrections, both deployment verbs, the publication grant, registration and
+/// resolution's owner check), while the guarded evaluator refused it and
+/// `authority.md` says a revoked boundary freezes the next administrative
+/// write. Measured live before the repair: after the owner revoked the
+/// boundary, an approval under it was accepted and recorded.
 pub(crate) async fn grant_is_live<'e, E>(
     executor: E,
     grant_id: &str,
@@ -441,16 +449,23 @@ pub(crate) async fn grant_is_live<'e, E>(
 where
     E: sqlx::PgExecutor<'e>,
 {
-    let actions: Option<Value> = sqlx::query_scalar(
-        "SELECT actions FROM authority_grants \
-         WHERE grant_id = $1 AND status = 'active' \
-         AND valid_from <= now() AND expires_at > now()",
-    )
-    .bind(grant_id)
-    .fetch_optional(executor)
-    .await?;
+    let actions: Option<Value> = sqlx::query_scalar(LIVE_GRANT_ACTIONS)
+        .bind(grant_id)
+        .fetch_optional(executor)
+        .await?;
     Ok(covers(actions, wanted))
 }
+
+/// The one liveness predicate both checks read (`SIGNOFF-REPAIR.11.55`): the
+/// grant is active and inside its window, and so is the enrollment boundary it
+/// was issued under, the same two facts the guarded evaluator requires. A
+/// grant with no boundary row cannot be live, which the foreign key already
+/// guarantees and the inner join restates.
+const LIVE_GRANT_ACTIONS: &str = "SELECT g.actions FROM authority_grants g \
+     JOIN enrollment_boundaries b ON b.boundary_id = g.boundary_id \
+     WHERE g.grant_id = $1 AND g.status = 'active' \
+     AND g.valid_from <= now() AND g.expires_at > now() \
+     AND b.status = 'active' AND b.valid_from <= now() AND b.expires_at > now()";
 
 /// The coverage decision over a grant row's stored `actions`, shared by both
 /// predicates above (`SIGNOFF-REPAIR.9.3.4.2`) — and it defers to
@@ -505,17 +520,13 @@ where
     E: sqlx::PgExecutor<'e>,
 {
     let (kind, id) = subject_parts(principal);
-    let actions: Option<Value> = sqlx::query_scalar(
-        "SELECT actions FROM authority_grants \
-         WHERE grant_id = $1 AND status = 'active' \
-         AND valid_from <= now() AND expires_at > now() \
-         AND subject_kind = $2 AND subject_id = $3",
-    )
-    .bind(grant_id)
-    .bind(kind)
-    .bind(id)
-    .fetch_optional(executor)
-    .await?;
+    let held = format!("{LIVE_GRANT_ACTIONS} AND g.subject_kind = $2 AND g.subject_id = $3");
+    let actions: Option<Value> = sqlx::query_scalar(&held)
+        .bind(grant_id)
+        .bind(kind)
+        .bind(id)
+        .fetch_optional(executor)
+        .await?;
     Ok(covers(actions, Some(wanted)))
 }
 

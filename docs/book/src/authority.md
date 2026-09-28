@@ -105,7 +105,8 @@ verb*. That residual is accepted rather than closed, and is recorded in
 **Each surface checks that the held grant covers its own verb.** Three things
 are asked, and they are three different questions:
 
-1. Is the grant **live** — active, and inside its validity window?
+1. Is the grant **live** — active, inside its validity window, and issued under
+   an enrollment boundary that is itself active and inside its window?
 2. Is it **held** by the caller? Grant ids are derivable from a principal id, so
    naming one is not holding one.
 3. Do its actions **cover** the verb being attempted?
@@ -122,15 +123,26 @@ A grant carrying only `tenant_admin` passes all five, by the subsumption above �
 which is what keeps authority issued before these names existed working
 unchanged.
 
+⚠️ **Until `SIGNOFF-REPAIR.11.55` the first question read the grant alone.** A
+grant whose boundary had been revoked, had expired or had not begun still proved
+all five surfaces and policy resolution, while the guarded evaluator the thread
+and administration routes use refused it. Measured before the repair: after the
+tenant owner revoked its boundary, an approval citing a grant under it was
+accepted and recorded. The boundary is now part of liveness everywhere, so a
+revoked boundary freezes these verbs as it freezes every other administrative
+write.
+
 ⚠️ **One site asks only about liveness, and deliberately.** Policy resolution
 checks that every *loaded* policy's owning authority still stands. That is a
 question about a stored row, not about a caller attempting a verb, so there is
 no verb to cover and none is required.
 
-⚠️ **Registering a policy version checks liveness and coverage, not holding.**
-A policy may legitimately be owned by an authority other than the caller's, so
-whether the registrar must *hold* the grant it names is a separate semantic
-question and is still open (`SIGNOFF-REPAIR.9.1`).
+**Registering a policy version asks all three.** The registrar must hold the
+grant it names as the policy's owner (`SIGNOFF-REPAIR.9.1.2`), and a policy owned
+by another authority is registered by that authority's holder
+(`docs/decisions/2026-09-25_a-policy-registrar-holds-the-authority-it-names.md`).
+This page said the question was still open until 2026-09-28, three days after
+it was settled.
 
 For example, an inspection grant selecting only thread A can inspect A but cannot
 list every thread in the tenant. Adding `tenant_admin` to that thread-scoped grant

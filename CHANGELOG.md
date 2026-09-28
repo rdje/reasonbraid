@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-28 — A revoked boundary now stops the policy work done under it (`SIGNOFF-REPAIR.11.55`)
+
+`REASONBRAID-REPAIR-0555`.
+
+- 🔴 **Before:** after a tenant's owner revoked an enrollment boundary, a grant issued under it could still approve, correct, deploy or publish policy, and keep its policies resolving. Measured: an approval made right after the revocation was accepted and recorded.
+- ✅ **Now:** a grant counts only while its boundary is active and inside its validity period, as everywhere else. The guide says so, and a sentence that still called a settled question open is corrected.
+- 🔍 **Found:** an approval is written in two separate steps with no lock, so two at once, or a failure in between, can leave the record inconsistent. That is next.
+
 ## 2026-09-28 — A redirect can no longer lead the server to a private address written in IPv6 (`SIGNOFF-REPAIR.11.50`)
 
 `REASONBRAID-REPAIR-0554`.

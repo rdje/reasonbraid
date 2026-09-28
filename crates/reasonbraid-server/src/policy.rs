@@ -360,7 +360,7 @@ impl std::fmt::Display for PolicyError {
             }
             PolicyError::OwnerNotLive { policy_id, grant } => write!(
                 f,
-                "the owning authority `{grant}` of `{policy_id}` is not an active, unexpired grant"
+                "the owning authority `{grant}` of `{policy_id}` is not live: a grant must be active, begun and unexpired, under an enrollment boundary that is too"
             ),
             PolicyError::MissingDependency {
                 policy_id,
@@ -1053,7 +1053,8 @@ pub async fn resolve(
             }));
         }
     }
-    explanation.push("step 1: every owning authority is an active, unexpired grant".to_string());
+    explanation
+        .push("step 1: every owning authority is a live grant under a live boundary".to_string());
     Ok(resolve_loaded(request, &loaded, explanation))
 }
 

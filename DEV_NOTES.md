@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-28 — The grant checks require a live boundary (`SIGNOFF-REPAIR.11.55`)
+
+`REASONBRAID-REPAIR-0555`.
+
+- 🔴 **Root cause:** `grant_is_live`/`grant_held_by` read `authority_grants` alone; RED live: approval accepted and recorded under a not-yet-valid and under a revoked boundary.
+- ✅ **Fix:** one `LIVE_GRANT_ACTIONS` predicate joining `enrollment_boundaries` (status + window) for all 7 call sites; three refusal texts corrected. H1–H3 hand mutants each caught by its own leg. `authority.md`'s stale "not holding" sentence (settled by REPAIR-0503) corrected.
+- 🔴 **Opened:** `.11.55.1` (class 2): `record_approval` is an unlocked read and two pool statements.
+
 ## 2026-09-28 — IPv6 literal hops classified; hops keep scheme and port; `classify_v6` allow-lists (`SIGNOFF-REPAIR.11.50`)
 
 `REASONBRAID-REPAIR-0554`.

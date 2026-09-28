@@ -1480,6 +1480,145 @@ async fn the_approval_carries_its_authority_proof() {
     let approvals = approvals.as_array().unwrap();
     assert_eq!(approvals.len(), 1, "{approvals:?}");
     assert_eq!(approvals[0]["approval_id"], json!("ap-app-1"));
+
+    // 7. 🔴 `SIGNOFF-REPAIR.11.55` — the grant's BOUNDARY must stand. The
+    // approval proof (`authority::grant_held_by`) and the resolver's owner check
+    // (`authority::grant_is_live`) read the grant alone, so a grant whose
+    // boundary was not yet valid, had expired or was revoked still proved them,
+    // while `authority.md` says a revoked boundary freezes the next
+    // administrative write. Three boundary states, each restored before the
+    // next, and the revocation last, through the admin route an operator uses.
+    let boundary_id: String =
+        sqlx::query_scalar("SELECT boundary_id FROM authority_grants WHERE grant_id = $1")
+            .bind(&grant_id)
+            .fetch_one(&pool)
+            .await
+            .expect("the grant's boundary");
+    let window: (chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>) = sqlx::query_as(
+        "SELECT valid_from, expires_at FROM enrollment_boundaries WHERE boundary_id = $1",
+    )
+    .bind(&boundary_id)
+    .fetch_one(&pool)
+    .await
+    .expect("the boundary's window");
+    let resolution = json!({
+        "policies": [ { "policy_id": "ap-policy", "version": "1.0.0" } ],
+        "target": { "layer": "organization", "target": "org-acme" },
+    });
+    let (status, resolved) = post(
+        &client,
+        &base,
+        "/v1/policies/resolve",
+        &human_id,
+        &resolution,
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "the policy resolves while its owner's boundary stands: {resolved}"
+    );
+    let approve = |approval_id: &'static str| {
+        let client = client.clone();
+        let base = base.clone();
+        let human_id = human_id.clone();
+        let grant_id = grant_id.clone();
+        async move {
+            post(
+                &client,
+                &base,
+                "/v1/policy-approvals",
+                &human_id,
+                &json!({
+                    "approval_id": approval_id,
+                    "proposal_id": "ap-prop-2",
+                    "decision_id": "ap-dec-2",
+                    "approver": human_id,
+                    "grant_id": grant_id,
+                    "quorum": { "participants": [human_id], "denominator": 1, "abstentions": [] },
+                }),
+            )
+            .await
+        }
+    };
+    for (label, sql) in [
+        (
+            "not yet valid",
+            "UPDATE enrollment_boundaries SET valid_from = now() + interval '1 hour' WHERE boundary_id = $1",
+        ),
+        (
+            "expired",
+            "UPDATE enrollment_boundaries SET expires_at = now() - interval '1 second' WHERE boundary_id = $1",
+        ),
+    ] {
+        sqlx::query(sql)
+            .bind(&boundary_id)
+            .execute(&pool)
+            .await
+            .expect("the boundary's window moves");
+        let (status, refused) = approve("ap-app-7").await;
+        assert_eq!(status, 400, "a grant under a boundary {label} proves nothing: {refused}");
+        assert!(
+            refused["message"].as_str().unwrap().contains("authority proof"),
+            "{refused}"
+        );
+        let (status, refused) = post(&client, &base, "/v1/policies/resolve", &human_id, &resolution).await;
+        assert_eq!(status, 400, "an owner under a boundary {label} is not live: {refused}");
+        sqlx::query(
+            "UPDATE enrollment_boundaries SET valid_from = $2, expires_at = $3 WHERE boundary_id = $1",
+        )
+        .bind(&boundary_id)
+        .bind(window.0)
+        .bind(window.1)
+        .execute(&pool)
+        .await
+        .expect("the boundary's window is restored");
+    }
+    let response = client
+        .post(format!("{base}/v1/admin/boundaries/{boundary_id}/revoke"))
+        .header(PRINCIPAL_HEADER, &human_id)
+        .json(&json!({ "tenant_id": tenant_id, "reason": "the boundary is withdrawn" }))
+        .send()
+        .await
+        .expect("revoke request");
+    assert_eq!(
+        response.status().as_u16(),
+        200,
+        "the owner revokes the boundary"
+    );
+    let (status, refused) = approve("ap-app-7").await;
+    assert_eq!(
+        status, 400,
+        "a grant under a revoked boundary proves nothing: {refused}"
+    );
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("authority proof"),
+        "{refused}"
+    );
+    let (status, refused) = post(
+        &client,
+        &base,
+        "/v1/policies/resolve",
+        &human_id,
+        &resolution,
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "an owner under a revoked boundary is not live: {refused}"
+    );
+    assert!(
+        refused["message"].as_str().unwrap().contains(&grant_id),
+        "the refusal names the owning grant: {refused}"
+    );
+    let rows: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM policy_approvals WHERE approval_id = 'ap-app-7'")
+            .fetch_one(&pool)
+            .await
+            .expect("the approvals count");
+    assert_eq!(rows, 0, "no refused approval was recorded");
 }
 
 #[tokio::test]

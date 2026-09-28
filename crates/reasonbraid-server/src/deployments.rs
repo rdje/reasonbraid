@@ -158,7 +158,7 @@ impl std::fmt::Display for DeploymentError {
             DeploymentError::GhostAuthority(g) => {
                 write!(
                     f,
-                    "the owning authority `{g}` is not an active, unexpired grant"
+                    "the owning authority `{g}` is not a live grant this caller holds for the verb (active, begun, unexpired, under a live enrollment boundary)"
                 )
             }
             DeploymentError::UnknownPublication(p) => write!(f, "publication `{p}` does not exist"),

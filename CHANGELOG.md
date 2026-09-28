@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-29 — Budgets now count token use a provider did not report (`SIGNOFF-REPAIR.11.62`)
+
+`REASONBRAID-REPAIR-0568`.
+
+- 🔴 **Before:** when an agent's provider finished a request without saying how many tokens it used, the budget counted none, so a spending limit on tokens never ran out. A nonsensical negative count was treated the same way. On the agent's machine it turned into an absurdly large number instead.
+- ✅ **Now:** an unreported count is charged at the amount set aside for that request, the most it was allowed to cost, which is already how an operator's "it happened, amount unknown" ruling is charged. A request that provably failed is still charged no tokens. The guide also says plainly that the agent machine's own local limit starts afresh when that machine restarts, and that the server's limit is the one that lasts.
+
 ## 2026-09-29 — Publishing a policy checks the policy file before writing it, and reports database failures honestly (`SIGNOFF-REPAIR.11.60`)
 
 `REASONBRAID-REPAIR-0567`.

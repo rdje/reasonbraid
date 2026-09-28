@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-29 — Unknown token counts settle at the hold on the completed path; LocalBudget stated per process (`SIGNOFF-REPAIR.11.62`)
+
+`REASONBRAID-REPAIR-0568`.
+
+- 🔴 **Root cause:** server `as_u64()` → `None` → settled `null` → held sum adds nothing; node `as u64` wraps a negative and a `None` adds nothing. RED: node `(Some(0), Some(0))` vs 5,000; server `null` vs 2,000.
+- ✅ **Fix:** core `unknown_charged_at`; node `completed_charge` (`try_from`) on both completed paths; server `settle_charging_in_tx` + `settle_completed_in_tx` from the ledger row; known failure untouched (control). cargo-mutants 2 caught + 2 unviable; 5/5 hand mutants on `.or`/cast/settle lines.
+
 ## 2026-09-29 — `projections::load` is typed and verifies its bytes; the publish verb's store faults are 500 (`SIGNOFF-REPAIR.11.60`)
 
 `REASONBRAID-REPAIR-0567`.

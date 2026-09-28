@@ -9839,7 +9839,10 @@ where
         reported("output_tokens"),
         reported("wall_clock_seconds"),
     );
-    budget::settle_reservation_in_tx(&mut *tx, reservation_id, &usage, Utc::now()).await?;
+    // `SIGNOFF-REPAIR.11.62`: a result is a COMPLETED attempt (a known failure
+    // sends none), so a count it leaves unknown, or reports as anything but a
+    // whole number, is charged at the hold rather than as nothing spent.
+    budget::settle_completed_in_tx(&mut *tx, reservation_id, &usage, Utc::now()).await?;
     Ok(())
 }
 

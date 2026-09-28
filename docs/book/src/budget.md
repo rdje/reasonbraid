@@ -15,7 +15,9 @@ applicable reservation** — enforced at BOTH boundaries:
 - **Node**: the supervisor refuses to dispatch without a server-issued
   `ReservationReference`, and against its own `LocalBudget` headroom. A
   refusal is journaled `failed_before_dispatch` and the adapter is never
-  invoked.
+  invoked. The `LocalBudget` lives in the node process: a restarted node starts
+  it empty, so the server's ceiling, which is durable, is the bound that
+  survives a restart (`SIGNOFF-REPAIR.11.62`).
 
 ## Wall-clock time is spent, like tokens
 
@@ -178,6 +180,17 @@ routing, §14.3 — never clamped). Release returns the unused hold. Expired
 reservations stop holding. An **indeterminate** attempt keeps its hold
 (§14.6: release only amounts not potentially consumed).
 
+**A count nobody measured is charged at the hold.** A completed attempt whose
+receipt carries no token count, or one that is not a whole number of zero or
+more, settles that dimension at the reserved amount, on the node and at the
+server. That is the rule an operator's verdict already applies to *"completed,
+by an amount nobody measured"*. Both real adapters report no counts when the
+provider's receipt has no usage block. Until `SIGNOFF-REPAIR.11.62` such a
+count settled as nothing spent, so every call handed its whole token hold back
+and a thread's token ceiling never ran out; on the node, a negative count
+wrapped to about 1.8 × 10¹⁹. A **known failure** still charges no tokens: that
+call provably did not charge, and it sends no result to settle.
+
 ### A usage too large to count
 
 Settled usage is what a node *reported*, recorded in full, so the ledger can
@@ -201,7 +214,7 @@ closed:
 | Admission's held sum | `Unavailable`: *the ceiling's held sum cannot be counted* |
 | The breaker's spend, and spend plus the request | `Unavailable`: *the tenant's recorded spend cannot be counted* |
 | `GET /v1/admin/usage` | `500 ledger_overflow`, naming the dimension |
-| The node's `LocalBudget` | reservation refused; a settlement leaves the headroom spent beyond counting, so a later settlement cannot reopen it |
+| The node's `LocalBudget` | reservation refused; a settlement leaves the headroom spent beyond counting, so a later settlement cannot reopen it (a restart of the node does: the ledger is in memory, and the server's ceiling is the durable bound) |
 
 Settlement itself does not reject a large report. The work happened, and
 §14.3 records overruns without clamping. A usage too large to count now stops

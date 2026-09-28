@@ -3258,6 +3258,104 @@ async fn a_node_cannot_settle_a_foreign_reservation_by_naming_it() {
     );
 }
 
+/// `SIGNOFF-REPAIR.11.62` — a completed attempt whose usage leaves a held
+/// dimension unknown settles that dimension at the hold, the rule the product
+/// already applies to *"completed, by an amount nobody measured"* (an
+/// operator's verdict). The fold read each count with `as_u64()`, so a missing
+/// count, or a negative one, settled as `None`, and the ceiling's held sum adds
+/// nothing for `None`: the whole token hold went back to the pool, and a thread
+/// whose provider reports no usage never ran out of tokens. Both real adapters
+/// report no counts when a receipt has no usage block.
+#[tokio::test]
+async fn an_unknown_count_settles_at_the_hold_never_as_nothing_spent() {
+    let _g = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let client = reqwest::Client::new();
+    for (n, key, usage, why) in [
+        (
+            "462",
+            "key-no-counts",
+            json!({ "wall_clock_seconds": 2 }),
+            "a receipt with no token counts",
+        ),
+        (
+            "463",
+            "key-negative-count",
+            json!({ "input_tokens": -5, "output_tokens": 7, "wall_clock_seconds": 2 }),
+            "a negative input count beside a known output count",
+        ),
+    ] {
+        let (_tenant, _human, role, _thread, cert, key_pem) =
+            dispatch_one_work_item(&client, &server.base(), key).await;
+        let reservation: String = sqlx::query_scalar(
+            "SELECT payload->'reservation'->>'reservation_id' FROM node_inbox WHERE node_id = $1",
+        )
+        .bind(&role)
+        .fetch_one(&pool)
+        .await
+        .expect("the work item's reservation");
+        let held: Value = sqlx::query_scalar(
+            "SELECT dimensions FROM budget_reservations WHERE reservation_id = $1",
+        )
+        .bind(&reservation)
+        .fetch_one(&pool)
+        .await
+        .expect("the hold");
+        assert!(
+            held["input_tokens"].as_u64().is_some() && held["output_tokens"].as_u64().is_some(),
+            "the hold meters both token dimensions, or this control measures nothing: {held}"
+        );
+        let (view, token, epoch) = handshake(&client, &server.base(), &role, &cert, &key_pem).await;
+        let command_id = view["replay"][0]["command_id"]
+            .as_str()
+            .expect("the work item")
+            .to_string();
+        let mut result = work_result(
+            &command_id,
+            "contribute",
+            "an answer whose receipt carries no usable token count",
+            &reservation,
+            &format!("att_00000000-0000-7000-8000-000000000{n}"),
+        );
+        result["usage"] = usage.clone();
+        let (status, receipt) = submit_event(
+            &client,
+            &server.base(),
+            &role,
+            &token,
+            epoch,
+            &format!("evt_00000000-0000-7000-8000-000000000{n}"),
+            &format!("op_00000000-0000-7000-8000-000000000{n}"),
+            &result,
+        )
+        .await;
+        assert_eq!(status, 200, "{why}: the result is received: {receipt}");
+        let (settled_status, settled): (String, Option<Value>) = sqlx::query_as(
+            "SELECT status, usage FROM budget_reservations WHERE reservation_id = $1",
+        )
+        .bind(&reservation)
+        .fetch_one(&pool)
+        .await
+        .expect("the reservation");
+        assert_eq!(settled_status, "settled", "{why}");
+        let settled = settled.expect("a settled hold records its usage");
+        assert_eq!(
+            settled["input_tokens"], held["input_tokens"],
+            "{why}: an unknown input count is charged at the hold: {settled}"
+        );
+        let expected_output = if usage["output_tokens"].is_u64() {
+            usage["output_tokens"].clone()
+        } else {
+            held["output_tokens"].clone()
+        };
+        assert_eq!(
+            settled["output_tokens"], expected_output,
+            "{why}: a known count is charged as reported, an unknown one at the hold: {settled}"
+        );
+    }
+}
+
 /// `SIGNOFF-REPAIR.4.4.10.3.1` — `nul_positions` is a CLAIM about the content,
 /// validated by the server for any author, node or human: canonical runs
 /// (ordered, non-empty, non-adjacent), in bounds, and covering only U+FFFD. A

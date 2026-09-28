@@ -159,6 +159,25 @@ impl LocalBudget {
     }
 }
 
+/// What a COMPLETED attempt costs the local ledger (`SIGNOFF-REPAIR.11.62`):
+/// the receipt's counts where they are whole numbers, and the hold wherever the
+/// receipt leaves a metered dimension unknown. A count cast `as u64` used to
+/// wrap a negative one to about 1.8 × 10¹⁹, and a missing one charged nothing.
+/// The known-failure arms keep charging no tokens: that call provably did not.
+fn completed_charge(
+    usage: Option<&NormalizedUsage>,
+    held: &BudgetDimensions,
+    wall_clock_seconds: u64,
+) -> BudgetDimensions {
+    let count = |v: Option<i64>| v.and_then(|v| u64::try_from(v).ok());
+    BudgetDimensions::attempt_usage(
+        count(usage.and_then(|u| u.input_tokens)),
+        count(usage.and_then(|u| u.output_tokens)),
+        Some(wall_clock_seconds),
+    )
+    .unknown_charged_at(held)
+}
+
 /// What one supervised attempt produced.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExecutionReport {
@@ -482,14 +501,10 @@ async fn supervise(
                     // Settle ACTUAL usage against the hold (overruns land in the
                     // local ledger as-is — recorded, never clamped).
                     let wall_clock_seconds = seconds_since(dispatched_at);
-                    let actual = BudgetDimensions::attempt_usage(
-                        normalized
-                            .as_ref()
-                            .and_then(|u| u.input_tokens.map(|v| v as u64)),
-                        normalized
-                            .as_ref()
-                            .and_then(|u| u.output_tokens.map(|v| v as u64)),
-                        Some(wall_clock_seconds),
+                    let actual = completed_charge(
+                        normalized.as_ref(),
+                        &reservation.dimensions,
+                        wall_clock_seconds,
                     );
                     local.settle(&reservation.dimensions, &actual).await;
                     let mut report = ExecutionReport {
@@ -602,16 +617,10 @@ async fn settle_unknown<A: Adapter>(
                 wall_clock_seconds: Some(wall_clock_seconds),
             };
             land_completed(journal, &mut report, usage.as_ref(), result_event, now).await?;
-            let actual = BudgetDimensions::attempt_usage(
-                report
-                    .usage
-                    .as_ref()
-                    .and_then(|u| u.input_tokens.map(|v| v as u64)),
-                report
-                    .usage
-                    .as_ref()
-                    .and_then(|u| u.output_tokens.map(|v| v as u64)),
-                Some(wall_clock_seconds),
+            let actual = completed_charge(
+                report.usage.as_ref(),
+                &reservation.dimensions,
+                wall_clock_seconds,
             );
             local.settle(&reservation.dimensions, &actual).await;
             Ok(report)

@@ -393,10 +393,46 @@ where
 /// denied row is terminal, so a duplicate event or an idempotency replay settles
 /// nothing twice.
 pub(crate) async fn settle_reservation_in_tx<'e, E>(
-    mut tx: E,
+    tx: E,
     reservation_id: &str,
     usage: &BudgetDimensions,
     at: DateTime<Utc>,
+) -> Result<Option<Settlement>, sqlx::Error>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
+    settle_charging_in_tx(tx, reservation_id, at, |_| *usage).await
+}
+
+/// Settle a COMPLETED attempt's reservation (`SIGNOFF-REPAIR.11.62`): each
+/// dimension the hold metered and the reported usage leaves unknown is charged
+/// at the held amount ([`BudgetDimensions::unknown_charged_at`]), read from the
+/// ledger's own row rather than from anything the node sent. A missing count,
+/// or one that is not a whole number, used to settle as nothing spent.
+pub(crate) async fn settle_completed_in_tx<'e, E>(
+    tx: E,
+    reservation_id: &str,
+    reported: &BudgetDimensions,
+    at: DateTime<Utc>,
+) -> Result<Option<Settlement>, sqlx::Error>
+where
+    E: std::ops::DerefMut,
+    for<'c> &'c mut <E as std::ops::Deref>::Target: sqlx::Executor<'c, Database = sqlx::Postgres>,
+{
+    settle_charging_in_tx(tx, reservation_id, at, |held| {
+        reported.unknown_charged_at(held)
+    })
+    .await
+}
+
+/// The one settlement: `charge` turns the reservation's held dimensions into
+/// what the attempt is charged.
+async fn settle_charging_in_tx<'e, E>(
+    mut tx: E,
+    reservation_id: &str,
+    at: DateTime<Utc>,
+    charge: impl FnOnce(&BudgetDimensions) -> BudgetDimensions,
 ) -> Result<Option<Settlement>, sqlx::Error>
 where
     E: std::ops::DerefMut,
@@ -416,6 +452,7 @@ where
     }
     let reserved: BudgetDimensions =
         serde_json::from_value(reserved_json).expect("stored dims parse");
+    let usage = &charge(&reserved);
 
     // The overrun = usage minus reserved, per dimension, floored at 0.
     fn overrun_of(held: Option<u64>, used: Option<u64>) -> Option<u64> {

@@ -12,7 +12,8 @@ use chrono::Utc;
 use reasonbraid_adapter::{
     Adapter, AdapterCapabilities, AttemptEvent, AttemptHandle, AttemptStream, CancellationOutcome,
     CancellationStrength, DispatchAck, FakeAdapter, InvokeOutcome, NormalizedUsage,
-    PolicyInjectionMode, RunRequest, StatusLookupOutcome, UsageConfidence,
+    PolicyInjectionMode, RunRequest, ScriptStep, StatusLookupOutcome, StatusLookupSpec,
+    UsageConfidence,
 };
 use reasonbraid_core::fixture::Fixture;
 use reasonbraid_core::{BudgetDimensions, ReservationReference};
@@ -384,4 +385,91 @@ async fn an_indeterminate_attempt_keeps_its_hold() {
         "the hold stays in place until adjudication releases it"
     );
     assert_eq!(consumed.input_tokens, Some(1000));
+}
+
+/// `SIGNOFF-REPAIR.11.62` — a COMPLETED attempt whose receipt leaves a token
+/// count unknown charges that dimension at the hold, the rule the product
+/// already applies to *"completed, by an amount nobody measured"* (an
+/// operator's verdict). It used to charge nothing, so the local headroom came
+/// back as though the call were free; and a negative count was cast `as u64`
+/// and wrapped to about 1.8 × 10¹⁹. A count that IS known is charged as
+/// reported, and a known FAILURE still charges no tokens (its own control,
+/// `a_known_failure_charges_no_tokens`).
+#[tokio::test]
+async fn a_completed_attempt_with_an_unknown_count_charges_the_hold() {
+    for (tag, usage, charged) in [
+        ("unknown-none", None, (Some(5000), Some(5000))),
+        (
+            "unknown-negative",
+            Some(json!({ "input_tokens": -5, "output_tokens": 7 })),
+            (Some(5000), Some(7)),
+        ),
+    ] {
+        let fixture = journal_fixture(tag);
+        let journal = Journal::open(fixture.join("node.db")).await.unwrap();
+        let op = seed_operation(&journal, tag).await;
+        let local = local(10, 100_000);
+        let report = execute_attempt(
+            &journal,
+            &scripted(vec![ScriptStep::Complete { usage }]),
+            &op,
+            &run_request(),
+            &reservation(tag, Some(1), Some(5000)),
+            &local,
+        )
+        .await
+        .expect("completes");
+        assert_eq!(report.final_state.as_str(), "completed", "{tag}");
+        let consumed = local.consumed().await;
+        assert_eq!(
+            (consumed.input_tokens, consumed.output_tokens),
+            charged,
+            "{tag}: an unknown count is charged at the hold, a known one as reported"
+        );
+    }
+}
+
+/// The other meaning of a missing count (`SIGNOFF-REPAIR.11.62`): a known
+/// failure is *"the call provably did not charge"*, so its tokens are released,
+/// never charged at the hold. The completed-path rule must not reach it.
+#[tokio::test]
+async fn a_known_failure_charges_no_tokens() {
+    let fixture = journal_fixture("known-failure");
+    let journal = Journal::open(fixture.join("node.db")).await.unwrap();
+    let op = seed_operation(&journal, "known-failure").await;
+    let local = local(10, 100_000);
+    let report = execute_attempt(
+        &journal,
+        &scripted(vec![ScriptStep::FailKnown {
+            reason: "the provider refused the request".into(),
+        }]),
+        &op,
+        &run_request(),
+        &reservation("known-failure", Some(1), Some(5000)),
+        &local,
+    )
+    .await
+    .expect("a known failure is a report, not an error");
+    assert_eq!(report.final_state.as_str(), "failed_known");
+    let consumed = local.consumed().await;
+    assert_eq!(
+        (consumed.input_tokens, consumed.output_tokens),
+        (Some(0), Some(0)),
+        "a known failure releases its token hold"
+    );
+}
+
+fn scripted(script: Vec<ScriptStep>) -> FakeAdapter {
+    FakeAdapter::new(
+        script,
+        StatusLookupSpec::Unsupported,
+        AdapterCapabilities {
+            streaming: true,
+            cancellation: CancellationStrength::BestEffort,
+            provider_idempotency: false,
+            status_lookup: false,
+            tool_support: false,
+            policy_injection: PolicyInjectionMode::None,
+        },
+    )
 }

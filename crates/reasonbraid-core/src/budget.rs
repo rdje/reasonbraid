@@ -136,6 +136,23 @@ impl BudgetDimensions {
         })
     }
 
+    /// A COMPLETED attempt's charge (`SIGNOFF-REPAIR.11.62`): each dimension the
+    /// hold metered and this usage leaves unknown is charged at the held amount,
+    /// because *"completed, by an amount nobody measured"* costs the most it was
+    /// allowed to, the rule an operator's verdict already applies. A known count
+    /// is charged as reported, and a dimension the hold did not meter stays as it
+    /// is. Never for a known failure, which provably charged nothing: an unknown
+    /// count used to settle as nothing spent, so a provider that reports no usage
+    /// handed its whole token hold back on every call.
+    pub fn unknown_charged_at(&self, held: &BudgetDimensions) -> BudgetDimensions {
+        BudgetDimensions {
+            calls: self.calls.or(held.calls),
+            input_tokens: self.input_tokens.or(held.input_tokens),
+            output_tokens: self.output_tokens.or(held.output_tokens),
+            wall_clock_seconds: self.wall_clock_seconds.or(held.wall_clock_seconds),
+        }
+    }
+
     /// The usage dimensions of one dispatched attempt: one call, the receipt's
     /// tokens, and the wall-clock seconds it took (`SIGNOFF-REPAIR.4.4.6.1`).
     ///
@@ -343,6 +360,32 @@ mod tests {
         assert_eq!(
             BudgetDimensions::default().restricted_to(&all),
             BudgetDimensions::default()
+        );
+    }
+
+    #[test]
+    fn an_unknown_dimension_is_charged_at_the_hold_and_a_known_one_as_reported() {
+        let held = BudgetDimensions {
+            calls: Some(1),
+            input_tokens: Some(2_000),
+            output_tokens: Some(2_000),
+            wall_clock_seconds: None,
+        };
+        let reported = BudgetDimensions::attempt_usage(None, Some(7), Some(3));
+        assert_eq!(
+            reported.unknown_charged_at(&held),
+            BudgetDimensions {
+                calls: Some(1),
+                input_tokens: Some(2_000),
+                output_tokens: Some(7),
+                wall_clock_seconds: Some(3),
+            },
+            "unknown input at the hold; known output, calls and time as reported"
+        );
+        assert_eq!(
+            BudgetDimensions::default().unknown_charged_at(&BudgetDimensions::default()),
+            BudgetDimensions::default(),
+            "a dimension the hold did not meter stays unknown"
         );
     }
 

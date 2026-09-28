@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-28 — The last five review notes of this batch checked: revoked authority still approves policy (`SIGNOFF-REPAIR.11.9.1.4.3`)
+
+`REASONBRAID-DOC-0196`.
+
+- 🔍 **Checked:** 20 points from five review notes; 10 were already fixed or deliberately decided, and 7 were added to open work.
+- 🔴 **Found:** revoking an enrollment boundary does not stop the grants under it from approving, correcting, deploying or publishing policy, although the guide says a revoked boundary freezes the next administrative write. And the tool that checks published policy against the repository never compares the "effective" pointer, so a moved one goes unnoticed. The guide's qualification page lists both, and a limitation already repaired months ago is now marked repaired.
+
 ## 2026-09-28 — Seven review notes on fetching and extraction checked: two more problems (`SIGNOFF-REPAIR.11.9.1.4.2`)
 
 `REASONBRAID-DOC-0195`.

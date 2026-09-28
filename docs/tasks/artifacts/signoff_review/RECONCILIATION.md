@@ -726,3 +726,30 @@ separates stale from false, and both queries are there verbatim.
 | `R-6-27-6` | 4 | unowned | `SIGNOFF-REPAIR.11.54` | LIVE: R2 advertises `application/rss+xml` (migration `0027`), and the worker hands an RSS body to `atom_syndication::Feed::read_from`, which refuses an `<rss>` root, so every RSS 2.0 feed ends `feed_unreadable` |
 | `R-6-27-6` | 5 | unowned | `SIGNOFF-REPAIR.11.54` | LIVE: a nested archive is recognised by its entry name only (`.zip`, `.tar`, `.tgz`, `.gz`); one under another name is excluded as binary rather than refused as `nested_archive`, which `deployment.md` says the pack does *"by name"*. Depth one still holds |
 | `R-6-27-6` | 6 | handled | `SIGNOFF-REPAIR.11.4.3.1.2.12` | REPAIR-0057: the extraction fixtures own their inputs, and `temp_dir()` has no hits |
+
+## Tranche 5c — the five records whose narrowest candidate leaf is `SIGNOFF-REPAIR.2.2`
+
+`SIGNOFF-REPAIR.11.9.1.4.3`, `REASONBRAID-DOC-0196` (2026-09-28). **20 clauses**: 7 `handled`, 7 `attach`, 1 `unowned`, 3 `declined`, 2 `none`. Every live clause was re-read by hand against the source before it was written here, and three handled ones were sampled the same way (`R-44-45-2` clause 1, `R-58-1` clause 2, `R-66-2` clause 1); all held. The one `unowned` clause opens a blocking leaf, `.11.55`. The `attach` clauses land in `.11.51`, `.8.1` and `.11.4`, each named in its leaf in this commit.
+
+| Record | Clause | State | Owner | Evidence |
+| --- | --- | --- | --- | --- |
+| `R-44-45-2` | 1 | handled | `SIGNOFF-REPAIR.7.2.7` | REPAIR-0249: `Deadline::start(limits.max_time)` with a watchdog and a check between phases |
+| `R-44-45-2` | 2 | declined | `SIGNOFF-REPAIR.7.2.7` | narrowed and stated: the blocking client sets no `.timeout()`, and the doc comment declares the ceiling as *"`max_time` plus however long one un-polled phase blocks"*; reqwest's implicit 30 s default applies |
+| `R-44-45-2` | 3 | handled | `SIGNOFF-REPAIR.7.2.7` | REPAIR-0249: the watchdog sets the receive interrupt flag |
+| `R-44-45-2` | 4 | declined | `SIGNOFF-REPAIR.7.2.7` | *"bounded in seconds, not in bytes"*; REPAIR-0251 (`.7.2.9`) added the per-object `allocLimit` and deliberately did not re-route the aggregate case, whose checks still follow the fetch |
+| `R-44-45-2` | 5 | attach | `SIGNOFF-REPAIR.11.51` | LIVE: `BoundedPostBody::write` extends a `Vec` with no cap; only gix's `BoundedAndFitsIntoMemory` contract limits it |
+| `R-44-45-2` | 6 | attach | `SIGNOFF-REPAIR.11.51` | LIVE: `Drop` sends the POST and discards its error, and the reader then reports *"the post body was never sent"*. It was `.7.2.2`'s residual (1), routed to `.7.2`, which closed without it |
+| `R-44-45-2` | 7 | handled | `SIGNOFF-REPAIR.7.2.7` | follows from clauses 1–3: the interrupt stops the transfer itself; what remains is clause 2's stated ceiling |
+| `R-58-1` | 1 | handled | `SIGNOFF-REPAIR.7.1.2.1` | REPAIR-0273: registration is the `workflow_register` site act. The alternative, making built-ins immutable, was rejected as incomplete; appending a version is deliberately kept for the capability's holder |
+| `R-58-1` | 2 | handled | `SIGNOFF-REPAIR.7.1.2.1` | REPAIR-0273: `register` runs on the site transaction after the `site_authority_guard FOR UPDATE` lock, and it is the only writer |
+| `R-58-1` | 3 | declined | `SIGNOFF-REPAIR.7.1.2.1` | *"The registry is versioned by design … the defect was never that a profile can gain a version, only that anyone could give it one"*; `resolve` still takes the newest version |
+| `R-58-1` | 4 | attach | `SIGNOFF-REPAIR.8.1` | LIVE: `workflows::resolve` maps every storage error to `UnknownProfile`, which the thread route answers `400 invalid_command` saying the profile *"is not registered"*, so a store fault is reported as the caller's error |
+| `R-58-1` | 5 | attach | `SIGNOFF-REPAIR.8.1` | LIVE: `workflows::list` drops a row whose steps do not decode (`filter_map` over `.ok()`) |
+| `R-58-1` | 6 | attach | `SIGNOFF-REPAIR.8.1` | LIVE: a thread stores `workflow_profile` and `workflow_steps` and drops the resolved version, while `docs/adr/016-workflow-profiles.md` says the thread's profile becomes *"a reference to a profile VERSION"* |
+| `R-66-2` | 1 | handled | `SIGNOFF-REPAIR.2.2.2` | REPAIR-0004: `recreate_public_schema` runs only on `pg_test_support::pool()`, which requires the runner's receipt and verifies each connection |
+| `R-66-2` | 2 | attach | `SIGNOFF-REPAIR.11.4` | LIVE: `tests/migration_upgrade.rs` says *"the upgrade backfilled the tenant's quota (migration 0047 …)"* and then counts tenants and boundaries only; the file never reads `usage_quotas`, and a later comment concedes the backfill is *"no longer the boundary's concern"*. The `.2.2` disposition table routed this to `.4.5`/`.11.4`; `.4.5` closed without it |
+| `R-67-68-1` | 1 | attach | `SIGNOFF-REPAIR.11.4` | LIVE: `tests/node_channel.rs`'s `crash()` is `self.handle.abort()`, and the restart reuses the same pool, while its comments say *"the server process dies"* and *"A NEW server process"* |
+| `R-67-68-1` | 2 | none | — | the reviewer's instruction; the book's process-crash claims rest on the demonstration's real SIGKILL (`scripts/demo_two_host.sh`), not on this test |
+| `R-73-74-2` | 1 | handled | `SIGNOFF-REPAIR.9.2.1.1` | REPAIR-0190: the invalid-repository leg runs first, while the publication is still staged, and asserts it does not open and stays `staged` |
+| `R-73-74-2` | 2 | none | — | a positive note: the empty-quorum leg is intact, though it asserts only the status |
+| `R-73-74-2` | 3 | unowned | `SIGNOFF-REPAIR.11.55` | PARTLY handled: REPAIR-0184 (`.9.3.1`) and REPAIR-0343 (`.9.3.4.2`) enforce the grant's window, holder and action coverage. LIVE: `authority::grant_held_by` reads `authority_grants` with no join to `enrollment_boundaries`, and revoking a boundary updates only that table, so a grant under a revoked boundary still approves a policy proposal while `authority.md` says a revoked boundary freezes the next administrative write. `lifecycle.rs` writes the approval with no authorization or audit record, and no approval test has an expired, future or revoked-boundary leg |

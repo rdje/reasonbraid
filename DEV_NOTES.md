@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-28 — Tranche 5c: 20 clauses; grant checks never read the boundary, the reconciler never judges `refs/rb/effective` (`SIGNOFF-REPAIR.11.9.1.4.3`)
+
+`REASONBRAID-DOC-0196`.
+
+- 🔍 **Census:** 7 handled, 7 attach, 1 unowned, 3 declined, 2 none. Tranche 5 closed: 104 clauses, 22 records, `.11.45`–`.11.56` opened.
+- 🔴 **Opened:** `.11.55` (class 2/3: `grant_is_live`/`grant_held_by` have no `enrollment_boundaries` join; 7 call sites) and `.11.56` (class 2/4: `reconcile`'s `Effective` arm ignores `git.effective`; `the_consistent_pairs_are_quiet` asserts a moved channel as consistent).
+- ⚠️ **Fixing `.9.2`'s stale `active` Status** made `QUALIFICATION-CURRENCY` read its two book rows: the wall-clock one was repaired at REPAIR-0401, and the reconciler one was a false ✅ in DOC-0166's census, corrected beside it.
+
 ## 2026-09-28 — Tranche 5b: 33 clauses; retention class unchecked, R2 refuses RSS (`SIGNOFF-REPAIR.11.9.1.4.2`)
 
 `REASONBRAID-DOC-0195`.

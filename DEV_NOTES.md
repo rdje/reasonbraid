@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-28 — Tranche 4e: 17 clauses; `byte_length` unchecked, a changed response keeps its first time (`SIGNOFF-REPAIR.11.9.1.3.5`)
+
+`REASONBRAID-DOC-0193`.
+
+- 🔍 **Census:** 10 handled, 5 owned, 2 unowned. Four handled by REPAIR-0545/-0515 from this week.
+- 🔴 **Opened:** `.11.41` (class 3/2: `POST /v1/snapshots` stores the declared `byte_length`; `evidence.md` says it is the stored length) and `.11.42` (class 2: `record_response` upsert keeps `created_at`, and the inspection's `"at"` pairs the new answer with the old time).
+
 ## 2026-09-28 — The invite checks enrollment and bounds its TTL (`SIGNOFF-REPAIR.11.39`)
 
 `REASONBRAID-REPAIR-0549`.

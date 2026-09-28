@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-09-28 — Another batch of old review notes checked, and two small record errors found (`SIGNOFF-REPAIR.11.9.1.3.5`)
+
+`REASONBRAID-DOC-0193`.
+
+- 🔍 **Checked:** 17 points from four review notes; most were already fixed, several by the evidence repairs of the last two days. Two live problems: submitted evidence can claim any file size (the guide says it is the stored size), and when a participant changes its answer to a recruitment call, the record keeps the time of its first answer. Both block the release and have their own tasks.
+
 ## 2026-09-28 — Invitations check who is invited and for how long (`SIGNOFF-REPAIR.11.39`)
 
 `REASONBRAID-REPAIR-0549`.

@@ -50,10 +50,20 @@ pub enum Action {
 /// the record expects (the staged publication's digest-derived commit, or
 /// the effective row's recorded id); a `None` database state is the
 /// no-record row.
+///
+/// `expected_channel` is what `refs/rb/effective` must hold, and it is `Some`
+/// only for the effective publication at the HEAD of its repository's chain
+/// (`SIGNOFF-REPAIR.11.56`). Publications have no superseded state, so every
+/// older effective publication legitimately sees the channel hold a later
+/// commit; for those the channel is not theirs to judge and the caller passes
+/// `None`. Until `.11.56` the channel was read by [`observe`] and compared by
+/// nothing, so §15.8's *"effective / ref missing or moved"* could not fire for
+/// a moved or deleted channel.
 pub fn reconcile(
     db: Option<&DbState>,
     git: &GitState,
     expected_immutable: Option<&gix::ObjectId>,
+    expected_channel: Option<&gix::ObjectId>,
 ) -> Action {
     let Some(db) = db else {
         // The no-record row: a ReasonBraid-looking ref without a DB record.
@@ -69,7 +79,10 @@ pub fn reconcile(
             (Some(_), _) => Action::StopSecurityAlert,
         },
         DbState::Effective => match (&git.immutable, expected_immutable) {
-            (Some(found), Some(expected)) if found == expected => Action::Consistent,
+            (Some(found), Some(expected)) if found == expected => match expected_channel {
+                Some(channel) if git.effective.as_ref() != Some(channel) => Action::FreezeAndRepair,
+                _ => Action::Consistent,
+            },
             _ => Action::FreezeAndRepair,
         },
         DbState::Failed => {

@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-28 — The publication check now notices a moved "effective" pointer (`SIGNOFF-REPAIR.11.56`)
+
+`REASONBRAID-REPAIR-0556`.
+
+- 🔴 **Before:** the tool that checks published policy against its repository read the pointer that says which publication is in effect, and never compared it with anything. Measured: with the pointer moved or deleted by hand, it reported everything consistent.
+- ✅ **Now:** for the newest publication in a repository, a missing or moved pointer is reported for a person to repair. Older publications, which a newer one has replaced, are not flagged for the pointer having moved on. The guide explains both.
+
 ## 2026-09-28 — A revoked boundary now stops the policy work done under it (`SIGNOFF-REPAIR.11.55`)
 
 `REASONBRAID-REPAIR-0555`.

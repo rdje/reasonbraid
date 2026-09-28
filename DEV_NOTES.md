@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-28 — The reconciler judges the head's effective channel (`SIGNOFF-REPAIR.11.56`)
+
+`REASONBRAID-REPAIR-0556`.
+
+- 🔴 **Root cause:** `reconcile`'s `Effective` arm compared only the immutable ref; RED live: moved channel → `Consistent`. ⚠️ The leaf's first text blamed the quiet-pair unit test; it is the superseded case (no superseded state exists) and correct.
+- ✅ **Fix:** `expected_channel` for the head only (`git_object_ids[1]`, unless another staged/effective publication in the repository recorded it as `expected_effective`); live legs for moved, deleted, superseded and failed-does-not-supersede. `cargo mutants` on the matrix: 6/6 viable caught; driver hand mutants D1 (never superseded), D2 (failed supersedes) caught live.
+
 ## 2026-09-28 — The grant checks require a live boundary (`SIGNOFF-REPAIR.11.55`)
 
 `REASONBRAID-REPAIR-0555`.

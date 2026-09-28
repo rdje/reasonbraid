@@ -151,10 +151,20 @@ the database schema; migrating is `rb-server`'s job.
 | staged, the Git write happened but the row never heard | **recovers**: verifies the commit and marks the row `effective` |
 | staged, but the immutable ref holds a different commit | **reports** — never picks a side |
 | `failed`, but its write appeared later | **reports** — quarantine and adjudicate; the row stays `failed` |
-| `effective`, but its ref is missing or moved | **reports** — freeze and repair through the authorized path |
+| `effective`, but its immutable ref is missing or moved | **reports** — freeze and repair through the authorized path |
+| the newest `effective` publication in a repository, but the effective channel is missing or holds another commit | **reports** — freeze and repair through the authorized path |
 | the recorded compare-and-swap can no longer hold | **reports** — advancing would overwrite a publication the record does not know about |
 | database and Git agree | nothing |
 | no recorded Git operation | nothing to observe, so nothing is guessed |
+
+**The channel is judged for the newest publication only.** Publications have no
+superseded state: when a later publication moves the effective channel on, the
+earlier one stays `effective` and its channel legitimately holds the later
+commit. A publication is the newest when no other staged or effective
+publication in its repository recorded its channel commit as the value to
+replace; a failed one never wrote, so it supersedes nothing. Until
+`SIGNOFF-REPAIR.11.56` the channel was read and compared with nothing, so a
+moved or deleted channel reported `consistent`.
 
 Recovery is **idempotent**. The commit is reproducible and rewriting an
 identical ref is a no-op, so a second pass over a recovered publication

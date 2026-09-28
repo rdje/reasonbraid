@@ -11034,7 +11034,7 @@ async fn the_reconciler_recovers_what_it_may_and_reports_the_rest() {
     close_as_owner(&client, &base, &human_id, &tenant_id, &thread_id).await;
 
     // One staged publication per case: rc-pub-<x>.
-    for x in ["a", "b", "c", "d", "e", "f"] {
+    for x in ["a", "b", "c", "d", "e", "f", "g", "h"] {
         let prop = format!("rc-prop-{x}");
         let calls: [(&str, Value); 5] = [
             (
@@ -11258,6 +11258,93 @@ async fn the_reconciler_recovers_what_it_may_and_reports_the_rest() {
         visited,
         ["rc-pub-a", "rc-pub-b", "rc-pub-c", "rc-pub-d", "rc-pub-e"]
     );
+
+    // G — 🔴 `SIGNOFF-REPAIR.11.56`: the effective CHANNEL. `observe` reads
+    // `refs/rb/effective` and the matrix never compared it, so the head of a
+    // repository's chain read as consistent with its channel moved or deleted
+    // out of band. rc-pub-a is rc-a's head: the channel must hold what it set.
+    let channel_path = repo_root.join("rc-a").join("refs/rb/effective");
+    let head = refs("rc-a", "rc-pub-a")
+        .effective
+        .expect("rc-a has a channel");
+    let elsewhere = refs("rc-b", "rc-pub-b")
+        .effective
+        .expect("rc-b has a channel");
+    for (label, moved_to) in [("moved", Some(elsewhere)), ("missing", None)] {
+        match moved_to {
+            Some(id) => std::fs::write(&channel_path, format!("{id}\n")),
+            None => std::fs::remove_file(&channel_path),
+        }
+        .expect("the channel is edited out of band");
+        let outcome = reconcile("rc-pub-a").await;
+        assert!(
+            matches!(
+                outcome,
+                Outcome::RequiresHuman {
+                    action: Action::FreezeAndRepair,
+                    ..
+                }
+            ),
+            "a {label} channel freezes the head publication: {outcome:?}"
+        );
+        std::fs::write(&channel_path, format!("{head}\n")).expect("the channel is restored");
+        assert_eq!(reconcile("rc-pub-a").await, Outcome::Consistent);
+    }
+    // …and a SUPERSEDED publication is not judged by the channel. rc-pub-g
+    // publishes into rc-a expecting rc-pub-a's channel, so the channel moves on
+    // legitimately: rc-pub-a stays consistent, and rc-pub-g is the head now.
+    reasonbraid_server::publications::record_git_operation(
+        &pool,
+        &tenant_id,
+        "rc-pub-g",
+        "rc-a",
+        Some(&head.to_string()),
+    )
+    .await
+    .expect("the operation records");
+    assert_eq!(
+        reconcile("rc-pub-g").await,
+        Outcome::Applied(Action::RetryStagedWrite)
+    );
+    assert_ne!(
+        refs("rc-a", "rc-pub-g").effective,
+        Some(head),
+        "the channel moved on"
+    );
+    assert_eq!(reconcile("rc-pub-a").await, Outcome::Consistent);
+    assert_eq!(reconcile("rc-pub-g").await, Outcome::Consistent);
+    // A FAILED publication supersedes nothing: rc-pub-h records rc-pub-g's
+    // channel as the one it expected and then fails without writing, so rc-pub-g
+    // is still the head and a moved channel still freezes it.
+    let g_channel = refs("rc-a", "rc-pub-g")
+        .effective
+        .expect("rc-pub-g set the channel");
+    reasonbraid_server::publications::record_git_operation(
+        &pool,
+        &tenant_id,
+        "rc-pub-h",
+        "rc-a",
+        Some(&g_channel.to_string()),
+    )
+    .await
+    .expect("the operation records");
+    reasonbraid_server::publications::mark_failed(&pool, &tenant_id, "rc-pub-h", "never wrote")
+        .await
+        .expect("the publication fails");
+    std::fs::write(&channel_path, format!("{head}\n")).expect("the channel moves back");
+    let outcome = reconcile("rc-pub-g").await;
+    assert!(
+        matches!(
+            outcome,
+            Outcome::RequiresHuman {
+                action: Action::FreezeAndRepair,
+                ..
+            }
+        ),
+        "a failed publication does not supersede the head: {outcome:?}"
+    );
+    std::fs::write(&channel_path, format!("{g_channel}\n")).expect("the channel is restored");
+    assert_eq!(reconcile("rc-pub-g").await, Outcome::Consistent);
 
     let _ = std::fs::remove_dir_all(&repo_root);
 }

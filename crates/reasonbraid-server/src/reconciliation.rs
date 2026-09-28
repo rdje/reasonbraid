@@ -151,7 +151,45 @@ pub async fn reconcile_publication(
         DbState::Failed => None,
     };
 
-    match reconciler::reconcile(Some(&db), &git, expected.as_ref()) {
+    // The channel is judged for the head of the repository's chain only
+    // (`SIGNOFF-REPAIR.11.56`). `mark_effective` records the channel commit
+    // this publication set as `git_object_ids[1]`, and a later publication
+    // records the channel it expected to replace, so this one is superseded
+    // exactly when another staged or effective publication in the same
+    // repository expected its channel commit. A failed one never wrote, so it
+    // supersedes nothing. The read is repository-wide on purpose: the channel
+    // is a fact about the repository, not about one tenant.
+    let expected_channel = match db {
+        DbState::Effective => match publication
+            .git_object_ids
+            .get(1)
+            .and_then(|id| id.parse::<gix::ObjectId>().ok())
+        {
+            Some(channel) => {
+                let superseded: bool = sqlx::query_scalar(
+                    "SELECT EXISTS (SELECT 1 FROM policy_publications \
+                     WHERE repository = $1 AND expected_effective = $2 \
+                     AND publication_id <> $3 AND state IN ('staged', 'effective'))",
+                )
+                .bind(recorded)
+                .bind(channel.to_string())
+                .bind(publication_id)
+                .fetch_one(pool)
+                .await
+                .map_err(store)?;
+                (!superseded).then_some(channel)
+            }
+            None => None,
+        },
+        DbState::Staged | DbState::Failed => None,
+    };
+
+    match reconciler::reconcile(
+        Some(&db),
+        &git,
+        expected.as_ref(),
+        expected_channel.as_ref(),
+    ) {
         Action::Consistent => Ok(Outcome::Consistent),
         action @ (Action::RetryStagedWrite | Action::VerifyAndAdvance) => {
             // Both finish the operation the row recorded: the retry writes it,

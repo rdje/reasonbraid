@@ -23,7 +23,7 @@ fn git(immutable: Option<u8>, effective: Option<u8>, staging: Option<u8>) -> Git
 fn the_six_matrix_rows_map_to_their_actions() {
     // 1. staged/absent → the idempotent retry.
     assert_eq!(
-        reconcile(Some(&DbState::Staged), &git(None, None, None), None),
+        reconcile(Some(&DbState::Staged), &git(None, None, None), None, None),
         Action::RetryStagedWrite
     );
     // 2. staged/matching → the verify-and-advance.
@@ -31,7 +31,8 @@ fn the_six_matrix_rows_map_to_their_actions() {
         reconcile(
             Some(&DbState::Staged),
             &git(Some(7), None, None),
-            Some(&id(7))
+            Some(&id(7)),
+            None
         ),
         Action::VerifyAndAdvance
     );
@@ -40,7 +41,8 @@ fn the_six_matrix_rows_map_to_their_actions() {
         reconcile(
             Some(&DbState::Staged),
             &git(Some(9), None, None),
-            Some(&id(7))
+            Some(&id(7)),
+            None
         ),
         Action::StopSecurityAlert
     );
@@ -49,7 +51,8 @@ fn the_six_matrix_rows_map_to_their_actions() {
         reconcile(
             Some(&DbState::Effective),
             &git(None, None, None),
-            Some(&id(7))
+            Some(&id(7)),
+            None
         ),
         Action::FreezeAndRepair
     );
@@ -57,7 +60,8 @@ fn the_six_matrix_rows_map_to_their_actions() {
         reconcile(
             Some(&DbState::Effective),
             &git(Some(9), None, None),
-            Some(&id(7))
+            Some(&id(7)),
+            None
         ),
         Action::FreezeAndRepair
     );
@@ -66,37 +70,98 @@ fn the_six_matrix_rows_map_to_their_actions() {
         reconcile(
             Some(&DbState::Failed),
             &git(Some(7), None, None),
-            Some(&id(7))
+            Some(&id(7)),
+            None
         ),
         Action::QuarantineAndAdjudicate
     );
     // 6. no-record/out-of-band → the verify + the alert.
     assert_eq!(
-        reconcile(None, &git(Some(7), None, None), Some(&id(7))),
+        reconcile(None, &git(Some(7), None, None), Some(&id(7)), None),
         Action::OutOfBandAlert
     );
 }
 
 #[test]
 fn the_consistent_pairs_are_quiet() {
-    // The effective + the matching immutable: nothing to do.
+    // The effective + the matching immutable, with the channel on a later
+    // commit: a SUPERSEDED publication (no channel expectation), nothing to do.
     assert_eq!(
         reconcile(
             Some(&DbState::Effective),
             &git(Some(7), Some(8), None),
-            Some(&id(7))
+            Some(&id(7)),
+            None
         ),
         Action::Consistent
     );
     // The failed + nothing appearing: the failure stands.
     assert_eq!(
-        reconcile(Some(&DbState::Failed), &git(None, None, None), None),
+        reconcile(Some(&DbState::Failed), &git(None, None, None), None, None),
         Action::Consistent
     );
     // The no-record + nothing: quiet.
     assert_eq!(
-        reconcile(None, &git(None, None, None), None),
+        reconcile(None, &git(None, None, None), None, None),
         Action::Consistent
+    );
+}
+
+/// `SIGNOFF-REPAIR.11.56` — the effective CHANNEL is judged for the head of a
+/// repository's chain, and only there. The head's channel must hold what it
+/// set; a superseded publication (`None`) sees the channel hold a later commit
+/// and stays quiet, which is the pair `the_consistent_pairs_are_quiet` names.
+#[test]
+fn the_heads_channel_is_judged_and_a_superseded_ones_is_not() {
+    // The head, channel where it set it: consistent.
+    assert_eq!(
+        reconcile(
+            Some(&DbState::Effective),
+            &git(Some(7), Some(8), None),
+            Some(&id(7)),
+            Some(&id(8))
+        ),
+        Action::Consistent
+    );
+    // The head, channel moved: freeze.
+    assert_eq!(
+        reconcile(
+            Some(&DbState::Effective),
+            &git(Some(7), Some(9), None),
+            Some(&id(7)),
+            Some(&id(8))
+        ),
+        Action::FreezeAndRepair
+    );
+    // The head, channel missing: freeze.
+    assert_eq!(
+        reconcile(
+            Some(&DbState::Effective),
+            &git(Some(7), None, None),
+            Some(&id(7)),
+            Some(&id(8))
+        ),
+        Action::FreezeAndRepair
+    );
+    // A superseded publication, channel on a later commit: quiet.
+    assert_eq!(
+        reconcile(
+            Some(&DbState::Effective),
+            &git(Some(7), Some(9), None),
+            Some(&id(7)),
+            None
+        ),
+        Action::Consistent
+    );
+    // The channel never rescues a moved IMMUTABLE ref.
+    assert_eq!(
+        reconcile(
+            Some(&DbState::Effective),
+            &git(Some(6), Some(8), None),
+            Some(&id(7)),
+            Some(&id(8))
+        ),
+        Action::FreezeAndRepair
     );
 }
 
@@ -117,8 +182,8 @@ fn the_reconciler_is_idempotent_over_the_unchanged_pair() {
         (None, git(Some(7), None, None), Some(id(7))),
     ];
     for (db, git, expected) in &cases {
-        let first = reconcile(db.as_ref(), git, expected.as_ref());
-        let second = reconcile(db.as_ref(), git, expected.as_ref());
+        let first = reconcile(db.as_ref(), git, expected.as_ref(), None);
+        let second = reconcile(db.as_ref(), git, expected.as_ref(), None);
         assert_eq!(first, second, "the action repeats");
     }
 }

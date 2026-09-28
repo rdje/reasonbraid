@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-29 — Tranche 6c: `.11.64` opened; tranche 6 closed (`SIGNOFF-REPAIR.11.9.1.5.3`)
+
+`REASONBRAID-DOC-0200`.
+
+- 🔍 **6c:** 9 clauses: 5 handled (.7.4.3, .7.4.4, .11.55.1, REPAIR-0398, REPAIR-0397), 1 attach (`.11.4`: `threads.rs` header still says auto-accept), 1 unowned → `.11.64` (class 2: `record_decision` autocommit insert + unconditioned update, no uniqueness on `proposal_id`, any insert error → `Duplicate`), 2 none. 12 records left (tranche 7).
+- ✅ **Tranche 6 closed:** 48 clauses, six leaves; frontier → `.11.60`.
+
 ## 2026-09-29 — Tranche 6b: 19 clauses, `.11.63` opened, two attaches; broad run green (`SIGNOFF-REPAIR.11.9.1.5.2`)
 
 `REASONBRAID-DOC-0199`.

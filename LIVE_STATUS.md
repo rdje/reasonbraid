@@ -31,6 +31,14 @@ re-examines its claims; they return to *Done* when the review requalifies them.
 | Phase 9 — stable release | Not Started | G9 requires sustained operational evidence and the outstanding release decisions. |
 | Corrective review | In Progress | It ends at a bug bar, not at exhaustion (`REASONBRAID-DOC-0162`): every leaf in a blocking class (cross-tenant; integrity of state, money, evidence or publication; a false claim; a gate that lies) closed with reproducible evidence, every deferred leaf with a readable trigger and a limit the qualification review states, the qualification review reconciled with measured behaviour, and the full CI checkpoint green on a pushed commit. |
 
+## 2026-09-29 — The last three findings of this batch checked; one more problem found (`SIGNOFF-REPAIR.11.9.1.5.3`)
+
+`REASONBRAID-DOC-0200`.
+
+- 🔍 **What was checked:** three notes about evidence clean-up and policy decisions, split into 9 points. Five were already fixed.
+- 🔴 **Found:** recording a policy decision still takes two separate steps with nothing holding the proposal in between. Two decisions made at the same moment can both be recorded for one proposal, and a database failure reads as "already exists". The same problem was fixed for approvals yesterday; decisions were missed. A task is open, and the guide's qualification page says so.
+- ✅ **This batch is finished:** 14 review notes, 48 points, and six problems found. Three of them affect integrity or money and come next.
+
 ## 2026-09-29 — Six more review findings checked; one new problem, and two limits now stated (`SIGNOFF-REPAIR.11.9.1.5.2`)
 
 `REASONBRAID-DOC-0199`.

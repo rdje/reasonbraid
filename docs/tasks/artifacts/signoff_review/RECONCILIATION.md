@@ -806,3 +806,19 @@ separates stale from false, and both queries are there verbatim.
 | `R-71-72-1` | 2 | none | — | a positive note: a duplicate result folds once |
 | `R-71-72-1` | 3 | handled | `SIGNOFF-REPAIR.4.5.4` | REPAIR-0486: `a_node_cannot_settle_a_foreign_reservation_by_naming_it` |
 | `R-76-77-4` | 1 | declined | `SIGNOFF-REPAIR.8.1` | by design: ADR-016 makes a profile configuration with *"no state machines, no validation"*. Steps advance by the explicit `thread.advance_round` verb humans hold, each step gates its own kinds (`vote`, `adjudicate`, `moderate`, `synthesize`), and the close is the cut-off at any step (`decision-rules.md`). The test exercises the close fold, as documented |
+
+## Tranche 6c — the three records whose narrowest candidate leaf is `SIGNOFF-REPAIR.7.4`
+
+`SIGNOFF-REPAIR.11.9.1.5.3`, `REASONBRAID-DOC-0200` (2026-09-29). **9 clauses**: 5 `handled`, 1 `attach`, 1 `unowned`, 2 `none`. Every live clause was re-read by hand against the source before it was written here. Handled ones were sampled the same way (`R-33-35-3` clause 1, `R-46-1` clause 3), and both held. `R-46-1`'s first sentence carried two fates and is split into clauses 1 and 2. The `unowned` clause opens `.11.64`. The `attach` clause lands in `.11.4`, named there in this commit. Tranche 6 closes here: 48 clauses across 14 records, and six leaves, `.11.59`–`.11.64`.
+
+| Record | Clause | State | Owner | Evidence |
+| --- | --- | --- | --- | --- |
+| `R-33-35-3` | 1 | handled | `SIGNOFF-REPAIR.7.4.3` | REPAIR-0214: the sweep is the `expire_evidence` site act on the server's own clock. The body is `{reason}`, with no clock |
+| `R-33-35-3` | 2 | handled | `SIGNOFF-REPAIR.7.4.4` | REPAIR-0254: tombstoning a shared row is the `tombstone_evidence` site act, and expiry needs a site grant (REPAIR-0214). An enrolled principal can do neither |
+| `R-33-35-3` | 3 | none | — | the reviewer's note that runtime evidence was pending |
+| `R-46-1` | 1 | handled | `SIGNOFF-REPAIR.11.55.1` | REPAIR-0557: `record_approval` is one transaction holding the proposal row `FOR UPDATE`, and its stage update is conditioned |
+| `R-46-1` | 2 | unowned | `SIGNOFF-REPAIR.11.64` | LIVE: `record_decision` inserts on the pool and then updates the proposal with no stage condition and no lock. `policy_decisions` is keyed on `decision_id` only, so two concurrent decisions both land, and any insert error reads as `Duplicate` |
+| `R-46-1` | 3 | handled | `SIGNOFF-REPAIR.11.4.7.2.1.2.3.1` | REPAIR-0398: a decision is derived from the thread's counted close, and an asserted electorate that differs from the derived one is refused |
+| `R-46-1` | 4 | handled | `SIGNOFF-REPAIR.8.1.1.2` | REPAIR-0397: entering the `vote` step fixes the electorate, and the event names it, so `policy-lifecycle.md`'s *"decided by a frozen electorate"* now holds |
+| `R-55-2` | 1 | attach | `SIGNOFF-REPAIR.11.4` | LIVE: `threads.rs`'s module header lists *"Auto-accept on first contribution"* and admits `invited` participants to content verbs, while `ensure_participant` in the same file says the auto-accept *"is gone"*. Attached in this commit |
+| `R-55-2` | 2 | none | — | the reviewer's note that the semantic read continued and node evidence was tracked separately |

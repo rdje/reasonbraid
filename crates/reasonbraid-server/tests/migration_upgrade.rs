@@ -1690,3 +1690,110 @@ async fn freshness_upgrade_gives_every_citation_its_snapshots_horizon() {
     .unwrap();
     assert_eq!(shared, 0, "the shared horizon column is gone");
 }
+
+/// `SIGNOFF-REPAIR.11.53` — `migrations/0117`: a snapshot written before the
+/// retention class was checked, with a class nobody knows, becomes `standard`,
+/// a known class is untouched, and the constraint is VALIDATED, so no row
+/// escapes it. The conversion is what keeps the sweep working: a `NOT VALID`
+/// constraint is still enforced on UPDATE, so the sweep's tombstone write on
+/// an unconverted row would fail, and with it the whole sweep (measured while
+/// the migration was being written).
+#[tokio::test]
+async fn a_retention_class_nobody_knows_becomes_standard_on_upgrade() {
+    let _g = guard().await;
+    let Some(pool) = pg_test_support::pool().await else {
+        return;
+    };
+    let migrator =
+        Migrator::new(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../migrations"))
+            .await
+            .unwrap();
+    let prefix = Migrator {
+        migrations: std::borrow::Cow::Owned(
+            migrator
+                .migrations
+                .iter()
+                .filter(|m| m.version <= 116)
+                .cloned()
+                .collect(),
+        ),
+        ignore_missing: false,
+        no_tx: false,
+        locking: true,
+    };
+    recreate_public_schema(&pool).await;
+    prefix.run(&pool).await.unwrap();
+    let digest = format!("sha256:{}", "ab".repeat(32));
+    sqlx::query(
+        "INSERT INTO resource_references (resource_id, original_locator, submitted_by) \
+         VALUES ('ref_legacy_retention', 'https://example.org/legacy', 'legacy')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO snapshot_objects (digest, bytes) VALUES ($1, '\\x00')")
+        .bind(&digest)
+        .execute(&pool)
+        .await
+        .unwrap();
+    for (id, class) in [
+        ("snp_legacy_unknown", "kept-by-nobody"),
+        ("snp_legacy_audit", "audit"),
+    ] {
+        sqlx::query(
+            "INSERT INTO evidence_snapshots (snapshot_id, reference_id, original_locator, \
+               final_locator, retrieved_at, resolver_id, resolver_version, raw_digest, \
+               byte_length, media_type, retention_class) \
+             VALUES ($1, 'ref_legacy_retention', 'https://example.org/legacy', \
+               'https://example.org/legacy', now(), 'r0-https-fetcher', '0.1.0', $2, 1, \
+               'text/plain', $3)",
+        )
+        .bind(id)
+        .bind(&digest)
+        .bind(class)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    migrator.run(&pool).await.unwrap();
+    let class = |id: &'static str| {
+        let pool = pool.clone();
+        async move {
+            sqlx::query_scalar::<_, String>(
+                "SELECT retention_class FROM evidence_snapshots WHERE snapshot_id = $1",
+            )
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+        }
+    };
+    assert_eq!(
+        class("snp_legacy_unknown").await,
+        "standard",
+        "a class nobody knows becomes standard"
+    );
+    assert_eq!(
+        class("snp_legacy_audit").await,
+        "audit",
+        "a known class is untouched"
+    );
+    let validated: bool = sqlx::query_scalar(
+        "SELECT convalidated FROM pg_constraint WHERE conname = 'evidence_snapshots_retention_class_known'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(
+        validated,
+        "the constraint holds every row, not only new ones"
+    );
+    // …and the sweep runs over what the upgrade left.
+    let mut conn = pool.acquire().await.unwrap();
+    reasonbraid_server::snapshots::expire_due(
+        &mut conn,
+        chrono::Utc::now() + chrono::Duration::days(40),
+    )
+    .await
+    .expect("the sweep runs after the upgrade");
+}

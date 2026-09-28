@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-28 — Retention class is one of three; tombstones carry the given time (`SIGNOFF-REPAIR.11.53`)
+
+`REASONBRAID-REPAIR-0562`.
+
+- 🔴 **Root cause:** free-text `retention_class`; sweep matched two; `deleted_at = now()`. RED: 4 failures.
+- ✅ **Fix:** submit refusal + `migrations/0117` (convert unknown → standard, VALID CHECK); `expire_due`/`tombstone_in` take `at`. ⚠️ First draft used `NOT VALID` + a widened sweep: an UPDATE still checks a NOT VALID constraint, so one legacy row fails the whole sweep — caught by the control. 5/5 mutants caught.
+
 ## 2026-09-28 — `make showcase`: live system, answering agents, page, status CLI, feedback file (`SHOWCASE.1`)
 
 `REASONBRAID-SHOWCASE-0001`.

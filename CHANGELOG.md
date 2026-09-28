@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-28 — Stored evidence now always expires on its stated schedule (`SIGNOFF-REPAIR.11.53`)
+
+`REASONBRAID-REPAIR-0562`.
+
+- 🔴 **Before:** evidence could be stored with any made-up retention label, and one the clean-up did not recognise was kept for ever, although the guide says evidence expires by its label. The expiry time recorded was also slightly wrong.
+- ✅ **Now:** there are three labels (standard: 30 days, temporary: 1 day, audit: kept), anything else is refused, older entries with an unknown label are treated as standard, and the recorded expiry time is the real one. The guide also says plainly that expired evidence stays stored and readable.
+
 ## 2026-09-28 — Try it live: `make showcase` (`SHOWCASE.1`)
 
 `REASONBRAID-SHOWCASE-0001`.

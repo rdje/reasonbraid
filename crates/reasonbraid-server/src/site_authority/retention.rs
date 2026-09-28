@@ -87,12 +87,13 @@ pub async fn tombstone_evidence(
         Action::EvidenceExpire,
         json!({ "store": "evidence_snapshots", "snapshot_id": snapshot_id }),
         reason.as_str(),
-        move |conn, _at| {
+        move |conn, at| {
             let snapshot_id = snapshot_id.clone();
             let deletion_reason = deletion_reason.clone();
             Box::pin(async move {
                 let tombstoned =
-                    crate::snapshots::tombstone_in(conn, &snapshot_id, &deletion_reason).await?;
+                    crate::snapshots::tombstone_in(conn, &snapshot_id, &deletion_reason, at)
+                        .await?;
                 Ok(Ok(Effect::write(
                     json!({ "snapshot_id": snapshot_id, "tombstoned": tombstoned }),
                     u64::from(tombstoned),

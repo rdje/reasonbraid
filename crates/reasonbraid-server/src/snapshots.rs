@@ -233,6 +233,11 @@ pub enum SnapshotError {
         declared: i64,
         actual: usize,
     },
+    /// The `retention_class` is none of the three the sweep knows
+    /// (`SIGNOFF-REPAIR.11.53`). Any string used to be stored, and one the
+    /// sweep did not match was kept for ever, while `evidence.md` says a
+    /// snapshot expires by its class.
+    UnknownRetentionClass(String),
     /// The submission names a different `original_locator` from the reference
     /// it is filed against (`SIGNOFF-REPAIR.11.14.3.13`).
     ///
@@ -303,6 +308,11 @@ impl std::fmt::Display for SnapshotError {
                 f,
                 "the bytes are {actual} bytes long, not the declared byte_length {declared}"
             ),
+            Self::UnknownRetentionClass(got) => write!(
+                f,
+                "retention_class must be one of {}; got `{got}`",
+                RETENTION_CLASSES.join(", ")
+            ),
             Self::LocatorMismatch {
                 submitted,
                 reference,
@@ -363,6 +373,11 @@ pub async fn submit(
             declared: submission.raw_digest.clone(),
             actual,
         });
+    }
+    if !RETENTION_CLASSES.contains(&submission.retention_class.as_str()) {
+        return Err(SnapshotError::UnknownRetentionClass(
+            submission.retention_class.clone(),
+        ));
     }
     if usize::try_from(submission.byte_length).ok() != Some(bytes.len()) {
         return Err(SnapshotError::LengthMismatch {
@@ -880,24 +895,36 @@ pub async fn tombstone(
     snapshot_id: &str,
     reason: &str,
 ) -> Result<bool, sqlx::Error> {
-    tombstone_in(&mut *pool.acquire().await?, snapshot_id, reason).await
+    tombstone_in(
+        &mut *pool.acquire().await?,
+        snapshot_id,
+        reason,
+        chrono::Utc::now(),
+    )
+    .await
 }
 
 /// The same tombstone inside a caller's transaction, so a site act's tombstone,
 /// its authorization and its audit record commit together — a tombstone that
 /// committed without its audit record would be an unattributable deletion
 /// (the argument `expire_due` already makes for the sweep).
+///
+/// `at` is the caller's clock: a site act passes the database time it read
+/// after its guard lock. The row used to be stamped `now()`, the transaction's
+/// START, which a lock wait makes earlier than the act (`SIGNOFF-REPAIR.11.53`).
 pub async fn tombstone_in(
     conn: &mut sqlx::PgConnection,
     snapshot_id: &str,
     reason: &str,
+    at: chrono::DateTime<chrono::Utc>,
 ) -> Result<bool, sqlx::Error> {
     let result = sqlx::query(
-        "UPDATE evidence_snapshots SET deleted_at = now(), deletion_reason = $2 \
+        "UPDATE evidence_snapshots SET deleted_at = $3, deletion_reason = $2 \
          WHERE snapshot_id = $1 AND deleted_at IS NULL",
     )
     .bind(snapshot_id)
     .bind(reason)
+    .bind(at)
     .execute(&mut *conn)
     .await?;
     Ok(result.rows_affected() > 0)
@@ -918,6 +945,10 @@ pub async fn tombstone_in(
 pub(crate) fn evidence_id(prefix: &str) -> String {
     format!("{prefix}_{}", uuid::Uuid::now_v7().simple())
 }
+
+/// The retention classes a snapshot may carry (`SIGNOFF-REPAIR.11.53`); the
+/// submit refuses any other, and `migrations/0117` checks new rows.
+pub const RETENTION_CLASSES: [&str; 3] = ["standard", "temporary", "audit"];
 
 /// The retention classes' TTLs (the §12.9 enforcement): the audit class
 /// never expires (binding decisions stay addressable for the charter's
@@ -948,21 +979,27 @@ pub async fn expire_due(
     conn: &mut sqlx::PgConnection,
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<u64, sqlx::Error> {
+    // `SIGNOFF-REPAIR.11.53`: the tombstone carries the sweep's own `now`, not
+    // the transaction start. The three classes are the only ones a row can
+    // hold (`migrations/0117`), so these two statements cover every row that
+    // can expire; `audit` never does.
     let result = sqlx::query(
-        "UPDATE evidence_snapshots SET deleted_at = now(), deletion_reason = $1 \
+        "UPDATE evidence_snapshots SET deleted_at = $3, deletion_reason = $1 \
          WHERE deleted_at IS NULL AND retention_class = 'standard' AND created_at < $2",
     )
     .bind("the retention expired")
     .bind(now - chrono::Duration::days(30))
+    .bind(now)
     .execute(&mut *conn)
     .await?;
     let standard = result.rows_affected();
     let result = sqlx::query(
-        "UPDATE evidence_snapshots SET deleted_at = now(), deletion_reason = $1 \
+        "UPDATE evidence_snapshots SET deleted_at = $3, deletion_reason = $1 \
          WHERE deleted_at IS NULL AND retention_class = 'temporary' AND created_at < $2",
     )
     .bind("the retention expired")
     .bind(now - chrono::Duration::days(1))
+    .bind(now)
     .execute(&mut *conn)
     .await?;
     Ok(standard + result.rows_affected())

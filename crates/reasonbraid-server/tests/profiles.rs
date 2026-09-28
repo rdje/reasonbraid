@@ -19207,6 +19207,156 @@ async fn a_reacquisition_refreshes_the_citing_tenants_own_freshness_horizon() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
+/// 🔴 `SIGNOFF-REPAIR.11.53` (tranche 5b, `R-54-3`): a snapshot's retention
+/// class. `evidence.md` says a snapshot expires by its `retention_class`; the
+/// submit took any string and the sweep knew two, so any other class was kept
+/// for ever, and the sweep stamped its tombstones with the transaction's start
+/// rather than the time it was given. Every leg is collected, so one run shows
+/// each defect; the sweep is called directly with a chosen time.
+#[tokio::test]
+async fn a_retention_class_is_one_the_sweep_knows_and_its_tombstone_carries_the_sweeps_time() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "retention-check" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{human}");
+    let principal = human["principal_id"].as_str().unwrap().to_string();
+    let locator = "https://example.org/retention-evidence";
+    let (status, reference) = post(
+        &client,
+        &base,
+        "/v1/resources",
+        &principal,
+        &json!({ "original_locator": locator, "scheme": "https" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{reference}");
+    let submit = |class: &'static str, payload: &'static [u8]| {
+        let client = client.clone();
+        let base = base.clone();
+        let principal = principal.clone();
+        let reference_id = reference["resource_id"].clone();
+        async move {
+            post(
+                &client,
+                &base,
+                "/v1/snapshots",
+                &principal,
+                &json!({
+                    "reference_id": reference_id,
+                    "original_locator": locator,
+                    "final_locator": locator,
+                    "resolver_id": "r0-https-fetcher",
+                    "resolver_version": "0.1.0",
+                    "raw_digest": reasonbraid_server::fetcher::digest_sha256_hex(payload),
+                    "byte_length": payload.len() as i64,
+                    "media_type": "text/plain",
+                    "retention_class": class,
+                    "bytes_base64": util::base64(payload),
+                }),
+            )
+            .await
+        }
+    };
+    let mut failures = Vec::new();
+
+    // 1. An unknown class is refused, naming the ones there are.
+    let (status, value) = submit("forever", b"kept for ever, if it could be").await;
+    let named = value["message"]
+        .as_str()
+        .is_some_and(|m| m.contains("standard") && m.contains("temporary") && m.contains("audit"));
+    if status != 400 || !named {
+        failures.push(format!(
+            "1: an unknown class was not refused by name: {status} {value}"
+        ));
+    }
+
+    // 2. The three known classes submit.
+    let mut ids = std::collections::HashMap::new();
+    for (class, payload) in [
+        ("standard", &b"a standard snapshot"[..]),
+        ("temporary", &b"a temporary snapshot"[..]),
+        ("audit", &b"an audit snapshot"[..]),
+    ] {
+        let (status, value) = submit(class, payload).await;
+        assert_eq!(status, 200, "{class} submits: {value}");
+        ids.insert(class, value["snapshot_id"].as_str().unwrap().to_string());
+    }
+
+    // 3. The STORE refuses a class nobody knows too, whoever writes it, so no
+    // row can hold one and fall outside the sweep (`migrations/0117`).
+    let refused = sqlx::query(
+        "UPDATE evidence_snapshots SET retention_class = 'kept-by-nobody' WHERE snapshot_id = $1",
+    )
+    .bind(&ids["standard"])
+    .execute(&pool)
+    .await;
+    if !matches!(&refused, Err(sqlx::Error::Database(e)) if e.code().as_deref() == Some("23514")) {
+        failures.push(format!(
+            "3: the store accepted a class nobody knows: {refused:?}"
+        ));
+    }
+
+    // The sweep, at a time forty days on: standard and temporary are due;
+    // audit never is.
+    let at = chrono::Utc::now() + chrono::Duration::days(40);
+    {
+        let mut conn = pool.acquire().await.unwrap();
+        reasonbraid_server::snapshots::expire_due(&mut conn, at)
+            .await
+            .unwrap();
+    }
+    let deleted = |id: String| {
+        let pool = pool.clone();
+        async move {
+            sqlx::query_scalar::<_, Option<chrono::DateTime<chrono::Utc>>>(
+                "SELECT deleted_at FROM evidence_snapshots WHERE snapshot_id = $1",
+            )
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+        }
+    };
+    for class in ["standard", "temporary"] {
+        match deleted(ids[class].clone()).await {
+            None => failures.push(format!("3: the {class} snapshot was not swept")),
+            // 4. The tombstone carries the sweep's time, not the transaction's.
+            Some(stamp) if (stamp - at).num_seconds().abs() > 1 => failures.push(format!(
+                "4: the {class} tombstone says {stamp}, the sweep ran at {at}"
+            )),
+            Some(_) => {}
+        }
+    }
+    if deleted(ids["audit"].clone()).await.is_some() {
+        failures.push("3: the audit snapshot was swept".to_string());
+    }
+    // 5. A NAMED tombstone (the site act's path) carries the time it is given
+    // too: the audit row, which the sweep leaves, is tombstoned at a chosen time.
+    let named_at = chrono::Utc::now() + chrono::Duration::days(3);
+    {
+        let mut conn = pool.acquire().await.unwrap();
+        reasonbraid_server::snapshots::tombstone_in(&mut conn, &ids["audit"], "named", named_at)
+            .await
+            .unwrap();
+    }
+    match deleted(ids["audit"].clone()).await {
+        Some(stamp) if (stamp - named_at).num_seconds().abs() <= 1 => {}
+        other => failures.push(format!(
+            "5: the named tombstone says {other:?}, it was given {named_at}"
+        )),
+    }
+    eprintln!("retention classes: {} failures", failures.len());
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
 /// `SIGNOFF-REPAIR.11.41` (tranche 4e, `R-54-2`): a submitted snapshot's
 /// `byte_length` is the stored bytes' length, as `evidence.md` says, because
 /// the submit checks it. It used to store whatever the caller declared, beside

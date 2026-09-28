@@ -715,6 +715,18 @@ ADJUDICATION: dict[tuple[str, str, str], tuple[str, str, str, str]] = {
      "submit_external", "evidence_snapshots.retrieved_at"):
         ("caller_supplied", "contained", "contained",
          "written and never read back, so the caller's clock is irrelevant: no second copy exists for the column to disagree with"),
+    # ── two sites added by `SIGNOFF-REPAIR.11.53` (2026-09-28): the tombstone
+    #    used to be stamped `now()`, the transaction's START; it now carries the
+    #    time the caller gives, and the site act gives the database's own
+    #    `clock_timestamp()` read after its guard lock.
+    ("reasonbraid-server/src/snapshots.rs",
+     "expire_due", "evidence_snapshots.deleted_at"):
+        ("caller_supplied", "contained", "contained",
+         "expire_due returns only a count; readers take the STORED value, and the sweep's only comparisons (`deleted_at IS NULL`, `created_at < $2`) run in SQL, so no Rust copy of the instant is ever compared with the truncated one"),
+    ("reasonbraid-server/src/snapshots.rs",
+     "tombstone_in", "evidence_snapshots.deleted_at"):
+        ("caller_supplied", "contained", "contained",
+         "tombstone_in returns only whether it tombstoned; readers take the STORED value, and the site act's effect record carries its own `at`, never read back against this column"),
 }
 
 

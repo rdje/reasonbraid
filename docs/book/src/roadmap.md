@@ -185,6 +185,10 @@ what each repair actually measured, and what remains open. `LIVE_STATUS.md`
 carries the same snapshot at the repository root, `docs/tasks/SIGNOFF-REPAIR.md`
 owns the frontier itself, and `docs/tasks/PROGRAM.md` maps the complete frozen
 roadmap to its execution trees.
+`ROADMAP.md` follows the same rule: it states targets, and where the build differs
+from them the qualification page records it. A commit gate refuses a task-tree leaf
+reference in the plan (`PLAN-STATES-TARGETS`), so a progress narrative cannot grow
+back into it.
 
 The full-read source census and its repair leaves are in
 `docs/tasks/SIGNOFF-REPAIR.md`; the underlying records are in

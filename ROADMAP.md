@@ -14,44 +14,30 @@
 
 ### Current execution and security correction
 
-`LIVE_STATUS.md` and `docs/tasks/PROGRAM.md` carry current progress. The full
-source review is owned by `docs/tasks/SIGNOFF-REPAIR.md`, before extending
-`PHASE-8.5.3`. Shared registry mutations require explicit site-operator authority
-under the accepted security correction
-`docs/decisions/2026-09-09_site-operator-authority.md`; the service, protected CLI
-and seven HTTP registry operations are implemented with matched runtime controls.
-Tenant guard primitives and migration delivery are qualified under
-`SIGNOFF-REPAIR.3.3.4.2`; grant error classification is qualified under `.3.3.4.3.1`
-with 56 live controls and strict lint. Standalone authority/status integration
-`.3.3.4.3.2` passes 85 selected controls and strict lint. Complete enrollment
-`.3.3.4.3.3.2` passes 97 selected controls, final focused strict lint and book
-checks; all results/shutdown are consumed and three owned clusters are absent.
-New-bootstrap uncertainty is reproduced under `.3.3.4.3.3.3.1` with 25 selected
-controls and strict lint. Server RequestId/outcome recovery `.3.3.4.3.3.3.2` now
-passes 73 selected controls, a final eleven-control fixture rerun and strict lint;
-all results/shutdown are consumed and four owned clusters are absent. StateFile
-storage `.3.3.4.3.3.3.3.1.1` passes twelve selected controls, all-target CLI strict
-lint and book checks; results consumed, unique fixtures absent. Whole-writer
-integration `.3.3.4.3.3.3.3.1.2` passes nineteen selected controls, final strict
-lint and book checks; every result/shutdown is consumed and fixtures/owned cluster
-are absent. Recovery schema `.3.3.4.3.3.3.3.2.1` passes twenty-four selected
-controls, strict lint and book checks; all results consumed and unique fixtures
-absent, with the interrupted host startup and unchanged-binary retry recorded.
-Keyed CLI/explicit recovery `.3.3.4.3.3.3.3.2.2` passes thirty-three selected
-controls, final output-window rerun and strict CLI lint; all results/shutdown are
-consumed, unique fixtures and owned cluster absent. Completion-capacity preflight
-`.3.3.4.3.3.3.3.2.3.1` passes thirty-one selected controls, final fresh/pending/exact-fit
-matrix and strict CLI lint; all results consumed, unique fixtures absent;
-bounded HTTP waits and restart qualification follow before issuance coverage reconciliation. Remaining application/
-effect and caller-policy paths stay explicitly owned.
-The scheduled pre-push checkpoint .11.4.3.1 now has a committed-scope census;
-workflow/locality routing is verified; fixture prerequisites precede full gate execution, then CLI
-transport work resumes. Inventory counts do not establish runtime passes.
-Historical phase closures do not supersede the open corrective findings or the
-G6/G7 Internet qualification gates. The v0.4.1 scope baseline remains in force.
-The director's semantic introspection/API/MCP discussion is preserved for assessment
-in SIGNOFF-REPAIR.6.4; it is a proposal, not an implemented feature or a change to
-the accepted execution baseline.
+This plan is the frozen v0.4.1 execution baseline, and this section states only
+facts that do not move with each commit. Current progress is read, not restated:
+
+- [`LIVE_STATUS.md`](LIVE_STATUS.md) and the book's
+  [Current qualification and repairs](docs/book/src/qualification-review.md) page
+  say what is built, what each repair measured and what remains open;
+- the corrective programme, `docs/tasks/SIGNOFF-REPAIR.md`, ends at the bug bar
+  (`docs/decisions/2026-09-25_the-corrective-tree-ends-at-a-bug-bar.md`), and its
+  open blocking count is derived, never hand-kept:
+  `python3 -B scripts/census_open_leaves.py`;
+- `docs/tasks/PROGRAM.md` maps this plan to its execution trees.
+
+**Where the build differs from this plan** (a target not yet built, or one
+deferred with a trigger under the bug bar), the difference is recorded in the
+qualification page, not here, so this document keeps stating targets and the
+book states the present.
+
+Standing facts: shared registry mutations require explicit site-operator
+authority (`docs/decisions/2026-09-09_site-operator-authority.md`). Historical
+phase closures do not supersede open corrective findings or the G6/G7 Internet
+qualification gates, which are not met. The v0.4.1 scope baseline remains in
+force. The director's semantic introspection/API/MCP proposal is preserved for
+assessment in the corrective tree; it is a proposal, not an implemented feature
+or a change to the accepted execution baseline.
 
 ### 0.4.1 execution-baseline errata
 

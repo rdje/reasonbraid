@@ -251,6 +251,15 @@ if ! python3 -B scripts/census_open_leaves.py --check >/dev/null 2>&1; then
     exit 1
 fi
 
+# The frozen plan states targets and names no task-tree leaf
+# (`SIGNOFF-REPAIR.11.43`, the director's lockstep rule of 2026-09-28). A
+# restated status goes false as soon as a leaf moves: `ROADMAP.md` carried a
+# thirteen-reference narrative that was weeks stale when it was found.
+if ! python3 -B scripts/check_plan_states_targets.py >/dev/null 2>&1; then
+    python3 -B scripts/check_plan_states_targets.py >&2
+    exit 1
+fi
+
 # A positional source reference must name a file a reader can find
 # (`SIGNOFF-REPAIR.11.17`). `CLAIM_VERIFICATION.md` §4.1 grades a NAMED INSTANCE
 # as exact with no tolerance band, and a BARE BASENAME is exact only when it

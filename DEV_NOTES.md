@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-28 — `ROADMAP.md` states targets; `PLAN-STATES-TARGETS` keeps it so (`SIGNOFF-REPAIR.11.43`)
+
+`REASONBRAID-REPAIR-0551`.
+
+- 🔴 **Root cause:** a hand-kept frontier narrative in the frozen plan (13 leaf references, stale since at least `.3.3.4.3.3.3.3.2.3.2`), while the book's roadmap page refused the same copy.
+- ✅ **Fix:** stable pointers plus a deviations-go-to-the-qualification-page sentence; `scripts/check_plan_states_targets.py` (reads the index; RED 13 → OK), registered; the two pattern mutants caught.
+- ⭐ The director's lockstep rule, mechanised where it can be: a status narrative cannot be kept true by hand, so the gate keeps it out rather than checking it.
+
 ## 2026-09-28 — `POST /v1/snapshots` refuses a wrong `byte_length` (`SIGNOFF-REPAIR.11.41`)
 
 `REASONBRAID-REPAIR-0550`.
@@ -614,116 +622,23 @@
 - ⏸️ **Deferred with a trigger:** evidence quarantine (the book already says it does not exist), unchecked derivation labels, and a write order that can leave an unused stored file behind.
 - ✅ **Holds:** a quoted excerpt must really appear in the evidence; deletion uses the server's clock; one organisation cannot delete evidence another relies on.
 
-## 2026-09-25 — The repair work now has a finish line (`SIGNOFF-REPAIR.12`)
-
-`REASONBRAID-DOC-0162`. Decisions taken at the director's request; no product code changed.
-
-- 🔴 **Why:** the repair work was meant to end when every finding was closed, but every review finds new ones: yesterday 17 items were closed and 17 opened, so it never got closer. A first count also said 50 open items when the true number is 65, because it missed an older way items record their state.
-- ✅ **The finish line:** the repair work ends at a "bug bar", the rule security and reliability teams use to decide what must be fixed before a release. What must be fixed: anything that lets one organisation touch another's data, money or service; anything that silently loses or corrupts data, budgets, evidence or publications; anything the book claims that the code does not do; and any check that gives a false answer. Everything else is deferred with a written trigger that reopens it, and the book states the limit meanwhile.
-- ✅ **The triage of all 65:** 8 close after a quick check, 1 duplicate, 25 must be fixed (plus a new one: counting open items reliably), 12 deferred with triggers, 19 group headings that close with their parts. Every open item now says which it is.
-- ⏳ **Faster checking, same rigour, being measured:** the slow step, mutation testing, rebuilds about 50 unrelated test programs for every change it tries. My first attempt to narrow it made it slower (2 hours instead of 77 minutes), because the tool ignored the setting at the build step. A second setting is being measured; the result and the rule go in the next entry.
-- 📖 The book's qualification chapter gains "When the corrective work ends", and its out-of-date row on machine recovery and budgets now says that work is complete.
-
-## 2026-09-25 — A fake fetcher can no longer silently stop everyone's web fetches (`SIGNOFF-REPAIR.7.1.3`)
-
-`REASONBRAID-REPAIR-0494`.
-
-- 🔴 **Before:** any organisation's administrator could register a "fetcher" advertised as fast. It would be ranked first for every organisation, the server had nothing to run it with, and every fetch then returned an empty answer with no error. Reproduced live: the test's leftover entry even silenced four other tests.
-- ✅ **Now:** the server uses the first ranked fetcher it can actually run, and names any it skipped. If none can run, the answer says so by name.
-- ⏭️ **Next:** decide who should be allowed to add fetchers to the shared list at all (`.7.1.3.1`).
-- ✅ Tested: the new test failed on the old code and passes now; the deliberately broken versions were caught; broad live suite and strict lint pass.
-
-## 2026-09-24 — Resource and resolver ownership reviewed: three real gaps found (`SIGNOFF-REPAIR.7.1`)
-
-`REASONBRAID-DOC-0161`. A review against the code; no code changed.
-
-- 🔴 **Most serious:** any organisation's administrator can register a new "resolver" (the component that fetches a web resource), and the list is shared by everyone. A fake one advertised as fast would outrank the real fetcher. Every organisation's fetches would then silently do nothing, with no error shown. Owned by `.7.1.3`, next.
-- 🔴 **Also real:** the first organisation to cite a web address decides how it is fetched for everyone else (`.7.1.4`); and when two fetchers tie, which one is used is left to chance (`.7.1.5`).
-- ✅ **Holds:** fetched content is checked against its expected fingerprint, a corrected fetcher description replaces the old one completely, the isolation rules compare in the right direction, and who may write to the shared lists was settled earlier.
-
-## 2026-09-24 — Tenant-owned administration checked and closed (`SIGNOFF-REPAIR.3.5`)
-
-`REASONBRAID-DOC-0160`. A closing check; no code changed.
-
-- ✅ **Closed:** every piece of this review was already done, but it had never been formally closed. Each of its goals was checked against the code and the test that proves it. One organisation's administrator cannot change or read another organisation's machines, queues, enrollment tokens or spending cut-off. A frozen organisation's administrator can still look at its own records, as approved.
-- ⏭️ **Next:** ownership of resources and resolvers (`.7.1`), which has not been reviewed yet.
-
-## 2026-09-24 — The server's certificate authority now renews itself, and the node-machine review is complete (`SIGNOFF-REPAIR.4.1.8.2`)
-
-`REASONBRAID-REPAIR-0493`. The second of the two steps decided in `REASONBRAID-DOC-0159`.
-
-- 🔴 **Before:** nothing ever renewed the certificate authority. After a year every machine would have been locked out at once.
-- ✅ **Now:** when a third of the authority's life is left (about four months for a one-year authority), the server creates its successor by itself, without a restart, and switches new certificates to it. Machines certified by the old one keep working. With several servers, exactly one creates the successor and the others adopt it. The health check has a new line, `server_ca_renewal`, which only turns red if a due renewal fails.
-- ⭐ **The node-machine review is complete:** enrollment, certificates, leases, delivery, recovery and budgets.
-- ✅ Tested: the live test shows one successor created, reused on every later check, adopted by a second server, and the old authority's machines still trusted. Every deliberately broken version was caught, some only after I added tests. This one could not be shown failing on the old code, because the feature did not exist there at all; that is recorded. Broad live suite and strict lint pass.
-
-## 2026-09-24 — The server can hold more than one certificate authority (`SIGNOFF-REPAIR.4.1.8.1`)
-
-`REASONBRAID-REPAIR-0492`. The first of the two steps decided in `REASONBRAID-DOC-0159`.
-
-- 🔴 **Before:** the server had exactly one certificate authority, at every level: stored as one row, loaded once, and the only thing it trusted. Even a stored successor would have been ignored.
-- ✅ **Now:** the server keeps every authority it has. New machine certificates come from the newest, and a machine certified by an older one keeps working until that authority expires. Nothing changes while there is only one.
-- ⏭️ **Next:** the server creates the successor by itself before the current authority runs out, and warns if it ever fails to (`.4.1.8.2`).
-- ✅ Tested: the new test failed on the old code; a live test shows a machine from the first authority still connecting after a second one takes over, and a new machine getting a certificate from the second. Every deliberately broken version was caught, two only after I added tests, including one for the exact second an authority expires. Broad live suite and strict lint pass.
-
-## 2026-09-24 — Decided how the server's certificate authority renews itself (`SIGNOFF-REPAIR.4.1.8`)
-
-`REASONBRAID-DOC-0159`. A design decision; no code changed.
-
-- ✅ **Decided:** the server will keep more than one certificate authority. It trusts any that hasn't expired, issues from the newest, and creates a successor by itself once a third of the current one's life remains, with no restart. The health check will warn if that renewal ever fails to happen. This is how widely used systems (SPIFFE/SPIRE, cert-manager, Vault) do it.
-- 🔎 **Checked first:** no machine pins the authority; only the server's own checks trust it. So it can change without touching any machine.
-- ⏭️ **Next:** build it in two steps: first let the server hold several authorities (`.4.1.8.1`), then the automatic renewal and the warning (`.4.1.8.2`).
-
-## 2026-09-24 — A machine's certificate can no longer outlive the authority that signed it (`SIGNOFF-REPAIR.4.1.7`)
-
-`REASONBRAID-REPAIR-0491`.
-
-- 🔴 **Before:** the server gave each machine a 10-minute certificate without checking when its own certificate authority expires. In the authority's last minutes, it signed certificates that outlived it.
-- ✅ **Now:** a machine's certificate ends no later than the authority does. If the authority has 5 minutes or less left (the point at which a machine asks for a new certificate anyway), the server refuses to issue and says clearly that the authority must be renewed. The server and the machines now read that 5-minute figure from one shared place.
-- ✅ Tested: the new test failed on the old code and passes now; all the deliberately broken versions that compile were caught (one only after I added a check of the refusal message); broad live suite passes.
-
-## 2026-09-24 — Machine certificates reviewed: one worry cleared, two real gaps owned (`SIGNOFF-REPAIR.4.1`)
-
-`REASONBRAID-DOC-0158`. A check of three open findings against the code; no code changed.
-
-- ✅ **Cleared:** "a machine with only expired certificates never reads as suspended". Revoking a machine revokes all its certificates, expired ones included, so a revoked machine always reads suspended. One whose certificates simply ran out reads offline, which is the truth.
-- 🔴 **Real:** the server's certificate authority is made for one year and nothing renews it. The health check does report it once it has expired, but nothing warns beforehand or stops new certificates being issued from it, so after a year every machine would fail at once (`.4.1.8`).
-- 🔴 **Real:** a machine's certificate can be issued to outlive the authority that signed it (`.4.1.7`, next).
-
-## 2026-09-24 — An operator's ruling on a lost answer now settles its budget hold, and the budget review is complete (`SIGNOFF-REPAIR.4.5.1.1`)
-
-`REASONBRAID-REPAIR-0490`. The last item of the budget review (`REASONBRAID-DOC-0156`).
-
-- 🔴 **Before:** since this morning, a hold for a lost answer stayed counted, correctly. But nothing ever let it go: when an operator ruled that the call had not been charged, the money stayed held for good.
-- ✅ **Now:** when the machine applies the operator's ruling, the hold for exactly that attempt is released ("it did not charge") or charged in full ("it did, amount unknown"). This is keyed by attempt, so a re-run's separate hold is never confused with the original's.
-- ⭐ **The budget review is done:** uncertain holds are counted and then settled, totals cannot overflow, simultaneous requests cannot squeeze past a limit, a machine cannot charge another tenant, and the spending cut-off behaves as documented. The outgoing-event queue waits for its first reader.
-- ✅ Tested: the new test failed on the old code and passes now; three deliberately broken versions were caught; broad live suite and strict lint pass.
-
-## 2026-09-24 — A spending cut-off that watches nothing is refused (`SIGNOFF-REPAIR.4.5.6.1`)
-
-`REASONBRAID-REPAIR-0489`.
-
-- 🔴 **Before:** an administrator could arm a spending cut-off that named no measure at all. After this morning's fix it would never trip: a silent alarm.
-- ✅ **Now:** that request is refused with a clear message listing the four measures, and the refusal is recorded like any other administrative action. A measure set to zero still counts as named.
-- ✅ Tested: the new test failed on the old code and passes now; two deliberately broken versions of the rule were caught; broad live suite and strict lint pass.
-
 The entries before those above were rotated into reachable Git history at the
-**seventeenth rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
+**eighteenth rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
 stood at the commit named below, which is the object every retired record was
 checked against before this notice was written — is:
 
 ```bash
-git show 8626d473f4ba3f15d461576da0b55b143938c5fc:DEV_NOTES.md
+git show 96ced8f5ae44ce4ed6007609ed0b03ba277da18e:DEV_NOTES.md
 ```
 
-That snapshot is 69562 bytes and 662 lines, and contains 79 dated
-entries; its Git blob is `b6a654928abca0dde07c3f36c75070a2b563c1b1` and its SHA-256 is
-`eacbd18407ec76f4e65470b068bfab42ae98115efe3b2e58938871eb2c1d84ea`. It carries the sixteenth rotation's
+That snapshot is 74459 bytes and 731 lines, and contains 89 dated
+entries; its Git blob is `37edeafd1be98e6bfd8c63e7b185644cca984aac` and its SHA-256 is
+`3af5d7ebdacbe7b2e2cfcf517ca4d63935262095d9c99e975044eccdd58b317f`. It carries the seventeenth rotation's
 notice in turn, and each earlier notice names the one before it, so the chain
 walks all the way back. `docs/decisions/2026-09-09_changelog-rotation.md` holds
 the first transition's evidence.
 
-⛔ **5 record(s) rotated out, 75 kept, lossless** — every retired heading was retrieved from the
+⛔ **11 record(s) rotated out, 79 kept, lossless** — every retired heading was retrieved from the
 predecessor named above before this notice was written, and every figure in it was re-derived from that object with
 `git rev-parse`, `git cat-file` and SHA-256 rather than typed. ⭐ The cut is DERIVED, not chosen: it retires whole
 records until the ledger has at least 10 commits of runway at the p90 entry size measured over the last

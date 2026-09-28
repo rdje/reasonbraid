@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-28 — The roadmap no longer carries a progress report that goes stale (`SIGNOFF-REPAIR.11.43`)
+
+`REASONBRAID-REPAIR-0551`.
+
+- 🔴 **Before:** the roadmap opened with a hand-written progress report, weeks out of date; it said work was still to come that had finished days earlier.
+- ✅ **Now:** the roadmap states the plan and points to where progress is kept current (the live status and the book's qualification page, which records where today's build differs from the plan). A check refuses any commit that puts a progress narrative back into it. The book says the same.
+
 ## 2026-09-28 — Submitted evidence must state its true size (`SIGNOFF-REPAIR.11.41`)
 
 `REASONBRAID-REPAIR-0550`.

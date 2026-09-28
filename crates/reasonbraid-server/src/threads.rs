@@ -447,6 +447,11 @@ pub struct BudgetSpec {
 }
 
 /// `thread.invite` body: the target tenant + thread scope and the invited agent role.
+/// The longest invitation TTL (`SIGNOFF-REPAIR.11.39`): a year. A bound turns
+/// the caller's integer into a policy instead of arithmetic that panics at
+/// `TimeDelta::seconds` or at the addition.
+pub const INVITATION_TTL_MAX_SECONDS: i64 = 365 * 24 * 60 * 60;
+
 /// `expires_in_seconds` is the typed optional invitation TTL (`.1.3.1`); `None` =
 /// the invitation never expires — expiry is DERIVED from the recorded `expires_at`
 /// at read/accept time, never swept.
@@ -1752,6 +1757,31 @@ where
                     body.agent_role
                 ))
             })?;
+            // `SIGNOFF-REPAIR.11.39`: only a role enrolled in THIS tenant can be
+            // offered a seat. Another tenant's role could never accept (its
+            // accept is refused there), so the offer would sit dangling. One
+            // message for "elsewhere" and "nowhere", so a refusal does not
+            // confirm that another tenant's role exists.
+            let enrolled_in: Option<String> =
+                sqlx::query_scalar("SELECT tenant_id FROM agent_roles WHERE role_id = $1")
+                    .bind(role.to_string())
+                    .fetch_optional(&mut *tx)
+                    .await
+                    .map_err(|e| ThreadError::CorruptState(e.to_string()))?;
+            if enrolled_in.as_deref() != Some(tenant_id.to_string().as_str()) {
+                return Err(ThreadError::InvalidCommand(format!(
+                    "agent_role `{}` is not a role enrolled in this tenant",
+                    body.agent_role
+                )));
+            }
+            if let Some(secs) = body.expires_in_seconds {
+                if !(1..=INVITATION_TTL_MAX_SECONDS).contains(&secs) {
+                    return Err(ThreadError::InvalidCommand(format!(
+                        "expires_in_seconds must be between 1 and {INVITATION_TTL_MAX_SECONDS} \
+                         (365 days); got {secs}"
+                    )));
+                }
+            }
             // An OPEN membership (invited or accepted) refuses a second offer; a
             // terminal record (declined/expired/left/revoked) may be re-invited —
             // the new offer overwrites the meta (`.1.3.1`).
@@ -1778,6 +1808,7 @@ where
             )
             .await
             .map_err(ThreadError::QuotaRefused)?;
+            // Bounded above, so neither the delta nor the addition can overflow.
             let expires_at = body
                 .expires_in_seconds
                 .map(|secs| now + ChronoDuration::seconds(secs));

@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-28 — Invitations check who is invited and for how long (`SIGNOFF-REPAIR.11.39`)
+
+`REASONBRAID-REPAIR-0549`.
+
+- 🔴 **Before:** an invitation to a discussion accepted any well-formed participant ID, including another organisation's or one that does not exist (who could never join), and any expiry time: a huge one crashed the request, and a negative one created an invitation that had already expired.
+- ✅ **Now:** only a participant of the discussion's own organisation can be invited, and the expiry must be between one second and a year. Both refusals say what was wrong.
+
 ## 2026-09-26 — A batch of old review notes checked against today's code (`SIGNOFF-REPAIR.11.9.1.3.4`)
 
 `REASONBRAID-DOC-0191`.

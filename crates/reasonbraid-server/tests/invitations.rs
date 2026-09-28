@@ -677,8 +677,10 @@ async fn decline_expiry_and_reinvitation() {
     let (status, _) = accept(&client, &base, &thread, &role, &tenant, "k-re-accept").await;
     assert_eq!(status, 200, "the fresh offer accepts");
 
-    // Expiry: an already-expired invitation refuses accept AND decline, and the
-    // DERIVED inspection view reads `expired` (the stored offer keeps its facts).
+    // Expiry: an expired invitation refuses accept AND decline, and the DERIVED
+    // inspection view reads `expired` (the stored offer keeps its facts). The
+    // offer lives one second and then lapses: a negative TTL, which this used
+    // to send to be expired on arrival, is refused since `SIGNOFF-REPAIR.11.39`.
     let (status, lapsed_role) = enroll(
         &client,
         &base,
@@ -696,11 +698,12 @@ async fn decline_expiry_and_reinvitation() {
             tenant: &tenant,
             role: &expired_role,
             key: "k-expiring",
-            ttl: Some(-1),
+            ttl: Some(1),
         },
     )
     .await;
     assert_eq!(status, 200);
+    tokio::time::sleep(std::time::Duration::from_millis(1_500)).await;
     let state = thread_state(&client, &base, &thread, &tenant, &human).await;
     assert_eq!(
         state["state"]["participants"][&expired_role],
@@ -993,4 +996,161 @@ async fn join_requests_and_invite_enforcement() {
     .await;
     assert_eq!(status, 200, "the join-only thread admits joins: {joined2}");
     let _ = &pool;
+}
+
+/// `SIGNOFF-REPAIR.11.39` (tranche 4d, `R-56-57-3`): an invitation's body is
+/// checked. Its TTL was unchecked arithmetic on the caller's integer, so
+/// `i64::MAX` panicked the request and a negative value stored an invitation
+/// already expired; and any well-formed role could be invited, another
+/// tenant's or none at all. The tenant boundary held at the accept (`403`,
+/// `404`); the invite now refuses both before anything is stored.
+#[tokio::test]
+async fn an_invitation_refuses_an_unbounded_ttl_and_a_role_outside_the_tenant() {
+    // `threads::INVITATION_TTL_MAX_SECONDS`: 365 days.
+    const MAX_TTL: i64 = 365 * 24 * 60 * 60;
+    let _g = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (tenant, human, role, thread) = bootstrap(&client, &base, "bounded").await;
+    let (status, other) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "elsewhere" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{other}");
+    let other_tenant = other["tenant_id"].as_str().unwrap().to_string();
+    let (status, foreign) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "foreign", "tenant_id": other_tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "{foreign}");
+    let foreign_role = foreign["principal_id"].as_str().unwrap().to_string();
+    let ghost = reasonbraid_core::AgentRoleId::new().to_string();
+    let mut failures = Vec::new();
+
+    for (label, candidate) in [
+        ("another tenant's role", foreign_role.as_str()),
+        ("a role that does not exist", ghost.as_str()),
+    ] {
+        let (status, value) = invite(
+            &client,
+            &base,
+            &InviteSpec {
+                thread: &thread,
+                human: &human,
+                tenant: &tenant,
+                role: candidate,
+                key: label,
+                ttl: None,
+            },
+        )
+        .await;
+        let named = value["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("not a role enrolled in this tenant"));
+        if status != 400 || value["code"] != "invalid_command" || !named {
+            failures.push(format!("{label}: {status} {value}"));
+        }
+    }
+
+    // Each TTL is offered to a fresh role of THIS tenant, sent directly so a
+    // dropped connection (the handler panicking) is a recorded failure.
+    for (i, ttl) in [i64::MAX, 10_000_000_000_000, MAX_TTL + 1, 0, -3600]
+        .into_iter()
+        .enumerate()
+    {
+        let (status, fresh) = enroll(
+            &client,
+            &base,
+            json!({ "kind": "role", "name": format!("ttl-{i}"), "tenant_id": tenant }),
+        )
+        .await;
+        assert_eq!(status, 200, "{fresh}");
+        let body = json!({
+            "tenant_id": tenant,
+            "agent_role": fresh["principal_id"],
+            "expires_in_seconds": ttl,
+        });
+        let sent = client
+            .post(format!("{base}/v1/threads/{thread}/commands"))
+            .header(PRINCIPAL_HEADER, &human)
+            .json(&envelope("thread.invite", &format!("ttl-{i}"), body))
+            .send()
+            .await;
+        match sent {
+            Err(error) => failures.push(format!("ttl {ttl}: the request died: {error}")),
+            Ok(response) => {
+                let status = response.status().as_u16();
+                let value: Value = response.json().await.unwrap_or(Value::Null);
+                let named = value["message"]
+                    .as_str()
+                    .is_some_and(|m| m.contains("expires_in_seconds"));
+                if status != 400 || value["code"] != "invalid_command" || !named {
+                    failures.push(format!("ttl {ttl}: {status} {value}"));
+                }
+            }
+        }
+    }
+
+    // The matched positives: an hour, and the bound itself.
+    let (status, value) = invite(
+        &client,
+        &base,
+        &InviteSpec {
+            thread: &thread,
+            human: &human,
+            tenant: &tenant,
+            role: &role,
+            key: "an-hour",
+            ttl: Some(3600),
+        },
+    )
+    .await;
+    assert_eq!(status, 200, "a one-hour invitation: {value}");
+    let (status, at_bound) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "at-bound", "tenant_id": tenant }),
+    )
+    .await;
+    assert_eq!(status, 200, "{at_bound}");
+    let at_bound = at_bound["principal_id"].as_str().unwrap().to_string();
+    let (status, value) = invite(
+        &client,
+        &base,
+        &InviteSpec {
+            thread: &thread,
+            human: &human,
+            tenant: &tenant,
+            role: &at_bound,
+            key: "at-bound",
+            ttl: Some(MAX_TTL),
+        },
+    )
+    .await;
+    assert_eq!(status, 200, "an invitation at the bound: {value}");
+    let state = thread_state(&client, &base, &thread, &tenant, &human).await;
+    assert!(
+        state["state"]["invitations"][&role]["expires_at"].is_string(),
+        "{state}"
+    );
+    for refused in [&foreign_role, &ghost] {
+        if !state["state"]["participants"][refused].is_null() {
+            failures.push(format!(
+                "a refused role was recorded: {refused} = {}",
+                state["state"]["participants"][refused]
+            ));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} failures:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }

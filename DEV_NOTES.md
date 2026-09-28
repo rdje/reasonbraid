@@ -1,5 +1,13 @@
 # DEV_NOTES.md
 
+## 2026-09-28 — The invite checks enrollment and bounds its TTL (`SIGNOFF-REPAIR.11.39`)
+
+`REASONBRAID-REPAIR-0549`.
+
+- 🔴 **Root cause:** `threads.rs` parsed the role id's format only and computed `now + ChronoDuration::seconds(secs)` on the caller's integer: `i64::MAX` panics (`TimeDelta::seconds out of bounds`), and a negative is stored as expired on arrival.
+- ✅ **Fix:** `agent_roles` tenant check (one message for elsewhere/nowhere), `1..=INVITATION_TTL_MAX_SECONDS` (365 days). RED live; H1–H3 hand mutants caught. `decline_expiry_and_reinvitation` used `-1` as a shortcut and now waits out a 1-second TTL.
+- ⭐ A test built on a defect is part of the defect's reach; changing it is part of the repair, not collateral.
+
 ## 2026-09-26 — Tranche 4d: 23 clauses; the ownership gate is blind, the invite trusts its body (`SIGNOFF-REPAIR.11.9.1.3.4`)
 
 `REASONBRAID-DOC-0191`.

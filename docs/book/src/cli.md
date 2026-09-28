@@ -377,7 +377,10 @@ and the accept is the transaction that dispatches the role's work item.
 `rb thread decline` refuses the offer (a declined role may be re-invited);
 `rb thread remove-participant --participant rol_…` is the tenant-admin
 revocation, requiring live tenant-wide administrative authority; `--expires-in-seconds` on the invite offers a typed expiry
-(derived — an expired offer reads `expired` and refuses accept/decline).
+(derived — an expired offer reads `expired` and refuses accept/decline). The expiry
+must be between 1 second and 365 days, and the invited role must be enrolled in the
+thread's tenant. Either refusal is `400 invalid_command`, and a role of another
+tenant is refused with the same message as a role that does not exist.
 The server base — `--server` or `REASONBRAID_SERVER` — is checked before any
 request: an absolute HTTP(S) URL without URL credentials, query or fragment.
 See [bounded transport](cli-state.md#bounded-transport) and

@@ -353,7 +353,7 @@ way, and their advertised levels track it exactly:
 | `r2-extract-worker` | a child process per extraction | `process` |
 | `r3-browser-worker` | a child process per render | `process` |
 | `r5-credential-broker` | the server process | `none` |
-| `rx-agent-mediated` | the server process (the acquisition is the node's) | `none` |
+| `rx-agent-mediated` | the server process, which publishes the acquisition call; nothing receives an agent's answer yet (`SIGNOFF-REPAIR.11.59`) | `none` |
 
 ADR-027's load ladder — allowlist, digest, signature, API compatibility,
 capability manifest — verifies exactly that artefact: a signed binary. None of

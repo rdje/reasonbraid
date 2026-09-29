@@ -31,6 +31,13 @@ re-examines its claims; they return to *Done* when the review requalifies them.
 | Phase 9 — stable release | Not Started | G9 requires sustained operational evidence and the outstanding release decisions. |
 | Corrective review | In Progress | It ends at a bug bar, not at exhaustion (`REASONBRAID-DOC-0162`): every leaf in a blocking class (cross-tenant; integrity of state, money, evidence or publication; a false claim; a gate that lies) closed with reproducible evidence, every deferred leaf with a readable trigger and a limit the qualification review states, the qualification review reconciled with measured behaviour, and the full CI checkpoint green on a pushed commit. |
 
+## 2026-09-29 — The guide no longer says the agent-mediated resource option works end to end (`SIGNOFF-REPAIR.11.59`)
+
+`REASONBRAID-REPAIR-0570`.
+
+- 🔴 **Before:** the guide said the optional agent-mediated resource lane "ships". In fact it only sends out a request: nothing ever receives an agent's answer, so the rule requiring a second agent to confirm an answer was never checked. A test named for "every" answer shape checked three of six.
+- ✅ **Now:** the guide, the phase record and the release-gate record say exactly what exists. Receiving answers is a planned task with a stated trigger. An answer that doesn't say whether others could inspect the original is refused rather than read as "inspected", and the test covers all six shapes.
+
 ## 2026-09-29 — A policy proposal can only be decided once, even when two decisions arrive together (`SIGNOFF-REPAIR.11.64`)
 
 `REASONBRAID-REPAIR-0569`.

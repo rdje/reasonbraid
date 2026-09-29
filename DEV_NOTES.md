@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-29 — RX narrowed: call published, answer received nowhere; `original_not_inspected` required; six-shape round trip (`SIGNOFF-REPAIR.11.59`)
+
+`REASONBRAID-REPAIR-0570`.
+
+- 🔴 **RED:** the "every shape" test covered 3/6; an omitted flag read `false`.
+- ✅ **Fix:** book (`roadmap.md`, `adapter-boundary.md`, qualification review), G4 record deferral #2 and PHASE-4 `.5` corrected; `#[serde(default)]` removed; exhaustive-match completeness; `.11.59.1` deferred (trigger: first `AcquisitionAnswer` consumer). profiles 102 green.
+
 ## 2026-09-29 — `record_decision` is one transaction holding its proposal; proposal and decision inserts map only a unique violation to Duplicate (`SIGNOFF-REPAIR.11.64`)
 
 `REASONBRAID-REPAIR-0569`.

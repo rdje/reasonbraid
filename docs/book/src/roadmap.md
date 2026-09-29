@@ -159,7 +159,9 @@ recruitment protocol, the subscriptions, and the dependence indicators
 The universal resource + evidence pipeline (`ROADMAP.md` §20.6) is
 **complete**: the packs R0 (safe HTTPS) + R1 (public Git) + R2 (the
 sandboxed extraction worker) ship wired through the resolution path, the
-gated R3/R5/RX lane ships off by default, and the evidence pipeline lands
+gated R3/R5 packs ship off by default, the gated RX pack publishes its
+acquisition call and receives no answer yet (`SIGNOFF-REPAIR.11.59`), and the
+evidence pipeline lands
 (the content-addressed snapshot store + the tombstone, the derivation
 graph, the claim-evidence graph + the citation validation, the retention +
 the freshness). The G4 gate record is **Met** with five named deferrals

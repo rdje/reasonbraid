@@ -23,6 +23,11 @@ rather than becoming fabricated evidence.
   2. **The RX delivery**: the §12.8 vocabulary + the capability-call
      publication ship; the actual agent round-trip rides the
      capability-call lane.
+     ⛔ **Corrected 2026-09-29 (`SIGNOFF-REPAIR.11.59`):** nothing implements
+     that round trip. The call is published, and no code receives or reads an
+     agent's answer, so the second-verifier rule is checked nowhere. The
+     answer half is deferred to `SIGNOFF-REPAIR.11.59.1`, and the deferral
+     stands as a deferral, not as a delivered lane.
   3. **The media formats beyond the four**: PDF/zip/tar/feeds ship; the
      remaining formats are the named `media_type_unsupported` refusal.
   4. **The browser-engine provenance**: the pinned chromium is not vendored

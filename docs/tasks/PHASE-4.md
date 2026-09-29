@@ -835,7 +835,9 @@ of a URI is not a promise the core can resolve it.
       **`.5` COMPLETE (the gated lane)** — frontier → `.6`.
       (The RX delivery — the actual agent round-trip — rides the
       capability-call lane; the vocabulary + the publication
-      shape ship here.)
+      shape ship here.) ⛔ Corrected 2026-09-29 by
+      `SIGNOFF-REPAIR.11.59`: no code receives the answer; the round
+      trip is deferred to `SIGNOFF-REPAIR.11.59.1`.
 
 - ID: `PHASE-4.6`
   Status: `done`

@@ -4,6 +4,11 @@
 //! never an unstructured blob. The not-inspected-original record rides the
 //! same surface: the network records that other participants may NOT have
 //! inspected the original.
+//!
+//! ⚠️ **Only the call is wired** (`SIGNOFF-REPAIR.11.59`). The RX resolver
+//! publishes an [`AcquisitionCall`]; nothing receives an [`AcquisitionAnswer`],
+//! so nothing checks the second-verifier rule either. The answer half is
+//! deferred to `SIGNOFF-REPAIR.11.59.1`.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -48,8 +53,9 @@ pub struct AcquisitionAnswerRecord {
     pub answer: AcquisitionAnswer,
     /// TRUE when other participants may NOT have inspected the original —
     /// the network records the limitation, never a silent claim of
-    /// inspection.
-    #[serde(default)]
+    /// inspection. ⛔ REQUIRED (`SIGNOFF-REPAIR.11.59`): under
+    /// `#[serde(default)]` an omitted field read `false`, which is exactly a
+    /// silent claim of inspection.
     pub original_not_inspected: bool,
     /// The second verifier's corroboration (absent until it lands).
     #[serde(default)]
@@ -113,7 +119,64 @@ mod tests {
                         .with_timezone(&chrono::Utc),
                 }),
             },
+            AcquisitionAnswerRecord {
+                call: AcquisitionCall {
+                    call_id: "cal_6".into(),
+                    locator: "https://internal/policy".into(),
+                    requires_second_verifier: false,
+                },
+                answer: AcquisitionAnswer::MinimalExcerpt {
+                    digest: "sha256:cccc".into(),
+                    excerpt: "the allowed paragraph".into(),
+                },
+                original_not_inspected: true,
+                second_verifier: None,
+            },
+            AcquisitionAnswerRecord {
+                call: AcquisitionCall {
+                    call_id: "cal_7".into(),
+                    locator: "https://internal/x".into(),
+                    requires_second_verifier: true,
+                },
+                answer: AcquisitionAnswer::RedactedDerivative {
+                    digest: "sha256:dddd".into(),
+                    redactions: vec!["the hostname".into()],
+                },
+                original_not_inspected: true,
+                second_verifier: None,
+            },
+            AcquisitionAnswerRecord {
+                call: AcquisitionCall {
+                    call_id: "cal_8".into(),
+                    locator: "https://internal/suite".into(),
+                    requires_second_verifier: false,
+                },
+                answer: AcquisitionAnswer::TestReceipt {
+                    digest: "sha256:ffff".into(),
+                    receipt: serde_json::json!({ "passed": 12, "failed": 0 }),
+                },
+                original_not_inspected: true,
+                second_verifier: None,
+            },
         ];
+        // `SIGNOFF-REPAIR.11.59`: this test is named for EVERY shape, and it
+        // round-tripped three of the six. The match is exhaustive, so a seventh
+        // shape fails to compile here until a record carries it.
+        let shape = |answer: &AcquisitionAnswer| match answer {
+            AcquisitionAnswer::ImmutableSnapshot { .. } => "immutable_snapshot",
+            AcquisitionAnswer::MinimalExcerpt { .. } => "minimal_excerpt",
+            AcquisitionAnswer::StructuredFact { .. } => "structured_fact",
+            AcquisitionAnswer::RedactedDerivative { .. } => "redacted_derivative",
+            AcquisitionAnswer::TestReceipt { .. } => "test_receipt",
+            AcquisitionAnswer::Refusal { .. } => "refusal",
+        };
+        let covered: std::collections::BTreeSet<&str> =
+            records.iter().map(|r| shape(&r.answer)).collect();
+        assert_eq!(
+            covered.len(),
+            6,
+            "every shape is round-tripped: {covered:?}"
+        );
         for record in records {
             let json = serde_json::to_value(&record).expect("the record serializes");
             let back: AcquisitionAnswerRecord =
@@ -130,11 +193,28 @@ mod tests {
         assert_eq!(value["excerpt"], "the allowed paragraph");
     }
 
+    /// `SIGNOFF-REPAIR.11.59`: a record that does not say whether the original
+    /// was inspected is refused. Under `#[serde(default)]` it read `false`, a
+    /// silent claim of inspection, which is what the field exists to prevent.
+    #[test]
+    fn a_record_that_omits_the_not_inspected_flag_is_refused() {
+        let omitted = serde_json::json!({
+            "call": { "call_id": "cal_5", "locator": "https://internal/x" },
+            "answer": { "kind": "immutable_snapshot", "digest": "sha256:eeee" },
+        });
+        let read = serde_json::from_value::<AcquisitionAnswerRecord>(omitted);
+        assert!(
+            read.is_err(),
+            "an omitted flag is not a claim of inspection: {read:?}"
+        );
+    }
+
     #[test]
     fn the_second_verifier_rule_is_carried_not_enforced() {
-        // The vocabulary carries the requirement; the enforcement is the
-        // caller's policy (the .5.3 wiring records it) — a record without
-        // the corroboration is still a well-formed record.
+        // The vocabulary carries the requirement, and a record without the
+        // corroboration is still a well-formed record. Nothing enforces the
+        // rule yet, because nothing receives an answer (`SIGNOFF-REPAIR.11.59`;
+        // the answer half is `.11.59.1`).
         let record = AcquisitionAnswerRecord {
             call: AcquisitionCall {
                 call_id: "cal_4".into(),

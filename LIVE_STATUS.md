@@ -31,6 +31,13 @@ re-examines its claims; they return to *Done* when the review requalifies them.
 | Phase 9 — stable release | Not Started | G9 requires sustained operational evidence and the outstanding release decisions. |
 | Corrective review | In Progress | It ends at a bug bar, not at exhaustion (`REASONBRAID-DOC-0162`): every leaf in a blocking class (cross-tenant; integrity of state, money, evidence or publication; a false claim; a gate that lies) closed with reproducible evidence, every deferred leaf with a readable trigger and a limit the qualification review states, the qualification review reconciled with measured behaviour, and the full CI checkpoint green on a pushed commit. |
 
+## 2026-09-29 — A policy proposal can only be decided once, even when two decisions arrive together (`SIGNOFF-REPAIR.11.64`)
+
+`REASONBRAID-REPAIR-0569`.
+
+- 🔴 **Before:** recording a policy decision took two separate steps, with nothing holding the proposal in between. Measured: two decisions sent at the same moment were both recorded for one proposal. A failure halfway left a decision behind against a proposal still marked undecided. A database refusal was reported as "already exists". The same problem was fixed for approvals yesterday; decisions had been missed.
+- ✅ **Now:** a decision is one all-or-nothing step that holds its proposal while it works. The second of two simultaneous decisions is refused and told the proposal is already decided. A failure leaves nothing behind, and a database problem is reported as the server's.
+
 ## 2026-09-29 — Budgets now count token use a provider did not report (`SIGNOFF-REPAIR.11.62`)
 
 `REASONBRAID-REPAIR-0568`.

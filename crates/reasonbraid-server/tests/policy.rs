@@ -1620,6 +1620,137 @@ async fn the_approval_carries_its_authority_proof() {
     );
     assert_eq!(approvals_of("ap-prop-4").await, 1, "one approval, not two");
 
+    // 9. 🔴 `SIGNOFF-REPAIR.11.64` — a DECISION was the approval's twin, and
+    // `.11.55.1` repaired only the approval: an unlocked stage read, a pool
+    // INSERT, then an UPDATE of the proposal with no stage condition, and any
+    // insert error read as a duplicate. The same three controls on a fresh
+    // draft proposal, ap-prop-5, and then the proposal's own insert.
+    let (status, _) = register_proposal("ap-prop-5").await;
+    assert_eq!(status, 200, "the fifth proposal registers");
+    let decisions_of = |proposal: &'static str| {
+        let pool = pool.clone();
+        async move {
+            sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM policy_decisions WHERE proposal_id = $1",
+            )
+            .bind(proposal)
+            .fetch_one(&pool)
+            .await
+            .expect("the decisions count")
+        }
+    };
+    // 9a. The stage write fails after the decision write: nothing may remain.
+    sqlx::query(
+        "ALTER TABLE policy_proposals ADD CONSTRAINT dc_refuse_decided \
+         CHECK (status <> 'decided') NOT VALID",
+    )
+    .execute(&pool)
+    .await
+    .expect("the constraint is added");
+    let (status, failed) = decide("ap-dec-8", "ap-prop-5").await;
+    sqlx::query("ALTER TABLE policy_proposals DROP CONSTRAINT dc_refuse_decided")
+        .execute(&pool)
+        .await
+        .expect("the constraint is dropped");
+    assert_eq!(
+        status, 500,
+        "a failed stage write is the server's: {failed}"
+    );
+    assert_eq!(
+        decisions_of("ap-prop-5").await,
+        0,
+        "a decision whose stage write failed is not recorded"
+    );
+    // 9b. The decision write itself fails for a reason other than a taken id:
+    // that is the server's failure, not a duplicate.
+    sqlx::query(
+        "ALTER TABLE policy_decisions ADD CONSTRAINT dc_refuse_all CHECK (false) NOT VALID",
+    )
+    .execute(&pool)
+    .await
+    .expect("the constraint is added");
+    let (status, failed) = decide("ap-dec-8", "ap-prop-5").await;
+    sqlx::query("ALTER TABLE policy_decisions DROP CONSTRAINT dc_refuse_all")
+        .execute(&pool)
+        .await
+        .expect("the constraint is dropped");
+    assert_eq!(
+        status, 500,
+        "a failed decision write is not a duplicate: {failed}"
+    );
+    // 9c. Two decisions at once: the proposal row is held, the first is sent and
+    // observed queued, then the second, so the row is granted in that order.
+    let mut holder = pool.begin().await.expect("begin the holder");
+    sqlx::query("SELECT 1 FROM policy_proposals WHERE proposal_id = 'ap-prop-5' FOR UPDATE")
+        .execute(&mut *holder)
+        .await
+        .expect("hold the proposal row");
+    let holder_pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+        .fetch_one(&mut *holder)
+        .await
+        .expect("the holder's backend");
+    let queued = |expected: i64| {
+        let pool = pool.clone();
+        async move {
+            let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                let queued: i64 = sqlx::query_scalar(
+                    "SELECT count(*) FROM pg_stat_activity \
+                     WHERE datname = current_database() AND wait_event_type = 'Lock' \
+                       AND query LIKE '%policy_proposals%' AND pid <> $1",
+                )
+                .bind(holder_pid)
+                .fetch_one(&pool)
+                .await
+                .expect("pg_stat_activity");
+                if queued == expected {
+                    return;
+                }
+                assert!(
+                    tokio::time::Instant::now() < deadline,
+                    "{expected} decision(s) queue on the held proposal"
+                );
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        }
+    };
+    let first = tokio::spawn(decide("ap-dec-8", "ap-prop-5"));
+    queued(1).await;
+    let second = tokio::spawn(decide("ap-dec-9", "ap-prop-5"));
+    queued(2).await;
+    holder.commit().await.expect("release the proposal row");
+    let won = first.await.expect("the first decision");
+    let lost = second.await.expect("the second decision");
+    assert_eq!(won.0, 200, "the decision queued first wins: {won:?}");
+    assert_eq!(
+        lost.0, 400,
+        "the second is refused by the stage it finds: {lost:?}"
+    );
+    assert!(
+        lost.1["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("decided"),
+        "the refusal names the stage: {lost:?}"
+    );
+    assert_eq!(decisions_of("ap-prop-5").await, 1, "one decision, not two");
+    // 9d. The proposal's own insert fails for a reason other than a taken id.
+    sqlx::query(
+        "ALTER TABLE policy_proposals ADD CONSTRAINT pp_refuse_all CHECK (false) NOT VALID",
+    )
+    .execute(&pool)
+    .await
+    .expect("the constraint is added");
+    let (status, failed) = register_proposal("ap-prop-6").await;
+    sqlx::query("ALTER TABLE policy_proposals DROP CONSTRAINT pp_refuse_all")
+        .execute(&pool)
+        .await
+        .expect("the constraint is dropped");
+    assert_eq!(
+        status, 500,
+        "a failed proposal write is not a duplicate: {failed}"
+    );
+
     // 7. 🔴 `SIGNOFF-REPAIR.11.55` — the grant's BOUNDARY must stand. The
     // approval proof (`authority::grant_held_by`) and the resolver's owner check
     // (`authority::grant_is_live`) read the grant alone, so a grant whose

@@ -397,6 +397,16 @@ was read without a lock and the approval and the stage were two separate
 writes: measured, two concurrent approvals were both recorded, a failed stage
 write left its approval behind, and a store fault was reported as a duplicate.
 
+**A decision is one transaction that holds its proposal, the same way.** Two
+decisions on one proposal at once are ordered: the first records and moves the
+proposal to `decided`, and the second is refused by the stage it finds. A
+failed write leaves nothing behind, and a failure that is not a taken
+`decision_id` or `proposal_id` answers `500`. Until `SIGNOFF-REPAIR.11.64` the
+decision kept the shape `.11.55.1` removed from the approval, and registering a
+proposal called any failed insert a duplicate. Measured before the repair: two
+concurrent decisions were both recorded for one proposal, and a failed stage
+write left a decision against a proposal still in `draft`.
+
 ⚠️ An approval is recorded by its own row, which names the approver, the grant
 and the quorum; it writes no authorization record. The authorization records
 this book describes are the thread commands' (`SIGNOFF-REPAIR.11.55.2`, deferred).

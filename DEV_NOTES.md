@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-29 — `record_decision` is one transaction holding its proposal; proposal and decision inserts map only a unique violation to Duplicate (`SIGNOFF-REPAIR.11.64`)
+
+`REASONBRAID-REPAIR-0569`.
+
+- 🔴 **Measured on unchanged code** (leg 9, assertions turned into observations for one run, restored by sha): 9a 500 but 1 decision left; 9b a CHECK(false) → `400 "decision … already exists"`; 9c two concurrent → 200/200, 2 decisions. RED rc=101 at 9a.
+- ✅ **Fix:** `FOR UPDATE` read, insert + `AND status = 'draft'` update on the tx, commit; `taken_or_storage` for both inserts. Hand mutants (SQL-in-strings): unlocked read, insert outside the tx, both mappings, no commit caught; the unconditioned update survives, as predicted (the lock serializes).
+
 ## 2026-09-29 — Unknown token counts settle at the hold on the completed path; LocalBudget stated per process (`SIGNOFF-REPAIR.11.62`)
 
 `REASONBRAID-REPAIR-0568`.

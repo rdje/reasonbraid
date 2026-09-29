@@ -247,6 +247,8 @@ pub async fn register_proposal(
     .bind(tenant_id)
     .execute(pool)
     .await;
+    // ⛔ Only a TAKEN id is a duplicate (`SIGNOFF-REPAIR.11.64`, as `.11.55.1`
+    // for the approval): every failed insert used to answer *"already exists"*.
     match inserted {
         Ok(_) => Ok(StoredProposal {
             proposal_id: input.proposal_id.clone(),
@@ -255,10 +257,7 @@ pub async fn register_proposal(
             thread_id: input.thread_id.clone(),
             status: "draft".to_string(),
         }),
-        Err(_) => Err(LifecycleError::Duplicate(format!(
-            "proposal `{}`",
-            input.proposal_id
-        ))),
+        Err(error) => Err(taken_or_storage(error, "proposal", &input.proposal_id)),
     }
 }
 
@@ -276,13 +275,20 @@ pub async fn record_decision(
     // in THAT proposal's thread AND the caller's tenant — but a gate that holds
     // only by transitivity is the shape `.6.1.5.1.1` repaired at these same two
     // verbs. The predicate is explicit, at the read, where it can be seen.
+    //
+    // ⛔ `SIGNOFF-REPAIR.11.64`: ONE transaction holding the proposal row, as
+    // `.11.55.1` made the approval. The stage was read without a lock, the
+    // decision inserted on the pool and the proposal updated with no stage
+    // condition, so two decisions at once both landed, and a failed stage write
+    // left a decision against a proposal still `draft`.
+    let mut tx = pool.begin().await.map_err(LifecycleError::storage)?;
     let proposal: Option<(String, String)> = sqlx::query_as(
         "SELECT thread_id, status FROM policy_proposals \
-         WHERE proposal_id = $1 AND tenant_id = $2",
+         WHERE proposal_id = $1 AND tenant_id = $2 FOR UPDATE",
     )
     .bind(&input.proposal_id)
     .bind(tenant_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(LifecycleError::storage)?;
     let Some((thread_id, status)) = proposal else {
@@ -361,19 +367,20 @@ pub async fn record_decision(
     .bind(&input.verdict_event_id)
     .bind(tenant_id)
     .bind(&derived.derivation)
-    .execute(pool)
+    .execute(&mut *tx)
     .await;
-    if inserted.is_err() {
-        return Err(LifecycleError::Duplicate(format!(
-            "decision `{}`",
-            input.decision_id
-        )));
+    if let Err(error) = inserted {
+        return Err(taken_or_storage(error, "decision", &input.decision_id));
     }
-    sqlx::query("UPDATE policy_proposals SET status = 'decided' WHERE proposal_id = $1")
-        .bind(&input.proposal_id)
-        .execute(pool)
-        .await
-        .map_err(LifecycleError::storage)?;
+    sqlx::query(
+        "UPDATE policy_proposals SET status = 'decided' \
+         WHERE proposal_id = $1 AND status = 'draft'",
+    )
+    .bind(&input.proposal_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(LifecycleError::storage)?;
+    tx.commit().await.map_err(LifecycleError::storage)?;
     Ok(StoredDecision {
         decision_id: input.decision_id.clone(),
         proposal_id: input.proposal_id.clone(),
@@ -382,6 +389,19 @@ pub async fn record_decision(
         verdict_event_id: input.verdict_event_id.clone(),
         derivation: Some(derived.derivation),
     })
+}
+
+/// A failed governance INSERT (`SIGNOFF-REPAIR.11.64`): a unique violation is
+/// the caller's taken id, and anything else is the store's failure.
+fn taken_or_storage(error: sqlx::Error, kind: &str, id: &str) -> LifecycleError {
+    if error
+        .as_database_error()
+        .is_some_and(|db| db.is_unique_violation())
+    {
+        LifecycleError::Duplicate(format!("{kind} `{id}`"))
+    } else {
+        LifecycleError::storage(error)
+    }
 }
 
 /// A thread's counted decision, in the shape a policy decision stores.

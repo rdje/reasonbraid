@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-29 — Tranche 7: 39 clauses; all 131 records classified; `.11.65`–`.11.68` (`SIGNOFF-REPAIR.11.9.1.6`)
+
+`REASONBRAID-DOC-0201`.
+
+- 🔍 **Tranche 7** (3,680 chars, one leaf): 21 handled, 2 owned (`.9.1.8`), 9 unowned, 2 declined, 5 none; `--classified` → 0 left. New: `.11.66` (class 1 if measured: raw `availability->>'concurrency'` and `cost_latency_class` in match/rank, reasons print it; latency explanation false at 0), `.11.65` (class 2+4: auto thread drops declared budget/topics/class), `.11.67` (deferred: RLS unbound under superuser, unstated), `.11.68` (deferred: nodes→hosts FK by id alone; test seed mismatched).
+- ⚠️ `.5.2` and `.4.1` closed with a goal-line clause undelivered; dated notes point to `.11.65` / `.11.68`.
+
 ## 2026-09-29 — Verdict target and synthesis sources narrowed, check deferred (`SIGNOFF-REPAIR.11.63`)
 
 `REASONBRAID-REPAIR-0572`.

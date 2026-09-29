@@ -822,3 +822,49 @@ separates stale from false, and both queries are there verbatim.
 | `R-46-1` | 4 | handled | `SIGNOFF-REPAIR.8.1.1.2` | REPAIR-0397: entering the `vote` step fixes the electorate, and the event names it, so `policy-lifecycle.md`'s *"decided by a frozen electorate"* now holds |
 | `R-55-2` | 1 | attach | `SIGNOFF-REPAIR.11.4` | LIVE: `threads.rs`'s module header lists *"Auto-accept on first contribution"* and admits `invited` participants to content verbs, while `ensure_participant` in the same file says the auto-accept *"is gone"*. Attached in this commit |
 | `R-55-2` | 2 | none | — | the reviewer's note that the semantic read continued and node evidence was tracked separately |
+
+## Tranche 7 — the twelve records named by twenty-six or more
+
+`SIGNOFF-REPAIR.11.9.1.6`, `REASONBRAID-DOC-0201` (2026-09-29), the last tranche. **39 clauses**: 21 `handled`, 2 `owned`, 9 `unowned`, 2 `declined`, 5 `none`. Every live clause was re-read by hand against the source before it was written here. The nine `unowned` clauses open four leaves: `.11.65`, `.11.66`, `.11.67` and `.11.68`. No clause is `attach`.
+
+| Record | Clause | State | Owner | Evidence |
+| --- | --- | --- | --- | --- |
+| `R-51-1` | 1 | handled | `SIGNOFF-REPAIR.9.1.6` | REPAIR-0507: `policy.rs::find_cycle` finds a precedence cycle of any length |
+| `R-51-1` | 2 | owned | `SIGNOFF-REPAIR.9.1.8` | deferred with its limit stated: resolution *"names a requested waiver without applying it"* (the qualification review's governance row) |
+| `R-51-1` | 3 | owned | `SIGNOFF-REPAIR.9.1.8` | the same limit: the seven-step explanation names the waiver, and nothing applies it |
+| `R-51-1` | 4 | none | — | the reviewer's instruction |
+| `R-61-62-1` | 1 | none | — | a positive note: the later section exercises grant and boundary revocation |
+| `R-61-62-1` | 2 | handled | `SIGNOFF-REPAIR.3.1` | REPAIR-0005: `foreign_grant_revocation_leaves_victim_unchanged` and `foreign_boundary_revocation_leaves_victim_unchanged` revoke another tenant's id after a write and prove it inert |
+| `R-61-62-1` | 3 | none | — | a positive note: the boundary list stays readable after revocation, the approved inspection carve-out |
+| `R-33-35-4` | 1 | handled | `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.1` | REPAIR-0417: the key is `auto_{role}_{idempotency_key}`, the caller's, and an `initiator` quota bounds initiation |
+| `R-33-35-4` | 2 | unowned | `SIGNOFF-REPAIR.11.65` | LIVE: the create body is `{tenant_id, subject, objective}`; the declared topics, class and budget are checked, then dropped, so the thread is `general` on the default budget |
+| `R-33-35-4` | 3 | handled | `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.2` | REPAIR-0421: the spend bound reads the ADMITTING grant's `spend_limits`, not the largest over every grant |
+| `R-33-35-4` | 4 | unowned | `SIGNOFF-REPAIR.11.65` | LIVE: the spend bound runs only `if let Some(budget)`, and it judges an amount no ledger meters in either case |
+| `R-40-42-6` | 1 | handled | `SIGNOFF-REPAIR.5.1.3` | REPAIR-0444: an undeclared attribute is unknown, not variation, and the undeclared are counted |
+| `R-40-42-6` | 2 | declined | `SIGNOFF-REPAIR.5.1.3` | the only production caller keys the panel's facts by role (`HashMap<String, MemberFacts>` since PHASE-3.6.2), so a role is counted once; the pure function's slice is the reviewer's reading |
+| `R-40-42-6` | 3 | handled | `SIGNOFF-REPAIR.5.1.3` | REPAIR-0444: the explanation names the unknown coverage |
+| `R-46-3` | 1 | unowned | `SIGNOFF-REPAIR.11.66` | LIVE: `concurrency` is read as `(profile->'availability'->>'concurrency')` whatever `availability`'s visibility, and an eligible candidate's reasons print it |
+| `R-46-3` | 2 | unowned | `SIGNOFF-REPAIR.11.66` | LIVE: the presence gate takes the caller's `presence_states`, over a state derived from `availability`; whether that is a network fact is `.11.66`'s decision |
+| `R-46-3` | 3 | handled | `SIGNOFF-REPAIR.5.1.1` | REPAIR-0438: the match route clamps each candidate's scope to the reader's relation to its tenant |
+| `R-46-3` | 4 | none | — | the reviewer's pointer to the ranking |
+| `R-40-42-1` | 1 | handled | `SIGNOFF-REPAIR.4.5.3` | REPAIR-0485: admission locks the ceiling row it decides against |
+| `R-40-42-1` | 2 | handled | `SIGNOFF-REPAIR.4.5.3` | REPAIR-0485: and the breaker and quota rows |
+| `R-40-42-1` | 3 | handled | `SIGNOFF-REPAIR.4.5.1` | REPAIR-0483: an unknown outcome's hold is counted past its window |
+| `R-40-42-1` | 4 | declined | `SIGNOFF-REPAIR.4.5.3` | the returned `Settlement` is read by no production caller (the result fold and the verdict discard it), and the update's `AND status = 'active'` lets one settlement write |
+| `R-40-42-1` | 5 | handled | `SIGNOFF-REPAIR.4.5.2` | REPAIR-0484: every sum is checked |
+| `R-47-1` | 1 | unowned | `SIGNOFF-REPAIR.11.66` | LIVE: the latency score reads `candidate.profile.cost_latency_class` raw, a filtered field, not the visible profile |
+| `R-47-1` | 2 | unowned | `SIGNOFF-REPAIR.11.66` | LIVE: the explanation reads *"the declared cost/latency class matches"* whenever a preference is given, at score 0 too |
+| `R-47-1` | 3 | handled | `SIGNOFF-REPAIR.5.1.3` | REPAIR-0444: diversity compares attribute by attribute (`dependence::ATTRIBUTES`) |
+| `R-47-1` | 4 | handled | `SIGNOFF-REPAIR.5.1.3` | REPAIR-0444: over known facts only; an unknown is not variation |
+| `R-47-1` | 5 | handled | `SIGNOFF-REPAIR.5.1.3` | REPAIR-0444: the heaviest-overlap grouping is gone; each attribute contributes its own share |
+| `R-47-1` | 6 | handled | `SIGNOFF-REPAIR.5.1.4` | REPAIR-0443: each weight is a finite number in [0, 1], a stray one refused by name |
+| `R-54-1` | 1 | handled | `SIGNOFF-REPAIR.6.1.5.3` | REPAIR-0281: the lifecycle reads carry their own tenant predicate |
+| `R-54-1` | 2 | unowned | `SIGNOFF-REPAIR.11.67` | LIVE: the shipped profile connects as a superuser, which bypasses the policies; the book never stated it |
+| `R-54-1` | 3 | unowned | `SIGNOFF-REPAIR.11.67` | LIVE: no least-privilege application role and no separate migration owner; PHASE-7's `.1.3.1` deferred them in a decision record, with no leaf and no stated limit |
+| `R-76-77-1` | 1 | handled | `SIGNOFF-REPAIR.5.1.1` | REPAIR-0438: `the_match_surface_classifies_each_candidate_by_its_own_tenant` hides a foreign claim that would qualify behind tenant-only visibility |
+| `R-76-77-1` | 2 | handled | `SIGNOFF-REPAIR.5.1.1` | REPAIR-0438: the same control widens the foreign candidate through a directory agreement, a second reader relation |
+| `R-66-3` | 1 | unowned | `SIGNOFF-REPAIR.11.68` | LIVE: `nodes.host_id` references `hosts(host_id)` alone, and `seed_node_in_tenant` places the host in a constant tenant; enrollment itself keeps them equal |
+| `R-36-39-4` | 1 | handled | `SIGNOFF-REPAIR.3.3.4.4` | REPAIR-0104: thread commands are ordered against authority changes |
+| `R-36-39-4` | 2 | handled | `SIGNOFF-REPAIR.3.3.4.2` | REPAIR-0021: the tenant guard serializes admission and mutation in one transaction |
+| `R-36-39-4` | 3 | handled | `SIGNOFF-REPAIR.3.3.4.13` | REPAIR-0127: the guard census is reconciled with its instruments and its coverage stated |
+| `R-6-27-1` | 1 | none | — | the reviewer's note; the record carries no finding |

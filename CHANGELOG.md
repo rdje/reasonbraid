@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-29 — The code review's last batch is checked; four more problems found, one possibly a leak between organisations (`SIGNOFF-REPAIR.11.9.1.6`)
+
+`REASONBRAID-DOC-0201`.
+
+- 🔍 **What was checked:** the last 12 notes from the original code review, split into 39 points. Every one of the review's 131 notes has now been checked against the code. In this batch 21 points were already fixed and 2 are known limits.
+- 🔴 **Found:** the search for suitable agents may reveal details another organisation chose to hide, such as how many jobs its agent takes at once. That is being tested first. An agent that starts a discussion by itself declares a budget and a confidentiality level that the discussion then doesn't keep. Two protections are weaker than the guide implied: the database's own per-organisation filter isn't active in the standard setup, and nothing in the database ties a machine to its organisation. The guide's qualification page now says all of this.
+
 ## 2026-09-29 — The guide stops overstating what a verdict and a summary record (`SIGNOFF-REPAIR.11.63`)
 
 `REASONBRAID-REPAIR-0572`.

@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-29 — Verdict target and synthesis sources narrowed, check deferred (`SIGNOFF-REPAIR.11.63`)
+
+`REASONBRAID-REPAIR-0572`.
+
+- 🔍 **Measured:** `target_digest` only written into the event; `SynthesisInput.sources` read nowhere; the target's meaning unsettled (book: a claim; ADR-029: the proposal); 19 fixtures send `sha256:00`.
+- ✅ **Narrowed:** `decision-rules.md`, ADR-029/030 dated notes, qualification review; `.11.63.1` deferred. Docs only.
+
 ## 2026-09-29 — Reconciler claim narrowed; the out-of-band scan deferred; the lone-channel case pinned quiet (`SIGNOFF-REPAIR.11.61`)
 
 `REASONBRAID-REPAIR-0571`.

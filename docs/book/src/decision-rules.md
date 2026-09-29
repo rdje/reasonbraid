@@ -224,13 +224,22 @@ committee. The refusal names that deferred design work,
 ## An adjudication verdict applies the thread's rule, and cannot claim a count
 
 A `verdict` contribution on the `adjudicate` step is one adjudicator's
-attributable judgement of a claim (ADR-029). Since `SIGNOFF-REPAIR.8.1.1.3` it
-carries only what it judges and what it concludes:
+attributable judgement (ADR-029). Since `SIGNOFF-REPAIR.8.1.1.3` it carries
+only what it judges and what it concludes:
 
 ```json
 { "kind": "verdict",
   "verdict": { "target_digest": "sha256:…", "outcome": "accepted_by_rule" } }
 ```
+
+⚠️ **`target_digest` is recorded as given** (`SIGNOFF-REPAIR.11.63`). The server
+does not check that it names anything in the thread, and nothing reads it
+after it is recorded. This chapter used to call the verdict a judgement *of a
+claim*, and ADR-029 says it names *the proposal digest it judges*. The two
+readings are not settled, and a policy decision's verdict judges a proposal,
+not a claim. So the check waits for that decision (`SIGNOFF-REPAIR.11.63.1`).
+A reader should treat the digest as the adjudicator's statement of what they
+judged, not as a link the server verified.
 
 - **The rule is not an input.** The rule a verdict applies is the thread's
   own, so the server writes the thread's declared `decision_rule` into the

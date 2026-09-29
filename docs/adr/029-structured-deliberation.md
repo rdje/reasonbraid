@@ -63,7 +63,10 @@ pipeline (the claim assessments + the citation validation).
 - **The adjudication is an attributable verdict record, never a
   silent rewrite.** The `adjudicate` step executes as a contribution
   of kind `summary`-adjacent verdict shape: the verdict names the
-  proposal digest it judges, the rule it applies, and the outcome it
+  proposal digest it judges (⛔ note 2026-09-29, `SIGNOFF-REPAIR.11.63`: the
+  digest is recorded as given and checked against nothing in the thread,
+  and the book had called its target a claim; which one it names is
+  deferred to `SIGNOFF-REPAIR.11.63.1`), the rule it applies, and the outcome it
   declares; the event is attributable (the adjudicator's principal
   rides it, like every contribution). The thread's decided outcome
   references the verdict event — the system never rewrites

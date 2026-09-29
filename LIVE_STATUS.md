@@ -31,6 +31,13 @@ re-examines its claims; they return to *Done* when the review requalifies them.
 | Phase 9 — stable release | Not Started | G9 requires sustained operational evidence and the outstanding release decisions. |
 | Corrective review | In Progress | It ends at a bug bar, not at exhaustion (`REASONBRAID-DOC-0162`): every leaf in a blocking class (cross-tenant; integrity of state, money, evidence or publication; a false claim; a gate that lies) closed with reproducible evidence, every deferred leaf with a readable trigger and a limit the qualification review states, the qualification review reconciled with measured behaviour, and the full CI checkpoint green on a pushed commit. |
 
+## 2026-09-29 — The guide stops overstating what a verdict and a summary record (`SIGNOFF-REPAIR.11.63`)
+
+`REASONBRAID-REPAIR-0572`.
+
+- 🔴 **Before:** the guide called an adjudicator's verdict a judgement "of a claim", yet the system records whatever the verdict names without checking it exists in the discussion. A discussion summary's cited sources are not checked either.
+- ✅ **Now:** the guide says both are recorded as given, and that a verdict's target is the adjudicator's own statement. Adding the check waits on a design question, which the guide and the design records name. The last of this batch's six findings is closed.
+
 ## 2026-09-29 — The guide says what the publication checker does not look for (`SIGNOFF-REPAIR.11.61`)
 
 `REASONBRAID-REPAIR-0571`.

@@ -81,6 +81,11 @@ shapes.
   Phase-2 proofs continue to hold for every moderation action.
 - The synthesis's coverage report makes the synthesizer's choices
   checkable; the input range makes its transformation re-derivable.
+  ⛔ Note 2026-09-29 (`SIGNOFF-REPAIR.11.63`): the server checks only the
+  input range, which must lie inside the thread's event log. The source
+  links and the coverage report are recorded as the synthesizer gave them,
+  so the reader who re-derives a synthesis also checks them. Checking the
+  sources against the range is deferred to `SIGNOFF-REPAIR.11.63.1`.
 
 answers:
 

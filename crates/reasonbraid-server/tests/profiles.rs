@@ -5509,6 +5509,114 @@ async fn a_grant_constrains_the_decision_rules_its_subject_declares() {
     );
 }
 
+/// `SIGNOFF-REPAIR.11.65` — an automatic thread carries the class it was
+/// admitted under. The initiation checks the declared `confidentiality_class`
+/// against the role's own classes, and then built the thread from its tenant,
+/// subject and objective alone, so every automatic thread was `general`. A
+/// thread's classification is what decides who may evaluate its work (a
+/// `confidential` thread's work needs a qualified evaluator), so a thread
+/// admitted as `internal` was handled as general content. The mapping fails
+/// closed: no class, or `general`, is `general`; any other declared class is
+/// `confidential`, because the thread's vocabulary has no level between them.
+#[tokio::test]
+async fn an_automatic_thread_carries_the_class_it_was_admitted_under() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let (status, human) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "auto-class-human" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{human}");
+    let tenant = human["tenant_id"].as_str().unwrap().to_string();
+    let human_id = human["principal_id"].as_str().unwrap().to_string();
+    let boundary_id = human["boundary_id"].as_str().unwrap().to_string();
+    sqlx::query(
+        "UPDATE enrollment_boundaries \
+         SET permitted_actions = permitted_actions || '[\"thread_create_auto\"]'::jsonb \
+         WHERE boundary_id = $1",
+    )
+    .bind(&boundary_id)
+    .execute(&pool)
+    .await
+    .expect("the boundary permits the auto action");
+    let (status, role) = enroll(
+        &client,
+        &base,
+        json!({
+            "kind": "role", "name": "auto-class-agent", "tenant_id": tenant,
+            "actions": ["thread_create_auto"],
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "{role}");
+    let role_id = role["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &human_id, &tenant, &role_id).await;
+    let profile = visibility_profile();
+    assert_eq!(profile["confidentiality_classes"], json!(["internal"]));
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_id}"),
+        &role_id,
+        &profile,
+    )
+    .await;
+    assert_eq!(status, 200);
+    let initiate = |key: &'static str, class: Option<&'static str>| {
+        let client = client.clone();
+        let base = base.clone();
+        let role_id = role_id.clone();
+        let human_id = human_id.clone();
+        let tenant = tenant.clone();
+        async move {
+            let mut body = json!({
+                "tenant_id": tenant,
+                "subject": "an autonomous thread",
+                "objective": "probe its classification",
+                "topics": ["parser trivia"],
+                "idempotency_key": key,
+            });
+            if let Some(class) = class {
+                body["confidentiality_class"] = json!(class);
+            }
+            let response = client
+                .post(format!("{base}/v1/threads/auto"))
+                .header(PRINCIPAL_HEADER, &role_id)
+                .json(&body)
+                .send()
+                .await
+                .expect("auto request");
+            assert_eq!(response.status().as_u16(), 200, "{key}");
+            let created: Value = response.json().await.expect("auto json");
+            let thread = created["thread_id"].as_str().unwrap().to_string();
+            let (status, state) = get(
+                &client,
+                &base,
+                &format!("/v1/threads/{thread}?tenant_id={tenant}"),
+                &human_id,
+            )
+            .await;
+            assert_eq!(status, 200, "{state}");
+            state["state"]["classification"].clone()
+        }
+    };
+    assert_eq!(
+        initiate("class-internal", Some("internal")).await,
+        json!("confidential"),
+        "a thread admitted as `internal` is not handled as general content"
+    );
+    assert_eq!(
+        initiate("class-none", None).await,
+        json!("general"),
+        "a thread that declares no class is general"
+    );
+}
+
 /// `SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.3`: an autonomous thread remembers the
 /// grant that admitted it, and a call opened on it may not target a wider
 /// audience than that grant allows. And `SIGNOFF-REPAIR.5.2`'s attached clause:

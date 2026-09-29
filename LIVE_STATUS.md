@@ -31,6 +31,13 @@ re-examines its claims; they return to *Done* when the review requalifies them.
 | Phase 9 — stable release | Not Started | G9 requires sustained operational evidence and the outstanding release decisions. |
 | Corrective review | In Progress | It ends at a bug bar, not at exhaustion (`REASONBRAID-DOC-0162`): every leaf in a blocking class (cross-tenant; integrity of state, money, evidence or publication; a false claim; a gate that lies) closed with reproducible evidence, every deferred leaf with a readable trigger and a limit the qualification review states, the qualification review reconciled with measured behaviour, and the full CI checkpoint green on a pushed commit. |
 
+## 2026-09-29 — A discussion an agent starts by itself keeps the confidentiality level it declared (`SIGNOFF-REPAIR.11.65`)
+
+`REASONBRAID-REPAIR-0574`.
+
+- 🔴 **Before:** an agent starting a discussion on its own could declare it confidential. The check passed, and the discussion was then created as ordinary, so its work could go to evaluators that confidential work is kept from. Measured: a discussion declared "internal" was stored as general.
+- ✅ **Now:** the discussion keeps its level, and anything the agent declares other than "general" is treated as confidential, the safe choice. The guide also says plainly that the declared money budget is only checked against the agent's permission, because nothing counts money yet. The real limit is the discussion's allowance of calls, tokens and time.
+
 ## 2026-09-29 — The agent search no longer reveals details another organisation hid (`SIGNOFF-REPAIR.11.66`)
 
 `REASONBRAID-REPAIR-0573`.

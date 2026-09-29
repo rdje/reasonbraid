@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-29 — An automatic thread carries its declared class, failing closed; the budget gate stated honestly (`SIGNOFF-REPAIR.11.65`)
+
+`REASONBRAID-REPAIR-0574`.
+
+- 🔴 **RED:** an initiation declaring `internal` produced `classification: general` (the body was `{tenant, subject, objective}`).
+- ✅ **Fix:** `create_thread_auto` sets `classification` in the body when a class is declared (`general` → general, else confidential), so the replay hash covers it. Budget and topics: stated in `recruitment.md` (money unmetered; the ceiling bounds; topics gate only).
+
 ## 2026-09-29 — Class 1 repaired: the match surface reads only the reader's view (`SIGNOFF-REPAIR.11.66`)
 
 `REASONBRAID-REPAIR-0573`.

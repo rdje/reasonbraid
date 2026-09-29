@@ -400,6 +400,25 @@ are decided by the same evaluator that holds delivery to the node
 so a role that may not be woken may not wake itself either; the refusal is a
 `403` whose message names the hold.
 
+**What the thread keeps from the request** (`SIGNOFF-REPAIR.11.65`). The checks
+judge the request, and the thread carries only what the thread model can hold:
+
+- **The class, failing closed.** No `confidentiality_class`, or `general`, makes
+  a `general` thread. Any other class the role declared, such as `internal` in
+  the example above, makes it `confidential`, because a thread has no level
+  between the two. A confidential thread's work needs an evaluator qualified
+  for it, like any confidential thread's. Until that repair every automatic
+  thread was `general`, whatever it declared. Measured: an initiation declaring
+  `internal` produced a `general` thread.
+- **The budget is a declaration, and the ceiling is the bound.** No ledger
+  meters money, so `budget_amount` is checked against the admitting grant's
+  `spend_limits.amount` and not carried. What bounds the thread's spending is
+  its ceiling of calls, tokens and wall-clock seconds, the default ceiling for
+  an automatic thread. An initiation without `budget_amount` skips that check
+  and runs under the same ceiling.
+- **Topics gate the initiation and are not stored.** Nothing reads a thread's
+  topics after it exists.
+
 ⛔ **Replies do not inherit the permission.** A child thread needs its own
 `thread:create:auto` grant, so one authorized initiation cannot become a tree of
 unauthorized ones.

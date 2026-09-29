@@ -6378,11 +6378,26 @@ async fn create_thread_auto(
         }
     };
 
-    let body_value = serde_json::json!({
+    let mut body_value = serde_json::json!({
         "tenant_id": tenant_id.to_string(),
         "subject": req.subject,
         "objective": req.objective,
     });
+    // ⛔ `SIGNOFF-REPAIR.11.65`: the thread carries the class it was admitted
+    // under. The confidentiality match above checked the declared class against
+    // the role's own, and the thread used to be built without it, so every
+    // automatic thread was `general` and its work went to evaluators a
+    // confidential thread refuses. The thread's vocabulary has two levels, so
+    // the mapping fails closed: `general` stays general, and any other class the
+    // role declared is `confidential`. It rides the body, so the replay hash
+    // covers it; an initiation that declares none hashes as it always did.
+    if let Some(class) = &req.confidentiality_class {
+        body_value["classification"] = serde_json::json!(if class == "general" {
+            "general"
+        } else {
+            "confidential"
+        });
+    }
     // The thread remembers the grant that admitted it
     // (`SIGNOFF-REPAIR.11.4.7.2.1.5.3.2.3.3`), so a call opened on it later can
     // read that grant's audience bound.

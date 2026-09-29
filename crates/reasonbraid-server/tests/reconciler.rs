@@ -105,6 +105,16 @@ fn the_consistent_pairs_are_quiet() {
         reconcile(None, &git(None, None, None), None, None),
         Action::Consistent
     );
+    // `SIGNOFF-REPAIR.11.61`: the no-record + the repository's channel alone is
+    // quiet too, and on purpose. `refs/rb/effective` is the REPOSITORY's, so
+    // for an id nobody recorded it holds another publication's commit whenever
+    // the repository has one; alerting on it would alarm on every repository in
+    // use. The id's own refs are the evidence (row 6 above), and a channel
+    // moved out of band is judged at the repository's head (`.11.56`).
+    assert_eq!(
+        reconcile(None, &git(None, Some(8), None), None, None),
+        Action::Consistent
+    );
 }
 
 /// `SIGNOFF-REPAIR.11.56` — the effective CHANNEL is judged for the head of a

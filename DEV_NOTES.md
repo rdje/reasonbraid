@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-29 — Reconciler claim narrowed; the out-of-band scan deferred; the lone-channel case pinned quiet (`SIGNOFF-REPAIR.11.61`)
+
+`REASONBRAID-REPAIR-0571`.
+
+- 🔍 **Refuted before building:** alerting on `git.effective` in the `db = None` arm would alarm on every repository in use (the channel is repository-wide); the arm is right, its unreachability is the gap. Control added; that mutant caught.
+- ✅ **Narrowed:** `publication-store.md` row + paragraph (no record → not looked for; manifests unsigned), qualification review; `.11.61.1` deferred (trigger: a second writer, or Internet exposure).
+
 ## 2026-09-29 — RX narrowed: call published, answer received nowhere; `original_not_inspected` required; six-shape round trip (`SIGNOFF-REPAIR.11.59`)
 
 `REASONBRAID-REPAIR-0570`.

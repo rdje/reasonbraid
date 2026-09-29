@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-29 — The guide says what the publication checker does not look for (`SIGNOFF-REPAIR.11.61`)
+
+`REASONBRAID-REPAIR-0571`.
+
+- 🔴 **Before:** the qualification page said publication checking "holds". But the recovery tool only looks at publications the database knows about. A publication written into a repository some other way, with no record, is never noticed, although the plan says it should raise an alert.
+- ✅ **Now:** the guide says exactly that, and the missing scan is a planned task with a stated trigger. A tempting "fix" to one of the checker's rules would have raised false alarms on every repository in use; it was caught before it was built, and a test now guards against it.
+
 ## 2026-09-29 — The guide no longer says the agent-mediated resource option works end to end (`SIGNOFF-REPAIR.11.59`)
 
 `REASONBRAID-REPAIR-0570`.

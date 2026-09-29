@@ -164,6 +164,7 @@ the database schema; migrating is `rb-server`'s job.
 | the recorded compare-and-swap can no longer hold | **reports** — advancing would overwrite a publication the record does not know about |
 | database and Git agree | nothing |
 | no recorded Git operation | nothing to observe, so nothing is guessed |
+| a publication in a repository with no record at all | nothing: the pass walks the recorded publications, so such a publication is never looked for (§15.8's no-record row; deferred, `SIGNOFF-REPAIR.11.61.1`) |
 
 **The channel is judged for the newest publication only.** Publications have no
 superseded state: when a later publication moves the effective channel on, the
@@ -173,6 +174,18 @@ publication in its repository recorded its channel commit as the value to
 replace; a failed one never wrote, so it supersedes nothing. Until
 `SIGNOFF-REPAIR.11.56` the channel was read and compared with nothing, so a
 moved or deleted channel reported `consistent`.
+
+**What the pass does not look for.** It starts from the database, so a
+publication written into a repository with no record behind it is not found,
+and §15.8's *"no DB record / ReasonBraid-looking ref → out-of-band alert"* row
+cannot fire. The matrix has that row for a publication it is asked about, and
+alerts on its own immutable or staging ref. It never alerts on the effective
+channel for such a publication, because the channel belongs to the repository
+and holds whatever publication is effective there. A channel moved out of band
+is caught through the newest recorded publication, as above. Scanning each
+repository for refs no record accounts for is deferred (`SIGNOFF-REPAIR.11.61.1`).
+Manifests are not signed, so §15.8's *"verify signature"* has nothing to verify
+yet.
 
 Recovery is **idempotent**. The commit is reproducible and rewriting an
 identical ref is a no-op, so a second pass over a recovered publication

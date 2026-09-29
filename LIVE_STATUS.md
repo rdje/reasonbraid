@@ -31,6 +31,13 @@ re-examines its claims; they return to *Done* when the review requalifies them.
 | Phase 9 — stable release | Not Started | G9 requires sustained operational evidence and the outstanding release decisions. |
 | Corrective review | In Progress | It ends at a bug bar, not at exhaustion (`REASONBRAID-DOC-0162`): every leaf in a blocking class (cross-tenant; integrity of state, money, evidence or publication; a false claim; a gate that lies) closed with reproducible evidence, every deferred leaf with a readable trigger and a limit the qualification review states, the qualification review reconciled with measured behaviour, and the full CI checkpoint green on a pushed commit. |
 
+## 2026-09-29 — The guide says what the publication checker does not look for (`SIGNOFF-REPAIR.11.61`)
+
+`REASONBRAID-REPAIR-0571`.
+
+- 🔴 **Before:** the qualification page said publication checking "holds". But the recovery tool only looks at publications the database knows about. A publication written into a repository some other way, with no record, is never noticed, although the plan says it should raise an alert.
+- ✅ **Now:** the guide says exactly that, and the missing scan is a planned task with a stated trigger. A tempting "fix" to one of the checker's rules would have raised false alarms on every repository in use; it was caught before it was built, and a test now guards against it.
+
 ## 2026-09-29 — The guide no longer says the agent-mediated resource option works end to end (`SIGNOFF-REPAIR.11.59`)
 
 `REASONBRAID-REPAIR-0570`.

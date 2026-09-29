@@ -47,6 +47,8 @@ pub mod extraction;
 pub mod extraction_input;
 pub mod federation;
 pub mod fetcher;
+#[cfg(test)]
+mod fuzz_support;
 pub mod git;
 pub mod health;
 pub mod lifecycle;

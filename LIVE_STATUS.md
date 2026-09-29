@@ -31,6 +31,13 @@ re-examines its claims; they return to *Done* when the review requalifies them.
 | Phase 9 — stable release | Not Started | G9 requires sustained operational evidence and the outstanding release decisions. |
 | Corrective review | In Progress | It ends at a bug bar, not at exhaustion (`REASONBRAID-DOC-0162`): every leaf in a blocking class (cross-tenant; integrity of state, money, evidence or publication; a false claim; a gate that lies) closed with reproducible evidence, every deferred leaf with a readable trigger and a limit the qualification review states, the qualification review reconciled with measured behaviour, and the full CI checkpoint green on a pushed commit. |
 
+## 2026-09-29 — The system now tests its handling of malformed and hostile files automatically (`SIGNOFF-REPAIR.11.4.7.2.1.1`)
+
+`REASONBRAID-REPAIR-0575`.
+
+- 🔴 **Before:** a plan made at the start said that once the system began reading untrusted files and pages from the internet, it would get "fuzz" testing: feeding it deliberately damaged inputs to find crashes. The system started doing that, and the testing never happened.
+- ✅ **Now:** every code path that reads outside data (PDF, ZIP, TAR, news feeds, compressed pages, certificates and a few smaller ones) is fed thousands of deliberately damaged versions of valid inputs on every test run. A tool finds those code paths automatically, so new ones can't be forgotten. No crash was found in over 100,000 attempts, and the tests were shown to catch a crash deliberately planted to check them. The guide says what this testing doesn't cover.
+
 ## 2026-09-29 — A discussion an agent starts by itself keeps the confidentiality level it declared (`SIGNOFF-REPAIR.11.65`)
 
 `REASONBRAID-REPAIR-0574`.

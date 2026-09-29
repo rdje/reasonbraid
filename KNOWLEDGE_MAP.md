@@ -293,6 +293,7 @@
 - [`2026-09-26_a-target-is-assigned-by-its-authority.md`](docs/decisions/2026-09-26_a-target-is-assigned-by-its-authority.md)
 - [`2026-09-26_the-deployment-wave-is-a-label.md`](docs/decisions/2026-09-26_the-deployment-wave-is-a-label.md)
 - [`2026-09-26_weighted-and-committee-rules-stay-refused-until-designed.md`](docs/decisions/2026-09-26_weighted-and-committee-rules-stay-refused-until-designed.md)
+- [`2026-09-29_the-fuzz-baseline.md`](docs/decisions/2026-09-29_the-fuzz-baseline.md)
 
 ## Promoted lessons
 

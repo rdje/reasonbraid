@@ -11724,3 +11724,21 @@ mod json_extraction {
         );
     }
 }
+
+/// `SIGNOFF-REPAIR.11.4.7.2.1.1` — the fuzz baseline: every request names its
+/// principal in a header, parsed before anything authorizes it.
+#[cfg(test)]
+mod fuzz_principal {
+    use super::parse_principal;
+
+    #[test]
+    fn the_principal_parser_answers_every_mutation() {
+        let seeds = [
+            b"hum_01926d3c-5a4b-7c2e-9f10-2b3c4d5e6f70".to_vec(),
+            b"rol_01926d3c-5a4b-7c2e-9f10-2b3c4d5e6f70".to_vec(),
+        ];
+        crate::fuzz_support::survive("parse_principal", &seeds, |bytes| {
+            parse_principal(&String::from_utf8_lossy(bytes))
+        });
+    }
+}

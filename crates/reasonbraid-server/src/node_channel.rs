@@ -3063,3 +3063,19 @@ async fn enroll(
         incarnation_id,
     }))
 }
+
+/// `SIGNOFF-REPAIR.11.4.7.2.1.1` — the fuzz baseline: a node's proof carries its
+/// certificate and signature as hex, decoded before anything checks them.
+#[cfg(test)]
+mod fuzz_decode_hex {
+    use super::decode_hex;
+
+    #[test]
+    fn the_hex_decoder_answers_every_mutation() {
+        let seed = b"3082012a300d06092a864886f70d01010105000382011700".to_vec();
+        assert!(decode_hex(std::str::from_utf8(&seed).unwrap()).is_some());
+        crate::fuzz_support::survive("decode_hex", &[seed], |bytes| {
+            decode_hex(&String::from_utf8_lossy(bytes))
+        });
+    }
+}

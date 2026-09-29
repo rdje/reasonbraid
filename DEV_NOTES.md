@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-29 — The fuzz baseline: seeded mutation over the 25 derived untrusted-byte parsers (`SIGNOFF-REPAIR.11.4.7.2.1.1`)
+
+`REASONBRAID-REPAIR-0575`.
+
+- 🔍 **Population:** `scripts/census_untrusted_parsers.py` (producers → parsers; 25; five calibration mistakes pinned in its self-test). Built, not superseded: no nightly/`cargo-fuzz`, so a stable seeded xorshift harness (`reasonbraid-extract` tests, server `fuzz_support` + five module tests), 300 rounds/seed per run, `RB_FUZZ_ROUNDS` deeper.
+- ✅ **Evidence:** 20,000 rounds/seed, no panic; planted `.expect` caught at round 3 (feed) and round 2 (`decode_hex`). Record: `docs/decisions/2026-09-29_the-fuzz-baseline.md` (unguided; panics not hangs; `gix` packs unreached).
+
 ## 2026-09-29 — An automatic thread carries its declared class, failing closed; the budget gate stated honestly (`SIGNOFF-REPAIR.11.65`)
 
 `REASONBRAID-REPAIR-0574`.

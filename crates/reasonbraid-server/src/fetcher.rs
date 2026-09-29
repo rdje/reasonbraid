@@ -916,6 +916,59 @@ fn prefix_ignoring_case(bytes: &[u8], prefix: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `SIGNOFF-REPAIR.11.4.7.2.1.1` — the fuzz baseline for the fetcher's own
+    /// parsers of an untrusted response: the body decoder (gzip, deflate,
+    /// brotli and identity, with the ratio and size ceilings) and the sniffer.
+    /// Every mutation of a valid body answers a body or a typed refusal.
+    #[test]
+    fn the_body_decoder_and_the_sniffer_answer_every_mutation() {
+        use std::io::Write;
+        let text = b"<!doctype html><html><body>a page of text, repeated. a page of text, repeated.</body></html>".to_vec();
+        let mut gzip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        gzip.write_all(&text).unwrap();
+        let gzip = gzip.finish().unwrap();
+        let mut deflate =
+            flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
+        deflate.write_all(&text).unwrap();
+        let deflate = deflate.finish().unwrap();
+        let mut brotli = Vec::new();
+        {
+            let mut writer = brotli::CompressorWriter::new(&mut brotli, 4096, 5, 22);
+            writer.write_all(&text).unwrap();
+        }
+        let limits = FetchLimits::default();
+        for (encoding, seed) in [
+            ("gzip", gzip),
+            ("deflate", deflate),
+            ("br", brotli),
+            ("identity", text.clone()),
+        ] {
+            assert!(
+                decode_body(seed.clone(), Some(encoding), &limits).is_ok(),
+                "the {encoding} seed decodes"
+            );
+            crate::fuzz_support::survive(&format!("decode_body({encoding})"), &[seed], |wire| {
+                decode_body(wire.to_vec(), Some(encoding), &limits)
+            });
+        }
+        let admitted = vec!["application/pdf".to_string(), "application/zip".to_string()];
+        let heads = [
+            text.clone(),
+            b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n1 0 obj".to_vec(),
+            b"PK\x03\x04\x14\x00\x00\x00".to_vec(),
+            b"\xef\xbb\xbf  <?xml version=\"1.0\"?><rss version=\"2.0\">".to_vec(),
+        ];
+        for content_type in [
+            None,
+            Some("text/html; charset=utf-8"),
+            Some("application/octet-stream"),
+        ] {
+            crate::fuzz_support::survive("sniff_kind", &heads, |head| {
+                sniff_kind(content_type, head, &admitted)
+            });
+        }
+    }
     use axum::body::Body;
     use axum::http::header::{CONTENT_TYPE as AXUM_CONTENT_TYPE, LOCATION as AXUM_LOCATION};
     use axum::http::{Response as AxumResponse, StatusCode};

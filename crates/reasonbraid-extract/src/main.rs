@@ -760,6 +760,129 @@ mod tests {
 
     /// A minimal PDF (one page, one text stream), built with lopdf's own
     /// writer so the cross-reference table is valid.
+    /// The fuzz baseline's mutator (`SIGNOFF-REPAIR.11.4.7.2.1.1`): a seeded
+    /// xorshift, so a failing round reproduces from its number, with no crate
+    /// added for it. Each round applies one to four structural edits to a
+    /// VALID seed, because a parser meets its hardest inputs near the valid ones.
+    pub(crate) struct Mutator(u64);
+
+    impl Mutator {
+        pub(crate) fn new(seed: u64) -> Self {
+            Mutator(seed | 1)
+        }
+
+        fn next(&mut self) -> u64 {
+            let mut x = self.0;
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            self.0 = x;
+            x
+        }
+
+        fn below(&mut self, bound: usize) -> usize {
+            if bound == 0 {
+                0
+            } else {
+                (self.next() % bound as u64) as usize
+            }
+        }
+
+        pub(crate) fn mutate(&mut self, seed: &[u8]) -> Vec<u8> {
+            let mut bytes = seed.to_vec();
+            for _ in 0..=self.below(4) {
+                let at = self.below(bytes.len());
+                match self.below(6) {
+                    0 if !bytes.is_empty() => bytes[at] ^= 1 << self.below(8),
+                    1 if !bytes.is_empty() => {
+                        bytes[at] = [0x00, 0x7f, 0x80, 0xff][self.below(4)];
+                    }
+                    2 => bytes.truncate(at),
+                    3 => bytes.insert(at, self.next() as u8),
+                    4 if !bytes.is_empty() => {
+                        let end = (at + 1 + self.below(64)).min(bytes.len());
+                        let copy = bytes[at..end].to_vec();
+                        let to = self.below(bytes.len());
+                        bytes.splice(to..to, copy);
+                    }
+                    _ if !bytes.is_empty() => {
+                        let end = (at + 1 + self.below(16)).min(bytes.len());
+                        bytes[at..end].fill(0);
+                    }
+                    _ => {}
+                }
+            }
+            bytes
+        }
+    }
+
+    /// How many rounds per seed: small enough for every test run, and raised
+    /// for a deeper run with `RB_FUZZ_ROUNDS`.
+    pub(crate) fn fuzz_rounds() -> usize {
+        std::env::var("RB_FUZZ_ROUNDS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(300)
+    }
+
+    fn parse_as(
+        media_type: &str,
+        bytes: &[u8],
+    ) -> Result<(Vec<DerivedChunk>, Vec<String>), Refusal> {
+        let request = request_for(std::path::Path::new("fuzz"), media_type);
+        match media_type {
+            "application/pdf" => extract_pdf(bytes, &request),
+            "application/zip" => extract_zip(bytes, &request),
+            "application/x-tar" => extract_tar(bytes, &request),
+            _ => extract_feed(bytes, &request),
+        }
+    }
+
+    /// `SIGNOFF-REPAIR.11.4.7.2.1.1` — the fuzz baseline for the untrusted
+    /// parsers this worker runs. Phase 1 deferred fuzzing to *"the first
+    /// untrusted parser"*; Phase 4's packs fired that trigger and nothing acted
+    /// on it. Every format parser, fed mutations of a valid input of its own
+    /// format, must answer a result or a typed refusal and never panic. The
+    /// worker is a sandboxed child with a killing budget, so a panic there costs
+    /// one extraction, not the server; this baseline is how one gets FOUND. It
+    /// is unguided (no coverage feedback: no nightly toolchain, no `cargo-fuzz`),
+    /// which the decision record states.
+    #[test]
+    fn the_format_parsers_answer_every_mutation_without_panicking() {
+        const ATOM: &str = "<?xml version=\"1.0\"?><feed xmlns=\"http://www.w3.org/2005/Atom\"><title>t</title><entry><title>e</title><summary>s</summary></entry></feed>";
+        const RSS: &str = "<?xml version=\"1.0\"?><rss version=\"2.0\"><channel><title>t</title><item><title>i</title><description>d</description></item></channel></rss>";
+        let seeds: [(&str, Vec<u8>); 5] = [
+            ("application/pdf", minimal_pdf()),
+            (
+                "application/zip",
+                zip_bytes(&[("a.txt", &b"hello"[..]), ("b.md", &b"# title"[..])]),
+            ),
+            (
+                "application/x-tar",
+                tar_bytes(&[("a.txt", &b"hello"[..]), ("b.md", &b"# title"[..])]),
+            ),
+            ("application/atom+xml", ATOM.as_bytes().to_vec()),
+            ("application/rss+xml", RSS.as_bytes().to_vec()),
+        ];
+        let mut mutator = Mutator::new(0x5eed_0bad_c0de_2929);
+        for (media_type, seed) in &seeds {
+            assert!(
+                parse_as(media_type, seed).is_ok(),
+                "the {media_type} seed itself parses, or the mutations measure nothing"
+            );
+            for round in 0..fuzz_rounds() {
+                let input = mutator.mutate(seed);
+                let outcome = std::panic::catch_unwind(|| parse_as(media_type, &input));
+                assert!(
+                    outcome.is_ok(),
+                    "the {media_type} parser panicked on round {round}: {} bytes, hex {}",
+                    input.len(),
+                    input.iter().map(|b| format!("{b:02x}")).collect::<String>()
+                );
+            }
+        }
+    }
+
     fn minimal_pdf() -> Vec<u8> {
         let mut document = lopdf::Document::with_version("1.4");
         let pages_id = document.new_object_id();

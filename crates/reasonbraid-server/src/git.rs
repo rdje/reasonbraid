@@ -1408,6 +1408,15 @@ fn dir_size(path: &std::path::Path) -> u64 {
 mod tests {
     use super::*;
 
+    /// `SIGNOFF-REPAIR.11.4.7.2.1.1` — the fuzz baseline: the LFS-pointer test
+    /// reads a downloaded blob's head, and answers every mutation.
+    #[test]
+    fn the_lfs_pointer_test_answers_every_mutation() {
+        let pointer = b"version https://git-lfs.github.com/spec/v1\noid sha256:4d7a214614ab2935c943f9e0ff69d22eadbb8f32b1258daaa5e2ca24d17e2393\nsize 12345\n".to_vec();
+        assert!(is_lfs_pointer(&pointer), "the seed is a pointer");
+        crate::fuzz_support::survive("is_lfs_pointer", &[pointer], is_lfs_pointer);
+    }
+
     // ---- pure: the URL grammar -------------------------------------------
 
     #[test]

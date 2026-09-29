@@ -151,7 +151,7 @@ checked whether any of them fired.** Spot-measured here rather than assumed:
 | # | Deferred | Trigger | Measured today |
 | --- | --- | --- | --- |
 | 4 | Incarnation/run row **writers** | Phase 2 identity | ✅ **discharged** — `INSERT INTO incarnations` and `INSERT INTO runs` both exist |
-| 5 | **Fuzz baseline** | "the first untrusted parser (Phase 4's resource packs)" | 🔴 **fired and untouched** — Phase 4 has a gate record; `fetcher.rs`, `git.rs` and the `reasonbraid-extract` / `-browse` crates now parse untrusted input; `git ls-files \| grep -ic fuzz` returns **0**; the word `fuzz` appears in exactly **one** decision record — the Phase-1 one that deferred it — and **zero** times in Phase 4's |
+| 5 | **Fuzz baseline** | "the first untrusted parser (Phase 4's resource packs)" | 🔴 **fired and untouched** — Phase 4 has a gate record; `fetcher.rs`, `git.rs` and the `reasonbraid-extract` / `-browse` crates now parse untrusted input; `git ls-files \| grep -ic fuzz` returns **0**; the word `fuzz` appears in exactly **one** decision record — the Phase-1 one that deferred it — and **zero** times in Phase 4's ✅ **Discharged 2026-09-29** by `SIGNOFF-REPAIR.11.4.7.2.1.1` (REPAIR-0575): `docs/decisions/2026-09-29_the-fuzz-baseline.md`. |
 
 ⚠️ **The other four are not adjudicated here**, and saying so is the point: this
 re-derivation owns sixteen claims, and "were the deferrals discharged" is a different

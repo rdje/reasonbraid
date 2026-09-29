@@ -802,3 +802,35 @@ mod issued_leaf_binding {
         );
     }
 }
+
+/// `SIGNOFF-REPAIR.11.4.7.2.1.1` — the fuzz baseline: a node's proof hands the
+/// server a certificate in DER, which three parsers read before anything trusts
+/// it. Every mutation of a real leaf answers a result, never a panic.
+#[cfg(test)]
+mod fuzz_certificate {
+    use super::*;
+
+    #[test]
+    fn the_certificate_parsers_answer_every_mutation() {
+        let ca = generate_ca();
+        let leaf = issue_node_leaf(&ca, "nod_00000000-0000-7000-8000-000000000001", "host-a")
+            .expect("a leaf");
+        let set = CaSet::single(std::sync::Arc::new(ca));
+        assert!(
+            extract_point(&leaf.cert_der).is_ok(),
+            "the seed's key reads"
+        );
+        assert!(set.verify_leaf(&leaf.cert_der).is_ok(), "the seed verifies");
+        crate::fuzz_support::survive(
+            "certificate parsers",
+            std::slice::from_ref(&leaf.cert_der),
+            |der| {
+                (
+                    extract_point(der).is_ok(),
+                    leaf_not_after(der).is_ok(),
+                    set.verify_leaf(der).is_ok(),
+                )
+            },
+        );
+    }
+}

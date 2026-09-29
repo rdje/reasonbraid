@@ -9626,7 +9626,7 @@ Six children by the adopted ranking, at the natural gaps in the distribution. Me
 - Opened: `pending` by `.11.9.1`'s split. The largest tranche; expand it into children before implementation if 30 records will not fit one bounded leaf.
 - The 30 records: `R-31-32-4`, `R-33-35-1`, `R-33-35-2`, `R-36-39-2`, `R-36-39-3`, `R-36-39-6`, `R-36-39-9`, `R-40-42-3`, `R-40-42-4`, `R-40-42-5`, `R-40-42-7`, `R-43-1`, `R-43-4`, `R-44-45-4`, `R-51-3`, `R-53-1`, `R-53-5`, `R-54-2`, `R-56-57-3`, `R-58-3`, `R-59-1`, `R-59-2`, `R-61-62-2`, `R-63-2`, `R-73-74-3`, `R-75-2`, `R-76-77-3`, `R-78-1`, `R-86-1`, `R-89-1`.
 - Acceptance: as `.11.9.1.1`.
-- Status: `active`; sized, split, and its first child executed (REPAIR-0180). ⛔ The acceptance descends to `.11.9.1.3.1`–`.5` collectively.
+- Status: `done` — closed 2026-09-29 by `.11.58`'s closing verification (`REASONBRAID-DOC-0202`); sized, split, and its first child executed (REPAIR-0180). ⛔ The acceptance descended to `.11.9.1.3.1`–`.5` collectively, and it is verified collectively: `python3 -B scripts/census_record_reconciliation.py --classified` reports **0** records not yet classified and no ledger breach, after tranche 7 (DOC-0201). Every clause of all 131 records carries a row, and every `unowned` clause has its leaf.
 - ⚖️ Bar (`REASONBRAID-DOC-0162`): **structural**: closes when its children do.
 
 **The sizing, taken BEFORE the split — the method `.11.9.1.1` established and `.11.9.1.2` repeated.**
@@ -13330,6 +13330,7 @@ done
 - Measured: `python3 -B scripts/census_open_leaves.py --json` lists 15 open structural nodes. Four have no open descendant: `.3.3.4` (which keeps `.3.3` open), `.11.2`, `.11.9.1.3` and `.12`.
 - ⛔ **CORRECTED 2026-09-29, before any action** (REASONBRAID-DOC-0197). This leaf first said three of them were stale and could simply be closed. Reading each one refuted that. Every one carries its own closing duty beyond its children. `.3.3.4` has an *Acceptance* (a serialization rule, revocation fencing, audit on refusal) and *Verification: pending*. `.11.2` says *"its own gate clauses are classified at its closing census"* and carries follow-ups and attached clauses on the node itself. `.11.9.1.3`'s acceptance *"descends to `.11.9.1.3.1`–`.5` collectively"*, over 30 records. `.12` is the exit node. So closing any of them is a verification that its children together met its acceptance, not a status flip. The bar wording *"closes when its children do"* hides that.
 - Owns: for each of the four, the closing verification (or a re-bar naming what it still waits for), and a census report of a structural node with no open descendant, so the next one is seen when its last child closes.
+- ✅ **`.11.9.1.3` closed 2026-09-29** (DOC-0202): its acceptance is the ledger's, and `--classified` reports 0 unclassified with no breach once tranche 7 landed. Three remain: `.3.3.4`, `.11.2` and `.12`, the exit node.
 
 ### SIGNOFF-REPAIR.11.57 — A self-test probes a process it picked from a listing, and fails the commit when that process exits in between
 

@@ -195,6 +195,15 @@ def extract(release: Release, archive: Path, destination: Path) -> dict:
 
 def browser_environment(root: Path, ambient: dict[str, str]) -> dict[str, str]:
     environment = ci_environment(root, ambient)
+    # A caller that already provisioned the pinned compiler (`ci_env.py --rust`
+    # exports `RB_READONLY_TOOLCHAIN` and points `RUSTUP_HOME` at it) keeps it:
+    # rebuilding without the Rust half stripped the one and reset the other to an
+    # empty store, so CI's `pg-tests` child found no compiler
+    # (`SIGNOFF-REPAIR.11.4.3.1.2.29`). Nothing is installed here.
+    if ambient.get("RB_READONLY_TOOLCHAIN"):
+        for key in ("RB_READONLY_TOOLCHAIN", "RUSTUP_HOME"):
+            if key in ambient:
+                environment[key] = ambient[key]
     for key in ("R3_BROWSER_BIN", "CHROME_BIN", "CHROME_LOG_FILE", "SSLKEYLOGFILE", "QLOGDIR"):
         environment.pop(key, None)
     return environment

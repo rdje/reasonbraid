@@ -31,6 +31,13 @@ re-examines its claims; they return to *Done* when the review requalifies them.
 | Phase 9 — stable release | Not Started | G9 requires sustained operational evidence and the outstanding release decisions. |
 | Corrective review | In Progress | It ends at a bug bar, not at exhaustion (`REASONBRAID-DOC-0162`): every leaf in a blocking class (cross-tenant; integrity of state, money, evidence or publication; a false claim; a gate that lies) closed with reproducible evidence, every deferred leaf with a readable trigger and a limit the qualification review states, the qualification review reconciled with measured behaviour, and the full CI checkpoint green on a pushed commit. |
 
+## 2026-09-29 — The online test run can find its compiler again (`SIGNOFF-REPAIR.11.4.3.1.2.29`)
+
+`REASONBRAID-REPAIR-0577`.
+
+- 🔴 **Before:** on GitHub's test machines, a helper added last week rebuilt its settings from scratch and lost track of the compiler the run had just installed, so the database tests could not start.
+- ✅ **Now:** the helper keeps the compiler it was given. Nothing changes when the tests run on this machine.
+
 ## 2026-09-29 — A library the Git support relies on was updated for a published safety flaw (`SIGNOFF-REPAIR.11.69`)
 
 `REASONBRAID-REPAIR-0576`.

@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-29 — CI `pg-tests`: the browser wrapper keeps the compiler `ci_env.py --rust` provisioned (`SIGNOFF-REPAIR.11.4.3.1.2.29`)
+
+`REASONBRAID-REPAIR-0577`.
+
+- 🔴 **Remote, first run since 2026-09-20:** `project-env: refused: expected one installed Rust 1.98.0 toolchain`. `browser_environment` → `ci_environment(rust=False)` stripped `RB_READONLY_TOOLCHAIN` and reset `RUSTUP_HOME` to the empty store. REPAIR-0513 added the wrapper after the last push.
+- ✅ **Fix:** carry both when provisioned. RED unit control; 3/3 mutants.
+
 ## 2026-09-29 — `faster-hex` 0.10.0 → 0.10.1 (RUSTSEC-2026-0306) so the pre-push dependency gate passes (`SIGNOFF-REPAIR.11.69`)
 
 `REASONBRAID-REPAIR-0576`.

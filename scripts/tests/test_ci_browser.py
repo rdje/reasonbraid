@@ -23,6 +23,30 @@ import run_pg_tests as owner
 import stall_snapshot
 
 
+class BrowserEnvironmentTests(unittest.TestCase):
+    """`SIGNOFF-REPAIR.11.4.3.1.2.29`: CI's `pg-tests` runs `ci_env.py --rust`,
+    which installs the pinned compiler and exports `RB_READONLY_TOOLCHAIN`, and
+    then runs the collection inside `ci_browser.py`. The wrapper rebuilt its
+    child's environment without the Rust half, stripping that variable and
+    resetting `RUSTUP_HOME` to an empty store, so the child's `project_env.py`
+    found no compiler: *"expected one installed Rust 1.98.0 toolchain"*."""
+
+    def test_a_provisioned_compiler_rides_into_the_child(self):
+        ambient = dict(os.environ)
+        ambient["RB_READONLY_TOOLCHAIN"] = "/opt/rb/toolchains/1.98.0-x86_64-unknown-linux-gnu"
+        ambient["RUSTUP_HOME"] = "/opt/rb/installed-toolchains"
+        env = browser.browser_environment(project_env.ROOT, ambient)
+        self.assertEqual(env.get("RB_READONLY_TOOLCHAIN"), ambient["RB_READONLY_TOOLCHAIN"])
+        self.assertEqual(env.get("RUSTUP_HOME"), ambient["RUSTUP_HOME"])
+
+    def test_without_a_provisioned_compiler_nothing_extra_rides(self):
+        ambient = {k: v for k, v in os.environ.items() if k != "RB_READONLY_TOOLCHAIN"}
+        ambient["RUSTUP_HOME"] = "/opt/rb/not-a-provisioned-compiler"
+        env = browser.browser_environment(project_env.ROOT, ambient)
+        self.assertNotIn("RB_READONLY_TOOLCHAIN", env)
+        self.assertNotEqual(env.get("RUSTUP_HOME"), ambient["RUSTUP_HOME"], "the store default stands")
+
+
 class BrowserSetupTests(unittest.TestCase):
     def setUp(self):
         parent = project_env.local_directory(project_env.ROOT, "target/ci-browser-tests")

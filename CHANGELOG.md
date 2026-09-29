@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-29 — The agent search no longer reveals details another organisation hid (`SIGNOFF-REPAIR.11.66`)
+
+`REASONBRAID-REPAIR-0573`.
+
+- 🔴 **Before:** when searching for suitable agents, one organisation could learn details another had chosen to hide. Measured: asking for agents that handle "at least 7 jobs at once" found the other organisation's agent, and asking for 8 did not. The answer even said "declared concurrency 7 meets 7", although that agent's owner had hidden the number from other organisations. The preferred speed/cost setting leaked the same way.
+- ✅ **Now:** the search sees each agent exactly as the asker is allowed to, so a hidden detail counts as unknown and is never shown. An explanation that said "matches" when it didn't is fixed too. The guide says what the search shares and what it keeps back.
+
 ## 2026-09-29 — The code review's last batch is checked; four more problems found, one possibly a leak between organisations (`SIGNOFF-REPAIR.11.9.1.6`)
 
 `REASONBRAID-DOC-0201`.
@@ -838,48 +845,23 @@
 - ⭐ **The node-machine review is complete:** enrollment, certificates, leases, delivery, recovery and budgets.
 - ✅ Tested: the live test shows one successor created, reused on every later check, adopted by a second server, and the old authority's machines still trusted. Every deliberately broken version was caught, some only after I added tests. This one could not be shown failing on the old code, because the feature did not exist there at all; that is recorded. Broad live suite and strict lint pass.
 
-## 2026-09-24 — The server can hold more than one certificate authority (`SIGNOFF-REPAIR.4.1.8.1`)
-
-`REASONBRAID-REPAIR-0492`. The first of the two steps decided in `REASONBRAID-DOC-0159`.
-
-- 🔴 **Before:** the server had exactly one certificate authority, at every level: stored as one row, loaded once, and the only thing it trusted. Even a stored successor would have been ignored.
-- ✅ **Now:** the server keeps every authority it has. New machine certificates come from the newest, and a machine certified by an older one keeps working until that authority expires. Nothing changes while there is only one.
-- ⏭️ **Next:** the server creates the successor by itself before the current authority runs out, and warns if it ever fails to (`.4.1.8.2`).
-- ✅ Tested: the new test failed on the old code; a live test shows a machine from the first authority still connecting after a second one takes over, and a new machine getting a certificate from the second. Every deliberately broken version was caught, two only after I added tests, including one for the exact second an authority expires. Broad live suite and strict lint pass.
-
-## 2026-09-24 — Decided how the server's certificate authority renews itself (`SIGNOFF-REPAIR.4.1.8`)
-
-`REASONBRAID-DOC-0159`. A design decision; no code changed.
-
-- ✅ **Decided:** the server will keep more than one certificate authority. It trusts any that hasn't expired, issues from the newest, and creates a successor by itself once a third of the current one's life remains, with no restart. The health check will warn if that renewal ever fails to happen. This is how widely used systems (SPIFFE/SPIRE, cert-manager, Vault) do it.
-- 🔎 **Checked first:** no machine pins the authority; only the server's own checks trust it. So it can change without touching any machine.
-- ⏭️ **Next:** build it in two steps: first let the server hold several authorities (`.4.1.8.1`), then the automatic renewal and the warning (`.4.1.8.2`).
-
-## 2026-09-24 — A machine's certificate can no longer outlive the authority that signed it (`SIGNOFF-REPAIR.4.1.7`)
-
-`REASONBRAID-REPAIR-0491`.
-
-- 🔴 **Before:** the server gave each machine a 10-minute certificate without checking when its own certificate authority expires. In the authority's last minutes, it signed certificates that outlived it.
-- ✅ **Now:** a machine's certificate ends no later than the authority does. If the authority has 5 minutes or less left (the point at which a machine asks for a new certificate anyway), the server refuses to issue and says clearly that the authority must be renewed. The server and the machines now read that 5-minute figure from one shared place.
-- ✅ Tested: the new test failed on the old code and passes now; all the deliberately broken versions that compile were caught (one only after I added a check of the refusal message); broad live suite passes.
-
 The entries before those above were rotated into reachable Git history at the
-**fifty-seventh rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
+**fifty-eighth rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
 stood at the commit named below, which is the object every retired record was
 checked against before this notice was written — is:
 
 ```bash
-git show f385d089b57c3c2f56eb5c7a8f9f09f76e731a95:CHANGELOG.md
+git show cb893ac478656c7288322ba4bfb7710a90c57d92:CHANGELOG.md
 ```
 
-That snapshot is 94999 bytes and 942 lines, and contains 122 dated
-entries; its Git blob is `04c0efff65e29a38e5e7832c6bd91a50ff92bb3e` and its SHA-256 is
-`34027d2cbf5f5ef149e0f28efb850859ccc93795fac03c04b63c9ac62575f745`. It carries the fifty-sixth rotation's
+That snapshot is 88460 bytes and 887 lines, and contains 116 dated
+entries; its Git blob is `0ab9916191399ac8eaa921bdbf94c7a8e7f9fab6` and its SHA-256 is
+`930d81eacbc3716834cdc8908de14cf57a12d147b15aa4a048ae1938af2c6601`. It carries the fifty-seventh rotation's
 notice in turn, and each earlier notice names the one before it, so the chain
 walks all the way back. `docs/decisions/2026-09-09_changelog-rotation.md` holds
 the first transition's evidence.
 
-⛔ **8 record(s) rotated out, 115 kept, lossless** — every retired heading was retrieved from the
+⛔ **3 record(s) rotated out, 114 kept, lossless** — every retired heading was retrieved from the
 predecessor named above before this notice was written, and every figure in it was re-derived from that object with
 `git rev-parse`, `git cat-file` and SHA-256 rather than typed. ⭐ The cut is DERIVED, not chosen: it retires whole
 records until the ledger has at least 10 commits of runway at the p90 entry size measured over the last

@@ -31,6 +31,13 @@ re-examines its claims; they return to *Done* when the review requalifies them.
 | Phase 9 — stable release | Not Started | G9 requires sustained operational evidence and the outstanding release decisions. |
 | Corrective review | In Progress | It ends at a bug bar, not at exhaustion (`REASONBRAID-DOC-0162`): every leaf in a blocking class (cross-tenant; integrity of state, money, evidence or publication; a false claim; a gate that lies) closed with reproducible evidence, every deferred leaf with a readable trigger and a limit the qualification review states, the qualification review reconciled with measured behaviour, and the full CI checkpoint green on a pushed commit. |
 
+## 2026-09-29 — The agent search no longer reveals details another organisation hid (`SIGNOFF-REPAIR.11.66`)
+
+`REASONBRAID-REPAIR-0573`.
+
+- 🔴 **Before:** when searching for suitable agents, one organisation could learn details another had chosen to hide. Measured: asking for agents that handle "at least 7 jobs at once" found the other organisation's agent, and asking for 8 did not. The answer even said "declared concurrency 7 meets 7", although that agent's owner had hidden the number from other organisations. The preferred speed/cost setting leaked the same way.
+- ✅ **Now:** the search sees each agent exactly as the asker is allowed to, so a hidden detail counts as unknown and is never shown. An explanation that said "matches" when it didn't is fixed too. The guide says what the search shares and what it keeps back.
+
 ## 2026-09-29 — The code review's last batch is checked; four more problems found, one possibly a leak between organisations (`SIGNOFF-REPAIR.11.9.1.6`)
 
 `REASONBRAID-DOC-0201`.

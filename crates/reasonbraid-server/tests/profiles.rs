@@ -3777,6 +3777,154 @@ async fn a_federated_subscribers_join_is_a_recorded_request() {
     assert_eq!(origin, role_b);
 }
 
+/// `SIGNOFF-REPAIR.11.66` — the match surface reads NO fact its owner hid from
+/// the reader. The route clamps each candidate's scope to the reader's relation
+/// to its tenant, and the capability, interest and confidentiality checks read
+/// that visible profile. The concurrency column was read raw from the stored
+/// `availability`, and the latency score from the stored `cost_latency_class`,
+/// both fields the owner can hide; an eligible candidate's reasons printed the
+/// concurrency. So another tenant's answers could move with values it may not
+/// see. Here B hides both from A, and A asks the same questions with different
+/// values: the answers must not differ, and nothing may name them.
+#[tokio::test]
+async fn the_match_surface_reads_no_fact_its_owner_hid() {
+    let _guard = guard().await;
+    let Some(pool) = pool().await else { return };
+    let server = TestServer::start(&pool).await;
+    let base = server.base();
+    let client = reqwest::Client::new();
+    let world = call_world(&client, &base, "hidden-facts", 1).await;
+    let member = world.roles[0].clone();
+    let (status, owner_b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "human", "name": "hidden-facts-b" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{owner_b}");
+    let owner_b_id = owner_b["principal_id"].as_str().unwrap().to_string();
+    let tenant_b = owner_b["tenant_id"].as_str().unwrap().to_string();
+    let (status, role_b) = enroll(
+        &client,
+        &base,
+        json!({ "kind": "role", "name": "hidden-facts-role", "tenant_id": tenant_b }),
+    )
+    .await;
+    assert_eq!(status, 200, "{role_b}");
+    let role_b = role_b["principal_id"].as_str().unwrap().to_string();
+    enroll_node(&client, &base, &owner_b_id, &tenant_b, &role_b).await;
+    let mut hidden = visibility_profile();
+    hidden["visibility"]["capabilities"] = json!("network");
+    hidden["availability"] = json!({ "concurrency": 7 });
+    assert_eq!(hidden["visibility"]["availability"], json!("tenant"));
+    assert_eq!(hidden["visibility"]["cost_latency_class"], json!("tenant"));
+    assert_eq!(hidden["cost_latency_class"], json!("cheap"));
+    let (status, body) = put(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_b}"),
+        &role_b,
+        &hidden,
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let (status, body) = post(
+        &client,
+        &base,
+        &format!("/v1/profiles/{role_b}/attest"),
+        &owner_b_id,
+        &json!({ "taxonomy_id": "code_review", "evidence_ref": "evt_hidden-facts/b" }),
+    )
+    .await;
+    assert_eq!(status, 200, "B's owner attests: {body}");
+    let matched = |extra: Value| {
+        let client = client.clone();
+        let base = base.clone();
+        let member = member.clone();
+        async move {
+            let mut expression = json!({
+                "scope": "network",
+                "capabilities": [{ "taxonomy_id": "code_review", "min_confidence": "owner_attested" }],
+                "presence_states": ["available", "offline"],
+            });
+            for (key, value) in extra.as_object().unwrap() {
+                expression[key] = value.clone();
+            }
+            let response = client
+                .post(format!("{base}/v1/directory/match"))
+                .header(PRINCIPAL_HEADER, &member)
+                .json(&json!({ "expression": expression }))
+                .send()
+                .await
+                .expect("match request");
+            assert_eq!(response.status().as_u16(), 200);
+            let body: Value = response.json().await.unwrap();
+            body["candidates"].as_array().unwrap().clone()
+        }
+    };
+    let entry = |candidates: &[Value]| -> Option<Value> {
+        candidates
+            .iter()
+            .find(|c| c["role_id"] == json!(role_b))
+            .cloned()
+    };
+    // The control: without either requirement B is a candidate, so the probes
+    // below measure B's hidden facts and not a B that never matches.
+    assert!(
+        entry(&matched(json!({})).await).is_some(),
+        "B is a candidate at the network view"
+    );
+
+    // 1. Concurrency, hidden: a requirement of 7 and one of 8 get the same answer.
+    let at_seven = entry(&matched(json!({ "min_concurrency": 7 })).await);
+    let at_eight = entry(&matched(json!({ "min_concurrency": 8 })).await);
+    assert_eq!(
+        at_seven.is_some(),
+        at_eight.is_some(),
+        "B's eligibility does not move with a concurrency it hid: at 7 {at_seven:?}, at 8 {at_eight:?}"
+    );
+    for candidate in [&at_seven, &at_eight].into_iter().flatten() {
+        assert!(
+            !candidate["stage1_reasons"]
+                .to_string()
+                .contains("concurrency 7"),
+            "no reason prints a hidden concurrency: {candidate}"
+        );
+    }
+
+    // 2. The latency class, hidden: preferring B's class and another one scores B
+    //    the same, and no score of 0 is explained as a match.
+    let latency = |candidate: &Value| -> Value {
+        candidate["features"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|f| f["feature"] == json!("latency_class"))
+            .cloned()
+            .expect("the latency feature")
+    };
+    let cheap = entry(&matched(json!({ "preferred_latency": "cheap" })).await).expect("B ranks");
+    let costly = entry(&matched(json!({ "preferred_latency": "costly" })).await).expect("B ranks");
+    assert_eq!(
+        latency(&cheap)["score"],
+        latency(&costly)["score"],
+        "B's latency score does not move with a class it hid: {} vs {}",
+        latency(&cheap),
+        latency(&costly)
+    );
+    for feature in [latency(&cheap), latency(&costly)] {
+        if feature["score"] == json!(0.0) {
+            assert!(
+                !feature["explanation"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("matches"),
+                "a score of 0 is not explained as a match: {feature}"
+            );
+        }
+    }
+}
+
 /// `SIGNOFF-REPAIR.5.1.1` — the match surface classifies each candidate by the
 /// reader's relation to the CANDIDATE's tenant, never by the reader's own
 /// class alone. A member of A searching at tenant scope is a network reader

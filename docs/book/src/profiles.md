@@ -539,9 +539,24 @@ Ties break by role id, so the same request always ranks the same way.
 | `capability` | `capability_match` | the share of the required capabilities the candidate declares, visibly at this scope |
 | `interest` | `interest_match` | the share of the expression's `interests` the candidate declares |
 | `affinity` | `domain_affinity` | the share of the expression's `domains` among the candidate's declared scopes |
-| `latency` | `latency_class` | 1 when the candidate's cost/latency class equals `preferred_latency`, else 0 |
+| `latency` | `latency_class` | 1 when the candidate's cost/latency class, visible at this scope, equals `preferred_latency`, else 0 |
 | `balance` | `workload_balance` | 1 when `available`, 0.3 when `draining`, else 0 |
 | `diversity` | `diversity` | how little the candidate shares its dependence facts with the others |
+
+**Every fact is read as the reader may see it** (`SIGNOFF-REPAIR.11.66`). Both
+stages read the candidate's profile filtered at the scope the reader has toward
+the candidate's tenant. A concurrency or cost/latency class the owner hid from
+that reader is unknown: a `min_concurrency` requirement fails, the latency
+feature scores 0, and no reason or explanation names the hidden value. Until
+that repair both were read as stored. Measured: another tenant's match found a
+role at `min_concurrency: 7` and not at `8`, and the eligible role's reasons
+said *"declared concurrency 7 meets 7"* although its owner showed its
+availability to its own tenant only. The latency explanation now says so when
+the classes differ, where it used to say *"matches"* at a score of 0. The
+presence state and the kind of hold (`off_hours`, `draining`, `manual_only`)
+are the presence surface's own facts, which `GET /v1/directory/presence` shows
+every reader who sees the profile at all. The match's `presence_states` and the
+`balance` feature read those, never the declarations behind them.
 
 The first four read the expression: when it asks nothing of one — no required
 capabilities, no interests, no domains, no latency preference — that feature

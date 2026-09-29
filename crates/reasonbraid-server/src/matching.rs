@@ -71,12 +71,18 @@ pub struct CapabilityRequirement {
 
 /// The candidate's shipped facts (the `.3.3` surface loads them; the
 /// evaluator stays pure).
+///
+/// ⛔ No profile fact rides here raw (`SIGNOFF-REPAIR.11.66`). The declared
+/// concurrency used to: the surface read it from the stored `availability`
+/// and the concurrency gate judged it whatever `availability`'s visibility, so
+/// another tenant's match moved with a value it may not see, and an eligible
+/// candidate's reasons printed it. Every profile fact is read from the
+/// profile filtered at the expression's scope.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EligibilityCandidate {
     pub role_id: String,
     pub profile: Option<AgentProfile>,
     pub presence_state: PresenceState,
-    pub concurrency: Option<i64>,
     pub available_budget: Option<f64>,
 }
 
@@ -273,10 +279,16 @@ pub fn eligible(
         }
     }
 
-    // 7. The declared-concurrency gate.
+    // 7. The declared-concurrency gate, read from the VISIBLE profile
+    //    (`SIGNOFF-REPAIR.11.66`): a concurrency the owner hid at this scope is
+    //    unknown, so it cannot meet a requirement, and no reason names it.
     if let Some(min) = expression.min_concurrency {
         if min > 0 {
-            match candidate.concurrency {
+            let declared = visible_obj
+                .get("availability")
+                .and_then(|availability| availability.get("concurrency"))
+                .and_then(serde_json::Value::as_i64);
+            match declared {
                 Some(declared) if declared >= min => {
                     reasons.push(format!("declared concurrency {declared} meets {min}"));
                 }
@@ -284,7 +296,7 @@ pub fn eligible(
                     return EligibilityVerdict {
                         eligible: false,
                         reasons: vec![format!(
-                            "declared concurrency does not meet the requirement of {min}"
+                            "declared concurrency does not meet the requirement of {min} (or is not visible at the requested scope)"
                         )],
                     };
                 }
@@ -567,16 +579,14 @@ pub fn rank_with_dependence(
                 matched_domains as f64 / expression.domains.len() as f64
             };
 
+            // `SIGNOFF-REPAIR.11.66`: the class is read from the VISIBLE profile,
+            // like every other feature; the stored one scored a class its owner
+            // hid at this scope.
+            let visible_latency = visible_obj
+                .get("cost_latency_class")
+                .and_then(serde_json::Value::as_str);
             let latency_score = match &expression.preferred_latency {
-                Some(preferred)
-                    if candidate
-                        .profile
-                        .as_ref()
-                        .and_then(|p| p.cost_latency_class.as_ref())
-                        == Some(preferred) =>
-                {
-                    1.0
-                }
+                Some(preferred) if visible_latency == Some(preferred.as_str()) => 1.0,
                 Some(_) | None => 0.0,
             };
 
@@ -639,9 +649,19 @@ pub fn rank_with_dependence(
                     feature: "latency_class",
                     score: latency_score,
                     contribution: preferences.latency * latency_score,
-                    explanation: match &expression.preferred_latency {
-                        Some(p) => format!("the declared cost/latency class matches `{p}`"),
-                        None => "no latency preference was expressed".to_string(),
+                    // It used to read *"matches"* whenever a preference was given,
+                    // at a score of 0 as well (`SIGNOFF-REPAIR.11.66`).
+                    explanation: match (&expression.preferred_latency, visible_latency) {
+                        (None, _) => "no latency preference was expressed".to_string(),
+                        (Some(p), Some(class)) if class == p.as_str() => {
+                            format!("the declared cost/latency class matches `{p}`")
+                        }
+                        (Some(p), Some(class)) => {
+                            format!("the declared cost/latency class `{class}` is not `{p}`")
+                        }
+                        (Some(p), None) => format!(
+                            "no cost/latency class is visible at this scope to compare with `{p}`"
+                        ),
                     },
                 },
                 FeatureScore {
@@ -711,7 +731,6 @@ mod tests {
             role_id: role.to_string(),
             profile,
             presence_state: PresenceState::Available,
-            concurrency: Some(2),
             available_budget: Some(100.0),
         }
     }
@@ -1202,6 +1221,94 @@ mod tests {
             .find(|f| f.feature == "diversity")
             .unwrap();
         assert_eq!(diversity.score, 0.0, "{ranked:?}");
+    }
+
+    /// `SIGNOFF-REPAIR.11.66`: the concurrency gate reads the VISIBLE profile.
+    /// The unit profile declares a concurrency of 2 under the default policy,
+    /// which shows `availability` to the tenant and hides it from the network.
+    #[test]
+    fn the_concurrency_gate_reads_only_a_visible_concurrency() {
+        let at_scope = |scope| EligibilityExpression {
+            scope,
+            min_concurrency: Some(1),
+            ..Default::default()
+        };
+        let a = candidate("rol_a", Some(profile_with(vec![], vec![])));
+        let seen = eligible(&at_scope(ReaderClass::Tenant), &a, at());
+        assert!(seen.eligible, "a visible 2 meets 1: {:?}", seen.reasons);
+        assert!(
+            seen.reasons
+                .iter()
+                .any(|r| r == "declared concurrency 2 meets 1"),
+            "{:?}",
+            seen.reasons
+        );
+        let hidden = eligible(&at_scope(ReaderClass::Network), &a, at());
+        assert!(
+            !hidden.eligible,
+            "a hidden 2 meets not even 1: {:?}",
+            hidden.reasons
+        );
+        assert!(
+            !hidden.reasons.iter().any(|r| r.contains('2')),
+            "no reason names a hidden concurrency: {:?}",
+            hidden.reasons
+        );
+        // A requirement of 0 asks nothing, so a hidden concurrency does not fail it.
+        let zero = EligibilityExpression {
+            scope: ReaderClass::Network,
+            min_concurrency: Some(0),
+            ..Default::default()
+        };
+        assert!(
+            eligible(&zero, &a, at()).eligible,
+            "a requirement of zero asks nothing"
+        );
+    }
+
+    /// `SIGNOFF-REPAIR.11.66`: the latency feature reads the VISIBLE class, and
+    /// its explanation says a match only when there is one.
+    #[test]
+    fn the_latency_feature_reads_only_a_visible_class_and_explains_a_mismatch() {
+        let mut profile = profile_with(vec![], vec![]);
+        profile.cost_latency_class = Some("cheap".to_string());
+        let latency_of = |scope, preferred: &str| {
+            let expression = EligibilityExpression {
+                scope,
+                preferred_latency: Some(preferred.to_string()),
+                ..Default::default()
+            };
+            let a = candidate("rol_a", Some(profile.clone()));
+            let va = eligible(&expression, &a, at());
+            assert!(va.eligible, "{:?}", va.reasons);
+            let ranked = rank(&expression, &[(a, va)], &RankingPreferences::default());
+            let feature = ranked[0]
+                .features
+                .iter()
+                .find(|f| f.feature == "latency_class")
+                .cloned()
+                .unwrap();
+            (feature.score, feature.explanation)
+        };
+        let (score, explanation) = latency_of(ReaderClass::Tenant, "cheap");
+        assert_eq!(score, 1.0, "{explanation}");
+        assert!(explanation.contains("matches `cheap`"), "{explanation}");
+        let (score, explanation) = latency_of(ReaderClass::Tenant, "fast");
+        assert_eq!(score, 0.0, "{explanation}");
+        assert!(
+            explanation.contains("`cheap` is not `fast`") && !explanation.contains("matches"),
+            "{explanation}"
+        );
+        let (score, explanation) = latency_of(ReaderClass::Network, "cheap");
+        assert_eq!(score, 0.0, "a hidden class scores nothing: {explanation}");
+        assert!(
+            !explanation.contains("cheap`") || explanation.contains("compare with `cheap`"),
+            "the explanation names only the preference, never the hidden class: {explanation}"
+        );
+        assert!(
+            explanation.contains("no cost/latency class is visible"),
+            "{explanation}"
+        );
     }
 
     /// One candidate's dependence facts, for the `.5.1.3` controls.

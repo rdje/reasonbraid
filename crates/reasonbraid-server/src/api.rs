@@ -6683,7 +6683,6 @@ async fn respondent_candidate<'e>(
             role_id: role_id.to_string(),
             profile: parsed,
             presence_state: state,
-            concurrency,
             available_budget: None,
         },
         state,
@@ -7412,7 +7411,6 @@ async fn directory_match(
             role_id: role_id.clone(),
             profile: Some(parsed),
             presence_state: state_now,
-            concurrency,
             // The dev profile has no per-role budget facts: UNKNOWN, never
             // zero (§14.5) — a budget requirement therefore cannot be proven.
             available_budget: None,

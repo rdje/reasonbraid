@@ -31,6 +31,13 @@ re-examines its claims; they return to *Done* when the review requalifies them.
 | Phase 9 — stable release | Not Started | G9 requires sustained operational evidence and the outstanding release decisions. |
 | Corrective review | In Progress | It ends at a bug bar, not at exhaustion (`REASONBRAID-DOC-0162`): every leaf in a blocking class (cross-tenant; integrity of state, money, evidence or publication; a false claim; a gate that lies) closed with reproducible evidence, every deferred leaf with a readable trigger and a limit the qualification review states, the qualification review reconciled with measured behaviour, and the full CI checkpoint green on a pushed commit. |
 
+## 2026-09-29 — Cleanup code can no longer delete a folder it did not make, on Linux (`SIGNOFF-REPAIR.11.4.3.1.2.31`)
+
+`REASONBRAID-REPAIR-0579`.
+
+- 🔴 **Before:** four pieces of cleanup code checked "is this still my folder?" by remembering the folder's serial number on disk. Linux gives a deleted folder's number to the next new folder straight away, so a stranger's folder at the same place could pass the check and be deleted. One of the four is the browser worker's own workspace; GitHub's Linux machines caught it in a test.
+- ✅ **Now:** each keeps its folder open while it owns it, which stops the number from being handed on, and a new commit-time check refuses anyone remembering the number again.
+
 ## 2026-09-29 — A self-check no longer fails on a fresh machine for a folder it cannot have (`SIGNOFF-REPAIR.11.4.3.1.2.30`)
 
 `REASONBRAID-REPAIR-0578`.
@@ -439,110 +446,23 @@ re-examines its claims; they return to *Done* when the review requalifies them.
 - ✅ **Now:** it checks that it is talking to its own server, deletes the database folder only once the database has stopped (and says so plainly if it cannot), and works from any folder.
 - 🔎 **Found and tracked:** some of the demonstration's "this did not happen" checks would pass even if the tool running them failed (`.11.3.7`).
 
-## 2026-09-26 — The demonstration checks it is talking to its own server, and its two-host mode works (`SIGNOFF-REPAIR.11.3.5`)
-
-`REASONBRAID-REPAIR-0534`.
-
-- 🔴 **Before:** if another program already used the demonstration's port, the demonstration carried on talking to it without noticing; it copied the database address, user included, into the evidence it produces for sharing; and its documented two-host mode could never have worked (paths were quoted in a way that broke them, the node program was looked for in the wrong folder, and a check looked at the wrong machine).
-- ✅ **Now:** the demonstration stops at once if its own server did not start, the evidence shows the address without the user, and the two-host mode passes every check in a same-machine rehearsal (not yet between two real machines).
-
-## 2026-09-26 — A backup is never half-written and never readable by others (`SIGNOFF-REPAIR.11.3.1`)
-
-`REASONBRAID-REPAIR-0533`.
-
-- 🔴 **Before:** an interrupted backup left a partial file under the name of a real one; the backup, a plaintext copy of the whole database, was readable by other users; and the database password was visible on the backup tool's command line.
-- ✅ **Now:** a backup appears under its name only once it is complete and never replaces another, only its owner can read it, and the password is passed privately.
-
-## 2026-09-26 — The restore test can no longer overwrite the live database (`SIGNOFF-REPAIR.11.3.2`)
-
-`REASONBRAID-REPAIR-0532`.
-
-- 🔴 **Before:** the restore test wiped and replaced whatever database it was pointed at, including the live one, and passed the database password on its command line, where other users of the machine could read it.
-- ✅ **Now:** it refuses the live database by name and any database that already holds data, before touching anything, and it hands the connection details to the database tools privately rather than on the command line.
-
-## 2026-09-26 — The operational scripts reviewed: six problems to fix (`SIGNOFF-REPAIR.11.3`)
-
-`REASONBRAID-DOC-0183`.
-
-- 🔎 **Found:** the restore script will wipe whatever database it is pointed at, the live one included; the database password is visible to other users on the machine while the backup, restore, load and demo scripts run, and the demo copies it into its shareable evidence; a backup that is interrupted leaves a partial file that looks complete; the development and load scripts can report success while talking to a different program on the same port; the load test runs more requests than asked and mixes failures into its speed figures; and one test leaves an empty folder behind on every run (34 so far).
-- ✅ **Next:** each script gets its own fix, the restore script first.
-
-## 2026-09-26 — The review page no longer lists problems that were already fixed (`SIGNOFF-REPAIR.11.37`)
-
-`REASONBRAID-REPAIR-0531`.
-
-- 🔴 **Before:** the book's review page, where a reader looks for what is still wrong, listed 24 problems whose fixes had already landed, some of them weeks earlier, and in two places contradicted its own summary table.
-- ✅ **Now:** every one of the 24 was checked against the code. 21 now say what was fixed and how things work today, one says it was never a problem, one explains which half was fixed and which was a deliberate decision, and one small remaining gap got its own tracked item. An automatic check now refuses to let the page keep an open problem once all its fixes are done.
-
-## 2026-09-26 — Deployment records no longer blame database failures on the caller (`SIGNOFF-REPAIR.9.3.3.6`)
-
-`REASONBRAID-REPAIR-0530`.
-
-- 🔴 **Before:** when the database failed while registering a target, assigning a policy, or recording drift, a correction or an outcome, the answer said the record "does not exist", the authority "is not active", or the record "already exists". Someone could re-create or abandon a request that was fine. A badly written expiry date was reported as missing.
-- ✅ **Now:** a database failure is reported as the server's problem; "already exists" means exactly that; a badly written date is named as such. The deployment review (`.9.3.3`) is closed.
-
-## 2026-09-26 — A drift record compares against what was actually assigned (`SIGNOFF-REPAIR.9.3.3.5`)
-
-`REASONBRAID-REPAIR-0529`.
-
-- 🔴 **Before:** a drift record (the note that a target is not running what was published) stored whatever "should be running" value the person recording it typed, so it could disagree with the assignment it was about.
-- ✅ **Now:** that value must be the assignment's own, or the record is refused with a message naming it. What the target was seen running is still the observer's report.
-
-## 2026-09-26 — Only a target's own authority can decide what it runs (`SIGNOFF-REPAIR.9.3.3.7`)
-
-`REASONBRAID-REPAIR-0528`.
-
-- 🔴 **Before:** assigning a published policy to a target only checked that the policy belonged to the person assigning it. Targets are shared across the whole site, so one organization could set what another organization's target should run.
-- ✅ **Now:** only whoever holds the target's own authority can assign to it; anyone else is refused as unauthorized.
-- 🔎 **Found and fixed:** the review page still listed a problem with policy corrections that was fixed weeks ago. It is corrected, and 10 more entries on that page that may be similarly out of date are tracked (`.11.37`).
-
-## 2026-09-26 — The book no longer implies deployments roll out in stages (`SIGNOFF-REPAIR.9.3.3.4`)
-
-`REASONBRAID-DOC-0182`.
-
-- 🔴 **Before:** the book said a publication is assigned to a target in a "canary wave", which reads as a staged rollout where a failing first group stops the rest. Nothing does that: the wave number is only stored, and the system does not carry out deployments at all yet.
-- ✅ **Now:** the book says the wave is a label you choose to group targets, and that nothing holds a later wave back. Rollout ordering is tracked for when the system first carries out a deployment itself.
-- 🔎 **Found and tracked:** assigning a publication to a target checks no authority over that target (`.9.3.3.7`, next).
-
-## 2026-09-26 — A target's reports are kept, not overwritten (`SIGNOFF-REPAIR.9.3.3.3`)
-
-`REASONBRAID-REPAIR-0527`.
-
-- 🔴 **Before:** each time a target reported which policy content it was running, the new report replaced the old one, so what it said before, and who said it, was lost.
-- ✅ **Now:** every report is kept as its own record that cannot be edited afterwards, the target's current state is always its latest report, and the full history can be read in order. Reports that arrived before this change had already been lost.
-
-## 2026-09-25 — Only the principal a target names can report what it runs (`SIGNOFF-REPAIR.9.3.3.2`)
-
-`REASONBRAID-REPAIR-0526`.
-
-- 🔴 **Before:** a receipt, the report of which policy content a target is actually running, could be filed by anyone in the owning organization, including the operator who had just said what it *should* run. The comparison that detects a target running the wrong thing was only as honest as whoever posted last.
-- ✅ **Now:** a target names one reporter when it is registered (a person or an agent role), and only that principal can file its receipts; anyone else is refused with a message saying so. A target registered before this change takes no receipts until it is given a reporter, which is not possible yet and is tracked for when it is needed.
-
-## 2026-09-25 — A deployment must deploy what its publication published (`SIGNOFF-REPAIR.9.3.3.1`)
-
-`REASONBRAID-REPAIR-0525`.
-
-- 🔴 **Before:** when someone assigned a published policy to a target, they also typed in which version and which content fingerprint the target should run, and the system only checked that the fingerprint looked like one. A target could be told to run content the publication never had, and later comparisons of "what should be running" against "what is running" used that made-up value.
-- ✅ **Now:** the fingerprint must be the publication's own and the version one the publication recorded; anything else is refused with a message naming which one is wrong. The book shows where to read both.
-- 🔎 **Found and tracked:** a drift record (the note that a target is not running what was published) still accepts a typed-in fingerprint (`.9.3.3.5`), and the deployment and drift records report a database failure as "does not exist" or "already exists" in 14 places (`.9.3.3.6`).
-
 The entries before those above were rotated into reachable Git history at the
-**nineteenth rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
+**twentieth rotation** (`SIGNOFF-REPAIR.11.4.1.6`, which owns this ledger’s rotation). The exact predecessor — this file as it
 stood at the commit named below, which is the object every retired record was
 checked against before this notice was written — is:
 
 ```bash
-git show 21487bcf69e9efa4ceecfeaa92ccffa3f14a34bf:LIVE_STATUS.md
+git show ddce77f7ae3a81e7d619d1facbfbb840936eda8f:LIVE_STATUS.md
 ```
 
-That snapshot is 53970 bytes and 488 lines, and contains 62 dated
-entries; its Git blob is `1e138a5c04db68a56f991de03072f78de3b56b61` and its SHA-256 is
-`22e869a0b4013a43d0b9b1532f0cab42f4a0a09f50197620e019f5871950a394`. It carries the eighteenth rotation's
+That snapshot is 53653 bytes and 550 lines, and contains 70 dated
+entries; its Git blob is `4602afe96fd392a002376080545fcb9da3386e7a` and its SHA-256 is
+`70758121aee9d3411d09721233c94b1d7ce0f4e7c7d217cbe8fad7c467b73e41`. It carries the nineteenth rotation's
 notice in turn, and each earlier notice names the one before it, so the chain
 walks all the way back. `docs/decisions/2026-09-09_changelog-rotation.md` holds
 the first transition's evidence.
 
-⛔ **11 record(s) rotated out, 52 kept, lossless** — every retired heading was retrieved from the
+⛔ **12 record(s) rotated out, 59 kept, lossless** — every retired heading was retrieved from the
 predecessor named above before this notice was written, and every figure in it was re-derived from that object with
 `git rev-parse`, `git cat-file` and SHA-256 rather than typed. ⭐ The cut is DERIVED, not chosen: it retires whole
 records until the ledger has at least 10 commits of runway at the p90 entry size measured over the last

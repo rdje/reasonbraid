@@ -7,7 +7,12 @@ use std::path::{Path, PathBuf};
 pub struct Workspace {
     root: PathBuf,
     pub path: PathBuf,
-    identity: (u64, u64),
+    /// The workspace directory, held OPEN for the owner's whole life rather
+    /// than remembered by number: Linux hands a freed inode number to the next
+    /// directory at once, so a remembered `(device, inode)` pair can name a
+    /// successor, and an open descriptor pins the inode so none can be given
+    /// this one's (`SIGNOFF-REPAIR.11.4.3.1.2.31`).
+    held: std::fs::File,
     removed: bool,
 }
 
@@ -44,11 +49,11 @@ impl Workspace {
         }
         let path = parent.join(format!("run-{}", uuid::Uuid::now_v7()));
         std::fs::DirBuilder::new().mode(0o700).create(&path)?;
-        let metadata = std::fs::symlink_metadata(&path)?;
+        let held = std::fs::File::open(&path)?;
         let owner = Self {
             root: root.to_path_buf(),
             path,
-            identity: (metadata.dev(), metadata.ino()),
+            held,
             removed: false,
         };
         owner.verify()?;
@@ -82,7 +87,8 @@ impl Workspace {
 
     fn verify(&self) -> io::Result<()> {
         let metadata = std::fs::symlink_metadata(&self.path)?;
-        if !metadata.is_dir() || (metadata.dev(), metadata.ino()) != self.identity {
+        let held = self.held.metadata()?;
+        if !metadata.is_dir() || (metadata.dev(), metadata.ino()) != (held.dev(), held.ino()) {
             return Err(io::Error::other(
                 "browser workspace identity changed; retain data",
             ));
@@ -93,7 +99,7 @@ impl Workspace {
     /// Call only after every owned process and task has demonstrably stopped.
     pub fn remove(&mut self) -> io::Result<()> {
         self.verify()?;
-        verify_volume(&self.path, self.identity.0)?;
+        verify_volume(&self.path, self.held.metadata()?.dev())?;
         std::fs::remove_dir_all(&self.path)?;
         match std::fs::symlink_metadata(&self.path) {
             Err(e) if e.kind() == io::ErrorKind::NotFound => {
@@ -183,6 +189,31 @@ mod tests {
             b"owned"
         );
         second.remove().unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// `SIGNOFF-REPAIR.11.4.3.1.2.31`: the rename-shaped control below keeps the
+    /// original directory alive, so it never offers the kernel a freed inode to
+    /// reuse. Here the workspace is DELETED and recreated at its path, which on
+    /// Linux can hand the successor the original's number; only the held
+    /// descriptor tells them apart.
+    #[test]
+    fn a_workspace_deleted_and_recreated_at_its_path_is_retained() {
+        let root = root();
+        let mut owner = Workspace::create(&root).unwrap();
+        std::fs::remove_dir_all(&owner.path).unwrap();
+        std::fs::create_dir(&owner.path).unwrap();
+        std::fs::write(owner.path.join("witness"), b"replacement").unwrap();
+        assert!(owner
+            .remove()
+            .unwrap_err()
+            .to_string()
+            .contains("identity changed"));
+        assert_eq!(
+            std::fs::read(owner.path.join("witness")).unwrap(),
+            b"replacement"
+        );
+        drop(owner);
         std::fs::remove_dir_all(root).unwrap();
     }
 

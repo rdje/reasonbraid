@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-29 — CI `check`: a remembered `(dev, ino)` is not an identity on Linux, and a census found four (`SIGNOFF-REPAIR.11.4.3.1.2.31`)
+
+`REASONBRAID-REPAIR-0579`.
+
+- 🔴 **Remote:** `fixture::tests::removal_refuses_a_directory_that_is_no_longer_the_one_created` → *"a replaced directory is refused: ()"*; Linux reused the freed inode. `.23`'s nlink remedy does not carry to directories (macOS: a held dir reports nlink 2 after `rmdir`).
+- ✅ **Fix:** hold the directory's `File` for the owner's life and compare the path against its metadata (`project_storage::OwnedDirectory`'s shape) in `Fixture`, browse `Workspace` (product), and the browse and publisher suite fixtures. New deletion-shaped control for `Workspace`. `INODE-IDENTITY` gate: a pair bound to a local or field is refused; 5/5 historical hits real. Mutants: 7 + 5 caught after removing an equivalent `is_symlink` clause.
+
 ## 2026-09-29 — CI `doctrines`: an absent vendored tree is unknown, never "not split" (`SIGNOFF-REPAIR.11.4.3.1.2.30`)
 
 `REASONBRAID-REPAIR-0578`.

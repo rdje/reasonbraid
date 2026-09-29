@@ -21,7 +21,10 @@ const STAGED_AT: i64 = 1_758_499_200;
 
 struct Fixture {
     path: PathBuf,
-    identity: (u64, u64),
+    /// Held OPEN, not remembered by number: Linux hands a freed inode number
+    /// to the next directory at once, and an open descriptor pins the inode
+    /// (`SIGNOFF-REPAIR.11.4.3.1.2.31`).
+    held: std::fs::File,
     finished: bool,
 }
 
@@ -49,7 +52,7 @@ impl Fixture {
         }
         let fixture = Self::create(parent.join(format!("pub-{}", Uuid::now_v7())))
             .expect("exclusive private fixture creates without replacing anything");
-        assert_eq!(fixture.identity.0, device);
+        assert_eq!(fixture.held.metadata().unwrap().dev(), device);
         eprintln!("publisher fixture created: {}", fixture.path.display());
         fixture
     }
@@ -58,10 +61,10 @@ impl Fixture {
     // A collision is an error, never permission to remove the existing entry.
     fn create(path: PathBuf) -> io::Result<Self> {
         std::fs::DirBuilder::new().mode(0o700).create(&path)?;
-        let metadata = std::fs::symlink_metadata(&path)?;
+        let held = std::fs::File::open(&path)?;
         Ok(Self {
             path,
-            identity: (metadata.dev(), metadata.ino()),
+            held,
             finished: false,
         })
     }
@@ -69,9 +72,10 @@ impl Fixture {
     // Call only after all repository handles and readers have left scope.
     fn finish(mut self) -> io::Result<()> {
         let metadata = std::fs::symlink_metadata(&self.path)?;
+        let held = self.held.metadata()?;
         if !metadata.is_dir()
             || metadata.file_type().is_symlink()
-            || (metadata.dev(), metadata.ino()) != self.identity
+            || (metadata.dev(), metadata.ino()) != (held.dev(), held.ino())
         {
             return Err(io::Error::other(
                 "publisher fixture identity changed; retain data",

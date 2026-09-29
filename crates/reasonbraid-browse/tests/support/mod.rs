@@ -18,7 +18,10 @@ const SHUTDOWN_LIMIT: Duration = Duration::from_secs(5);
 
 pub struct Fixture {
     pub path: PathBuf,
-    identity: (u64, u64),
+    /// Held OPEN, not remembered by number: Linux hands a freed inode number
+    /// to the next directory at once, and an open descriptor pins the inode
+    /// (`SIGNOFF-REPAIR.11.4.3.1.2.31`).
+    held: std::fs::File,
     safe_to_delete: AtomicBool,
     used: AtomicBool,
     finished: bool,
@@ -62,10 +65,16 @@ impl Fixture {
         std::fs::create_dir(path.join("migrations")).unwrap();
         let metadata = std::fs::symlink_metadata(&path).unwrap();
         assert_eq!(metadata.dev(), device);
+        let held = std::fs::File::open(&path).unwrap();
+        let opened = held.metadata().unwrap();
+        assert_eq!(
+            (metadata.dev(), metadata.ino()),
+            (opened.dev(), opened.ino())
+        );
         eprintln!("browser fixture created: {}", path.display());
         Self {
             path,
-            identity: (metadata.dev(), metadata.ino()),
+            held,
             safe_to_delete: AtomicBool::new(true),
             used: AtomicBool::new(false),
             finished: false,
@@ -232,9 +241,10 @@ impl Fixture {
             return Ok(());
         }
         let metadata = std::fs::symlink_metadata(&self.path).map_err(|e| e.to_string())?;
+        let held = self.held.metadata().map_err(|e| e.to_string())?;
         if !metadata.is_dir()
             || metadata.file_type().is_symlink()
-            || (metadata.dev(), metadata.ino()) != self.identity
+            || (metadata.dev(), metadata.ino()) != (held.dev(), held.ino())
         {
             return Err("fixture identity changed; retain data".to_owned());
         }

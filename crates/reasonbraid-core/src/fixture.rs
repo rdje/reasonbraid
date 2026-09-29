@@ -70,10 +70,18 @@ fn family_root(root: &Path, family: &str) -> PathBuf {
 #[derive(Debug)]
 pub struct Fixture {
     path: PathBuf,
-    /// The identity the directory had when this guard created it. Removal
-    /// refuses if it has changed, so a guard can never delete something that is
-    /// no longer the thing it made.
-    identity: (u64, u64),
+    /// The directory this guard created, held OPEN for the guard's whole life.
+    /// Removal refuses unless the path still names this directory, so a guard
+    /// can never delete something that is no longer the thing it made.
+    ///
+    /// ⛔ Held, not remembered (`SIGNOFF-REPAIR.11.4.3.1.2.31`). A recorded
+    /// `(device, inode)` pair is defeated by Linux, which hands a freed inode
+    /// number to the next directory at once: CI removed a replacement this guard
+    /// never made. An inode stays allocated while a descriptor refers to it, so
+    /// no successor can be given this one's number while the guard lives.
+    /// `project_storage`'s `OwnedDirectory` holds its directory the same way.
+    #[cfg(unix)]
+    held: std::fs::File,
     retained: bool,
 }
 
@@ -95,14 +103,20 @@ impl Fixture {
         builder.mode(0o700);
         builder.create(&path)?;
 
-        let metadata = std::fs::symlink_metadata(&path)?;
         #[cfg(unix)]
-        let identity = (metadata.dev(), metadata.ino());
-        #[cfg(not(unix))]
-        let identity = (0, 0);
+        let held = {
+            let held = std::fs::File::open(&path)?;
+            if !same_directory(&std::fs::symlink_metadata(&path)?, &held.metadata()?) {
+                return Err(io::Error::other(
+                    "fixture was replaced while it was being created",
+                ));
+            }
+            held
+        };
         Ok(Self {
             path,
-            identity,
+            #[cfg(unix)]
+            held,
             retained: false,
         })
     }
@@ -147,7 +161,7 @@ impl Fixture {
             ));
         }
         #[cfg(unix)]
-        if (metadata.dev(), metadata.ino()) != self.identity {
+        if !same_directory(&metadata, &self.held.metadata()?) {
             return Err(io::Error::other("fixture identity changed; retained"));
         }
         std::fs::remove_dir_all(&self.path)?;
@@ -156,6 +170,14 @@ impl Fixture {
             _ => Err(io::Error::other("fixture removal not confirmed")),
         }
     }
+}
+
+/// Whether `path` (read WITHOUT following a link, so a symlink is never a
+/// directory here) is the directory `held` refers to. Sound only because `held`
+/// is open: see [`Fixture`]'s `held`.
+#[cfg(unix)]
+fn same_directory(path: &std::fs::Metadata, held: &std::fs::Metadata) -> bool {
+    path.is_dir() && (path.dev(), path.ino()) == (held.dev(), held.ino())
 }
 
 impl Drop for Fixture {

@@ -511,4 +511,20 @@ if ! python3 -B scripts/check_qualification_currency.py --check >/dev/null 2>&1;
     exit 1
 fi
 
+
+# INODE-IDENTITY (`SIGNOFF-REPAIR.11.4.3.1.2.31`): an owner proves a path is
+# still what it made by a HELD handle, never by a remembered (device, inode)
+# number. Linux hands a freed inode number to the next file at once, so a
+# remembered pair can name a successor and the owner deletes what it never
+# made; macOS does not reuse, so the defect shows only on Linux CI. It did,
+# twice (`.23`, a file; `.31`, a directory), and the census after the second
+# found two more sites, one the browser worker's product workspace. Calibrated
+# over every commit that changed an inode line: five distinct remembered sites,
+# every one a real instance, none a false positive.
+# ⚠️ Priced before registering: 0.08 s over three runs.
+if ! python3 -B scripts/check_inode_identity.py >/dev/null 2>&1; then
+    python3 -B scripts/check_inode_identity.py >&2
+    exit 1
+fi
+
 exit 0

@@ -1698,7 +1698,12 @@ R3_BROWSER_BIN=<the pinned browser> \
 ```
 
 A consumed successful invocation removes only its verified original
-directory. A failed or unconfirmed invocation retains private `owner.json`,
+directory. Verified means the path still names the directory the worker created:
+the worker holds that directory open for the whole invocation, which pins its
+inode, so a replacement at the same path cannot present the same identity and be
+deleted in its place. Until 2026-09-29 the worker remembered the inode NUMBER
+instead, and Linux hands a freed number to the next directory at once, so on
+Linux a replacement could pass. A failed or unconfirmed invocation retains private `owner.json`,
 `completion.json` and at most 64 KiB of `browser.stderr` when those files can be
 written. Stderr also carries ownership/completion receipts with root-relative
 workspace paths. Inspect these records before cleanup; an old numeric PID alone

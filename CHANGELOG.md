@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-29 — Cleanup code can no longer delete a folder it did not make, on Linux (`SIGNOFF-REPAIR.11.4.3.1.2.31`)
+
+`REASONBRAID-REPAIR-0579`.
+
+- 🔴 **Before:** four pieces of cleanup code checked "is this still my folder?" by remembering the folder's serial number on disk. Linux gives a deleted folder's number to the next new folder straight away, so a stranger's folder at the same place could pass the check and be deleted. One of the four is the browser worker's own workspace; GitHub's Linux machines caught it in a test.
+- ✅ **Now:** each keeps its folder open while it owns it, which stops the number from being handed on, and a new commit-time check refuses anyone remembering the number again.
+
 ## 2026-09-29 — A self-check no longer fails on a fresh machine for a folder it cannot have (`SIGNOFF-REPAIR.11.4.3.1.2.30`)
 
 `REASONBRAID-REPAIR-0578`.

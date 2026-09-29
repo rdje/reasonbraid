@@ -31,6 +31,13 @@ re-examines its claims; they return to *Done* when the review requalifies them.
 | Phase 9 — stable release | Not Started | G9 requires sustained operational evidence and the outstanding release decisions. |
 | Corrective review | In Progress | It ends at a bug bar, not at exhaustion (`REASONBRAID-DOC-0162`): every leaf in a blocking class (cross-tenant; integrity of state, money, evidence or publication; a false claim; a gate that lies) closed with reproducible evidence, every deferred leaf with a readable trigger and a limit the qualification review states, the qualification review reconciled with measured behaviour, and the full CI checkpoint green on a pushed commit. |
 
+## 2026-09-29 — A self-check no longer fails on a fresh machine for a folder it cannot have (`SIGNOFF-REPAIR.11.4.3.1.2.30`)
+
+`REASONBRAID-REPAIR-0578`.
+
+- 🔴 **Before:** one of the project's self-checks read a folder of downloaded library sources. On GitHub's fresh machines that folder doesn't exist, so it read "nothing found" as an answer and failed.
+- ✅ **Now:** where the folder is missing, it says it cannot answer there and skips that one check aloud, and a second check makes sure "cannot answer" is never reported as a result.
+
 ## 2026-09-29 — The online test run can find its compiler again (`SIGNOFF-REPAIR.11.4.3.1.2.29`)
 
 `REASONBRAID-REPAIR-0577`.

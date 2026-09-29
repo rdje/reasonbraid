@@ -35,11 +35,14 @@ and whose fields are either a scalar, a `[]`, a block scalar (`>-`) or a
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
+import io
 import json
-import tomllib
 import re
 import sys
+import tempfile
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -342,7 +345,22 @@ def self_test() -> int:
     # 11 ⛔ the LIVE trigger still sees the split — if this ever flips, the block
     #    has genuinely lifted, and that is the trigger doing its job rather than
     #    the instrument going blind.
-    arms.append(("the live base64 requirement is still split", len(base64_split(ROOT)) > 1))
+    # ⛔ `SIGNOFF-REPAIR.11.4.3.1.2.30`: only where the vendored tree EXISTS. A fresh
+    # runner fetches no crates, and there `base64_split` finds nothing, which is
+    # UNKNOWN, never "not split": the first remote run failed this arm, 21/22, for
+    # a directory the `doctrines` job never creates. So it is graded where it can
+    # be answered and named aloud where it cannot.
+    if (ROOT / VENDOR).is_dir():
+        arms.append(("the live base64 requirement is still split", len(base64_split(ROOT)) > 1))
+    else:
+        print(f"self-test NOTE: no vendored sources under {VENDOR} (a fresh checkout), so the "
+              "live base64 trigger is unknown here and not graded")
+    # ... and an absent tree is an instrument failure for `--triggers`, never a verdict.
+    scratch_parent = ROOT / "target"
+    scratch_parent.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=scratch_parent) as empty, contextlib.redirect_stdout(io.StringIO()):
+        absent = triggers(Path(empty))
+    arms.append(("an absent vendored tree is an instrument failure, not a verdict", absent == 2))
     # 12 ⛔ THE LOCK-DRIFT ARM, from a defect found by hand: a row cited
     #    `rustls 0.23.43 (Cargo.lock)` while the lock resolved 0.23.45.
     lock = {"rustls": ["0.23.45"]}

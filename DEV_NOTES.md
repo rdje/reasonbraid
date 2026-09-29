@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-29 — CI `doctrines`: an absent vendored tree is unknown, never "not split" (`SIGNOFF-REPAIR.11.4.3.1.2.30`)
+
+`REASONBRAID-REPAIR-0578`.
+
+- 🔴 **Remote:** `census_external_ledger --self-test: 21/22`; arm 11 read `base64_split` over a missing `.project-data/cargo/registry/src` as a verdict. Reproduced locally by pointing `VENDOR` away: 21/22.
+- ✅ **Fix:** graded only where the tree exists (NOTE otherwise); new arm: `--triggers` over an absent tree returns 2. 23/23 here, 22/22 absent; 2/2 mutants.
+
 ## 2026-09-29 — CI `pg-tests`: the browser wrapper keeps the compiler `ci_env.py --rust` provisioned (`SIGNOFF-REPAIR.11.4.3.1.2.29`)
 
 `REASONBRAID-REPAIR-0577`.

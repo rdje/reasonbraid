@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-09-29 — A library the Git support relies on was updated for a published safety flaw (`SIGNOFF-REPAIR.11.69`)
+
+`REASONBRAID-REPAIR-0576`.
+
+- 🔴 **Before:** a small library used to read Git fingerprints had a published flaw. On Intel and AMD processors it could read slightly past the end of its data. The check that runs before every upload caught it and stopped the upload.
+- ✅ **Now:** the library is on the fixed version, nothing else changed, and the Git features' tests pass.
+
 ## 2026-09-29 — The system now tests its handling of malformed and hostile files automatically (`SIGNOFF-REPAIR.11.4.7.2.1.1`)
 
 `REASONBRAID-REPAIR-0575`.

@@ -31,6 +31,13 @@ re-examines its claims; they return to *Done* when the review requalifies them.
 | Phase 9 — stable release | Not Started | G9 requires sustained operational evidence and the outstanding release decisions. |
 | Corrective review | In Progress | It ends at a bug bar, not at exhaustion (`REASONBRAID-DOC-0162`): every leaf in a blocking class (cross-tenant; integrity of state, money, evidence or publication; a false claim; a gate that lies) closed with reproducible evidence, every deferred leaf with a readable trigger and a limit the qualification review states, the qualification review reconciled with measured behaviour, and the full CI checkpoint green on a pushed commit. |
 
+## 2026-09-29 — A library the Git support relies on was updated for a published safety flaw (`SIGNOFF-REPAIR.11.69`)
+
+`REASONBRAID-REPAIR-0576`.
+
+- 🔴 **Before:** a small library used to read Git fingerprints had a published flaw. On Intel and AMD processors it could read slightly past the end of its data. The check that runs before every upload caught it and stopped the upload.
+- ✅ **Now:** the library is on the fixed version, nothing else changed, and the Git features' tests pass.
+
 ## 2026-09-29 — The system now tests its handling of malformed and hostile files automatically (`SIGNOFF-REPAIR.11.4.7.2.1.1`)
 
 `REASONBRAID-REPAIR-0575`.

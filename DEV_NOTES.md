@@ -1,5 +1,12 @@
 # DEV_NOTES.md
 
+## 2026-09-29 — `faster-hex` 0.10.0 → 0.10.1 (RUSTSEC-2026-0306) so the pre-push dependency gate passes (`SIGNOFF-REPAIR.11.69`)
+
+`REASONBRAID-REPAIR-0576`.
+
+- 🔴 **Found by the push:** `cargo deny` refused: `faster_hex::hex_decode_unchecked`'s AVX2 path reads past `src` (via `gix-hash`).
+- ✅ **Fix:** `cargo update -p faster-hex --precise 0.10.1`; `defmt` entries added but not in the compiled graph; deny all ok; git lib 25, publisher 12, reconciler 4, all bins build.
+
 ## 2026-09-29 — The fuzz baseline: seeded mutation over the 25 derived untrusted-byte parsers (`SIGNOFF-REPAIR.11.4.7.2.1.1`)
 
 `REASONBRAID-REPAIR-0575`.

@@ -13167,6 +13167,17 @@ done
 - [x] **NO REGRESSION** — test code only; the same second broad run: **47 suites, 536 passed, 0 failed**, `bootstrap_recovery`'s 11 among them; strict clippy on `reasonbraid-server --all-targets` rc=0.
 - Commit: `REASONBRAID-REPAIR-0485` (with `.4.5.3`).
 
+### SIGNOFF-REPAIR.11.69 — `faster-hex` 0.10.0 is unsound on AVX2 (RUSTSEC-2026-0306), and the dependency gate refuses the push
+
+- Status: `done` — `REASONBRAID-REPAIR-0576`; opened 2026-09-29 by the first push since 2026-09-20, which the director approved and the pre-push hook refused.
+- ⚖️ Bar (`REASONBRAID-DOC-0162`): **blocking**: the dependency gate refuses every push until the advisory is resolved, and the five CI leaves are proved only on a pushed commit. The finding itself is memory safety in a dependency of the Git path.
+- 🔴 **Measured** (`git push origin main` → pre-push `cargo deny check`: *"advisories FAILED, bans ok, licenses ok, sources ok"*, `target/r11_fuzz/push.log`). The advisory is RUSTSEC-2026-0306: `faster_hex::hex_decode_unchecked` is a safe function whose AVX2 path, on x86 and x86_64, *"loads 32 bytes from `src`"* past a short input. The lockfile holds `faster-hex 0.10.0`, reached through `gix-hash` → `gix` → `reasonbraid-server`. 0.10.1 carries the maintainer's backported fix. This Apple Silicon host never takes the AVX2 path; GitHub's Linux runners and any x86 deployment can.
+- Owns: `cargo update -p faster-hex --precise 0.10.1`, changing nothing else in the lockfile; `cargo deny check` passing; the Git path's tests rerun.
+- [x] **ROOT CAUSE** — measured: the lockfile pinned `faster-hex 0.10.0`, the last release with the unbounded AVX2 read. The advisory was published after that version was locked, and nothing checks advisories before a push except this hook, which had not run since 2026-09-20.
+- [x] **FIX** — `python3 -B scripts/project_env.py cargo update -p faster-hex --precise 0.10.1`. The lockfile diff is `faster-hex` 0.10.0 → 0.10.1 and one new entry, `defmt 0.3.100`: a shim over `defmt 1.1.1`, which was already locked through `jiff`. Neither is in the compiled graph: `cargo tree -i defmt@0.3.100 -e normal` and `cargo tree -i defmt@1.1.1 -e normal` both print *"nothing to print"*, and `faster-hex` builds with `alloc` and `std` only. `cargo deny check` → **"advisories ok, bans ok, licenses ok, sources ok"** (`target/r11_fuzz/deny.log`).
+- [x] **NO REGRESSION** — `cargo build --locked --workspace --bins` rc=0; `reasonbraid-server --lib git` **25 passed** (the LFS fuzz test among them); `--test publisher` **12 passed**; `--test reconciler` **4 passed**. A patch release in one leaf dependency, so focused.
+- lockstep: no book or roadmap claim names a dependency version.
+
 ### SIGNOFF-REPAIR.11.68 — No constraint ties a node's tenant to its host's, and a test seed builds pairs the product never does
 
 - Status: `pending` — opened 2026-09-29 by tranche 7 (`R-66-3`, `REASONBRAID-DOC-0201`).
